@@ -64,7 +64,7 @@ App updates through **winget**, Windows Update, Microsoft Store, system componen
 and developer tools (pip, npm), with release notes and a queue that shows real progress.
 
 ### ▦ Storage Checker
-An interactive map of what each folder takes up, WinDirStat style, with zoom and free space in view. File types,
+An interactive map of what each folder takes up, WinDirStat style, with zoom and free space in view. As administrator it reads the NTFS master file table directly, so a full drive scan takes seconds. File types,
 largest files, **duplicates**, and comparisons with earlier scans to see what grew.
 
 ### ↯ Super Optimizer
@@ -179,7 +179,7 @@ designs/                   the early design explorations
 
 - [x] Full interface for all 9 modules
 - [x] Real engine: telemetry, drivers, apps, updates, disk, optimizer and monitor
-- [ ] Autopilot running routines on its own
+- [x] Autopilot running routines on its own (while StellarHub is open, also hidden in the tray)
 - [ ] `.exe` installer
 - [ ] Automatic StellarHub updates from this repository
 
