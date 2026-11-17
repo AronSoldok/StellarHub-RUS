@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# compilación (el .exe se genera aparte)
+build/
+dist/
+*.spec
+
+# editores y sistema
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# datos locales
+*.log

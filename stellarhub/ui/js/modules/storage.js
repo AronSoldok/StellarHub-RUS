@@ -1,0 +1,990 @@
+/* StellarHub · Storage Checker. Lo que hace WinDirStat (mapa de rectángulos, árbol, tipos, más grandes, duplicados,
+   comparar) con datos REALES del motor (stellarhub/engine/storage.py). Fuera de la app usa datos simulados creíbles
+   para poder diseñar. El árbol completo vive en Python: aquí llegan niveles agregados y los subárboles se piden al hacer zoom. */
+'use strict';
+(() => {
+const { $, $$, state, Spring, EASE, anim, tickers, ic, esc, fmt1, fmtInt } = SH;
+const ID = 'storage';
+const wp = s => esc(s).replace(/\\/g, '\\<wbr>'); // rutas: solo se parten después de cada barra invertida
+const MB = 1024 ** 2, GB = 1024 ** 3;
+SH.icons.add({
+  up: '<path d="M12 19V5m-6 6 6-6 6 6"/>',
+  drive: '<rect x="3" y="6.5" width="18" height="11" rx="2.5"/><path d="M7 12h.01M11 12h6"/>',
+  zoom: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2M8 11h6M11 8v6"/>',
+  grow: '<path d="M4 17 10 11l4 4 6-7"/><path d="M15 8h5v5"/>',
+});
+
+/* ---------------- tipos de archivo ---------------- */
+const TYPES = {
+  game: { n: 'Datos de juegos', c: '#FF7A66', ext: ['vpk', 'pak', 'bin', 'bank'] },
+  exe: { n: 'Programas y bibliotecas', c: '#6FA8FF', ext: ['exe', 'dll', 'sys', 'mui', 'pyd'] },
+  video: { n: 'Vídeo', c: '#F4C26B', ext: ['mp4', 'mkv', 'mov'] },
+  vm: { n: 'Discos virtuales', c: '#9ED6FF', ext: ['vdi', 'vhdx', 'iso'] },
+  audio: { n: 'Audio y samples', c: '#7FE0B4', ext: ['wav', 'flac', 'mp3', 'ncw', 'nki'] },
+  ai: { n: 'Modelos de IA', c: '#E0E57A', ext: ['gguf', 'safetensors'] },
+  cache: { n: 'Caché y temporales', c: '#8E9BB3', ext: ['tmp', 'cache', 'db', 'dat', 'log', 'ldb'] },
+  plugin: { n: 'Plugins de audio', c: '#5FD3C6', ext: ['vst3', 'clap'] },
+  inst: { n: 'Instaladores', c: '#D98E73', ext: ['msi', 'cab', 'msu'] },
+  archive: { n: 'Comprimidos', c: '#FFB27A', ext: ['zip', '7z', 'rar'] },
+  image: { n: 'Imágenes', c: '#FF9ECF', ext: ['jpg', 'png', 'psd'] },
+  doc: { n: 'Documentos', c: '#C9D4E8', ext: ['pdf', 'docx', 'xlsx', 'md'] },
+  code: { n: 'Código', c: '#A8D672', ext: ['py', 'js', 'ts', 'json', 'pyc', 'manifest'] },
+  system: { n: 'Archivos del sistema', c: '#7C8AA5', ext: [] },
+  other: { n: 'Otros', c: '#B9A88C', ext: [] },
+  free: { n: 'Espacio libre', c: '#1C2436', ext: [] },
+};
+const EXT2T = {}; for (const [k, t] of Object.entries(TYPES)) t.ext.forEach(e => EXT2T[e] = k);
+const T_ = t => TYPES[t] || TYPES.other;
+/* un color por tipo; la variación entre archivos es mínima (antes había demasiada y el mapa se veía sucio) */
+const SHADE = {};
+(function () {
+  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  for (const [k, t] of Object.entries(TYPES)) {
+    const [r, g, b] = hex(t.c);
+    SHADE[k] = [1, .965, .935, 1, .86].map(f => `rgb(${Math.round(r * f)},${Math.round(g * f)},${Math.round(b * f)})`);
+  }
+})();
+const shadeOf = (t, i) => (SHADE[t] || SHADE.other)[i];
+
+/* ---------------- datos simulados (deterministas) ---------------- */
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+let R = rng(20261117);
+const pick = a => a[Math.floor(R() * a.length)];
+function pickW(pairs) { let s = 0; for (const p of pairs) s += p[1]; let r = R() * s; for (const p of pairs) { r -= p[1]; if (r <= 0) return p[0]; } return pairs[0][0]; }
+function splitPow(total, n, alpha) { const w = Array.from({ length: n }, () => Math.pow(R(), alpha) + .03); const s = w.reduce((a, b) => a + b, 0); return w.map(x => total * x / s); }
+const KINDS = {
+  sys: { ext: [['dll', 5], ['sys', 1], ['exe', 1.5], ['mui', 1], ['dat', 1.2], ['cab', .6]], dirs: ['System32', 'drivers', 'DriverStore', 'Logs', 'Fonts', 'Microsoft.NET', 'Speech', 'Boot', 'Resources', 'servicing', 'en-US', 'es-ES'], files: ['ntoskrnl', 'kernelbase', 'd3d12', 'shell32', 'combase', 'ucrtbase', 'windows.storage', 'nvlddmkm', 'igdkmd64', 'msmpeng'] },
+  game: { ext: [['vpk', 4], ['pak', 3], ['bin', 1.5], ['dll', .4], ['exe', .2], ['mp4', .5], ['bank', .6]], dirs: ['bin', 'game', 'maps', 'sound', 'textures', 'videos', 'core', 'content', 'shaders', 'panorama', 'resource'], files: ['pak01', 'textures', 'sounds', 'maps', 'core', 'shaders', 'movies', 'props', 'characters'] },
+  audio: { ext: [['wav', 6], ['flac', .6], ['mp3', .6], ['ncw', 1.5], ['nki', .2]], dirs: ['Kicks', 'Snares', 'Loops', 'Vocals', 'Presets', 'Stems', 'Bounces', 'Proyectos', 'Samples', 'Pads', 'FX'], files: ['kick', 'snare', 'vocal_take', 'pad', 'bass_loop', 'fx_riser', 'bounce', 'stem', '808', 'hat'] },
+  plugin: { ext: [['vst3', 3], ['dll', 2], ['clap', .6], ['wav', 1.4]], dirs: ['VST3', 'Presets', 'Libraries', 'Content', 'Resources'], files: ['Serum', 'Ozone 11', 'Pro-Q 4', 'Kontakt 8', 'Massive X', 'ValhallaRoom', 'Soothe2', 'Neutron 5', 'Saturn 2', 'Trash'] },
+  video: { ext: [['mp4', 8], ['mkv', .8], ['mov', .6]], dirs: ['Clips', 'Capturas', 'Exportes', '2026-10', '2026-11', 'Crudo', 'Render'], files: ['Clip', 'Captura', 'Export final', 'Render', 'Partida', 'Video'] },
+  docs: { ext: [['pdf', 2], ['docx', 1], ['xlsx', 1], ['zip', 1.4], ['png', 1], ['jpg', 1], ['json', .4]], dirs: ['facturas', 'respaldos', 'plantillas', 'exportes', 'capturas', 'notas', 'proyectos', 'contratos'], files: ['factura', 'respaldo', 'plantilla', 'informe', 'acta', 'presupuesto', 'captura', 'notas'] },
+  code: { ext: [['py', 1], ['js', 2], ['json', 1], ['dll', .8], ['pyd', .6], ['md', .2], ['ts', .6], ['pyc', .6], ['db', .8]], dirs: ['src', 'dist', 'build', 'node_modules', 'tests', 'tools', '__pycache__', 'assets', 'lib', 'site-packages'], files: ['main', 'index', 'app', 'bundle', 'core', 'vendor', 'utils', 'server', 'worker'] },
+  cache: { ext: [['tmp', 2], ['cache', 2], ['db', 1.4], ['dat', 1], ['log', .6], ['ldb', .6]], dirs: ['Cache', 'Code Cache', 'GPUCache', 'DXCache', 'blob_storage', 'IndexedDB', 'Temp', 'Service Worker', 'ShaderCache'], files: ['data_0', 'f_000', 'index', 'cache', 'blob', 'shader', 'temp', 'log'] },
+  vm: { ext: [['vdi', 10], ['log', .1]], dirs: ['Logs', 'Snapshots'], files: ['Ubuntu 24.04', 'Windows 11 pruebas', 'Debian 13', 'disco'] },
+  models: { ext: [['gguf', 10], ['json', .1]], dirs: ['blobs', 'manifests'], files: ['llama3.1-8b-q4', 'qwen2.5-14b-q5', 'mistral-nemo-12b', 'sha256-6a0746a', 'sha256-8eeb52d'] },
+  installers: { ext: [['exe', 4], ['msi', 2], ['zip', 2], ['7z', 1], ['msu', 1], ['iso', .4]], dirs: ['instaladores', 'setups', 'drivers', 'viejos'], files: ['setup', 'installer', 'flstudio_win64', 'movavi_setup', 'nvidia_driver', 'vc_redist', 'update'] },
+  images: { ext: [['jpg', 4], ['png', 4], ['psd', 1.5]], dirs: ['Capturas', 'Miniaturas', 'Arte canal', 'Iconos', 'Fondos'], files: ['IMG', 'Captura', 'miniatura', 'fondo', 'logo', 'banner'] },
+  mixed: { ext: [['zip', 1], ['exe', 1], ['mp4', 1], ['png', 1], ['pdf', 1], ['tmp', 1]], dirs: ['varios', 'sin ordenar'], files: ['archivo', 'copia', 'nuevo'] },
+  sysfiles: { ext: [['dat', 1]], dirs: [], files: ['{3808876b-c176-4e48-b7ae-04046e6cc752}', 'tracking', 'Syscache'], force: 'system' },
+};
+let NID = 0;
+const T0 = Date.parse('2026-11-17T09:12:00');
+const VIDEO = new Set(['mp4', 'mkv', 'mov']);
+function fileName(K, ext) {
+  const b = pick(K.files);
+  if (VIDEO.has(ext)) return b;
+  return R() < .65 ? `${b}_${String(1 + Math.floor(R() * 98)).padStart(2, '0')}` : b;
+}
+function mkFile(parent, name, size, ext, type) {
+  const mtime = T0 - Math.floor(Math.pow(R(), 2.2) * 420) * 864e5 - Math.floor(R() * 864e5);
+  if (VIDEO.has(ext) && !/\d{4}-\d\d/.test(name)) { const d = new Date(mtime - 6e5); const p2 = v => String(v).padStart(2, '0'); name = `${name} ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}-${p2(d.getMinutes())}`; }
+  return { id: ++NID, name: name + '.' + ext, size, ext, type: type || EXT2T[ext] || 'cache', parent, mtime };
+}
+function gen(node, bytes, depth, K) {
+  const canSub = depth < 6 && bytes > 160 * MB && K.dirs.length;
+  const nSub = canSub ? 1 + Math.floor(R() * Math.max(1, 4.4 - depth * .7)) : 0;
+  const share = nSub ? .18 + R() * .34 : 1;
+  const nFiles = Math.max(1, Math.min(14, Math.round(3 + R() * 9 - depth)));
+  const fb = bytes * share;
+  splitPow(fb, nFiles, 2.3).forEach(sz => { const ext = pickW(K.ext); node.kids.push(mkFile(node, fileName(K, ext), sz, ext, K.force)); });
+  if (!nSub) return;
+  const used = new Set(node.kids.filter(k => k.dir).map(k => k.name));
+  splitPow(bytes - fb, nSub, 1.5).forEach(sz => {
+    let nm = pick(K.dirs), j = 2; while (used.has(nm) && j < 30) { nm = pick(K.dirs) + (j > 6 ? ' ' + j : ''); j++; }
+    used.add(nm);
+    const sub = { id: ++NID, name: nm, parent: node, kids: [], dir: true, size: 0, kind: node.kind };
+    gen(sub, sz, depth + 1, K); node.kids.push(sub);
+  });
+}
+function build(spec, parent, depth, kindIn) {
+  const [name, gb, kind, kids] = spec;
+  const node = { id: ++NID, name, parent, kids: [], dir: true, size: 0, kind: kind || kindIn || 'mixed' };
+  (kids || []).forEach(c => node.kids.push(typeof c === 'function' ? c(node) : build(c, node, depth + 1, node.kind)));
+  const used = node.kids.reduce((a, k) => a + sizeOf(k), 0);
+  const rest = gb * GB - used;
+  if (rest > 4 * MB) gen(node, rest, depth, KINDS[node.kind] || KINDS.mixed);
+  return node;
+}
+function sizeOf(n) { if (!n.dir) return n.size; n.size = n.kids.reduce((a, k) => a + sizeOf(k), 0); return n.size; }
+const F = (name, gb, ext, type) => p => mkFile(p, name, gb * GB, ext, type);
+function SPEC() {
+  return ['C:', 0, 'mixed', [
+    ['Users', 297, 'docs', [['usuario', 296, 'docs', [
+      ['Documents', 72, 'docs', [
+        ...Array.from({ length: 24 }, (_, i) => ['Proyecto_v' + (833 + i), 1.3 + R() * .5, 'code']),
+        ['Produccion musical', 12, 'audio'], ['Videos editados', 6, 'video'], ['Clips', 3, 'video'], ['Scripts', 1.5, 'code'],
+        ['Canal de YouTube', 6, 'video'], ['Image-Line', 3, 'audio'], ['Herramientas', .4, 'code'], ['Juego en desarrollo', 1.2, 'code']]],
+      ['Downloads', 46, 'installers', [['PLUGINS', 14, 'plugin'], ['Image-Line FL Studio Producer Edition 26.1.3.5570', 2.1, 'installers'], ['Movavi Video Editor 27.1.0 (x64)', 1.3, 'installers'],
+        ['Musica', 5, 'audio'], ['Grabaciones', 3.4, 'video'], ['Demos', 4.1, 'video'], F('ubuntu-24.04.3-desktop-amd64', 6.1, 'iso', 'vm')]],
+      ['AppData', 62, 'cache', [['Local', 44, 'cache', [['NVIDIA', 4, 'cache'], ['Temp', 7.4, 'cache'], ['Google', 6, 'cache'], ['Packages', 9, 'cache'], ['Spotify', 5.2, 'cache'], ['Bloxstrap', 3.1, 'game'], ['Programs', 6, 'code'], ['Microsoft', 3, 'cache']]],
+        ['Roaming', 14, 'cache', [['Code', 1.4, 'code'], ['npm', 1.2, 'code'], ['discord', 1.1, 'cache'], ['Image-Line', 3.8, 'audio']]], ['LocalLow', 4, 'cache']]],
+      ['Videos', 30, 'video', [['Medal', 22, 'video']]],
+      ['VirtualBox VMs', 38, 'vm', [['Ubuntu 24.04', 22, 'vm', [F('Ubuntu 24.04', 21.6, 'vdi')]], ['Windows 11 pruebas', 16, 'vm', [F('Windows 11 pruebas', 15.8, 'vdi')]]]],
+      ['.ollama', 21, 'models', [['models', 21, 'models', [['blobs', 20.9, 'models', [F('sha256-6a0746a1ec1a', 4.9, 'gguf'), F('sha256-8eeb52dfb3bb', 8.4, 'gguf'), F('sha256-ff82381e2bea', 7.1, 'gguf')]]]]]],
+      ['Music', 12, 'audio'], ['Pictures', 8, 'images'], ['Utilidades', 1.4, 'code'], ['.cache', 3, 'cache']]],
+      ['Public', .6, 'docs'], ['Default', .4, 'cache']]],
+    ['Program Files (x86)', 104, 'game', [['Steam', 104, 'game', [['steamapps', 103.5, 'game', [['common', 101, 'game', [
+      ['dota 2 beta', 38, 'game'], ['Counter-Strike Global Offensive', 34, 'game'], ['Hollow Knight', 9, 'game'], ['wallpaper_engine', 2.1, 'game'], ['Terraria', .9, 'game']]], ['shadercache', 2.5, 'cache']]]]]]],
+    ['Program Files', 80, 'sys', [['Native Instruments', 22, 'audio'], ['WindowsApps', 18, 'code'], ['Common Files', 11, 'plugin', [['VST3', 9.5, 'plugin']]], ['Image-Line', 6.8, 'audio'],
+      ['Microsoft Office', 4.2, 'sys'], ['iZotope', 3.4, 'plugin'], ['NVIDIA Corporation', 3.1, 'sys'], ['Movavi Video Editor', 1.4, 'code'], ['CapCut', 1.2, 'code']]],
+    ['Windows', 38, 'sys', [['WinSxS', 11, 'sys'], ['System32', 9, 'sys'], ['Installer', 6, 'installers'], ['SoftwareDistribution', 3.2, 'installers'], ['SysWOW64', 2.4, 'sys'], ['assembly', 2, 'sys'], ['Temp', 1.1, 'cache']]],
+    ['ProgramData', 22, 'cache', [['Package Cache', 6, 'installers'], ['NVIDIA Corporation', 2.2, 'cache'], ['Microsoft', 7, 'cache']]],
+    ['System Volume Information', 9, 'sysfiles'], ['msys64', 7, 'code'], ['$Recycle.Bin', 3.6, 'mixed'], ['Medal', 2, 'video'], ['pixelia', 1.2, 'images'], ['tts_pruebas', .8, 'audio'], ['tmp', .4, 'cache'],
+    F('pagefile', 19, 'sys', 'system'), F('hiberfil', 6.4, 'sys', 'system'), F('swapfile', .25, 'sys', 'system'),
+  ]];
+}
+function finalize(root) {
+  sizeOf(root);
+  const all = [];
+  (function walk(n) {
+    all.push(n);
+    if (!n.dir) return;
+    n.kids.sort((a, b) => b.size - a.size);
+    n.cats = {}; n.fcRaw = 0; n.mtime = 0; n.dirs = 0;
+    const virt = Math.floor(R() * R() * (['code', 'cache', 'sys'].includes(n.kind) ? 2600 : 260));
+    n.fcRaw += virt;
+    for (const k of n.kids) {
+      walk(k);
+      if (k.dir) { for (const t in k.cats) n.cats[t] = (n.cats[t] || 0) + k.cats[t]; n.fcRaw += k.fcRaw; n.dirs += 1 + k.dirs; n.mtime = Math.max(n.mtime, k.mtime); }
+      else { n.cats[k.type] = (n.cats[k.type] || 0) + k.size; n.fcRaw += 1; n.mtime = Math.max(n.mtime, k.mtime); }
+    }
+    let best = 'cache', bv = -1; for (const t in n.cats) if (n.cats[t] > bv) { bv = n.cats[t]; best = t; } n.dom = best;
+  })(root);
+  const f = 1284512 / root.fcRaw;
+  all.forEach(n => { n.fc = n.dir ? Math.max(n.kids.length ? 1 : 0, Math.round(n.fcRaw * f)) : 1; if (n.dir) n.dirs = Math.round(n.dirs * 330 + n.fc * .02); });
+  root.all = all; return root;
+}
+let TREE = null, MOCK = null;
+/* nodos por id (en real llegan por partes; en el modo de ejemplo se indexa todo el árbol simulado) */
+const NODES = new Map();
+const nodeById = id => NODES.get(+id);
+function mockTree() { if (!MOCK) { R = rng(20261117); NID = 0; MOCK = finalize(build(SPEC(), null, 0)); MOCK.all.forEach(n => NODES.set(n.id, n)); } return MOCK; }
+const tree = () => TREE || mockTree();
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+/* ---------------- motor real ---------------- */
+const ST = { real: null, drives: [], target: null, info: null, job: null, dups: null, dupJob: null, cmp: undefined, types: null, big: null };
+async function isReal() {
+  if (ST.real === null) {
+    try { const d = await SH.engine('storage', 'drives'); ST.real = d !== undefined; ST.drives = d || []; } catch (e) { console.error(e); ST.real = false; }
+    if (ST.real && !ST.target) { const sys = ST.drives.find(d => d.system) || ST.drives[0]; ST.target = sys ? sys.root : 'C:\\'; }
+  }
+  return ST.real;
+}
+/* convierte lo que manda el motor en nodos del árbol de la interfaz (con su padre) */
+function adopt(p, parent) {
+  const n = { id: p.id, name: p.name, size: p.size, parent, mtime: p.mtime || 0 };
+  if (p.dir) {
+    Object.assign(n, { dir: true, cats: p.cats || {}, dom: p.dom || 'other', fc: p.fc || 0, dirs: p.dirs || 0, lazy: !!p.lazy, err: p.err });
+    n.kids = (p.kids || []).map(k => adopt(k, n));
+  } else Object.assign(n, { ext: p.ext || '', type: p.type || 'other', fc: p.fc || 1, group: !!p.group });
+  NODES.set(n.id, n);
+  return n;
+}
+/* hijos bajo demanda: el motor manda 3 niveles por vez */
+const loading = new Map();
+function ensureKids(n) {
+  if (!n || !n.dir || !n.lazy || !ST.real) return Promise.resolve(n);
+  if (loading.has(n.id)) return loading.get(n.id);
+  const p = SH.engine('storage', 'view', n.id, 3).then(v => {
+    n.kids = (v.kids || []).map(k => adopt(k, n)); n.lazy = false; return n;
+  }).catch(e => { console.error(e); n.lazy = false; return n; }).finally(() => loading.delete(n.id));
+  loading.set(n.id, p); return p;
+}
+const API = {
+  /* análisis con progreso: onProgress({files, path, frac, rate}) */
+  async scan(onProgress) {
+    if (await isReal()) {
+      const job = SH.job('storage', 'scan', [ST.target], { onProgress: m => { if (m.kind === 'progress') onProgress({ files: m.data.files || 0, path: m.text, frac: m.pct, rate: m.data.rate, exact: m.data.exact }); } });
+      ST.job = job;
+      try {
+        const r = await job; ST.info = r.info; NODES.clear(); TREE = adopt(r.root, null);
+        ST.types = ST.big = null; ST.cmp = undefined; ST.dups = null;
+        return TREE;
+      } finally { ST.job = null; }
+    }
+    const t = mockTree(); const dirs = t.all.filter(n => n.dir && n.size > 200 * MB);
+    const dur = 2300, t0 = performance.now();
+    while (true) {
+      if (ST.cancelMock) { ST.cancelMock = false; throw Object.assign(new Error('cancelado'), { cancelled: true }); }
+      const k = Math.min(1, (performance.now() - t0) / dur); const e = 1 - Math.pow(1 - k, 1.6);
+      onProgress({ files: Math.round(t.fc * e), path: pathOf(dirs[Math.min(dirs.length - 1, Math.floor(k * dirs.length))]), frac: e });
+      if (k >= 1) break; await wait(50);
+    }
+    return t;
+  },
+  cancel() { if (ST.job) ST.job.cancel(); else ST.cancelMock = true; },
+  disk() {
+    if (ST.real && ST.info) { const d = ST.info.disk; const whole = isWholeDrive(); return { total: d.total, used: whole ? d.used : tree().size, free: d.free, whole }; }
+    return { total: 953 * GB, used: tree().size, free: 953 * GB - tree().size, whole: true };
+  },
+};
+const isWholeDrive = () => !ST.real || !ST.info || /^[A-Za-z]:\\?$/.test(ST.info.target);
+const targetName = () => { if (!ST.real || !ST.info) return 'Disco C:'; const t = ST.info.target; return isWholeDrive() ? `Disco ${t.slice(0, 2)}` : t.split('\\').filter(Boolean).pop(); };
+const pathOf = n => {
+  if (n && n.path) return n.path;
+  const p = []; let x = n; while (x) { p.unshift(x.name); x = x.parent; }
+  if (ST.real && ST.info && !isWholeDrive()) { p[0] = ST.info.target.replace(/\\$/, ''); return p.join('\\'); }
+  return p.join('\\').replace(/^([A-Za-z]:)\\?/, '$1\\');
+};
+const isAnc = (a, n) => { for (let x = n; x; x = x.parent) if (x === a) return true; return false; };
+const typeOf = n => n.dir ? n.dom : n.type;
+const fmtB = b => SH.fmtBytes(b);
+const pct = v => (v * 100 < 0.1 ? '<0,1' : fmt1(v * 100)) + ' %';
+const fmtDate = t => new Date(t).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/* ---------------- treemap ---------------- */
+const TM = { cv: null, ctx: null, dpr: 1, vp: { x: 0, y: 0, w: 0, h: 0 }, root: null, cur: null, leaves: [], rects: new Map(), tops: [], hover: null, hoverTop: null, sel: null,
+  A: null, hiType: null, hiLock: null, labelA: new Spring(0, 120, 20), dirty: true, ready: false, scanning: false, tipX: new Spring(0, 260, 26), tipY: new Spring(0, 260, 26), tipA: new Spring(0, 200, 24), mx: 0, my: 0 };
+let curTab = null, ctxRef = null;
+function squarify(items, r, cb) {
+  let i = 0, { x, y, w, h } = r;
+  while (i < items.length) {
+    const short = Math.min(w, h); if (short <= .01) { while (i < items.length) cb(items[i++], { x, y, w: 0, h: 0 }); break; }
+    const l2 = short * short; let sum = items[i].a, j = i + 1; const mx = items[i].a;
+    let worst = Math.max(l2 * mx / (sum * sum), (sum * sum) / (l2 * items[i].a));
+    while (j < items.length) { const s2 = sum + items[j].a; const wv = Math.max(l2 * mx / (s2 * s2), (s2 * s2) / (l2 * items[j].a)); if (wv > worst) break; sum = s2; worst = wv; j++; }
+    if (w >= h) { const cw = sum / h; let yy = y; for (let k = i; k < j; k++) { const ih = items[k].a / cw; cb(items[k], { x, y: yy, w: cw, h: ih }); yy += ih; } x += cw; w -= cw; }
+    else { const rh = sum / w; let xx = x; for (let k = i; k < j; k++) { const iw = items[k].a / rh; cb(items[k], { x: xx, y, w: iw, h: rh }); xx += iw; } y += rh; h -= rh; }
+    i = j;
+  }
+}
+/* espacio libre de la unidad como un bloque más (solo en la raíz de una unidad completa, si el interruptor está activo) */
+const FREE = { id: -999, name: 'Espacio libre', size: 0, type: 'free', free: true, fc: 0, mtime: 0 };
+const showFree = () => state.settings.storageShowFree !== false && isWholeDrive();
+function layout(root, vp) {
+  const leaves = [], rects = new Map(), tops = [];
+  rects.set(root.id, vp);
+  const lay = (node, r, depth, ti) => {
+    if (!node.dir || !node.kids.length || r.w * r.h < 42 || r.w < 4 || r.h < 4) { leaves.push({ n: node, r, ti }); return; }
+    /* separación uniforme: 2 px entre grupos principales, 1 px dentro (si cabe) */
+    const pad = depth === 0 ? 0 : (r.w > 14 && r.h > 14 ? (depth === 1 ? 1.5 : .75) : 0);
+    let ir = { x: r.x + pad, y: r.y + pad, w: r.w - pad * 2, h: r.h - pad * 2 };
+    /* el espacio libre se queda con su propia franja (a la derecha o abajo) y lo ocupado se reparte en el resto */
+    if (depth === 0 && node === TM.root && showFree()) {
+      FREE.size = API.disk().free; FREE.parent = node;
+      if (FREE.size > 0) {
+        const f = FREE.size / (node.size + FREE.size); let fr;
+        if (ir.w >= ir.h) { const fw = ir.w * f; fr = { x: ir.x + ir.w - fw, y: ir.y, w: fw, h: ir.h }; ir = { ...ir, w: ir.w - fw }; }
+        else { const fh = ir.h * f; fr = { x: ir.x, y: ir.y + ir.h - fh, w: ir.w, h: fh }; ir = { ...ir, h: ir.h - fh }; }
+        rects.set(FREE.id, fr); tops.push({ n: FREE, r: fr }); leaves.push({ n: FREE, r: fr, ti: 999 });
+      }
+    }
+    const area = ir.w * ir.h; const items = [];
+    for (const k of node.kids) if (k.size > 0) items.push({ n: k, a: k.size / node.size * area });
+    items.sort((a, b) => b.a - a.a);
+    let idx = 0;
+    squarify(items, ir, (it, rr) => { rects.set(it.n.id, rr); const t = depth === 0 ? idx++ : ti; if (depth === 0) tops.push({ n: it.n, r: rr }); lay(it.n, rr, depth + 1, t); });
+  };
+  lay(root, vp, 0, 0);
+  return { leaves, rects, tops };
+}
+const MARGIN = 6; /* el mapa nunca toca el marco del panel */
+const VPR = () => ({ x: MARGIN, y: MARGIN, w: Math.max(0, TM.vp.w - MARGIN * 2), h: Math.max(0, TM.vp.h - MARGIN * 2) });
+const mapR = (r, s, d) => ({ x: d.x + (r.x - s.x) * d.w / s.w, y: d.y + (r.y - s.y) * d.h / s.h, w: r.w * d.w / s.w, h: r.h * d.h / s.h });
+function relayout() { if (!TM.cur || !TM.vp.w) return; const L = layout(TM.cur, VPR()); TM.leaves = L.leaves; TM.rects = L.rects; TM.tops = L.tops; TM.dirty = true; }
+let hatch = null;
+function fillLeaf(ctx, n, x, y, w, h, a) {
+  if (w <= .2 || h <= .2 || a <= .01) return;
+  const t = typeOf(n); const hi = TM.hiLock || TM.hiType;
+  ctx.globalAlpha = a * (hi && t !== hi ? .12 : 1);
+  if (n.free) {
+    if (!hatch) { const c = document.createElement('canvas'); c.width = c.height = 10; const g = c.getContext('2d'); g.fillStyle = '#151C2B'; g.fillRect(0, 0, 10, 10); g.strokeStyle = 'rgba(158,190,240,.09)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(-2, 12); g.lineTo(12, -2); g.stroke(); hatch = ctx.createPattern(c, 'repeat'); }
+    ctx.fillStyle = hatch; ctx.fillRect(x + .5, y + .5, w - 1, h - 1);
+    ctx.strokeStyle = 'rgba(158,190,240,.18)'; ctx.lineWidth = 1; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2); return;
+  }
+  ctx.fillStyle = shadeOf(t, n.dir ? 4 : (n.group ? 2 : Math.abs(n.id) % 3));
+  /* misma separación en todo el mapa: medio píxel por lado (1 px entre vecinos) */
+  if (w > 2.5 && h > 2.5) ctx.fillRect(x + .5, y + .5, w - 1, h - 1); else ctx.fillRect(x, y, w, h);
+}
+const easeQ = k => 1 - Math.pow(1 - k, 4);
+function draw(now) {
+  const { ctx, vp, dpr } = TM; if (!ctx || !vp.w) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.globalAlpha = 1; ctx.clearRect(0, 0, vp.w, vp.h);
+  if (!TM.ready) return;
+  /* recorte limpio con el mismo radio que el panel: nada se sale por las esquinas */
+  const V = VPR(); ctx.save(); roundRect(ctx, V.x, V.y, V.w, V.h, 10); ctx.clip();
+  if (TM.A) {
+    const A = TM.A; const k = (now - A.t0) / A.dur;
+    for (const it of A.items) {
+      const kk = Math.max(0, Math.min(1, (k - it.d) / (1 - it.d))); const e = easeQ(kk);
+      const f = it.f, t = it.t;
+      fillLeaf(ctx, it.n, f.x + (t.x - f.x) * e, f.y + (t.y - f.y) * e, f.w + (t.w - f.w) * e, f.h + (t.h - f.h) * e, it.a0 + (it.a1 - it.a0) * e);
+    }
+    ctx.restore();
+    if (k >= 1) { TM.A = null; TM.labelA.t = 1; }
+    TM.dirty = true; return;
+  }
+  for (const l of TM.leaves) fillLeaf(ctx, l.n, l.r.x, l.r.y, l.r.w, l.r.h, 1);
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  const la = TM.labelA.v;
+  if (la > .01) {
+    ctx.font = '500 12px Onest, system-ui'; ctx.textBaseline = 'middle';
+    for (const t of TM.tops) {
+      if ((!t.n.dir && !t.n.free) || t.r.w < 96 || t.r.h < 40) continue;
+      const label = t.n.free ? 'Libre' : t.n.name, sz = fmtB(t.n.size);
+      const w1 = ctx.measureText(label).width, w2 = ctx.measureText(sz).width;
+      const maxW = t.r.w - 16; if (maxW < 40) continue;
+      const tw = Math.min(maxW, w1 + w2 + 26);
+      ctx.globalAlpha = la * .78; ctx.fillStyle = 'rgba(6,10,20,.82)';
+      roundRect(ctx, t.r.x + 6, t.r.y + 6, tw, 22, 7); ctx.fill();
+      ctx.globalAlpha = la; ctx.fillStyle = '#E8EDF6';
+      let lab = label;
+      if (w1 + 16 > tw) { while (lab.length > 2 && ctx.measureText(lab + '…').width + 16 > tw) lab = lab.slice(0, -1); lab += '…'; }
+      ctx.fillText(lab, t.r.x + 14, t.r.y + 17); ctx.fillStyle = '#9EABC3'; if (w1 + w2 + 26 <= maxW) ctx.fillText(sz, t.r.x + 22 + w1, t.r.y + 17);
+    }
+  }
+  ctx.globalAlpha = 1;
+  if (TM.hoverTop) { const r = TM.rects.get(TM.hoverTop.id); if (r) { ctx.strokeStyle = getAcc2(); ctx.lineWidth = 2; ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2); } }
+  const hl = TM.hover && TM.rects.get(TM.hover.id);
+  if (hl && TM.hover !== TM.hoverTop) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(hl.x + .75, hl.y + .75, Math.max(1, hl.w - 1.5), Math.max(1, hl.h - 1.5)); }
+  if (TM.sel && TM.sel !== TM.hover) { const r = TM.rects.get(TM.sel.id); if (r) { ctx.setLineDash([4, 3]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(r.x + .75, r.y + .75, Math.max(1, r.w - 1.5), Math.max(1, r.h - 1.5)); ctx.setLineDash([]); } }
+}
+let acc2 = '#9ED6FF'; const getAcc2 = () => acc2;
+SH.on('look', () => { acc2 = getComputedStyle(document.documentElement).getPropertyValue('--accent2').trim() || '#9ED6FF'; TM.dirty = true; });
+function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+tickers.add((dt, now) => {
+  if (state.view !== ID || curTab !== 'map' || !TM.ctx) return;
+  const lb = TM.labelA.idle; TM.labelA.step(dt);
+  if (TM.A || TM.dirty || !lb) { TM.dirty = false; draw(now); }
+  const tip = TM.tipEl; if (tip) {
+    TM.tipX.step(dt); TM.tipY.step(dt); TM.tipA.step(dt);
+    tip.style.opacity = TM.tipA.v.toFixed(3);
+    tip.style.transform = `translate3d(${TM.tipX.v.toFixed(1)}px,${TM.tipY.v.toFixed(1)}px,0) scale(${(.94 + .06 * TM.tipA.v).toFixed(3)})`;
+  }
+});
+
+/* zoom continuo: el pivote (carpeta destino al entrar, carpeta actual al salir) se transforma de su rectángulo al viewport */
+/* precarga: lo que está a la vista y aún no llegó del motor (carpetas grandes de los dos niveles siguientes) */
+function prefetch(cur) {
+  if (!ST.real || !cur) return;
+  const want = [];
+  const walk = (n, d) => { for (const k of n.kids || []) { if (!k.dir) continue; if (k.lazy && k.size > cur.size * .012) want.push(k); else if (d < 2) walk(k, d + 1); } };
+  walk(cur, 0);
+  if (!want.length) return;
+  Promise.all(want.slice(0, 14).map(ensureKids)).then(() => { if (TM.cur === cur && !TM.A) { relayout(); renderLegend(); } });
+}
+function zoomTo(nr, why) {
+  if (TM.A || !nr || nr === TM.cur || !nr.dir) return;
+  if (nr.lazy && ST.real) { TM.cv && (TM.cv.style.cursor = 'progress'); ensureKids(nr).then(() => { if (TM.cv) TM.cv.style.cursor = ''; zoomTo(nr, why); }); return; }
+  const oldLeaves = TM.leaves, oldRects = TM.rects; const zin = isAnc(TM.cur, nr);
+  const L = layout(nr, VPR());
+  let src, dst;
+  if (zin) { src = oldRects.get(nr.id); dst = VPR(); if (!src) { let x = nr; while (x && !oldRects.get(x.id)) x = x.parent; src = x ? oldRects.get(x.id) : VPR(); } }
+  else { src = VPR(); let x = TM.cur; while (x && !L.rects.get(x.id)) x = x.parent; dst = x ? L.rects.get(x.id) : VPR(); }
+  if (!src.w || !src.h || !dst.w || !dst.h) { src = VPR(); dst = VPR(); }
+  const M = r => mapR(r, src, dst), Mi = r => mapR(r, dst, src);
+  const oldMap = new Map(oldLeaves.map(l => [l.n.id, l.r])); const newIds = new Set(L.leaves.map(l => l.n.id));
+  const items = [];
+  for (const l of oldLeaves) if (!newIds.has(l.n.id)) items.push({ n: l.n, f: l.r, t: M(l.r), a0: 1, a1: 0, d: 0 });
+  for (const l of L.leaves) { const o = oldMap.get(l.n.id); items.push({ n: l.n, f: o || Mi(l.r), t: l.r, a0: o ? 1 : 0, a1: 1, d: 0 }); }
+  TM.leaves = L.leaves; TM.rects = L.rects; TM.tops = L.tops; TM.cur = nr; TM.hover = TM.hoverTop = null; TM.tipA.t = 0;
+  if (TM.sel && !isAnc(nr, TM.sel)) TM.sel = null;
+  TM.A = { items, t0: performance.now(), dur: Math.max(1, 640 * SH.motion()) }; TM.labelA.set(0);
+  renderCrumbs(true); renderInfo(); renderLegend(); TM.dirty = true;
+  setTimeout(() => prefetch(nr), 700 * SH.motion());
+}
+/* entrada del mapa al terminar el análisis: una onda diagonal suave; cada bloque llega desde un poco más abajo
+   y transparente, sin crecer desde un punto (eso se veía brusco) */
+function introAnim() {
+  const V = VPR(); const span = V.w + V.h || 1;
+  const items = TM.leaves.map(l => {
+    const cx = l.r.x + l.r.w / 2, cy = l.r.y + l.r.h / 2; const s = .985;
+    const wave = ((cx - V.x) + (cy - V.y)) / span;
+    return { n: l.n, f: { x: cx - l.r.w * s / 2, y: cy - l.r.h * s / 2 + 12, w: l.r.w * s, h: l.r.h * s }, t: l.r, a0: 0, a1: 1, d: Math.min(.55, wave * .5) };
+  });
+  TM.A = { items, t0: performance.now(), dur: Math.max(1, 1150 * SH.motion()) }; TM.labelA.set(0); TM.dirty = true;
+}
+/* de un reparto a otro (p. ej. al mostrar u ocultar el espacio libre): cada bloque se desliza a su sitio nuevo */
+function morphFrom(oldLeaves) {
+  const old = new Map(oldLeaves.map(l => [l.n.id, l.r])); const now = new Set(TM.leaves.map(l => l.n.id)); const items = [];
+  for (const l of oldLeaves) if (!now.has(l.n.id)) items.push({ n: l.n, f: l.r, t: l.r, a0: 1, a1: 0, d: 0 });
+  for (const l of TM.leaves) { const o = old.get(l.n.id); items.push({ n: l.n, f: o || l.r, t: l.r, a0: o ? 1 : 0, a1: 1, d: o ? 0 : .3 }); }
+  TM.A = { items, t0: performance.now(), dur: Math.max(1, 620 * SH.motion()) }; TM.labelA.set(0); TM.dirty = true;
+}
+
+/* ---------------- Mapa: DOM ---------------- */
+function renderMap(el) {
+  el.classList.add('fill');
+  el.innerHTML = `<div class="st-map">
+    <div class="st-mainc">
+      <div class="st-bar" data-asm><nav class="st-crumbs" aria-label="Ruta"></nav><span class="sp"></span><span class="faint st-hint">Clic en una carpeta para entrar. Rueda hacia atrás para salir.</span>
+        <button class="st-free${state.settings.storageShowFree !== false ? ' on' : ''}" data-free title="Mostrar el espacio libre de la unidad en el mapa"><span class="st-fsw"></span>Espacio libre</button>
+        <button class="btn sm ghost" data-up>${ic('up')}Subir un nivel</button></div>
+      <div class="st-cvw pan" data-asm data-nofade><canvas></canvas><div class="st-tip"></div>
+        <div class="st-scan"><div class="st-sbox">
+          <div class="st-dial"><svg class="st-ring" viewBox="-14 -14 148 148"><circle cx="60" cy="60" r="54" class="bg"/><circle cx="60" cy="60" r="54" class="fg"/></svg>
+            <div class="st-sv"><b class="st-sn">0</b><span>archivos leídos</span></div></div>
+          <div class="st-sp faint">Preparando el análisis…</div><div class="st-ss muted">&nbsp;</div>
+          <button class="btn sm ghost st-cancel" data-cancel>${ic('x')}Cancelar</button></div></div>
+      </div>
+    </div>
+    <aside class="st-side">
+      <div class="pan st-info" data-asm></div>
+      <div class="pan st-legend" data-asm><h4>Tipos de archivo <em>clic para resaltar</em></h4><div class="st-leg"></div></div>
+    </aside></div>`;
+  const wrap = $('.st-cvw', el); TM.cv = $('canvas', wrap); TM.ctx = TM.cv.getContext('2d'); TM.tipEl = $('.st-tip', wrap);
+  /* tamaño SIN transformaciones (clientWidth): getBoundingClientRect incluye la escala de los viajes de cámara
+     y, si el observador saltaba en mitad de uno, el mapa se dibujaba en un espacio y el ratón se buscaba en otro */
+  new ResizeObserver(() => {
+    const w = wrap.clientWidth, h = wrap.clientHeight; const d = Math.min(2, devicePixelRatio || 1);
+    TM.dpr = d; TM.cv.width = Math.round(w * d); TM.cv.height = Math.round(h * d);
+    const changed = Math.round(w) !== Math.round(TM.vp.w) || Math.round(h) !== Math.round(TM.vp.h);
+    TM.vp = { x: 0, y: 0, w, h };
+    if (changed && TM.ready && !TM.A) relayout(); TM.dirty = true;
+  }).observe(wrap);
+  TM.cv.addEventListener('pointermove', e => {
+    const r = TM.cv.getBoundingClientRect(); const kx = r.width ? TM.cv.clientWidth / r.width : 1, ky = r.height ? TM.cv.clientHeight / r.height : 1;
+    TM.mx = (e.clientX - r.left) * kx; TM.my = (e.clientY - r.top) * ky; hoverAt(TM.mx, TM.my);
+  });
+  TM.cv.addEventListener('pointerleave', () => { if (TM.hover) { TM.hover = TM.hoverTop = null; TM.tipA.t = 0; TM.dirty = true; renderInfo(); } });
+  TM.cv.addEventListener('click', () => {
+    if (TM.A || !TM.ready) return;
+    if (TM.hoverTop && TM.hoverTop.dir) zoomTo(deepen(TM.hoverTop));
+    else if (TM.hover && !TM.hover.free) { TM.sel = TM.hover; TM.dirty = true; renderInfo(); }
+  });
+  TM.cv.addEventListener('wheel', e => { if (TM.A || !TM.ready) return; e.preventDefault();
+    if (e.deltaY < 0 && TM.hoverTop && TM.hoverTop.dir) zoomTo(TM.hoverTop); else if (e.deltaY > 0 && TM.cur.parent) zoomTo(TM.cur.parent); }, { passive: false });
+  el.addEventListener('click', e => {
+    if (e.target.closest('[data-up]')) { if (TM.cur && TM.cur.parent) zoomTo(TM.cur.parent); return; }
+    const cb = e.target.closest('[data-crumb]'); if (cb) { const n = nodeById(cb.dataset.crumb); if (n) zoomTo(n); return; }
+    if (e.target.closest('[data-cancel]')) { API.cancel(); return; }
+    const fr = e.target.closest('[data-free]'); if (fr) { const on = !fr.classList.contains('on'); fr.classList.toggle('on', on); SH.setSetting('storageShowFree', on); if (TM.ready && !TM.A) { const old = TM.leaves; relayout(); morphFrom(old); } return; }
+    const lg = e.target.closest('[data-leg]'); if (lg) { TM.hiLock = TM.hiLock === lg.dataset.leg ? null : lg.dataset.leg; TM.dirty = true; markLegend(); return; }
+    const act = e.target.closest('[data-info]'); if (act) infoAction(act.dataset.info);
+  });
+  el.addEventListener('pointerover', e => { const lg = e.target.closest('[data-leg]'); TM.hiType = lg ? lg.dataset.leg : null; TM.dirty = true; });
+  el.addEventListener('pointerout', e => { if (e.target.closest('[data-leg]') && !e.relatedTarget?.closest?.('[data-leg]')) { TM.hiType = null; TM.dirty = true; } });
+  if (TM.ready) { $('.st-scan', el).classList.add('done'); relayout(); renderCrumbs(); renderInfo(); renderLegend(); }
+}
+function deepen(n) { while (n.dir && n.kids.length && n.kids[0].dir && n.kids[0].size / n.size > .985) n = n.kids[0]; return n; }
+function hoverAt(x, y) {
+  if (TM.A || !TM.ready) return;
+  let hit = null; for (let i = TM.leaves.length - 1; i >= 0; i--) { const r = TM.leaves[i].r; if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) { hit = TM.leaves[i].n; break; } }
+  let top = hit; while (top && top.parent !== TM.cur) top = top.parent;
+  const tip = TM.tipEl; const W = TM.vp.w, H = TM.vp.h;
+  if (hit) {
+    const tx = Math.min(W - 280, x + 18), ty = Math.min(H - 84, y + 18);
+    if (TM.tipA.v < .05) { TM.tipX.set(tx); TM.tipY.set(ty); }
+    TM.tipX.t = tx; TM.tipY.t = ty; TM.tipA.t = 1;
+  } else TM.tipA.t = 0;
+  if (hit === TM.hover) return;
+  TM.hover = hit; TM.hoverTop = top; TM.dirty = true;
+  if (hit && hit.free) {
+    const dk = API.disk();
+    tip.innerHTML = `<b>Espacio libre</b><span class="faint">Lo que aún queda sin usar en la unidad</span><span><i style="background:#3A4660"></i>${fmtB(hit.size)}, ${pct(hit.size / dk.total)} de la unidad</span>`;
+  } else if (hit) {
+    const t = typeOf(hit);
+    tip.innerHTML = `<b>${esc(hit.name)}</b><span class="faint">${wp(pathOf(hit.parent || hit))}</span><span><i style="background:${T_(t).c}"></i>${fmtB(hit.size)}, ${pct(hit.size / TM.cur.size)} de ${esc(TM.cur === TM.root ? targetName() : TM.cur.name)}</span>`;
+  }
+  renderInfo();
+}
+function renderCrumbs(animate) {
+  const box = $(`#v-${ID} .st-crumbs`); if (!box || !TM.cur) return;
+  const chain = []; for (let x = TM.cur; x; x = x.parent) chain.unshift(x);
+  const prev = box.childElementCount;
+  box.innerHTML = chain.map((n, i) => `${i ? `<span class="st-cs">${ic('chev')}</span>` : ''}<button data-crumb="${n.id}"${i === chain.length - 1 ? ' class="on" aria-current="true"' : ''}>${i === 0 ? ic('drive') : ''}${esc(i === 0 ? targetName().replace(/^Disco /, '') : n.name)}</button>`).join('');
+  if (animate) $$('button, .st-cs', box).forEach((b, i) => { if (i * 1 >= prev - 1) anim(b, [{ opacity: 0, transform: 'translate3d(-8px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 340, delay: Math.max(0, i - prev + 1) * 40, e: EASE.spring }); });
+  const up = $(`#v-${ID} [data-up]`); if (up) up.disabled = !TM.cur.parent;
+}
+const whenText = ms => { if (!ms) return 'hoy, 09:12'; const d = new Date(ms); const today = new Date().toDateString() === d.toDateString();
+  return (today ? 'hoy, ' : d.toLocaleDateString('es', { day: 'numeric', month: 'short' }) + ', ') + d.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }); };
+function renderInfo() {
+  const box = $(`#v-${ID} .st-info`); if (!box || !TM.ready) return;
+  let n = TM.hover || TM.sel || TM.cur; if (n.free) n = TM.cur;
+  const key = n.id + ':' + (n === TM.cur ? 'c' : 'n') + ':' + n.size;
+  if (box.dataset.k === key) return; box.dataset.k = key;
+  const disk = API.disk();
+  if (n === TM.cur && !n.parent) {
+    const I = ST.info;
+    box.innerHTML = (disk.whole
+      ? `<h4>${esc(targetName())}</h4><div class="st-ib"><div class="big">${fmt1(disk.used / GB)}<small>GB usados</small></div><span class="muted">de ${fmtInt(disk.total / GB)} GB. Quedan ${fmtInt(disk.free / GB)} GB libres.</span></div>
+      <div class="st-used"><span style="--v:${(disk.used / disk.total).toFixed(4)}"></span></div>`
+      : `<h4>Carpeta analizada</h4><div class="st-ih"><span class="st-it" style="--c:${T_(n.dom).c}">${ic('folder')}</span><div><b>${esc(targetName())}</b><span class="faint">${wp(I ? I.target : '')}</span></div></div>
+      <div class="st-ib"><div class="big">${fmtB(n.size).replace(/ (\w+)$/, '<small>$1</small>')}</div><span class="muted">${pct(n.size / disk.total)} de la unidad, que tiene ${fmtInt(disk.free / GB)} GB libres.</span></div>`)
+      + `<dl class="st-dl"><dt>Archivos</dt><dd>${fmtInt(n.fc)}</dd><dt>Carpetas</dt><dd>${fmtInt(n.dirs)}</dd><dt>Analizado</dt><dd>${whenText(I && I.when)}${I ? `, en ${fmt1(I.secs)} s` : ''}</dd>
+      ${I && I.errors ? `<dt>Sin acceso</dt><dd title="${I.admin ? 'Carpetas que Windows no deja leer ni a un administrador.' : 'En modo administrador se pueden leer más carpetas del sistema.'}">${fmtInt(I.errors)} carpetas</dd>` : ''}</dl>`;
+  } else {
+    const t = typeOf(n); const base = n === TM.cur ? (n.parent || n) : TM.cur;
+    box.innerHTML = `<h4>${n === TM.cur ? 'Carpeta actual' : n.dir ? 'Carpeta' : n.group ? 'Varios archivos' : 'Archivo'}</h4>
+      <div class="st-ih"><span class="st-it" style="--c:${T_(t).c}">${ic(n.dir ? 'folder' : 'file')}</span><div><b>${esc(n.name)}</b><span class="faint">${wp(pathOf(n.parent || n))}</span></div></div>
+      <div class="st-ib"><div class="big">${fmtB(n.size).replace(/ (\w+)$/, '<small>$1</small>')}</div><span class="muted">${base !== n && !(base === TM.root && disk.whole) ? `${pct(n.size / base.size)} de ${esc(base === TM.root ? targetName() : base.name)}, ` : ''}${pct(n.size / disk.total)} del disco</span></div>
+      <div class="bar" style="margin:10px 0 2px"><span style="transform:scaleX(${Math.max(.004, n.size / base.size).toFixed(4)});background:${T_(t).c}"></span></div>
+      <dl class="st-dl">${n.dir || n.group ? `<dt>Archivos</dt><dd>${fmtInt(n.fc)}</dd><dt>Sobre todo</dt><dd>${T_(n.dir ? n.dom : t).n.toLowerCase()}</dd>` : `<dt>Tipo</dt><dd>${T_(t).n}</dd>`}<dt>Modificado</dt><dd>${n.mtime ? fmtDate(n.mtime) : '—'}</dd></dl>
+      <div class="st-ia">${n.dir && n !== TM.cur ? `<button class="btn sm sec" data-info="enter">${ic('zoom')}Entrar</button>` : ''}<button class="btn sm ghost" data-info="open">${ic('folder')}Abrir en el Explorador</button>${n.dir ? `<button class="btn sm ghost" data-info="tree">${ic('list')}Ver en Carpetas</button>` : ''}</div>`;
+    TM.infoNode = n;
+  }
+  anim(box.children[1] || box, [{ opacity: .4, transform: 'translate3d(0,3px,0)' }, { opacity: 1, transform: 'none' }], { d: 200 });
+}
+async function reveal(path) {
+  if (ST.real) { try { if (await SH.engine('storage', 'reveal', path)) return; } catch (e) { console.error(e); } SH.toast('No se encontró: puede que ya no exista.'); return; }
+  SH.toast(`Se abriría ${path} en el Explorador.`);
+}
+function infoAction(a) {
+  const n = TM.infoNode || TM.cur;
+  if (a === 'enter') zoomTo(n);
+  if (a === 'open') reveal(n.group ? pathOf(n.parent) : pathOf(n));
+  if (a === 'tree' && ctxRef) { treeTarget = n; ctxRef.setTab('tree'); }
+}
+function renderLegend() {
+  const box = $(`#v-${ID} .st-leg`); if (!box || !TM.cur) return;
+  const cats = TM.cur.dir ? Object.entries(TM.cur.cats || {}).filter(c => c[1] > 0).sort((a, b) => b[1] - a[1]) : [];
+  const key = cats.slice(0, 12).map(c => c[0]).join() + ':' + TM.cur.id; if (box.dataset.k === key) { markLegend(); return; } box.dataset.k = key;
+  box.innerHTML = cats.slice(0, 12).map(([t, b]) => `<button class="st-lr" data-leg="${t}"><i style="background:${T_(t).c}"></i><span>${T_(t).n}</span><b>${fmtB(b)}</b></button>`).join('');
+  $$('.st-lr', box).forEach((b, i) => anim(b, [{ opacity: 0, transform: 'translate3d(8px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 320, delay: i * 25, e: EASE.spring }));
+  markLegend();
+}
+function markLegend() { $$(`#v-${ID} .st-lr`).forEach(b => { b.classList.toggle('on', TM.hiLock === b.dataset.leg); b.classList.toggle('dim', !!TM.hiLock && TM.hiLock !== b.dataset.leg); }); }
+
+/* análisis animado: anillo con el progreso real; al terminar, el anillo se recoge hacia el centro y el mapa
+   se abre desde ahí con una onda suave (antes todo crecía de golpe en su sitio) */
+async function runScan() {
+  if (TM.scanning) return; TM.scanning = true;
+  const el = $(`#v-${ID} .tab[data-tab="map"]`); const sc = el && $('.st-scan', el);
+  if (sc) {
+    sc.classList.remove('done'); sc.classList.add('busy');
+    $$('.st-dial, .st-sp, .st-ss, .st-cancel', sc).forEach(x => { x.getAnimations().forEach(a => a.cancel()); });
+    $('.st-sn', sc).textContent = '0'; $('.st-sp', sc).textContent = 'Preparando el análisis…'; $('.st-ss', sc).innerHTML = '&nbsp;';
+    anim(sc, [{ opacity: 0, transform: 'scale(.94)', filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
+  }
+  const wasReady = TM.ready;
+  if (TM.ready) { TM.ready = false; TM.dirty = true; }
+  const fg = sc && $('.fg', sc); const C = 2 * Math.PI * 54; if (fg) fg.style.strokeDasharray = `0 ${C}`;
+  let last = 0, lastT = performance.now(), shown = 0, t;
+  try {
+    t = await API.scan(p => {
+      if (!sc) return;
+      $('.st-sn', sc).textContent = fmtInt(p.files); $('.st-sp', sc).textContent = p.path || '';
+      const now = performance.now(); if (now - lastT > 300) { const rate = p.rate || (p.files - last) / ((now - lastT) / 1000); $('.st-ss', sc).textContent = `${fmtInt(rate)} archivos por segundo`; last = p.files; lastT = now; }
+      shown = Math.max(shown, p.frac || 0); if (fg) fg.style.strokeDasharray = `${(C * shown).toFixed(1)} ${C}`;
+    });
+  } catch (e) {
+    TM.scanning = false; if (sc) sc.classList.remove('busy');
+    if (e && e.cancelled) {
+      if (wasReady && TM.root) { TM.ready = true; relayout(); if (sc) anim(sc, [{ opacity: 1 }, { opacity: 0 }], { d: 260 }).finished.then(() => sc.classList.add('done')).catch(() => {}); }
+      else if (sc) { $('.st-sp', sc).textContent = 'Análisis cancelado.'; $('.st-ss', sc).textContent = 'Pulsa Analizar para empezar de nuevo.'; }
+      SH.toast('Análisis cancelado.'); return;
+    }
+    if (sc) { $('.st-sp', sc).textContent = 'No se pudo analizar.'; $('.st-ss', sc).textContent = (e && e.message) || ''; }
+    console.error(e); return;
+  }
+  if (fg) fg.style.strokeDasharray = `${C} ${C}`;
+  TM.root = t; if (!TM.cur || !isAnc(t, TM.cur)) TM.cur = t;
+  TM.scanning = false; TM.ready = true; TM.sel = null; TM.hover = TM.hoverTop = null; relayout();
+  const ib = $(`#v-${ID} .st-info`); if (ib) ib.dataset.k = '';
+  const lb = $(`#v-${ID} .st-leg`); if (lb) lb.dataset.k = '';
+  if (sc) {
+    sc.classList.remove('busy');
+    $('.st-ss', sc).textContent = `${fmtInt(t.fc)} archivos en ${fmtInt(t.dirs)} carpetas`;
+    const dial = $('.st-dial', sc), rest = $$('.st-sp, .st-ss, .st-cancel', sc);
+    rest.forEach(x => anim(x, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(0,6px,0)' }], { d: 260, delay: 160 }));
+    anim(dial, [{ transform: 'scale(1)', opacity: 1, filter: 'blur(0px)' }, { transform: 'scale(.5)', opacity: 0, filter: 'blur(6px)' }], { d: 520, delay: 220, e: EASE.io });
+    const finish = () => { if (TM.scanning || sc.classList.contains('done')) return; sc.classList.add('done'); [dial, ...rest, sc].forEach(x => x.getAnimations().forEach(a => a.cancel())); };
+    anim(sc, [{ backgroundColor: 'rgba(6,10,20,.6)' }, { backgroundColor: 'rgba(6,10,20,0)' }], { d: 700, delay: 260 }).finished.then(finish).catch(() => {});
+    setTimeout(finish, 1400); /* por si la ventana está oculta y las animaciones no avanzan */
+  }
+  if (TM.cv) anim(TM.cv, [{ clipPath: 'circle(0% at 50% 50%)' }, { clipPath: 'circle(75% at 50% 50%)' }], { d: 1100, delay: 340, e: EASE.out });
+  setTimeout(() => { introAnim(); renderCrumbs(true); renderInfo(); renderLegend(); prefetch(TM.cur); }, 340 * SH.motion());
+  if (ST.real) refreshDrives();
+}
+
+/* ---------------- Carpetas ---------------- */
+let treeTarget = null; const openSet = new Set();
+/* antes de analizar (en real) las demás pestañas invitan a hacerlo */
+const needScan = () => ST.real && !TREE;
+function scanFirst(el, what) {
+  el.classList.add('fill');
+  el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi">${ic('storage')}</span><b>Primero analiza una unidad</b><span class="muted">${what}</span>
+    <button class="btn pri" data-goscan>${ic('search')}Analizar ${esc((ST.target || 'C:\\').replace(/\\$/, ''))}</button></div>`;
+  if (!el.dataset.b) { el.dataset.b = 1; el.addEventListener('click', e => { if (e.target.closest('[data-goscan]') && ctxRef) { ctxRef.setTab('map'); setTimeout(() => runScan(), 260); } }); }
+}
+function trow(n, depth, base) {
+  const t = typeOf(n); const frac = base ? n.size / base : 0;
+  return `<div class="st-tr${n.dir ? '' : ' file'}${n.group ? ' grp' : ''}" data-id="${n.id}" style="--d:${depth}">
+    <span class="st-nmc">${n.dir ? `<button class="st-tw" data-tw="${n.id}" aria-label="Desplegar">${ic('chev')}</button>` : '<span class="st-tw"></span>'}<span class="st-ic" style="--c:${T_(t).c}">${ic(n.dir ? 'folder' : n.group ? 'layers' : 'file')}</span><span class="st-nm">${esc(depth === 0 ? targetName() : n.name)}</span></span>
+    <span class="st-sz">${fmtB(n.size)}</span>
+    <span class="st-pc"><span class="bar"><span style="--v:${Math.max(.003, frac).toFixed(4)};background:${T_(t).c}"></span></span><em>${pct(frac)}</em></span>
+    <span class="st-fc">${n.dir || n.group ? fmtInt(n.fc) : ''}</span><span class="st-dt">${n.mtime ? fmtDate(n.mtime) : ''}</span></div>${n.dir ? `<div class="st-kids" data-kids="${n.id}"><div></div></div>` : ''}`;
+}
+function fillKids(n, depth) {
+  const box = $(`#v-${ID} [data-kids="${n.id}"] > div`); if (!box || box.dataset.f) return box; box.dataset.f = 1;
+  const shown = n.kids.filter(k => k.size > 0).slice(0, 80); const rest = n.kids.length - shown.length;
+  box.innerHTML = shown.map(k => trow(k, depth + 1, n.size)).join('') + (rest > 0 ? `<div class="st-tr more" style="--d:${depth + 1}"><span class="st-nmc"><span class="st-tw"></span><span class="faint">y ${rest} elementos más pequeños</span></span></div>` : '');
+  return box;
+}
+async function toggleTree(id, force) {
+  const n = nodeById(id); if (!n || !n.dir) return;
+  const row = $(`#v-${ID} .st-tr[data-id="${id}"]`), kids = $(`#v-${ID} [data-kids="${id}"]`); if (!row || !kids) return;
+  const open = force !== undefined ? force : !row.classList.contains('open');
+  if (open) {
+    if (n.lazy) { row.classList.add('loading'); await ensureKids(n); row.classList.remove('loading'); }
+    const box = fillKids(n, +row.style.getPropertyValue('--d'));
+    row.classList.add('open'); kids.classList.add('open'); openSet.add(id);
+    const rows = $$(':scope > .st-tr', box);
+    rows.forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(-10px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 360, delay: Math.min(i, 14) * 22, e: EASE.spring }));
+    requestAnimationFrame(() => rows.forEach(r => r.classList.add('in')));
+  } else { row.classList.remove('open'); kids.classList.remove('open'); openSet.delete(id); }
+}
+function renderTree(el) {
+  if (needScan()) return scanFirst(el, 'El árbol de carpetas sale del análisis: tamaño, archivos y fecha de cada carpeta.');
+  const t = tree(); openSet.clear();
+  el.classList.add('fill');
+  el.innerHTML = `<div class="pan st-tree st-fp" data-asm>
+      <div class="st-ph"><div class="st-pht"><b>${esc(targetName())}</b><span class="muted">${fmtB(t.size)} en ${fmtInt(t.fc)} archivos. Ordenado por tamaño.</span></div><span class="sp"></span><button class="btn sm ghost" data-collapse>${ic('minus')}Plegar todo</button></div>
+      <div class="tbl-head st-th"><span>Nombre</span><span>Tamaño</span><span>Del total de su carpeta</span><span>Archivos</span><span>Modificado</span></div>
+      <div class="st-tbody st-scroll">${trow(t, 0, t.size)}</div></div>`;
+  const root = $('.st-tr', el); root.classList.add('in');
+  toggleTree(t.id, true);
+  if (el.dataset.b) return; el.dataset.b = 1;
+  el.addEventListener('click', e => {
+    const tw = e.target.closest('[data-tw]'); if (tw) { toggleTree(+tw.dataset.tw); return; }
+    const r = e.target.closest('.st-tr[data-id]'); if (r && !e.target.closest('button')) { const n = nodeById(r.dataset.id); if (n && n.dir) toggleTree(n.id); }
+    if (e.target.closest('[data-collapse]')) { const rid = tree().id; [...openSet].filter(id => id !== rid).forEach(id => toggleTree(id, false)); }
+  });
+}
+async function revealInTree(n) {
+  const chain = []; for (let x = n; x; x = x.parent) chain.unshift(x);
+  for (const x of chain) { if (x === n && !x.dir) break; const row = $(`#v-${ID} .st-tr[data-id="${x.id}"]`); if (row && !row.classList.contains('open') && x !== n) await toggleTree(x.id, true); }
+  const row = $(`#v-${ID} .st-tr[data-id="${n.id}"]`);
+  if (row) setTimeout(() => { row.scrollIntoView({ block: 'center', behavior: state.settings.intensity === 'min' ? 'auto' : 'smooth' }); row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1600); }, 380 * SH.motion());
+}
+
+/* ---------------- Tipos de archivo ---------------- */
+async function typesData() {
+  if (ST.real) {
+    if (!ST.types) ST.types = await SH.engine('storage', 'types');
+    return ST.types.map(b => [b.type, { size: b.size, n: b.count, ext: Object.fromEntries(b.exts) }]);
+  }
+  const t = tree(); const files = t.all.filter(n => !n.dir); const fFactor = t.fc / files.length;
+  const by = {}; files.forEach(f => { const b = by[f.type] ||= { size: 0, n: 0, ext: {} }; b.size += f.size; b.n++; b.ext[f.ext] = (b.ext[f.ext] || 0) + f.size; });
+  return Object.entries(by).map(([k, b]) => [k, { ...b, n: Math.round(b.n * (['vm', 'ai', 'system', 'inst', 'archive'].includes(k) ? 1 : ['video', 'game'].includes(k) ? fFactor * .08 : fFactor)) }]);
+}
+async function renderTypes(el) {
+  if (needScan()) return scanFirst(el, 'Verás cuánto ocupa cada tipo de archivo: vídeos, juegos, programas, cachés…');
+  el.classList.add('fill'); el.innerHTML = '<div class="sk" style="height:60px;margin-bottom:14px"></div><div class="sk" style="height:300px"></div>';
+  const list = (await typesData()).filter(x => x[1].size > 0).sort((a, b) => b[1].size - a[1].size); const max = list[0] ? list[0][1].size : 1;
+  const tot = list.reduce((a, x) => a + x[1].size, 0);
+  el.innerHTML = `<div class="st-tywrap"><div class="pan st-stack" data-asm><h4>Cómo se reparte ${esc(targetName().replace(/^Disco/, 'el disco'))} <em>${fmtB(tot)} en ${list.length} tipos</em></h4>
+      <div class="st-sbar">${list.map(([k, b]) => `<button data-ty="${k}" style="flex:${b.size};background:${T_(k).c}" title="${T_(k).n}, ${fmtB(b.size)}"></button>`).join('')}</div></div>
+    <div class="pan st-types st-fp" data-asm><div class="tbl-head st-tyh"><span>Tipo</span><span>Extensiones</span><span>Tamaño</span><span>Archivos</span><span></span></div>
+      <div class="st-scroll">${list.map(([k, b]) => `<button class="st-ty" data-ty="${k}"><span class="st-sw" style="background:${T_(k).c}"></span><b>${T_(k).n}</b>
+        <span class="faint st-ex">${Object.entries(b.ext).sort((x, y) => y[1] - x[1]).slice(0, 4).map(([e]) => e.startsWith('(') ? e : '.' + e).join(' ')}</span>
+        <span class="st-tsz">${fmtB(b.size)}</span><span class="st-tn">${fmtInt(b.n)}</span>
+        <span class="bar"><span style="--v:${(b.size / max).toFixed(4)};background:${T_(k).c}"></span></span></button>`).join('')}</div></div></div>`;
+  SH.assemble(el, 40);
+  const sb = $('.st-sbar', el); anim(sb, [{ clipPath: 'inset(0 100% 0 0 round 8px)' }, { clipPath: 'inset(0 0 0 0 round 8px)' }], { d: 900, delay: 150 });
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+  if (el.dataset.b) return; el.dataset.b = 1;
+  el.addEventListener('click', e => { const b = e.target.closest('[data-ty]'); if (!b) return; TM.hiLock = b.dataset.ty; TM.dirty = true; if (ctxRef) ctxRef.setTab('map'); setTimeout(markLegend, 50); SH.toast(`${T_(b.dataset.ty).n} resaltados en el mapa.`, { action: { label: 'Quitar', run: () => { TM.hiLock = null; TM.dirty = true; markLegend(); } } }); });
+}
+
+/* ---------------- Más grandes ---------------- */
+const BIG = { sort: 'size', q: '', removed: new Set(), items: null };
+const fullPath = n => n.folder ? n.folder.replace(/\\$/, '') + '\\' + n.name : pathOf(n);
+const folderOf = n => n.folder || pathOf(n.parent);
+async function bigItems() {
+  if (ST.real) {
+    if (!ST.big) ST.big = (await SH.engine('storage', 'largest', 200)).map(x => ({ id: x.id, name: x.name, size: x.size, mtime: x.mtime, ext: x.ext, type: x.type, folder: x.dir, dirId: x.dirId, dir: false }));
+    return ST.big;
+  }
+  return tree().all.filter(n => !n.dir).sort((a, b) => b.size - a.size).slice(0, 60);
+}
+function bigList() {
+  let l = (BIG.items || []).filter(n => !BIG.removed.has(n.id));
+  if (BIG.q) l = l.filter(n => n.name.toLowerCase().includes(BIG.q) || folderOf(n).toLowerCase().includes(BIG.q));
+  l = l.slice();
+  if (BIG.sort === 'size') l.sort((a, b) => b.size - a.size);
+  if (BIG.sort === 'name') l.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  if (BIG.sort === 'date') l.sort((a, b) => b.mtime - a.mtime);
+  return l.slice(0, 200);
+}
+function bigRow(n) {
+  const t = typeOf(n);
+  return `<div class="st-br" data-big="${n.id}"><span class="st-bt" style="--c:${T_(t).c}">${esc(n.ext || '·')}</span>
+    <div class="st-bn"><b>${esc(n.name)}</b><span class="faint">${wp(folderOf(n))}</span></div>
+    <span class="st-bs">${fmtB(n.size)}</span><span class="st-bd faint">${n.mtime ? fmtDate(n.mtime) : ''}</span>
+    <span class="st-ba"><button class="iconbtn" data-bopen="${n.id}" title="Mostrar en el Explorador">${ic('folder')}</button><button class="iconbtn" data-btrash="${n.id}" title="Enviar a la papelera">${ic('trash')}</button></span></div>`;
+}
+/* confirmación en la propia fila: nada de diálogos del navegador */
+function askInRow(row, text, yesLabel) {
+  return new Promise(res => {
+    const box = $('.st-ba', row); const prev = box.innerHTML;
+    box.innerHTML = `<span class="st-ask"><span>${esc(text)}</span><button class="btn sm danger" data-yes>${esc(yesLabel)}</button><button class="btn sm ghost" data-no>No</button></span>`;
+    anim($('.st-ask', box), [{ opacity: 0, transform: 'translate3d(10px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 260, e: EASE.spring });
+    const done = v => { box.removeEventListener('click', on, true); if (!v) box.innerHTML = prev; res(v); };
+    const on = e => { if (e.target.closest('[data-yes]')) { e.stopPropagation(); done(true); } else if (e.target.closest('[data-no]')) { e.stopPropagation(); done(false); } };
+    box.addEventListener('click', on, true);
+    setTimeout(() => { if (box.isConnected && $('.st-ask', box)) done(false); }, 7000);
+  });
+}
+async function toTrash(path) {
+  if (!ST.real) return { ok: true, size: 0 };
+  const c = await SH.engine('storage', 'can_delete', path); if (!c.ok) return { ok: false, error: c.why };
+  return SH.engine('storage', 'trash', path);
+}
+async function fromTrash(path) { if (!ST.real) return { ok: true }; return SH.engine('storage', 'restore', path); }
+async function renderBig(el) {
+  if (needScan()) return scanFirst(el, 'Aquí salen los archivos más grandes, para decidir qué te sobra.');
+  el.classList.add('fill');
+  el.innerHTML = `<div class="pan st-big st-fp" data-asm>
+      <div class="st-ph"><label class="field st-bq">${ic('search')}<input placeholder="Filtrar por nombre o carpeta" spellcheck="false"></label>
+        <div class="seg st-bsort"><span class="ind"></span><button data-s="size" class="on">Tamaño</button><button data-s="name">Nombre</button><button data-s="date">Fecha</button></div>
+        <span class="sp"></span><span class="muted st-btot"></span></div>
+      <div class="tbl-head st-bh"><span></span><span>Archivo</span><span>Tamaño</span><span>Modificado</span><span></span></div>
+      <div class="st-blist st-scroll"><div class="sk" style="height:46px;margin:6px"></div><div class="sk" style="height:46px;margin:6px"></div></div></div>`;
+  BIG.sort = 'size'; BIG.q = '';
+  requestAnimationFrame(() => SH.placeSeg($('.st-bsort', el), true));
+  BIG.items = await bigItems();
+  const list = $('.st-blist', el);
+  const total = () => { const l = bigList(); $('.st-btot', el).textContent = `${l.length} archivos, ${fmtB(l.reduce((a, n) => a + n.size, 0))}`; };
+  const paint = () => { const l = bigList(); list.innerHTML = l.map(bigRow).join('') || '<div class="empty"><b>Nada coincide</b>Prueba con otra palabra.</div>'; total(); };
+  el._paint = paint;
+  paint(); $$('.st-br', list).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: Math.min(i, 14) * 25, e: EASE.spring }));
+  if (el.dataset.b) return; el.dataset.b = 1;
+  el.addEventListener('input', e => { if (!e.target.closest('.st-bq')) return; BIG.q = e.target.value.trim().toLowerCase(); el._paint(); });
+  el.addEventListener('click', async e => {
+    const sb = e.target.closest('.st-bsort button[data-s]'); if (sb) { if (sb.classList.contains('on')) return;
+      $$('.st-bsort button', el).forEach(x => x.classList.toggle('on', x === sb)); SH.placeSeg($('.st-bsort', el)); BIG.sort = sb.dataset.s; flipSort($('.st-blist', el)); total2(); return; }
+    const o = e.target.closest('[data-bopen]'); if (o) { const n = BIG.items.find(x => x.id === +o.dataset.bopen); if (n) reveal(fullPath(n)); return; }
+    const tr = e.target.closest('[data-btrash]'); if (!tr) return;
+    const id = +tr.dataset.btrash; const n = BIG.items.find(x => x.id === id); const row = tr.closest('.st-br'); if (!n || !row) return;
+    if (!await askInRow(row, '¿A la papelera?', 'Enviar')) return;
+    const path = fullPath(n); const r = await toTrash(path);
+    if (!r || !r.ok) { SH.toast((r && r.error) || 'No se pudo enviar a la papelera.'); const b = $('.st-ba', row); if (b) b.innerHTML = $('.st-ba', document.createRange().createContextualFragment(bigRow(n))).innerHTML; return; }
+    BIG.removed.add(id); const h = row.offsetHeight;
+    anim(row, [{ opacity: 1, transform: 'none', height: h + 'px' }, { opacity: 0, transform: 'translate3d(30px,0,0)', height: h + 'px', offset: .5 }, { opacity: 0, transform: 'translate3d(30px,0,0)', height: '0px', paddingTop: '0px', paddingBottom: '0px' }], { d: 440 })
+      .finished.then(() => { row.remove(); total2(); }).catch(() => {});
+    SH.logActivity(`${n.name} a la papelera`, { sub: fmtB(n.size) + ' liberados', ic: 'trash', go: ID, tab: 'largest' });
+    SH.toast(`${n.name} enviado a la papelera.`, { action: { label: 'Deshacer', run: async () => {
+      const rr = await fromTrash(path); if (!rr || !rr.ok) { SH.toast((rr && rr.error) || 'No se pudo restaurar.'); return; }
+      BIG.removed.delete(id); const l = $('.st-blist', el); const before = new Map($$('.st-br', l).map(r => [r.dataset.big, r.getBoundingClientRect().top])); el._paint();
+      const nr = $(`.st-br[data-big="${id}"]`, l); $$('.st-br', l).forEach(r => { const b = before.get(r.dataset.big); if (b !== undefined) { const dy = b - r.getBoundingClientRect().top; if (dy) anim(r, [{ transform: `translate3d(0,${dy}px,0)` }, { transform: 'none' }], { d: 420, e: EASE.spring }); } });
+      if (nr) anim(nr, [{ opacity: 0, transform: 'scale(.96)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 420, delay: 120, e: EASE.spring }); } } });
+  });
+  function total2() { const l = bigList(); const t = $('.st-btot', el); if (t) t.textContent = `${l.length} archivos, ${fmtB(l.reduce((a, n) => a + n.size, 0))}`; }
+}
+function flipSort(list) {
+  const before = new Map($$('.st-br', list).map(r => [r.dataset.big, r.getBoundingClientRect().top]));
+  const rows = new Map($$('.st-br', list).map(r => [r.dataset.big, r]));
+  bigList().forEach(n => { const r = rows.get(String(n.id)); if (r) list.appendChild(r); });
+  $$('.st-br', list).forEach((r, i) => { const b = before.get(r.dataset.big); if (b === undefined) return; const dy = b - r.getBoundingClientRect().top; if (Math.abs(dy) > 1) anim(r, [{ transform: `translate3d(0,${dy}px,0)` }, { transform: 'none' }], { d: 560, delay: Math.min(i, 20) * 8, e: EASE.spring }); });
+}
+
+/* ---------------- Duplicados ---------------- */
+const U = 'C:\\Users\\usuario\\';
+const DUPS_MOCK = [
+  { name: 'ubuntu-24.04.3-desktop-amd64.iso', size: 6.1 * GB, ext: 'iso', copies: [[U + 'Downloads', '2 sep. 2026'], [U + 'VirtualBox VMs\\ISOs', '2 sep. 2026']] },
+  { name: 'Serum Presets Pack.zip', size: 2.3 * GB, ext: 'zip', copies: [[U + 'Downloads\\PLUGINS', '18 oct. 2026'], [U + 'Documents\\0_MUSIC_PRODUCTION\\packs', '19 oct. 2026']] },
+  { name: 'respaldo_matrices.db', size: 412 * MB, ext: 'db', copies: Array.from({ length: 6 }, (_, i) => [U + `Documents\\Proyecto_v${851 + i}\\data`, `${15 + Math.floor(i / 2)} nov. 2026`]) },
+  { name: 'flstudio_win64_26.1.3.5570.exe', size: 1.1 * GB, ext: 'exe', copies: [[U + 'Downloads', '2 oct. 2026'], [U + 'Downloads\\Image-Line FL Studio Producer Edition 26.1.3.5570', '2 oct. 2026']] },
+  { name: 'Partida 2026-11-03 23-14.mp4', size: 820 * MB, ext: 'mp4', copies: [[U + 'Videos\\Medal', '3 nov. 2026'], [U + 'Videos\\Medal\\Exportes', '4 nov. 2026']] },
+  { name: 'movavi_setup_27.1.0.exe', size: 380 * MB, ext: 'exe', copies: [[U + 'Downloads', '8 nov. 2026'], [U + 'Downloads\\Movavi Video Editor 27.1.0 (x64)', '8 nov. 2026'], [U + 'Desktop', '8 nov. 2026']] },
+  { name: 'miniatura_final.psd', size: 240 * MB, ext: 'psd', copies: [[U + 'Downloads\\arte_canal', '4 oct. 2026'], [U + 'Downloads\\miniaturas_auto', '6 oct. 2026'], [U + 'Documents\\VideoHub_canal\\arte', '6 oct. 2026'], [U + 'Pictures', '7 oct. 2026']] },
+  { name: 'vc_redist.x64.exe', size: 25 * MB, ext: 'exe', copies: Array.from({ length: 5 }, (_, i) => [U + ['Downloads', 'Downloads\\PLUGINS', 'Downloads\\instaladores', 'Documents\\herramientas', 'Desktop'][i], '1 oct. 2026']) },
+];
+let DUPS = [];
+const dupType = d => d.type || EXT2T[d.ext] || 'other';
+const dupFree = () => DUPS.filter(d => !d.done).reduce((a, d) => a + d.size * (d.copies.length - 1), 0);
+const DUPMIN = { v: 1 };
+async function renderDups(el) {
+  if (needScan()) return scanFirst(el, 'Busca archivos repetidos comparando su contenido, no solo el nombre.');
+  el.classList.add('fill');
+  if (ST.real && !ST.dups) {
+    el.innerHTML = `<div class="pan st-first st-dfind" data-asm><span class="st-fi">${ic('copy')}</span><b>Buscar archivos repetidos</b>
+      <span class="muted">Compara por tamaño, luego por una huella del principio y del final y, al final, por el contenido completo. No toca Windows ni la papelera.</span>
+      <div class="seg st-dmin"><span class="ind"></span>${[[1, 'Desde 1 MB'], [10, 'Desde 10 MB'], [100, 'Desde 100 MB']].map(([v, l]) => `<button data-min="${v}"${DUPMIN.v === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div>
+      <button class="btn pri" data-dfind>${ic('search')}Buscar</button>
+      <div class="st-dprog" hidden><div class="bar"><span style="transform:scaleX(0)"></span></div><span class="faint st-dpt">&nbsp;</span><button class="btn sm ghost" data-dstop>${ic('x')}Cancelar</button></div></div>`;
+    requestAnimationFrame(() => SH.placeSeg($('.st-dmin', el), true));
+    if (!el.dataset.bf) { el.dataset.bf = 1; el.addEventListener('click', dupFindClick); }
+    if (ST.dupJob) showDupProgress(el);
+    return;
+  }
+  DUPS = ST.real ? ST.dups.groups.map((g, i) => ({ id: i, name: g.name, size: g.size, ext: g.ext, type: g.type, keep: 0, done: false,
+    copies: g.copies.map(c => [c.dir, c.mtime ? fmtDate(c.mtime) : '', c.path]) }))
+    : DUPS_MOCK.map((d, i) => ({ ...d, id: i, keep: 0, done: false }));
+  if (!DUPS.length) { el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi ok">${ic('check')}</span><b>No hay archivos repetidos</b><span class="muted">Desde ${DUPMIN.v} MB, nada está repetido. Bien.</span><button class="btn sec" data-dagain>${ic('updater')}Buscar otra vez</button></div>`; bindDups(el); return; }
+  const mxd = Math.max(...DUPS.map(d => d.size * (d.copies.length - 1)));
+  el.innerHTML = `<div class="st-dup">
+    <aside class="pan st-dsum" data-asm><h4>Archivos repetidos${ST.real ? `<em><button class="btn sm ghost" data-dagain>${ic('updater')}Buscar otra vez</button></em>` : ''}</h4>
+      <div class="big"><span class="st-dfree">0</span><small>GB que puedes liberar</small></div><p class="muted st-dsub"></p>
+      <div class="st-dbars st-scroll">${DUPS.map(d => `<button class="st-dbr" data-dgo="${d.id}"><span class="st-dbn"><span>${esc(d.name)}</span><b>${fmtB(d.size * (d.copies.length - 1))}</b></span><span class="bar"><span style="transform:scaleX(${(d.size * (d.copies.length - 1) / mxd).toFixed(4)});background:${T_(dupType(d)).c}"></span></span></button>`).join('')}</div>
+      <button class="btn danger" data-dall>${ic('trash')}Borrar todas las copias</button></aside>
+    <div class="st-dgroups st-scroll">${DUPS.map(d => `<div class="pan st-dg${d.id < 2 ? ' open' : ''}" data-dg="${d.id}" data-asm>
+      <button class="st-dgh" data-dt="${d.id}"><span class="st-bt" style="--c:${T_(dupType(d)).c}">${esc(d.ext || '·')}</span>
+        <div class="st-bn"><b>${esc(d.name)}</b><span class="faint">${d.copies.length} copias de ${fmtB(d.size)}</span></div>
+        <span class="chip acc">Liberas ${fmtB(d.size * (d.copies.length - 1))}</span><span class="st-dch">${ic('chevd')}</span></button>
+      <div class="st-dbody"><div><div class="st-dcs">${d.copies.map((c, j) => `<button class="st-dc${j === d.keep ? ' keep' : ''}" data-dk="${d.id}:${j}"><span class="st-radio"></span><span class="st-dp">${wp(c[0])}</span><span class="faint">${c[1]}</span><span class="st-dkl">${j === d.keep ? 'Se conserva' : 'Se borra'}</span></button>`).join('')}</div>
+        <div class="st-dfoot"><span class="faint">Elige cuál conservar. Las demás van a la papelera.</span><button class="btn sm sec" data-dclean="${d.id}">Borrar las otras copias</button></div></div></div>
+    </div>`).join('')}</div></div>`;
+  SH.assemble(el, 40);
+  updDups(el); bindDups(el);
+}
+function updDups(el, d = 900) {
+  const f = dupFree(); const el2 = $('.st-dfree', el); if (!el2) return; SH.countUp(el2, +(f / GB).toFixed(1), d, 1);
+  const left = DUPS.filter(x => !x.done); $('.st-dsub', el).textContent = left.length ? `${left.reduce((a, x) => a + x.copies.length - 1, 0)} copias repetidas en ${left.length} grupos. Se comparan por contenido, no solo por nombre.` : 'No quedan archivos repetidos.';
+  $('[data-dall]', el).disabled = !left.length;
+}
+function bindDups(el) {
+  if (el.dataset.bd) return; el.dataset.bd = 1;
+  el.addEventListener('click', async e => {
+    if (e.target.closest('[data-dagain]')) { ST.dups = null; renderDups(el); return; }
+    const go = e.target.closest('[data-dgo]'); if (go) { const g = $(`[data-dg="${go.dataset.dgo}"]`, el); if (!g || g.style.display === 'none') return;
+      if (!g.classList.contains('open')) $('[data-dt]', g).click();
+      g.scrollIntoView({ block: 'nearest', behavior: state.settings.intensity === 'min' ? 'auto' : 'smooth' }); g.classList.add('flash'); setTimeout(() => g.classList.remove('flash'), 1400); return; }
+    const tg = e.target.closest('[data-dt]'); if (tg) { const g = tg.closest('.st-dg'); g.classList.toggle('open'); if (g.classList.contains('open')) $$('.st-dc', g).forEach((c, i) => anim(c, [{ opacity: 0, transform: 'translate3d(0,-6px,0)' }, { opacity: 1, transform: 'none' }], { d: 300, delay: 60 + i * 30 })); return; }
+    const k = e.target.closest('[data-dk]'); if (k) { const [gid, j] = k.dataset.dk.split(':').map(Number); const d = DUPS[gid]; d.keep = j;
+      $$(`[data-dk^="${gid}:"]`, el).forEach(b => { const on = b.dataset.dk === `${gid}:${j}`; b.classList.toggle('keep', on); $('.st-dkl', b).textContent = on ? 'Se conserva' : 'Se borra'; });
+      anim($('.st-radio', k), [{ transform: 'scale(.6)' }, { transform: 'scale(1)' }], { d: 320, e: EASE.spring }); return; }
+    const c = e.target.closest('[data-dclean]'); if (c) { const btn = c; btn.disabled = true; await cleanGroups([DUPS[+c.dataset.dclean]], el); btn.disabled = false; return; }
+    const all = e.target.closest('[data-dall]'); if (all) {
+      if (all.dataset.sure !== '1') { all.dataset.sure = '1'; const old = all.innerHTML; all.innerHTML = `${ic('alert')}Pulsa otra vez para confirmar`; setTimeout(() => { all.dataset.sure = ''; all.innerHTML = old; }, 4000); return; }
+      all.dataset.sure = ''; all.disabled = true; await cleanGroups(DUPS.filter(d => !d.done), el); }
+  });
+}
+function dupFindClick(e) {
+  const el = e.currentTarget;
+  const m = e.target.closest('[data-min]'); if (m) { $$('.st-dmin button', el).forEach(x => x.classList.toggle('on', x === m)); SH.placeSeg($('.st-dmin', el)); DUPMIN.v = +m.dataset.min; return; }
+  if (e.target.closest('[data-dstop]')) { if (ST.dupJob) ST.dupJob.cancel(); return; }
+  if (!e.target.closest('[data-dfind]') || ST.dupJob) return;
+  ST.dupJob = SH.job('storage', 'duplicates', [DUPMIN.v], { onProgress: m => { ST.dupProg = m; paintDupProg(); } });
+  showDupProgress(el);
+  ST.dupJob.then(r => { ST.dups = r; ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (r.wasted) SH.toast(`${fmtB(r.wasted)} en archivos repetidos.`); })
+    .catch(err => { ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (!err.cancelled) SH.toast('No se pudo terminar la búsqueda: ' + err.message); });
+}
+function showDupProgress(el) { const p = $('.st-dprog', el); if (!p) return; p.hidden = false; $('[data-dfind]', el).disabled = true; anim(p, [{ opacity: 0, transform: 'translate3d(0,6px,0)' }, { opacity: 1, transform: 'none' }], { d: 300 }); paintDupProg(); }
+function paintDupProg() {
+  const m = ST.dupProg; const el = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (!m || !el) return;
+  const b = $('.st-dprog .bar>span', el); if (b) b.style.transform = `scaleX(${(m.pct || 0).toFixed(4)})`;
+  const t = $('.st-dpt', el); if (t) t.textContent = `${Math.round((m.pct || 0) * 100)} %, ${m.data && m.data.groups || 0} grupos encontrados. ${m.text ? m.text.split('\\').pop() : ''}`;
+}
+async function cleanGroups(groups, el) {
+  if (!groups.length) return;
+  let freed = 0; const moved = []; const failed = [];
+  for (const d of groups) {
+    const paths = d.copies.filter((c, j) => j !== d.keep).map(c => c[2] || (c[0] + '\\' + d.name));
+    let ok = 0;
+    for (const p of paths) { const r = await toTrash(p); if (r && r.ok) { ok++; moved.push(p); freed += d.size; } else failed.push(r && r.error); }
+    if (ok === paths.length) {
+      d.done = true; const b = $(`[data-dgo="${d.id}"]`, el); if (b) b.classList.add('done');
+      const g = $(`[data-dg="${d.id}"]`, el); const h = g.offsetHeight;
+      anim(g, [{ opacity: 1, transform: 'none', height: h + 'px' }, { opacity: 0, transform: 'scale(.97)', height: h + 'px', offset: .45 }, { opacity: 0, transform: 'scale(.97)', height: '0px', paddingTop: '0px', paddingBottom: '0px', marginBottom: '-14px' }], { d: 480 })
+        .finished.then(() => { g.style.display = 'none'; }).catch(() => {});
+    }
+  }
+  updDups(el, 500);
+  if (failed.length) SH.toast(`${failed.length} copia${failed.length > 1 ? 's' : ''} no se pudieron mover: ${failed.find(Boolean) || 'están en uso'}`);
+  if (!moved.length) return;
+  SH.logActivity('Copias repetidas a la papelera', { sub: `${fmtB(freed)} liberados`, ic: 'copy', go: ID, tab: 'duplicates' });
+  SH.toast(`${fmtB(freed)} enviados a la papelera.`, { ms: 7000, action: { label: 'Deshacer', run: async () => {
+    let back = 0; for (const p of moved) { const r = await fromTrash(p); if (r && r.ok) back++; }
+    groups.forEach(d => { d.done = false; const b = $(`[data-dgo="${d.id}"]`, el); if (b) b.classList.remove('done'); const g = $(`[data-dg="${d.id}"]`, el); if (g) { g.style.display = ''; g.getAnimations().forEach(a => a.cancel()); anim(g, [{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 400, e: EASE.spring }); } });
+    updDups(el, 500); if (back < moved.length) SH.toast(`Se restauraron ${back} de ${moved.length}. El resto está en la Papelera de reciclaje.`);
+  } } });
+}
+
+/* ---------------- Comparar ---------------- */
+const CMP_MOCK = {
+  prev: Date.parse('2026-11-10T10:00:00'), delta: 16.6 * GB, dfiles: 18920,
+  changes: [[U + 'Videos\\Medal', 6.1, 214], [U + 'Documents (Proyecto_v847 a Proyecto_v856)', 4.8, 18420], [U + '.ollama\\models', 4.7, 6], [U + 'Downloads', -3.2, -312],
+    ['C:\\Program Files (x86)\\Steam\\steamapps\\common', -2.6, -2810], ['C:\\$Recycle.Bin', 2.4, 1880], [U + 'AppData\\Local\\Temp', 1.9, 6230],
+    ['C:\\Windows\\SoftwareDistribution', 1.4, 240], [U + 'AppData\\Local\\NVIDIA\\DXCache', .9, 1410], ['C:\\ProgramData\\Package Cache', .6, 58], [U + 'AppData\\Roaming\\npm', -.4, -3200]].map(([p, g, f]) => [p, g * GB, f]),
+  history: [['2026-10-13', 561], ['2026-10-20', 566], ['2026-10-27', 571], ['2026-11-03', 575], ['2026-11-10', 578], ['2026-11-17', 592]].map(([d, g]) => [Date.parse(d) / 1000, g * GB]),
+  newbig: [['sha256-ff82381e2bea.gguf', 7.1, U + '.ollama\\models\\blobs', '2026-11-12'], ['Partida 2026-11-14 22-40.mp4', 1.4, U + 'Videos\\Medal', '2026-11-14'], ['Proyecto_v856.zip', 1.2, U + 'Documents', '2026-11-17'],
+    ['nvidia_driver_617.42.exe', .9, U + 'Downloads', '2026-11-11'], ['Kontakt 8 Factory Library 2.nicnt', .8, 'C:\\Program Files\\Native Instruments', '2026-11-13']].map(([n, g, d, t]) => [d + '\\' + n, g * GB, Date.parse(t) / 1000]),
+};
+const dshort = ms => new Date(ms).toLocaleDateString('es', { day: 'numeric', month: 'short' });
+async function renderCompare(el) {
+  if (needScan()) return scanFirst(el, 'Cada análisis se guarda. Con dos, verás qué carpetas crecieron y qué archivos grandes son nuevos.');
+  el.classList.add('fill');
+  const D = ST.real ? (ST.cmp !== undefined ? ST.cmp : (ST.cmp = await SH.engine('storage', 'compare'))) : CMP_MOCK;
+  const hist = (D.history || []).map(([w, s]) => [dshort(w * 1000), Math.round(s / GB)]);
+  if (!D.prev) {
+    el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi">${ic('grow')}</span><b>Este es el primer análisis de ${esc(targetName().replace(/^Disco /, ''))}</b>
+      <span class="muted">Queda guardado. Cuando vuelvas a analizar (dentro de unos días, o después de instalar o descargar cosas) verás aquí qué carpetas crecieron, cuáles se redujeron y qué archivos grandes son nuevos.</span>
+      ${hist.length ? `<span class="faint">Ahora hay ${fmtInt(hist[hist.length - 1][1])} GB ocupados.</span>` : ''}</div>`;
+    SH.assemble(el, 40); return;
+  }
+  const CH = D.changes.map(([p, b, f]) => [p, b / GB, f]); const mx = Math.max(.01, ...CH.map(c => Math.abs(c[1])));
+  const NB = (D.newbig || []).map(([p, b, t]) => [p.split('\\').pop(), b / GB, p.split('\\').slice(0, -1).join('\\'), dshort(t * 1000)]);
+  const H = hist.length ? hist : [[dshort(Date.now()), 0]];
+  const vals = H.map(h => h[1]); const lo = Math.min(...vals) - 4, hi = Math.max(...vals) + 4;
+  const W = 320, HH = 90; const px = i => 10 + i * (W - 20) / Math.max(1, H.length - 1), py = v => HH - 14 - (v - lo) / Math.max(1, hi - lo) * (HH - 28);
+  const path = H.map(([, v], i) => `${i ? 'L' : 'M'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
+  const dg = D.delta / GB;
+  el.innerHTML = `<div class="st-cmp">
+    <div class="st-cl">
+      <div class="pan st-diff st-fp" data-asm>
+        <div class="st-ph st-cph"><div class="big">${dg >= 0 ? '+' : '−'}${fmt1(Math.abs(dg))}<small>GB desde el ${dshort(D.prev)}</small></div><p class="muted">${fmtInt(Math.abs(D.dfiles))} archivos ${D.dfiles >= 0 ? 'más' : 'menos'} que en el análisis anterior. Lo que más cambió, arriba.</p></div>
+        <div class="tbl-head st-dh"><span>Carpeta</span><span class="st-axis"><span>Bajó</span><span>Subió</span></span><span>Cambio</span></div>
+        <div class="st-scroll">${CH.length ? CH.map(([p, d, f]) => `<div class="st-dr"><div class="st-bn"><b>${esc(p.split('\\').filter(Boolean).pop())}</b><span class="faint">${wp(p)}</span></div>
+          <span class="st-dv"><span class="${d > 0 ? 'up' : 'down'}" style="--v:${(Math.abs(d) / mx).toFixed(4)}"></span></span>
+          <span class="st-dn ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${fmt1(Math.abs(d))} GB<small>${f >= 0 ? '+' : '−'}${fmtInt(Math.abs(f))} archivos</small></span></div>`).join('') : '<div class="empty"><b>Casi nada cambió</b>Ninguna carpeta varió más de 64 MB.</div>'}</div></div>
+    </div>
+    <div class="st-cr">
+      <div class="pan st-hist" data-asm><h4>Espacio usado <em>${H.length} análisis</em></h4>
+        <svg viewBox="0 0 ${W} ${HH}" class="st-spark"><path class="area" d="${path} L${px(H.length - 1)},${HH} L${px(0)},${HH} Z"/><path class="ln" d="${path}"/>${H.map(([, v], i) => `<circle cx="${px(i)}" cy="${py(v)}" r="${i === H.length - 1 ? 4 : 2.5}"/>`).join('')}</svg>
+        <div class="st-hx">${H.slice(-6).map(([d, v]) => `<span><b>${v}</b>${d}</span>`).join('')}</div></div>
+      <div class="pan st-new st-fp" data-asm><h4>Archivos grandes nuevos <em>${NB.length} desde el último análisis</em></h4><div class="rows st-scroll">${NB.length ? NB.map(([n, g, p, d]) => `<div class="row"><span class="st-bt" style="--c:${T_(EXT2T[n.split('.').pop().toLowerCase()] || 'other').c}">${esc(n.includes('.') ? n.split('.').pop() : '·')}</span><div class="rt"><b>${esc(n)}</b><span>${wp(p)}, ${d}</span></div><span class="st-bs">${fmt1(g)} GB</span></div>`).join('') : '<div class="empty"><b>Ninguno</b>No apareció ningún archivo de más de 300 MB.</div>'}</div></div>
+    </div></div>`;
+  SH.assemble(el, 40);
+  const ln = $('.st-spark .ln', el); const L = ln.getTotalLength(); ln.style.strokeDasharray = `${L} ${L}`; anim(ln, [{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { d: 1200, delay: 200 });
+  anim($('.st-spark .area', el), [{ opacity: 0 }, { opacity: 1 }], { d: 800, delay: 700 });
+  $$('.st-spark circle', el).forEach((c, i) => anim(c, [{ opacity: 0, transform: 'scale(0)' }, { opacity: 1, transform: 'scale(1)' }], { d: 380, delay: 200 + i * 170, e: EASE.spring }));
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+}
+
+/* ---------------- unidades (cabecera) ---------------- */
+let actEl = null;
+function drivesHTML() {
+  const ds = ST.real ? ST.drives : [{ root: 'C:\\', letter: 'C:', total: 953 * GB, free: 361 * GB, system: true }];
+  const custom = ST.target && !/^[A-Za-z]:\\$/.test(ST.target);
+  return `<div class="seg st-drv"><span class="ind"></span>${ds.map(d => `<button data-drv="${esc(d.root)}"${!custom && ST.target === d.root || (!ST.real && d.system) ? ' class="on"' : ''} title="${fmtB(d.free)} libres de ${fmtB(d.total)}${d.label ? ', ' + esc(d.label) : ''}">${ic('drive')}${esc(d.letter)} ${fmtInt(d.total / GB)} GB</button>`).join('')}
+    <button data-drv="pick"${custom ? ' class="on"' : ''} title="${custom ? esc(ST.target) : 'Elegir una carpeta'}">${ic('folder')}${custom ? esc(ST.target.split('\\').filter(Boolean).pop()) : 'Otra carpeta'}</button></div>
+    <button class="btn pri" data-scan>${ic('search')}Analizar</button>`;
+}
+function paintActions() { if (!actEl) return; actEl.innerHTML = drivesHTML(); requestAnimationFrame(() => SH.placeSeg($('.st-drv', actEl), true)); }
+async function refreshDrives() { try { ST.drives = await SH.engine('storage', 'drives') || ST.drives; } catch (e) { console.error(e); } }
+/* tras un análisis nuevo, las demás pestañas ya abiertas se rehacen con sus datos */
+const RENDERED = {};
+function rerenderOthers() { for (const [tab, el] of Object.entries(RENDERED)) if (tab !== 'map' && el.isConnected) { el.classList.remove('in'); RENDER[tab](el); } }
+const RENDER = { map: renderMap, tree: renderTree, types: renderTypes, largest: renderBig, duplicates: renderDups, compare: renderCompare };
+
+/* ---------------- registro ---------------- */
+SH.module({
+  id: ID, real: true,
+  actions(el, ctx) {
+    ctxRef = ctx; actEl = el; paintActions();
+    isReal().then(r => { if (r) paintActions(); });
+    el.addEventListener('click', async e => {
+      if (e.target.closest('[data-scan]')) { if (TM.scanning) return; if (curTab !== 'map') ctx.setTab('map'); setTimeout(() => runScan().then(() => { if (ST.real) rerenderOthers(); }), curTab === 'map' ? 0 : 260); return; }
+      const b = e.target.closest('[data-drv]'); if (!b || TM.scanning) return;
+      if (b.dataset.drv === 'pick') {
+        if (!await isReal()) { SH.toast('Elegir una carpeta solo funciona dentro de la app.'); return; }
+        const p = await SH.engine('storage', 'pick_folder'); if (!p) return;
+        ST.target = p;
+      } else { if (ST.target === b.dataset.drv && b.classList.contains('on')) return; ST.target = b.dataset.drv; }
+      paintActions(); anim($('[data-scan]', el), [{ transform: 'scale(1)' }, { transform: 'scale(1.06)', offset: .4 }, { transform: 'scale(1)' }], { d: 420, keep: true });
+      if (ST.real) { if (curTab !== 'map') ctx.setTab('map'); setTimeout(() => runScan().then(() => rerenderOthers()), curTab === 'map' ? 0 : 260); }
+    });
+  },
+  renderTab(tab, el) { RENDERED[tab] = el; RENDER[tab](el); },
+  enterTab(tab) {
+    curTab = tab;
+    if (tab === 'map') { TM.dirty = true; if (!TM.ready && !TM.scanning) setTimeout(() => runScan().then(() => { if (ST.real) rerenderOthers(); }), 250 * SH.motion()); else { renderLegend(); markLegend(); } }
+    else if (ST.real && TREE && RENDERED[tab] && $('.st-first [data-goscan]', RENDERED[tab])) RENDER[tab](RENDERED[tab]);
+    if (tab === 'tree' && treeTarget) { const n = treeTarget; treeTarget = null; setTimeout(() => revealInTree(n), 120); }
+  },
+  leaveTab() { TM.hover = TM.hoverTop = null; TM.tipA.set(0); },
+  leave() { curTab = null; },
+  enter() { const v = $(`#v-${ID} .subnav .on`); curTab = v ? v.dataset.tab : 'map'; },
+});
+SH.actions.add([
+  { t: 'Ver los archivos más grandes del disco', go: ID, tab: 'largest', ic: 'file' },
+  { t: 'Qué ha crecido en el disco desde el último análisis', go: ID, tab: 'compare', ic: 'grow' },
+  { t: 'Ver el disco por tipos de archivo', go: ID, tab: 'types', ic: 'grid' },
+  { t: 'Explorar las carpetas del disco', go: ID, tab: 'tree', ic: 'folder' },
+]);
+})();

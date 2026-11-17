@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es" data-theme="deep">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StellarHub</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='3.2' fill='%23FF7A66'/%3E%3Cellipse cx='12' cy='12' rx='10' ry='4' transform='rotate(-24 12 12)' fill='none' stroke='%239ED6FF' stroke-width='1.4'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/home.css">
+<link rel="stylesheet" href="css/sheet.css">
+<link rel="stylesheet" href="css/home/bento.css">
+<link rel="stylesheet" href="css/home/model3d.css">
+<link rel="stylesheet" href="css/modules/monitor.css">
+<link rel="stylesheet" href="css/modules/drivers.css">
+<link rel="stylesheet" href="css/modules/remover.css">
+<link rel="stylesheet" href="css/modules/updater.css">
+<link rel="stylesheet" href="css/modules/storage.css">
+<link rel="stylesheet" href="css/modules/optimizer.css">
+<link rel="stylesheet" href="css/modules/tester.css">
+<link rel="stylesheet" href="css/modules/autopilot.css">
+</head>
+<body>
+<div class="rz" data-edge="n"></div><div class="rz" data-edge="s"></div><div class="rz" data-edge="w"></div><div class="rz" data-edge="e"></div>
+<div class="rz" data-edge="nw"></div><div class="rz" data-edge="ne"></div><div class="rz" data-edge="sw"></div><div class="rz" data-edge="se"></div>
+<div class="atmo"></div>
+<canvas id="stars"></canvas>
+
+<header class="top">
+  <div class="brand" id="brand" title="Ir a Inicio">
+    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.4"/><circle cx="20.2" cy="8.3" r="1.5" style="fill:var(--accent2)"/></svg>
+    StellarHub
+  </div>
+  <button class="search" id="searchBtn" aria-label="Buscar">
+    <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+    <span>Buscar una herramienta o acción</span>
+    <span class="kbd">Ctrl K</span>
+  </button>
+  <div class="right">
+    <button class="mode" id="modePill"><span class="d"></span><span id="modeTxt">Modo normal</span></button>
+    <button class="iconbtn" id="widgetBtn" aria-label="Widget siempre visible" title="Widget siempre visible">
+      <svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M13 5v14M13 12h7.5"/></svg>
+    </button>
+    <button class="iconbtn" id="gearBtn" aria-label="Ajustes" title="Ajustes (Ctrl ,)">
+      <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+    <div class="winctl" aria-label="Ventana">
+      <button class="wc" id="winMin" aria-label="Minimizar" title="Minimizar"><svg class="i" viewBox="0 0 24 24"><path d="M6 12.5h12"/></svg></button>
+      <button class="wc" id="winMax" aria-label="Maximizar" title="Maximizar"><svg class="i" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.8"/></svg></button>
+      <button class="wc close" id="winClose" aria-label="Cerrar" title="Cerrar"><svg class="i" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
+    </div>
+    <div class="note" id="adminNote" role="dialog" aria-label="Modo administrador">
+      <p><b>Activa el modo administrador</b> <span id="noteReason"></span></p>
+      <div class="row-btns"><button class="btn pri" id="adminYes">Activar</button><button class="btn ghost" id="adminNo">Ahora no</button></div>
+      <label><span class="check" id="noteNever"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>No volver a sugerirlo</label>
+    </div>
+  </div>
+</header>
+
+<main id="views">
+  <section class="view is-on" data-view="home" id="v-home"></section>
+</main>
+
+<nav class="dock" id="dock" aria-label="Módulos"></nav>
+<div class="toasts" id="toasts"></div>
+
+<div class="overlay" id="palO">
+  <div class="scrim" data-close></div>
+  <div class="pal" id="pal" role="dialog" aria-label="Buscar">
+    <div class="in"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+      <input id="palIn" placeholder="Escribe lo que quieres hacer" autocomplete="off" spellcheck="false"></div>
+    <div class="res" id="palRes"></div>
+    <div class="foot"><span>Flechas para moverte</span><span>Enter para abrir</span><span>Esc para cerrar</span></div>
+  </div>
+</div>
+
+<div class="overlay" id="setO">
+  <div class="scrim" data-close></div>
+  <aside class="sheet" id="sheet" aria-label="Ajustes"></aside>
+</div>
+
+<script src="js/core.js"></script>
+<script src="js/telemetry.js"></script>
+<script src="js/shell.js"></script>
+<script src="js/modules/monitor.js"></script>
+<script src="js/modules/drivers.js"></script>
+<script src="js/modules/remover.js"></script>
+<script src="js/modules/updater.js"></script>
+<script src="js/modules/storage.js"></script>
+<script src="js/modules/optimizer.js"></script>
+<script src="js/modules/tester.js"></script>
+<script src="js/modules/autopilot.js"></script>
+<script src="js/home/bento.js"></script>
+<script src="js/home/model3d.js"></script>
+<script src="js/home.js"></script>
+<script src="js/component-sheet.js"></script>
+<script src="js/widget.js"></script>
+<script src="js/widget-toggle.js"></script>
+<script src="js/window.js"></script>
+<script>SH.boot();</script>
+</body>
+</html>

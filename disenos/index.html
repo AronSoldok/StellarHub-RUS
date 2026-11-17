@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StellarHub · diseños</title>
+<style>
+  :root { --bg:#f3f4f6; --ink:#1d2229; --soft:#5d6673; --line:#d9dde3; --card:#ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161a20; --ink:#e8ebef; --soft:#9aa3ae; --line:#2a3039; --card:#1d222a; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:56px 20px; }
+  h1 { font:600 28px/1.2 "Segoe UI Variable Display","Segoe UI",system-ui,sans-serif; margin:0 0 6px; }
+  p.lead { color:var(--soft); margin:0 0 32px; }
+  ol { list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+  a { display:grid; grid-template-columns:28px 1fr; gap:4px 14px; padding:16px 18px; background:var(--card);
+      border:1px solid var(--line); border-radius:10px; color:inherit; text-decoration:none;
+      transition: transform .17s cubic-bezier(.2,.8,.2,1), border-color .17s; }
+  a:hover { transform: translateX(4px); border-color: var(--soft); }
+  a:active { transform: translateX(4px) scale(.99); }
+  .n { grid-row: span 2; font-weight:600; color:var(--soft); font-variant-numeric: tabular-nums; }
+  .t { font-weight:600; }
+  .d { color:var(--soft); font-size:14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cinco direcciones para StellarHub</h1>
+  <p class="lead">Son maquetas: se puede navegar, abrir el buscador con Ctrl+K y los ajustes, pero nada toca tu PC.</p>
+  <ol>
+    <li><a href="1-observatorio.html"><span class="n">1</span><span class="t">Observatorio</span><span class="d">Carta estelar: azul tinta, luz de estrella cálida, los componentes forman una constelación.</span></a></li>
+    <li><a href="2-aluminio.html"><span class="n">2</span><span class="t">Aluminio</span><span class="d">Hardware industrial en claro: botones que se hunden, diales con aguja, LEDs.</span></a></li>
+    <li><a href="3-hud.html"><span class="n">3</span><span class="t">HUD</span><span class="d">Cabina de juego contenida: escaneo del equipo, paneles biselados, números de odómetro.</span></a></li>
+    <li><a href="4-nativo.html"><span class="n">4</span><span class="t">Nativo Windows 11</span><span class="d">Como una app de Microsoft en su mejor día: Mica, Fluent, elementos que vuelan entre vistas.</span></a></li>
+    <li><a href="5-orbital.html"><span class="n">5</span><span class="t">Orbital</span><span class="d">La espectacular: los componentes orbitan el portátil en 3D y la cámara viaja hacia cada módulo.</span></a></li>
+  </ol>
+</main>
+</body>
+</html>

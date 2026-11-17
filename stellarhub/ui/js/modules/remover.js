@@ -1,0 +1,968 @@
+/* StellarHub · Program Remover. Interfaz con datos simulados con la forma de la API real: lista de programas,
+   desinstalación normal/silenciosa/forzada, escáner de restos con confianza, cuarentena, lotes, instalación vigilada, cazador. */
+'use strict';
+(() => {
+const { $, $$, anim, EASE, Spring, tickers, ic, esc, fmt1 } = SH;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const TODAY = new Date('2026-11-17');
+SH.icons.add({
+  crosshair: '<circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/><circle cx="12" cy="12" r="1"/>',
+  reg: '<path d="M4 6h16M4 12h16M4 18h10"/><circle cx="18.5" cy="18" r="2"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  silent: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>',
+  force: '<path d="M13 2.5 4.5 13.5H12L11 21.5l8.5-11H12z"/>',
+  export: '<path d="M12 15V3m-4.5 4.5L12 3l4.5 4.5"/><path d="M5 12v7.5h14V12"/>',
+  sortaz: '<path d="m6 9 6-6 6 6"/>',
+});
+
+/* ---------- datos simulados (forma de la API real) ---------- */
+let seed = 11; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+const RAW = `FL Studio 2025|Image-Line|2840|w|25.1.3.5570
+iZotope Ozone 12|iZotope|1930|w|12.0.1
+iZotope RX 11 Audio Editor|iZotope|2410|w|11.1.0
+iZotope Neutron 5|iZotope|780|w|5.0.2
+iZotope Nectar 4|iZotope|690|w|4.0.1
+FabFilter Pro-Q 4|FabFilter|62|w|4.01
+FabFilter Pro-L 2|FabFilter|48|w|2.21
+FabFilter Pro-C 2|FabFilter|45|w|2.20
+FabFilter Saturn 2|FabFilter|51|w|2.07
+Melodyne 5|Celemony|520|w|5.4.2
+Auto-Tune Pro 11|Antares Audio Technologies|310|w|11.0.3
+Serum 2|Xfer Records|860|w|2.0.14
+Phase Plant|Kilohearts|140|w|2.2.6
+soothe2|oeksound|38|w|1.4.1
+The Glue|Cytomic|22|w|1.5.2
+ValhallaVintageVerb|Valhalla DSP|18|w|4.0.5
+Native Access|Native Instruments|240|w|3.14.0
+Kontakt 8|Native Instruments|1480|w|8.2.0
+ASIO4ALL 2.16|Michael Tippach|2|w|2.16
+Brave|Brave Software|640|w|1.84.112
+Google Chrome|Google LLC|720|w|143.0.7499.40
+Mozilla Firefox|Mozilla|290|w|145.0.1
+Microsoft Edge|Microsoft Corporation|610|p|143.0.3650.28
+Tor Browser|The Tor Project|220|w|15.0.2
+Steam|Valve Corporation|1240|w|2.10.91.91
+Epic Games Launcher|Epic Games, Inc.|980|w|19.1.2
+Bloxstrap|pizzaboxer|64|w|2.9.1
+Roblox Player|Roblox Corporation|480|w|0.698.0
+Medal|Medal B.V.|590|w|4.2580.0
+Discord|Discord Inc.|420|w|1.0.9214
+Spotify|Spotify AB|380|s|1.2.76.312
+Stremio|Smart Code OOD|260|w|5.0.0
+Wallpaper Engine|Wallpaper Engine Team|760|w|2.6.112
+Movavi Video Editor 27|Movavi Software|1720|w|27.1.0
+CapCut|Bytedance Pte. Ltd.|1150|w|7.4.0
+OBS Studio|OBS Project|470|w|32.0.2
+HandBrake|The HandBrake Team|90|w|1.10.2
+VLC media player|VideoLAN|160|w|3.0.21
+Audacity|Audacity Team|110|w|3.7.5
+Blender 4.2|Blender Foundation|1150|w|4.2.3
+GIMP 3.0|The GIMP Team|820|w|3.0.4
+Python 3.13|Python Software Foundation|140|s|3.13.14
+Python Launcher|Python Software Foundation|2|w|3.13.14
+Node.js|OpenJS Foundation|105|w|24.19.0
+Git|The Git Development Community|340|w|2.56.0
+GitHub CLI|GitHub, Inc.|48|w|2.102.0
+Visual Studio Code|Microsoft Corporation|420|w|1.108.0
+Cursor|Anysphere Inc.|610|w|2.1.3
+Docker Desktop|Docker Inc.|2600|w|4.52.0
+MSYS2|The MSYS2 Developers|1300|w|20250830
+Ollama|Ollama|980|w|0.13.1
+Oracle VirtualBox 7.1|Oracle and/or its affiliates|290|w|7.1.12
+LDPlayer 9|XUANZHI INTERNATIONAL CO.|1800|w|9.1.48
+Claude|Anthropic, PBC|410|w|1.0.3218
+Obsidian|Dynalist Inc.|380|w|1.10.3
+7-Zip 24.09|Igor Pavlov|6|w|24.09
+WinRAR 7.10|win.rar GmbH|9|w|7.10.0
+Everything 1.4|voidtools|3|w|1.4.1.1026
+PowerToys|Microsoft Corporation|520|w|0.96.0
+Microsoft 365 Apps para empresas|Microsoft Corporation|3400|w|16.0.19328.20000
+Microsoft OneDrive|Microsoft Corporation|310|p|25.205.1019.0001
+Microsoft Teams|Microsoft Corporation|280|s|25290.205.4069
+Zoom Workplace|Zoom Communications, Inc.|310|w|6.6.5
+WhatsApp|WhatsApp Inc.|240|s|2.2546.4.0
+Telegram Desktop|Telegram FZ-LLC|120|w|6.2.4
+Adobe Acrobat Reader|Adobe Inc.|760|w|25.001.20756
+NVIDIA App|NVIDIA Corporation|410|w|11.0.5.266
+Controlador de gráficos NVIDIA 617.42|NVIDIA Corporation|1350|p|617.42
+NVIDIA PhysX|NVIDIA Corporation|410|w|9.23.1019
+Intel Driver & Support Assistant|Intel|120|w|25.4.32.8
+Armoury Crate|ASUSTeK Computer Inc.|690|w|6.3.6.0
+MyASUS|ASUSTeK Computer Inc.|230|s|4.0.42.0
+ASUS Framework Service|ASUSTeK Computer Inc.|60|p|4.2.4.6
+Realtek Audio Console|Realtek Semiconductor Corp|40|s|1.53.312.0
+Microsoft Visual C++ 2015-2022 Redistributable (x64)|Microsoft Corporation|25|p|14.44.35211.0
+Microsoft Visual C++ 2015-2022 Redistributable (x86)|Microsoft Corporation|21|p|14.44.35211.0
+Microsoft Visual C++ 2013 Redistributable (x64)|Microsoft Corporation|19|p|12.0.40664.0
+Microsoft Visual C++ 2010 Redistributable (x86)|Microsoft Corporation|13|p|10.0.40219
+Microsoft .NET Runtime 8.0.11 (x64)|Microsoft Corporation|72|p|8.0.11
+Microsoft Windows Desktop Runtime 9.0.0 (x64)|Microsoft Corporation|88|p|9.0.0
+Microsoft Windows Desktop Runtime 6.0.36 (x64)|Microsoft Corporation|84|p|6.0.36
+Microsoft Edge WebView2 Runtime|Microsoft Corporation|610|p|143.0.3650.28
+Java 8 Update 451|Oracle Corporation|150|w|8.0.4510.9
+Microsoft Update Health Tools|Microsoft Corporation|1|p|5.72.0.0
+Comprobación de estado del PC Windows|Microsoft Corporation|12|w|3.9.2406
+Microsoft GameInput|Microsoft Corporation|6|p|10.1.26100.5074
+Xbox|Microsoft Corporation|160|s|2511.1001.10.0
+Xbox Game Bar|Microsoft Corporation|120|s|7.325.11061.0
+Terminal Windows|Microsoft Corporation|90|s|1.23.12811.0
+Microsoft Clipchamp|Microsoft Corp.|120|s|4.4.10520.0
+Microsoft To Do|Microsoft Corporation|60|s|2.148.3611.0
+Microsoft Solitaire Collection|Xbox Game Studios|110|s|4.24.10100.0
+Noticias de Microsoft|Microsoft Corporation|30|s|4.55.62231.0
+El tiempo de MSN|Microsoft Corporation|40|s|4.53.52331.0
+Copilot|Microsoft Corporation|80|s|1.25112.81.0
+Bitwarden|Bitwarden Inc.|210|w|2025.10.1
+KeePassXC|KeePassXC Team|70|w|2.7.10
+Proton VPN|Proton AG|160|p|4.3.6
+qBittorrent|The qBittorrent project|95|w|5.1.3
+ShareX|ShareX Team|30|w|18.0.1
+Greenshot|Greenshot|12|w|1.3.301
+TranslucentTB|TranslucentTB Open Source Developers|4|s|2025.1.0.0
+Rainmeter|Rainmeter|14|w|4.5.23
+Logitech G HUB|Logitech|940|w|2025.9.785432
+Elgato Wave Link|Corsair Memory, Inc.|210|w|2.0.6
+Voicemod|Voicemod S.L.|520|w|3.12.31
+NVIDIA Broadcast|NVIDIA Corporation|1600|w|2.0.2
+Malwarebytes|Malwarebytes|380|p|5.4.5.205
+CCleaner|Piriform Software Ltd|120|w|6.42.11425
+Adobe Creative Cloud|Adobe Inc.|1100|w|6.7.0.278
+Adobe Photoshop 2026|Adobe Inc.|4200|w|27.1.0
+Figma|Figma, Inc.|360|w|125.10.8
+Canva|Canva Pty Ltd|230|s|1.118.0
+Postman|Postman, Inc.|520|w|11.72.4
+DB Browser for SQLite|DB Browser for SQLite Team|40|w|3.13.1
+Tailscale|Tailscale Inc.|80|w|1.90.6`;
+const AUDIO = /Image-Line|iZotope|FabFilter|Celemony|Antares|Xfer|Kilohearts|oeksound|Cytomic|Valhalla|Native Instruments/;
+const PROGRAMS = RAW.split('\n').map((l, i) => {
+  const [name, pub, mb, k, ver] = l.split('|');
+  const daysAgo = k === 'p' ? 40 + Math.floor(rnd() * 8) : Math.floor(rnd() * 47);
+  const dt = new Date(TODAY - daysAgo * 864e5);
+  let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
+  const words = name.replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean);
+  const ini = (words.length > 1 && !/^\d/.test(words[1]) ? words[0][0] + words[1][0] : words[0].slice(0, 2)).toUpperCase();
+  return {
+    id: 'p' + i, name, pub, mb: +mb, kind: k, ver, date: dt, h, ini, arch: /x86|32/.test(name) ? 32 : 64,
+    silent: k !== 's' && rnd() > .25, store: k === 's', prot: k === 'p',
+    loc: k === 's' ? `C:\\Program Files\\WindowsApps\\${name.replace(/\s+/g, '')}_${ver}_x64` : `C:\\Program Files\\${pub.split(/[ ,]/)[0]}\\${name.replace(/ \d.*$/, '')}`,
+    cmd: k === 's' ? 'Quitar el paquete de la Tienda' : rnd() > .5 ? `MsiExec.exe /X{${(1e7 + Math.floor(rnd() * 9e7)).toString(16).toUpperCase()}-...}` : `"C:\\Program Files\\${pub.split(/[ ,]/)[0]}\\unins000.exe"`,
+    audio: AUDIO.test(pub),
+  };
+});
+const totalGB = () => PROGRAMS.reduce((a, p) => a + p.mb, 0) / 1024;
+const MON = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
+const fmtDate = d => d ? `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}` : '—';
+const fmtMB = mb => !mb ? '—' : mb >= 1024 ? `${fmt1(mb / 1024)} GB` : `${Math.max(1, Math.round(mb))} MB`;
+const NOW = () => (REAL() ? new Date() : TODAY);
+const daysSince = d => d ? Math.round((NOW() - d) / 864e5) : Infinity;
+
+const TYPES = {
+  folder: ['Carpetas', 'folder'], shortcut: ['Accesos directos', 'link'], plugin: ['Plugins de audio', 'audio'], reg: ['Registro', 'reg'], task: ['Tareas programadas', 'clock'],
+  service: ['Servicios', 'gear'], firewall: ['Reglas del firewall', 'shield'], assoc: ['Tipos de archivo', 'file'], path: ['Variable PATH', 'code'], personal: ['Tus datos', 'user'],
+};
+function leftoversFor(p) {
+  const s = p.name.replace(/ \d[\d.]*$/, '').replace(/\s+\(.*\)$/, ''); const pubS = p.pub.split(/[ ,]/)[0];
+  const samePub = PROGRAMS.filter(x => x.pub === p.pub && x !== p).length;
+  const L = [];
+  const add = (type, path, conf, why, mb = 0, personal = false) => L.push({ id: 'l' + L.length + '_' + p.id, type, path, conf, why, mb, personal, prog: p.name });
+  if (p.store) {
+    add('folder', `C:\\Users\\usuario\\AppData\\Local\\Packages\\${s.replace(/\s+/g, '')}_8wekyb3d8bbwe`, 95, 'Datos del paquete de la Tienda; Windows no los borra al quitarlo', 40 + rnd() * 200);
+    add('reg', `HKCU\\Software\\Classes\\Local Settings\\...\\${s.replace(/\s+/g, '')}`, 84, 'Configuración del paquete con su mismo identificador');
+    return L;
+  }
+  add('folder', p.loc, 97, 'Carpeta de instalación; ya no queda ningún ejecutable dentro', p.mb * (.02 + rnd() * .06));
+  add('folder', `C:\\Users\\usuario\\AppData\\Roaming\\${s}`, 91, 'Solo este programa escribía aquí y tiene su mismo nombre', 5 + rnd() * 120);
+  add('folder', `C:\\Users\\usuario\\AppData\\Local\\${s}\\Cache`, 93, 'Caché del programa; se puede borrar sin perder nada', 20 + rnd() * 400);
+  add('shortcut', `Menú Inicio\\Programas\\${s}.lnk`, 99, 'El acceso directo apunta a un archivo que ya no existe');
+  if (rnd() > .4) add('shortcut', `Escritorio\\${s}.lnk`, 99, 'Apunta al ejecutable borrado');
+  add('reg', `HKCU\\Software\\${pubS}\\${s}`, 89, 'Clave con el nombre del editor y del programa');
+  add('reg', `HKLM\\SOFTWARE\\WOW6432Node\\${pubS}`, samePub ? 42 : 76, samePub ? `Otro programa de ${p.pub} instalado podría usar esta clave` : 'Clave del editor; no queda ningún otro programa suyo');
+  add('reg', `HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${s.split(' ')[0].toLowerCase()}.exe`, 96, 'Ruta registrada a un ejecutable que ya no existe');
+  if (rnd() > .35) add('task', `\\${pubS}\\${s} Update`, 94, 'Tarea de actualización que lanza un archivo borrado');
+  if (rnd() > .6) add('service', `${s.replace(/\s+/g, '')}Service`, 87, 'Servicio sin ejecutable; arranca en manual, no lo usa Windows');
+  if (rnd() > .45) add('firewall', `Regla de entrada: ${s.split(' ')[0].toLowerCase()}.exe`, 92, 'La regla permite un programa que ya no está');
+  if (p.audio) {
+    add('plugin', `C:\\Program Files\\Common Files\\VST3\\${s}.vst3`, 86, 'Plugin de este programa; ningún otro instalado lo usa', 30 + rnd() * 90);
+    add('plugin', `C:\\Program Files\\Common Files\\CLAP\\${s}.clap`, 84, 'Versión CLAP del mismo plugin', 10 + rnd() * 40);
+    add('personal', `C:\\Users\\usuario\\Documents\\${pubS}`, 25, 'Tus proyectos y presets. Se muestran, pero nunca se marcan solos', 300 + rnd() * 900, true);
+  }
+  if (/FL Studio/.test(p.name)) add('assoc', 'Archivos .flp (proyecto de FL Studio)', 81, 'El tipo de archivo abre un programa que ya no existe');
+  if (/Python|Node|Git|MSYS|Docker/.test(p.name)) add('path', `PATH: ${p.loc}\\bin`, 88, 'Entrada del PATH que apunta a una carpeta borrada');
+  return L;
+}
+const sessions = [
+  { id: 'q1', prog: 'CCleaner Browser', pub: 'Piriform Software Ltd', h: 120, ini: 'CB', date: new Date(TODAY - 5 * 864e5), mode: 'Silenciosa', items: leftoversFor({ name: 'CCleaner Browser', pub: 'Piriform', loc: 'C:\\Program Files\\CCleaner Browser', mb: 600 }).filter(l => !l.personal) },
+  { id: 'q2', prog: 'Opera GX', pub: 'Opera Software', h: 350, ini: 'OG', date: new Date(TODAY - 11 * 864e5), mode: 'Normal', items: leftoversFor({ name: 'Opera GX', pub: 'Opera', loc: 'C:\\Users\\usuario\\AppData\\Local\\Programs\\Opera GX', mb: 1400 }).filter(l => !l.personal) },
+];
+const history = [
+  { type: 'uninstall', title: 'CCleaner Browser desinstalado', sub: 'Modo silencioso, 9 restos a la cuarentena', date: sessions[0].date },
+  { type: 'restore', title: 'Restaurado un acceso directo de Opera GX', sub: 'Desde la cuarentena', date: new Date(TODAY - 10 * 864e5) },
+  { type: 'uninstall', title: 'Opera GX desinstalado', sub: 'Modo normal, 10 restos a la cuarentena', date: sessions[1].date },
+  { type: 'watch', title: 'Instalación vigilada: bx_console SSL 4000', sub: '312 archivos y 41 claves registradas', date: new Date(TODAY - 19 * 864e5) },
+];
+const traces = [
+  { id: 't1', name: 'bx_console SSL 4000', date: new Date(TODAY - 19 * 864e5), files: 312, keys: 41, mb: 186 },
+  { id: 't2', name: 'Driver de la tableta Wacom', date: new Date(TODAY - 33 * 864e5), files: 87, keys: 119, mb: 64 },
+];
+let qDays = 14;
+
+/* ================= motor real =================
+   Dentro de la app (pywebview) todo sale de stellarhub/engine/remover.py. En el navegador se queda el modo de
+   ejemplo de arriba para poder diseñar. Los ids de la interfaz son cortos (r0, r1…); el del motor va en p.eid. */
+const REAL = () => !!(window.pywebview && window.pywebview.api);
+const hueOf = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+const iniOf = name => { const w = name.replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean); if (!w.length) return '?'; return (w.length > 1 && !/^\d/.test(w[1]) ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase(); };
+let realSeq = 0; const byEid = new Map();
+function fromEngine(e) {
+  const known = byEid.get(e.id);
+  const pub = e.publisher || '';
+  const d = e.date ? new Date(e.date + 'T12:00:00') : null;
+  const p = Object.assign(known || { id: 'r' + (realSeq++) }, {
+    eid: e.id, name: e.name || '?', pub, mb: (e.size || 0) / 1048576, ver: e.version || '', date: d && !isNaN(d) ? d : null,
+    h: hueOf(e.name || '?'), ini: iniOf(e.name || '?'), arch: e.arch || '', silent: !!e.can_quiet, store: e.source === 'store',
+    prot: !!e.protected, protLabel: e.protected && e.protected.label, noForce: !!(e.protected && e.protected.no_force),
+    loc: e.location || '', cmd: '', audio: AUDIO.test(pub), icon: e.icon || (known && known.icon) || null,
+    kindLabel: e.kind_label || '', broken: !!e.broken, orphan: !!e.orphan, noUninst: !!e.no_uninstaller,
+  });
+  byEid.set(e.id, p); return p;
+}
+let realPromise = null, realInfo = null, bgJob = null;
+function ensureReal(force) {
+  if (realPromise && !force) return realPromise;
+  realPromise = (async () => {
+    if (!realInfo) { realInfo = await SH.engine('remover', 'init'); if (realInfo && realInfo.settings) qDays = realInfo.settings.quarantine_days || 14; }
+    const list = await SH.engine('remover', 'programs');
+    PROGRAMS.splice(0, PROGRAMS.length, ...list.map(fromEngine));
+    startBackground();
+    return PROGRAMS;
+  })();
+  realPromise.catch(() => { realPromise = null; });
+  return realPromise;
+}
+/* después de pintar: iconos que faltan, apps de la Tienda y tamaños reales, por lotes */
+function startBackground() {
+  if (bgJob) bgJob.cancel();
+  bgJob = SH.job('remover', 'background', [], { onProgress: m => {
+    const d = m.data || {};
+    if (d.icons && Object.keys(d.icons).length) applyIcons(d.icons);
+    if (d.sizes && Object.keys(d.sizes).length) applySizes(d.sizes);
+    if (d.store) { d.store.forEach(fromEngine); const ids = new Set(PROGRAMS.map(p => p.eid)); d.store.forEach(e => { if (!ids.has(e.id)) PROGRAMS.push(byEid.get(e.id)); }); refresh(); }
+  } });
+  bgJob.catch(() => {});
+}
+function applyIcons(map) {
+  for (const eid in map) {
+    const p = byEid.get(eid); if (!p) continue; p.icon = map[eid];
+    $$(`[data-pi="${p.id}"]`).forEach(el => { el.outerHTML = pi(p, el.classList.contains('lg')); });
+  }
+}
+function applySizes(map) {
+  for (const eid in map) {
+    const p = byEid.get(eid); if (!p) continue; p.mb = map[eid] / 1048576;
+    $$(`.pr[data-p="${p.id}"] .sz`).forEach(el => { el.textContent = fmtMB(p.mb); });
+  }
+}
+/* resto del motor -> forma de la interfaz */
+function typeOf(it) {
+  if (it.personal) return 'personal';
+  const t = (it.target || '').toLowerCase();
+  if (it.kind === 'file' && /\.(lnk|url)$/.test(t)) return 'shortcut';
+  if ((it.kind === 'file' || it.kind === 'folder') && /\\(vst3?|vstplugins|clap|aax|steinberg\\vstplugins)\\|\.(vst3|clap|aaxplugin)$/.test(t)) return 'plugin';
+  if (it.kind === 'file' || it.kind === 'folder') return 'folder';
+  if (it.kind === 'regkey' || it.kind === 'regvalue') return /\\classes\\[^\\]*\.[a-z0-9]+|\\classes\\clsid/.test(t) ? 'assoc' : 'reg';
+  return { service: 'service', task: 'task', fwrule: 'firewall', envpath: 'path' }[it.kind] || 'reg';
+}
+const mapItem = (key, progName) => it => ({
+  id: key + '#' + it.id, eid: it.id, key, type: typeOf(it), path: it.display || it.target, conf: Math.round(it.score || 0),
+  why: (it.blocked ? `Bloqueado por seguridad: ${it.blocked}. ` : '') + (it.reasons || []).join('. '), mb: (it.size || 0) / 1048576,
+  personal: !!it.personal, blocked: !!it.blocked, selected: !!it.selected, prog: progName,
+});
+const jobErr = e => (e && e.message) || 'Algo falló';
+const API = {
+  async list() { await wait(80); return PROGRAMS; },
+  async restorePoint() { await wait(1300); return true; },
+  async closeApp() { await wait(700); return true; },
+  async runUninstaller(p, mode) { await wait(mode === 'forced' ? 600 : 1800 + rnd() * 900); return { ok: true }; },
+  async scan(progs, onCat) { for (const t of Object.keys(TYPES)) { onCat(t); await wait(220 + rnd() * 260); } return progs.flatMap(leftoversFor); },
+  async remove(progs, items, mode) {
+    await wait(700);
+    progs.forEach(p => { const i = PROGRAMS.indexOf(p); if (i >= 0) PROGRAMS.splice(i, 1); });
+    const s = { id: 'q' + Date.now(), prog: progs.length === 1 ? progs[0].name : `${progs.length} programas por lotes`, pub: progs.length === 1 ? progs[0].pub : progs.map(p => p.name).join(', '), h: progs[0].h, ini: progs.length === 1 ? progs[0].ini : String(progs.length), date: new Date(TODAY), mode, items, progs };
+    sessions.unshift(s);
+    history.unshift({ type: 'uninstall', title: `${s.prog} ${progs.length === 1 ? 'desinstalado' : 'desinstalados'}`, sub: `Modo ${mode.toLowerCase()}, ${items.length} restos a la cuarentena`, date: new Date(TODAY) });
+    return s;
+  },
+  async restore(session, item) {
+    if (REAL()) {
+      const r = await SH.job('remover', 'quarantine_restore', [session.id, item ? [item.idx] : null]);
+      if (r && r.failed) SH.toast(`No se pudo devolver ${r.failed} ${r.failed === 1 ? 'elemento' : 'elementos'}: ${(r.errors || [])[0] || ''}`, { ms: 6000 });
+      if (r && r.needs_reboot) SH.toast('Algún servicio o regla vuelve del todo al reiniciar.', { ms: 5000 });
+      SH.logActivity(item ? 'Restaurado un elemento de la cuarentena' : `${session.prog}: devuelto a su sitio`, { ic: 'restore', go: 'remover', tab: 'quarantine' });
+      ensureReal(true).then(refresh).catch(() => {});
+    } else await wait(350);
+    if (item) { session.items = session.items.filter(x => x !== item); history.unshift({ type: 'restore', title: `Restaurado: ${item.path.split('\\').pop()}`, sub: `De ${session.prog}`, date: new Date(TODAY) }); }
+    else { history.unshift({ type: 'restore', title: `${session.prog}: todo restaurado`, sub: `${session.items.length} elementos devueltos a su sitio`, date: new Date(TODAY) }); session.items = []; if (session.progs) session.progs.forEach(p => PROGRAMS.push(p)); }
+    if (!session.items.length) sessions.splice(sessions.indexOf(session), 1);
+  },
+};
+
+/* ---------- utilidades ---------- */
+const pi = (p, lg) => p.icon
+  ? `<span class="pi img${lg ? ' lg' : ''}" data-pi="${p.id}"><img src="${p.icon}" alt="" loading="lazy" decoding="async"></span>`
+  : `<span class="pi${lg ? ' lg' : ''}" data-pi="${p.id}" style="--h:${p.h}">${esc(p.ini)}</span>`;
+const CHK = on => `<span class="check${on ? ' on' : ''}"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>`;
+function flip(container, mutate) {
+  const kids = [...container.children]; const first = new Map(kids.map(e => [e, e.getBoundingClientRect().top]));
+  mutate();
+  [...container.children].forEach(e => { const f = first.get(e); if (f == null || e.hidden) return; const d = f - e.getBoundingClientRect().top; if (Math.abs(d) > .5 && Math.abs(d) < 1600) anim(e, [{ transform: `translateY(${d}px)` }, { transform: 'none' }], { d: 480, e: EASE.spring }); });
+}
+const stagger = (els, base = 0, step = 30) => els.forEach((el, i) => anim(el, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: base + Math.min(i, 16) * step, e: EASE.spring }));
+function swap(el, html, dir = 1, after) {
+  anim(el, [{ opacity: 1, transform: 'none', filter: 'blur(0px)' }, { opacity: 0, transform: `translate3d(${-dir * 18}px,0,0)`, filter: 'blur(6px)' }], { d: 160 }).finished.then(() => {
+    el.innerHTML = html; el.scrollTop = 0; anim(el, [{ opacity: 0, transform: `translate3d(${dir * 26}px,0,0)`, filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 460, e: EASE.spring }); after && after();
+  }).catch(() => { el.innerHTML = html; after && after(); });
+}
+function segHTML(opts, on) { return `<div class="seg"><span class="ind"></span>${opts.map(([v, l]) => `<button data-v="${v}"${v === on ? ' class="on"' : ''}>${l}</button>`).join('')}</div>`; }
+function wireSeg(seg, cb) {
+  requestAnimationFrame(() => SH.placeSeg(seg, true));
+  seg.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return; $$('button', seg).forEach(x => x.classList.toggle('on', x === b)); SH.placeSeg(seg); cb(b.dataset.v); });
+}
+function ring(cls = 'ring') { return `<svg class="${cls}" viewBox="0 0 64 64"><circle cx="32" cy="32" r="27" fill="none" style="stroke:var(--raise2)" stroke-width="4"/><circle class="rg" cx="32" cy="32" r="27" fill="none" style="stroke:var(--ok)" stroke-width="4" stroke-linecap="round" stroke-dasharray="169.6" stroke-dashoffset="169.6" transform="rotate(-90 32 32)"/><path class="ckp" d="m21 33 7.5 7.5L44 25" fill="none" style="stroke:var(--ok)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="40" stroke-dashoffset="40"/></svg>`; }
+function playRing(svg, delay = 0) { if (!svg) return; anim($('.rg', svg), [{ strokeDashoffset: 169.6 }, { strokeDashoffset: 0 }], { d: 900, delay }); anim($('.ckp', svg), [{ strokeDashoffset: 40 }, { strokeDashoffset: 0 }], { d: 420, delay: delay + 650 }); }
+const confColor = c => c >= 80 ? 'var(--ok)' : c >= 50 ? 'var(--warn)' : 'var(--faint)';
+const refreshers = new Set(); const refresh = () => refreshers.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
+let ctxRef = null;
+const sectionEl = () => $('#v-remover .mod');
+
+/* ================= flujo de desinstalación ================= */
+const STEPS = ['Modo', 'Preparar', 'Desinstalar', 'Restos', 'Revisar', 'Listo'];
+function openFlow(progs, opts = {}) {
+  const mod = sectionEl(); if (!mod || $('.rv-flow', mod)) return;
+  const one = progs.length === 1 ? progs[0] : null;
+  const prot = progs.some(p => p.prot);
+  const f = document.createElement('div'); f.className = 'rv-flow';
+  f.innerHTML = `<div class="rf-head">${one ? pi(one, true) : `<span class="pi lg" style="--h:200">${progs.length}</span>`}<div><h3>${one ? `Desinstalar ${esc(one.name)}` : `Restos de ${progs.length} programas`}</h3><div class="who">${one ? `${esc(one.pub)}, ${fmtMB(one.mb)}` : esc(progs.map(p => p.name).join(', '))}</div></div>
+      <button class="iconbtn x" data-x aria-label="Cerrar">${ic('x')}</button></div>
+    <div class="rf-steps"><div class="ln"><span></span></div>${STEPS.map((s, i) => `<div class="rf-st" data-i="${i}"><i>${i + 1}</i>${s}</div>`).join('')}</div>
+    <div class="rf-body"></div><div class="rf-foot"><span class="t"></span></div>`;
+  mod.appendChild(f);
+  anim(f, [{ opacity: 0, transform: 'translate3d(0,24px,0) scale(.97)', filter: 'blur(10px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 520, e: EASE.spring });
+  const body = $('.rf-body', f), foot = $('.rf-foot', f), lineSp = new Spring(0, 120, 18);
+  const tk = dt => { lineSp.step(dt); $('.ln span', f).style.transform = `scaleX(${lineSp.v.toFixed(4)})`; }; tickers.add(tk);
+  let step = -1, mode = opts.mode || (one && one.silent ? 'silent' : 'normal'), level = 'moderate', items = opts.items || [], sel = new Set(), closed = false, busy = false;
+  const MODE_NAME = { normal: 'Normal', silent: 'Silenciosa', forced: 'Forzada' };
+  function setStep(i) {
+    const dir = i >= step ? 1 : -1; step = i; lineSp.t = i / (STEPS.length - 1);
+    $$('.rf-st', f).forEach((s, k) => { s.classList.toggle('on', k === i); s.classList.toggle('done', k < i); $('i', s).innerHTML = k < i ? ic('check') : k + 1; });
+    const on = $(`.rf-st[data-i="${i}"] i`, f); anim(on, [{ transform: 'scale(.7)' }, { transform: 'scale(1)' }], { d: 420, e: EASE.spring });
+    return dir;
+  }
+  function setFoot(html) { foot.innerHTML = html; stagger([...foot.children], 0, 40); }
+  function close() {
+    if (busy) { SH.toast('Espera a que termine este paso.'); return; }
+    closed = true; tickers.delete(tk);
+    anim(f, [{ opacity: 1, transform: 'none', filter: 'blur(0px)' }, { opacity: 0, transform: 'translate3d(0,16px,0) scale(.98)', filter: 'blur(8px)' }], { d: 240, e: EASE.io }).finished.then(() => f.remove()).catch(() => f.remove());
+  }
+  f.addEventListener('click', e => { if (e.target.closest('[data-x]')) close(); });
+  /* 1. modo */
+  function stepMode() {
+    const dir = setStep(0);
+    const can = { silent: progs.every(p => p.silent || p.store), forced: !prot };
+    swap(body, `<div class="mcards">
+        <button class="mcard${mode === 'normal' ? ' on' : ''}" data-m="normal"><span class="mi">${ic('play')}</span><b>Normal</b><span>Abre el desinstalador oficial, con sus ventanas, como si lo hicieras desde Windows.</span></button>
+        <button class="mcard${mode === 'silent' ? ' on' : ''}" data-m="silent"${can.silent ? '' : ' disabled'}><span class="mi">${ic('silent')}</span><b>Silenciosa</b><span>${can.silent ? 'Sin ventanas ni preguntas. Este instalador lo permite.' : 'Este instalador no admite el modo silencioso.'}</span></button>
+        <button class="mcard${mode === 'forced' ? ' on' : ''}" data-m="forced"${can.forced ? '' : ' disabled'}><span class="mi">${ic('force')}</span><b>Forzada</b><span>${can.forced ? 'Para programas con el desinstalador roto: se borra todo con el escáner.' : 'No disponible para componentes protegidos.'}</span></button></div>
+      <div class="lvl"><div class="lbl">Profundidad de la búsqueda de restos</div>${segHTML([['safe', 'Segura'], ['moderate', 'Moderada'], ['advanced', 'Avanzada']], level)}<div class="hint" id="lvlHint">Busca en carpetas, accesos directos, registro, tareas, servicios y firewall. La recomendada.</div></div>
+      ${prot ? `<div class="pan" style="margin-top:18px;max-width:900px;font-size:12.5px;color:var(--mute)">${ic('shield')} <b style="color:var(--ink);font-weight:500">Componente protegido.</b> Otros programas pueden necesitarlo. La búsqueda de restos se limita a lo que es seguro.</div>` : ''}`, dir, () => {
+      $$('.mcard', body).forEach((c, i) => anim(c, [{ opacity: 0, transform: 'translate3d(0,14px,0) scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 460, delay: 60 + i * 60, e: EASE.spring }));
+      const sg = $('.seg', body); wireSeg(sg, v => { level = v; $('#lvlHint', body).textContent = { safe: 'Solo lo que seguro es del programa: su carpeta, accesos directos y claves con su nombre.', moderate: 'Busca en carpetas, accesos directos, registro, tareas, servicios y firewall. La recomendada.', advanced: 'Además mira tipos de archivo, componentes COM, PATH y el registro del instalador. Revisa más a fondo.' }[v]; });
+    });
+    body.onclick = e => { const c = e.target.closest('.mcard'); if (!c || c.disabled) return; mode = c.dataset.m; $$('.mcard', body).forEach(x => x.classList.toggle('on', x === c)); anim($('.mi', c), [{ transform: 'scale(.7) rotate(-12deg)' }, { transform: 'none' }], { d: 420, e: EASE.spring }); };
+    setFoot(`<span class="t">${one && one.silent ? 'Este programa admite <b>desinstalación silenciosa</b>.' : 'Antes de tocar nada se crea un punto de restauración.'}</span><button class="btn ghost" data-x>Cancelar</button><button class="btn pri lg" id="rfGo">Empezar</button>`);
+    let armed = 0;
+    $('#rfGo', f).onclick = e => {
+      if (mode === 'forced' && !SH.requireAdmin('para la desinstalación forzada: borra archivos del sistema.')) return;
+      if (REAL() && mode === 'forced' && !armed) {  /* lo irreversible pide una segunda pulsación */
+        const b = e.currentTarget; armed = setTimeout(() => { armed = 0; b.textContent = 'Empezar'; }, 4000);
+        b.innerHTML = `${ic('alert')}Pulsa otra vez: sin desinstalador oficial`; anim(b, [{ transform: 'scale(.95)' }, { transform: 'none' }], { d: 300, e: EASE.spring }); return;
+      }
+      clearTimeout(armed);
+      REAL() && one ? realRun() : stepPrep();
+    };
+  }
+  /* ---------- camino real: una sola tarea del motor y la interfaz sigue sus pasos ---------- */
+  const SCAN_STEPS = ['Carpetas y archivos', 'Accesos directos', 'Registro por nombre', 'Servicios, tareas, inicio y firewall', 'Tipos de archivo y componentes COM'];
+  async function realRun() {
+    busy = true; let dir = setStep(1);
+    swap(body, `<div class="checks">${ckRow('rp', 'restore', 'Punto de restauración', 'Por si quieres volver atrás')}${ckRow('close', 'x', `Cerrar ${one.name}`, 'Si está abierto, se cierra con cuidado')}${ckRow('inst', 'eye', 'Desinstalador oficial', one.store ? 'Se quita el paquete de la Tienda' : 'Se lanza y se espera a todos sus procesos')}</div>`, dir, () => stagger($$('.ck', body), 40, 60));
+    setFoot('<span class="t">Preparando. Esto tarda unos segundos.</span><button class="btn ghost" id="rfCancel">Cancelar</button>');
+    let uninShown = false, scanShown = false, lastLabel = '', arcT = .08;
+    const sp = new Spring(0, 60, 14); const t2 = dt => { sp.t = arcT; sp.step(dt); const a = $('#rfArc', body); if (a) a.style.strokeDashoffset = (326.7 * (1 - sp.v)).toFixed(2); };
+    const STAT = { done: 'ok', warn: 'ok', skipped: 'ok', running: 'run' };
+    const job = SH.job('remover', 'uninstall', [one.eid, { mode: mode === 'silent' ? 'quiet' : mode, level, restore_point: true }], { onProgress: m => {
+      if (closed) return; const d = m.data || {};
+      if (d.step === 'restore') { setCk('rp', STAT[d.status], { done: 'Creado', warn: 'No se pudo', skipped: 'No hace falta', running: '' }[d.status]); if (d.status === 'warn' && d.detail) $(`.ck[data-c="rp"] .s`, body).textContent = d.detail; }
+      if (d.step === 'close') setCk('close', STAT[d.status], d.status === 'done' ? (d.detail ? `Cerrado: ${d.detail}` : 'No estaba abierto') : '');
+      if (d.step === 'uninstall') {
+        if (d.status === 'skipped') setCk('inst', 'ok', 'Modo forzado');
+        else if (!uninShown) {
+          uninShown = true; setCk('inst', 'run'); dir = setStep(2); tickers.add(t2);
+          swap(body, `<div class="unin"><div class="orb"><svg class="p" viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" style="stroke:var(--raise2)" stroke-width="6"/><circle id="rfArc" cx="60" cy="60" r="52" fill="none" style="stroke:var(--accent)" stroke-width="6" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/></svg>${pi(one, true)}</div>
+            <div><h3 id="rfUt">${mode === 'silent' ? 'Desinstalando en silencio' : 'Esperando al desinstalador'}</h3><p id="rfUp">${mode === 'silent' ? 'Sin ventanas. No hace falta que hagas nada.' : 'Sigue los pasos en la ventana del desinstalador. StellarHub espera a todos sus procesos, no solo al primero.'}</p><p class="faint" id="rfUd"></p></div></div>`, dir);
+          setFoot(`<span class="t">Modo <b>${MODE_NAME[mode].toLowerCase()}</b>.</span><button class="btn ghost" id="rfCancel">Dejar de esperar</button>`); wireCancel();
+        }
+        if (d.status === 'running') { arcT = Math.min(.9, arcT + .04); const u = $('#rfUd', body); if (u && d.detail) u.textContent = d.detail; }
+        if (d.status === 'done' || d.status === 'warn') { arcT = 1; const h = $('#rfUt', body); if (h) h.textContent = d.status === 'done' ? 'Desinstalador terminado' : 'El desinstalador terminó con avisos'; const u = $('#rfUp', body); if (u) u.textContent = d.detail || 'Ahora buscamos lo que dejó atrás.'; }
+      }
+      if (d.step === 'scan') {
+        if (!scanShown) {
+          scanShown = true; tickers.delete(t2); dir = setStep(3);
+          const rows = level === 'safe' ? SCAN_STEPS.slice(0, 4) : SCAN_STEPS;
+          swap(body, `<div class="scan-grid">${rows.map((t, i) => ckRow('s' + i, ['folder', 'link', 'reg', 'gear', 'file'][i], t, 'En espera')).join('')}</div>`, dir, () => stagger($$('.ck', body), 30, 30));
+          setFoot('<span class="t">Buscando restos. Cada uno lleva una confianza de 0 a 100 y el motivo.</span>');
+        }
+        const lab = d.label || m.text || ''; const i = SCAN_STEPS.findIndex(s => lab.startsWith(s));
+        if (i >= 0 && lab !== lastLabel) { lastLabel = lab; for (let k = 0; k < i; k++) { setCk('s' + k, 'ok'); const s = $(`.ck[data-c="s${k}"] .s`, body); if (s) s.textContent = 'Revisado'; } setCk('s' + i, 'run'); const s = $(`.ck[data-c="s${i}"] .s`, body); if (s) s.textContent = 'Revisando…'; }
+      }
+    } });
+    function wireCancel() { const c = $('#rfCancel', f); if (c) c.onclick = () => { job.cancel(); c.disabled = true; c.textContent = 'Cancelando…'; }; }
+    wireCancel();
+    let res;
+    try { res = await job; } catch (e) {
+      tickers.delete(t2); busy = false; if (closed) return;
+      if (e.cancelled) { SH.toast('Cancelado. No se tocó nada más.'); close(); return; }
+      swap(body, `<div class="empty"><b>No se pudo desinstalar</b>${esc(jobErr(e))}</div>`); setFoot('<span class="t"></span><button class="btn pri" data-x>Cerrar</button>'); return;
+    }
+    tickers.delete(t2); busy = false; if (closed) return;
+    if (res.cancelled) { SH.toast('Cancelado. El programa sigue instalado.'); close(); return; }
+    $$('.ck', body).forEach(c => { setCk(c.dataset.c, 'ok'); const s = $('.s', c); if (s) s.textContent = 'Revisado'; });
+    const sc = res.scan || { items: [], key: one.eid };
+    items = sc.items.map(mapItem(sc.key, one.name)); sel = new Set(items.filter(l => l.selected).map(l => l.id));
+    if (res.still_registered && mode !== 'forced') SH.toast('El programa sigue registrado: quizá cancelaste el desinstalador. Revisa los restos con cuidado.', { ms: 6000 });
+    SH.logActivity(`${one.name} desinstalado`, { sub: `modo ${MODE_NAME[mode].toLowerCase()}`, ic: 'remover', go: 'remover', tab: 'history' });
+    await wait(400); if (!closed) stepReview();
+  }
+  const ckRow = (id, icon, title, sub) => `<div class="ck" data-c="${id}"><span class="st">${ic(icon)}</span><div><b>${esc(title)}</b><span class="s">${esc(sub)}</span></div><span class="n"></span></div>`;
+  const setCk = (id, state, n) => { const c = $(`.ck[data-c="${id}"]`, body); if (!c) return; c.classList.remove('run', 'ok'); if (state) c.classList.add(state); if (state === 'ok') { $('.st', c).innerHTML = ic('check'); anim($('.st', c), [{ transform: 'scale(.6)' }, { transform: 'none' }], { d: 400, e: EASE.spring }); } if (n != null) $('.n', c).textContent = n; };
+  /* 2. preparar */
+  async function stepPrep() {
+    busy = true; const dir = setStep(1);
+    swap(body, `<div class="checks">${ckRow('rp', 'restore', 'Punto de restauración', 'Por si quieres volver atrás')}${ckRow('close', 'x', one ? `Cerrar ${one.name}` : 'Cerrar los programas', 'Si está abierto, se cierra con cuidado')}${ckRow('snap', 'eye', 'Foto del sistema', 'Para encontrar después lo que deja')}</div>`, dir, () => stagger($$('.ck', body), 40, 60));
+    setFoot('<span class="t">Preparando. Esto tarda unos segundos.</span>');
+    await wait(300); if (closed) return; setCk('rp', 'run'); await API.restorePoint(); if (closed) return; setCk('rp', 'ok', 'Creado');
+    setCk('close', 'run'); await API.closeApp(); if (closed) return; setCk('close', 'ok', 'No estaba abierto');
+    setCk('snap', 'run'); await wait(600); if (closed) return; setCk('snap', 'ok', '48 213 entradas'); await wait(400);
+    if (closed) return; busy = false; mode === 'forced' ? stepScan() : stepUninstall();
+  }
+  /* 3. desinstalar */
+  async function stepUninstall() {
+    busy = true; const dir = setStep(2);
+    swap(body, `<div class="unin"><div class="orb"><svg class="p" viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" style="stroke:var(--raise2)" stroke-width="6"/><circle id="rfArc" cx="60" cy="60" r="52" fill="none" style="stroke:var(--accent)" stroke-width="6" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/></svg>${one ? pi(one, true) : `<span class="pi lg" style="--h:200">${progs.length}</span>`}</div>
+      <div><h3 id="rfUt">${mode === 'silent' ? 'Desinstalando en silencio' : 'Esperando al desinstalador'}</h3><p id="rfUp">${mode === 'silent' ? 'Sin ventanas. No hace falta que hagas nada.' : 'Sigue los pasos en la ventana del desinstalador. StellarHub espera a todos sus procesos, no solo al primero.'}</p></div></div>`, dir);
+    setFoot(`<span class="t">Modo <b>${MODE_NAME[mode].toLowerCase()}</b>.</span>`);
+    const sp = new Spring(0, 60, 14); const t2 = dt => { sp.step(dt); const a = $('#rfArc', body); if (a) a.style.strokeDashoffset = (326.7 * (1 - sp.v)).toFixed(2); }; tickers.add(t2);
+    for (let i = 0; i < progs.length; i++) { if (closed) break; sp.t = (i + .55) / progs.length; await API.runUninstaller(progs[i], mode); sp.t = (i + 1) / progs.length; }
+    await wait(500); tickers.delete(t2); if (closed) return;
+    $('#rfUt', body).textContent = 'Desinstalador terminado'; $('#rfUp', body).textContent = 'Ahora buscamos lo que dejó atrás.'; await wait(600);
+    if (closed) return; busy = false; stepScan();
+  }
+  /* 4. restos */
+  async function stepScan() {
+    busy = true; const dir = setStep(3);
+    const cats = Object.keys(TYPES).filter(t => level !== 'safe' || ['folder', 'shortcut', 'reg'].includes(t));
+    swap(body, `<div class="scan-grid">${cats.map(t => ckRow(t, TYPES[t][1], TYPES[t][0], 'En espera')).join('')}</div>`, dir, () => stagger($$('.ck', body), 30, 30));
+    setFoot('<span class="t">Buscando restos. Cada uno lleva una confianza de 0 a 100 y el motivo.</span>');
+    const found = opts.items ? opts.items : await API.scan(progs, t => { if (closed) return; $$('.ck.run', body).forEach(c => { setCk(c.dataset.c, 'ok'); $('.s', c).textContent = 'Revisado'; }); setCk(t, 'run'); const c = $(`.ck[data-c="${t}"] .s`, body); if (c) c.textContent = 'Revisando…'; });
+    if (closed) return;
+    $$('.ck', body).forEach(c => { const n = found.filter(l => l.type === c.dataset.c).length; setCk(c.dataset.c, 'ok', n ? `${n} ${n === 1 ? 'resto' : 'restos'}` : 'Nada'); $('.s', c).textContent = n ? 'Encontrado' : 'Limpio'; });
+    items = found; sel = new Set(items.filter(l => l.conf >= 80 && !l.personal).map(l => l.id)); await wait(700);
+    if (closed) return; busy = false; stepReview();
+  }
+  /* 5. revisar */
+  function stepReview() {
+    const dir = setStep(4);
+    const groups = Object.keys(TYPES).map(t => [t, items.filter(l => l.type === t)]).filter(g => g[1].length);
+    swap(body, items.length ? `<div class="rv-groups">${groups.map(([t, list]) => `<div class="rg"><h5>${ic(TYPES[t][1])}${TYPES[t][0]} <span class="faint">${list.length}</span></h5>${list.sort((a, b) => (a.blocked - b.blocked) || (b.conf - a.conf)).map(l => `<button class="lo${l.blocked ? ' blk' : ''}" data-l="${esc(l.id)}"${l.blocked ? ' aria-disabled="true"' : ''}>${l.blocked ? `<span class="check lock">${ic('lock')}</span>` : CHK(sel.has(l.id))}<span class="p"><b>${esc(l.path)}</b><span>${esc(l.why)}${progs.length > 1 ? `. De ${esc(l.prog)}` : ''}</span></span><span class="conf" style="--c:${confColor(l.conf)}"><span class="bar"><span style="transform:scaleX(0)" data-v="${l.conf / 100}"></span></span><b>${l.conf}</b></span><span class="sz">${l.mb ? fmtMB(l.mb) : ''}</span></button>`).join('')}</div>`).join('')}</div>`
+      : `<div class="empty"><b>No quedó nada</b>El desinstalador lo borró todo. No hace falta limpiar.</div>`, dir, () => {
+      stagger($$('.rg', body), 40, 50);
+      setTimeout(() => $$('.conf .bar>span', body).forEach((b, i) => anim(b, [{ transform: 'scaleX(0)' }, { transform: `scaleX(${b.dataset.v})` }], { d: 700, delay: i * 18 })), 120);
+    });
+    body.onclick = e => { const r = e.target.closest('.lo'); if (!r) return; if (r.classList.contains('blk')) { SH.toast('Está protegido: StellarHub no lo toca.'); return; } const id = r.dataset.l; sel.has(id) ? sel.delete(id) : sel.add(id); const c = $('.check', r); c.classList.toggle('on', sel.has(id)); anim(c, [{ transform: 'scale(.75)' }, { transform: 'none' }], { d: 320, e: EASE.spring }); sumFoot(); };
+    function sumFoot() {
+      const s = items.filter(l => sel.has(l.id)); const mb = s.reduce((a, l) => a + l.mb, 0);
+      $('.t', foot).innerHTML = items.length ? `<b>${s.length} de ${items.length}</b> marcados, ${fmtMB(mb)}. Lo marcado por defecto es lo que tiene confianza alta. Todo va a la cuarentena.` : '';
+      const b = $('#rfDel', f); if (b) b.disabled = !s.length;
+    }
+    setFoot(`<span class="t"></span>${items.length ? '<button class="btn ghost" id="rfKeep">Dejar todo</button><button class="btn pri lg" id="rfDel">' + ic('trash') + 'Eliminar los marcados</button>' : '<button class="btn pri lg" id="rfKeep">Terminar</button>'}`); sumFoot();
+    $('#rfKeep', f).onclick = () => stepDone([]);
+    const del = $('#rfDel', f); if (del) del.onclick = async () => { busy = true; del.disabled = true; del.innerHTML = 'Moviendo a la cuarentena…'; const chosen = items.filter(l => sel.has(l.id)); stepDone(chosen); };
+  }
+  /* 6. listo */
+  async function realRemove(chosen) {
+    /* un escaneo por programa (o rastro): se borra cada grupo con su clave; todo va a la cuarentena */
+    const byKey = new Map(); items.forEach(l => { if (!byKey.has(l.key)) byKey.set(l.key, []); });
+    chosen.forEach(l => byKey.get(l.key).push(l.eid));
+    const out = { ok: 0, failed: 0, freed: 0, sessions: [], errors: [] };
+    for (const [key, ids] of byKey) {
+      if (!ids.length) { SH.engine('remover', 'forget_scan', key).catch(() => {}); continue; }
+      try {
+        const r = await SH.job('remover', 'remove', [key, ids], { onProgress: m => { const t = $('.t', foot); if (t && m.text) t.textContent = `Moviendo a la cuarentena: ${m.text}`; } });
+        out.ok += r.ok || 0; out.failed += r.failed || 0; out.freed += r.freed || 0; if (r.session) out.sessions.push(r.session); out.errors.push(...(r.errors || []));
+      } catch (e) { out.failed += ids.length; out.errors.push(jobErr(e)); }
+    }
+    return out;
+  }
+  async function stepDone(chosen) {
+    if (REAL()) {
+      busy = true; const r = await realRemove(chosen); busy = false; if (closed) return;
+      const dir = setStep(5);
+      swap(body, `<div class="fin">${ring('ring')}<div><h3>${one ? `${esc(one.name)}: listo` : `${progs.length} programas: listo`}</h3><p>${chosen.length ? `Movido a la cuarentena: ${r.ok} ${r.ok === 1 ? 'resto' : 'restos'}${r.failed ? `, ${r.failed} no se pudieron mover` : ''}. Se puede deshacer durante ${qDays} días.` : 'No se borró ningún resto.'}</p>
+        ${r.errors.length ? `<p class="faint" style="font-size:12px">${esc(r.errors.slice(0, 3).join(' · '))}</p>` : ''}
+        <div class="fin-stats"><div><b>${r.ok}</b><span>restos eliminados</span></div><div><b>${fmtMB(r.freed / 1048576)}</b><span>liberados</span></div><div><b>${MODE_NAME[mode]}</b><span>modo</span></div></div></div></div>`, dir, () => playRing($('svg.ring', body), 100));
+      setFoot(`<span class="t">${r.sessions.length ? 'Todo está en la cuarentena por si algo dejó de funcionar.' : ''}</span>${r.sessions.length ? '<button class="btn ghost" id="rfUndo">' + ic('restore') + 'Deshacer</button>' : ''}<button class="btn pri" data-x>Listo</button>`);
+      const u = $('#rfUndo', f); if (u) u.onclick = async () => {
+        u.disabled = true; u.textContent = 'Devolviendo…';
+        for (const sid of r.sessions) { try { await SH.job('remover', 'quarantine_restore', [sid]); } catch (e) { SH.toast(jobErr(e)); } }
+        SH.toast('Restos devueltos a su sitio.'); SH.logActivity('Restos devueltos a su sitio', { sub: one ? one.name : `${progs.length} programas`, ic: 'restore', go: 'remover', tab: 'quarantine' });
+        ensureReal(true).then(refresh); close();
+      };
+      ensureReal(true).then(refresh); opts.onDone && opts.onDone(); return;
+    }
+    busy = true; const session = await API.remove(progs, chosen, MODE_NAME[mode]); busy = false; if (closed) return;
+    const dir = setStep(5); const mb = chosen.reduce((a, l) => a + l.mb, 0);
+    swap(body, `<div class="fin">${ring('ring')}<div><h3>${one ? `${esc(one.name)} desinstalado` : `${progs.length} programas desinstalados`}</h3><p>${chosen.length ? `Movido a la cuarentena: ${chosen.length} ${chosen.length === 1 ? 'resto' : 'restos'}. Se puede deshacer durante ${qDays} días.` : 'No se borró ningún resto.'}</p>
+      <div class="fin-stats"><div><b>${chosen.length}</b><span>restos eliminados</span></div><div><b>${fmtMB(mb + progs.reduce((a, p) => a + p.mb, 0))}</b><span>liberados en total</span></div><div><b>${MODE_NAME[mode]}</b><span>modo</span></div></div></div></div>`, dir, () => playRing($('svg.ring', body), 100));
+    setFoot(`<span class="t">Queda un punto de restauración por si algo dejó de funcionar.</span>${chosen.length ? '<button class="btn ghost" id="rfUndo">' + ic('restore') + 'Deshacer</button>' : ''}<button class="btn pri" data-x>Listo</button>`);
+    const u = $('#rfUndo', f); if (u) u.onclick = async () => { await API.restore(session); refresh(); SH.toast('Restos devueltos a su sitio.'); close(); };
+    refresh(); opts.onDone && opts.onDone();
+  }
+  if (opts.startAt === 'review') { items = opts.items; sel = new Set(items.filter(l => l.selected !== undefined ? l.selected : (l.conf >= 80 && !l.personal)).map(l => l.id)); step = 3; stepReview(); }
+  else stepMode();
+}
+
+/* ================= Programas ================= */
+function renderPrograms(el, ctx) {
+  el.classList.add('fill');
+  el.innerHTML = `<div class="rv-left pan rv-listwrap" data-asm><div class="rv-tools"><label class="field">${ic('search')}<input id="rpQ" placeholder="Buscar un programa o editor" spellcheck="false"></label>
+      ${segHTML([['all', 'Todos'], ['recent', 'Recientes'], ['big', 'Grandes'], ['store', 'Tienda'], ['sys', 'Sistema']], 'all')}<span class="cnt" id="rpCnt"></span></div>
+    <div class="tbl-head rv-cols"><button data-s="name" class="on">Programa${ic('sortaz')}</button><button data-s="ver">Versión${ic('sortaz')}</button><button data-s="mb">Tamaño${ic('sortaz')}</button><button data-s="date">Instalado${ic('sortaz')}</button></div>
+      <div class="rv-scroll" id="rpList"></div></div>
+    <div class="pan rv-detail" data-asm><div class="rv-dscroll" id="rpDetail"></div></div>`;
+  const list = $('#rpList', el); let q = '', filt = 'all', sort = 'name', desc = false, selected = null;
+  const rowHTML = p => `<button class="pr rv-cols" data-p="${p.id}"><span class="nm">${pi(p)}<span style="min-width:0"><b>${esc(p.name)}${p.prot ? '<span class="tagp">protegido</span>' : ''}</b><span>${esc(p.pub)}</span></span></span><span class="c">${esc(p.ver)}</span><span class="c sz">${fmtMB(p.mb)}</span><span class="c">${fmtDate(p.date)}</span></button>`;
+  function build() { list.innerHTML = PROGRAMS.map(rowHTML).join(''); apply(false); }
+  function visible(p) {
+    const qq = q.toLowerCase(); const okQ = !qq || (p.name + ' ' + p.pub).toLowerCase().includes(qq);
+    const okF = filt === 'all' || (filt === 'recent' && daysSince(p.date) <= 14) || (filt === 'big' && p.mb >= 1000) || (filt === 'store' && p.store) || (filt === 'sys' && p.prot);
+    return okQ && okF;
+  }
+  const cmp = { name: (a, b) => a.name.localeCompare(b.name, 'es'), ver: (a, b) => a.ver.localeCompare(b.ver, 'es', { numeric: true }), mb: (a, b) => b.mb - a.mb, date: (a, b) => (b.date || 0) - (a.date || 0) };
+  function apply(animate) {
+    const order = PROGRAMS.slice().sort((a, b) => (desc ? -1 : 1) * cmp[sort](a, b));
+    const doIt = () => { order.forEach(p => { const r = $(`.pr[data-p="${p.id}"]`, list); if (r) { r.hidden = !visible(p); list.appendChild(r); } }); };
+    animate ? flip(list, doIt) : doIt();
+    const vis = order.filter(visible); $('#rpCnt', el).textContent = `${vis.length} ${vis.length === 1 ? 'programa' : 'programas'}, ${fmt1(vis.reduce((a, p) => a + p.mb, 0) / 1024)} GB`;
+    if (!animate) stagger($$('.pr:not([hidden])', list).slice(0, 16), 60, 22);
+  }
+  $$('.tbl-head button', el).forEach(b => b.addEventListener('click', () => {
+    if (sort === b.dataset.s) desc = !desc; else { sort = b.dataset.s; desc = false; }
+    $$('.tbl-head button', el).forEach(x => { x.classList.toggle('on', x === b); x.classList.toggle('desc', x === b && desc); }); apply(true);
+  }));
+  let qt = 0; $('#rpQ', el).addEventListener('input', e => { q = e.target.value.trim(); clearTimeout(qt); qt = setTimeout(() => { apply(false); }, 110); });
+  wireSeg($('.seg', el), v => { filt = v; apply(false); });
+  list.addEventListener('click', e => { const r = e.target.closest('.pr'); if (r) select(PROGRAMS.find(p => p.id === r.dataset.p), r); });
+  list.addEventListener('dblclick', e => { const r = e.target.closest('.pr'); if (r) openFlow([PROGRAMS.find(p => p.id === r.dataset.p)]); });
+  const det = $('#rpDetail', el);
+  function summary() {
+    const top = PROGRAMS.slice().sort((a, b) => b.mb - a.mb).slice(0, 4); const max = top[0] ? top[0].mb : 1;
+    const recent = PROGRAMS.filter(p => p.date).sort((a, b) => b.date - a.date).slice(0, 3);
+    return `<div class="rs"><h4 class="pan-h">Resumen</h4><div class="tot">${PROGRAMS.length}<small>programas</small></div><div class="sub">${fmt1(totalGB())} GB en total. Elige uno para ver sus detalles o desinstalarlo; doble clic va directo.</div>
+      <h4 class="pan-h">Los que más ocupan</h4><div class="rs-top">${top.map(p => `<button data-p="${p.id}"><span>${esc(p.name)}</span><span class="muted">${fmtMB(p.mb)}</span><span class="bar acc"><span style="transform:scaleX(0)" data-v="${(p.mb / max).toFixed(3)}"></span></span></button>`).join('')}</div>
+      <h4 class="pan-h">Instalados hace poco</h4><div class="rows">${recent.map(p => `<button class="row" data-p="${p.id}" style="text-align:left;padding:6px 8px;margin:0 -8px">${pi(p)}<span class="rt"><b>${esc(p.name)}</b><span>${daysSince(p.date) === 0 ? "hoy" : `hace ${daysSince(p.date)} ${daysSince(p.date) === 1 ? "día" : "días"}`}</span></span></button>`).join('')}</div></div>`;
+  }
+  function growBars() { setTimeout(() => $$('.rs-top .bar>span', det).forEach((b, i) => { b.style.transform = `scaleX(${b.dataset.v})`; b.style.transitionDelay = i * 60 + 'ms'; }), 60); }
+  function showSummary(first) { selected = null; if (first) { det.innerHTML = summary(); growBars(); } else swap(det, summary(), -1, growBars); }
+  function select(p, row) {
+    if (!p) return; selected = p; $$('.pr.sel', list).forEach(x => x.classList.remove('sel')); if (row) row.classList.add('sel');
+    swap(det, `<div class="rd-top">${pi(p, true)}<div style="min-width:0"><h3>${esc(p.name)}</h3><div class="who">${esc(p.pub)}</div></div></div>
+      <div class="rd-chips">${p.arch ? `<span class="chip">${typeof p.arch === 'number' ? p.arch + ' bits' : esc(p.arch)}</span>` : ''}${p.store ? '<span class="chip acc">Tienda de Microsoft</span>' : ''}${p.prot ? '<span class="chip warn">Protegido</span>' : ''}${p.silent && !p.prot ? '<span class="chip ok">Admite modo silencioso</span>' : ''}${p.audio ? '<span class="chip">Plugins de audio</span>' : ''}</div>
+      <dl><dt>Versión</dt><dd>${esc(p.ver || '—')}</dd><dt>Instalado</dt><dd>${fmtDate(p.date)}</dd><dt>Tamaño en disco</dt><dd>${fmtMB(p.mb)}</dd>${p.kindLabel ? `<dt>Instalador</dt><dd>${esc(p.kindLabel)}</dd>` : ''}<dt>Ubicación</dt><dd>${esc(p.loc || '—')}</dd><dt>Desinstalador</dt><dd id="rdCmd">${esc(p.cmd || (REAL() ? 'Consultando…' : '—'))}</dd></dl>
+      ${p.broken || p.noUninst ? '<div class="rnote">El desinstalador oficial falta o está roto: usa el modo forzado, que borra con el escáner de restos.</div>' : ''}<div id="rdProcs"></div>
+      ${p.prot ? '<div class="rnote">Otros programas pueden necesitarlo (runtimes, drivers, antivirus, VPN). Se puede quitar, pero sin modo forzado y con una búsqueda de restos limitada.</div>' : ''}
+      <div class="rd-acts"><button class="btn pri lg" data-a="un">${ic('remover')}Desinstalar</button><div class="row2"><button class="btn sec" data-a="loc">${ic('folder')}Ubicación</button><button class="btn sec" data-a="web">${ic('globe')}Buscar en internet</button></div></div>`);
+    if (REAL() && p.eid) {
+      const want = p; SH.engine('remover', 'details', p.eid).then(async d => {
+        if (!d || selected !== want) return;
+        want.cmd = d.uninstall_string || d.command || (want.store ? 'Quitar el paquete de la Tienda' : 'No tiene');
+        for (let i = 0; i < 40 && !$('#rdCmd', det); i++) await wait(30);
+        const c = $('#rdCmd', det); if (c && selected === want) { c.textContent = want.cmd; anim(c, [{ opacity: 0 }, { opacity: 1 }], { d: 260 }); }
+        const pr = $('#rdProcs', det); if (pr && d.processes && d.processes.length && selected === want) pr.innerHTML = `<div class="rnote">Está abierto (${esc(d.processes.map(x => x.name).slice(0, 3).join(', '))}). Se cerrará con cuidado antes de desinstalar.</div>`;
+      }).catch(e => { const c = $('#rdCmd', det); if (c) c.textContent = jobErr(e); });
+    }
+  }
+  det.addEventListener('click', e => {
+    const pb = e.target.closest('[data-p]'); if (pb) { const p = PROGRAMS.find(x => x.id === pb.dataset.p); const r = $(`.pr[data-p="${p.id}"]`, list); if (r) r.scrollIntoView({ block: 'center', behavior: 'smooth' }); select(p, r); return; }
+    const a = e.target.closest('[data-a]'); if (!a || !selected) return;
+    if (a.dataset.a === 'un') openFlow([selected], { onDone: () => {} });
+    if (a.dataset.a === 'loc') { if (REAL()) SH.engine('remover', 'open_path', selected.loc).then(ok => { if (!ok) SH.toast('No tiene una carpeta que abrir.'); }); else SH.toast(`Abriendo ${selected.loc} (simulado).`); }
+    if (a.dataset.a === 'web') { if (REAL()) SH.engine('remover', 'search_web', selected.name); else SH.toast(`Buscando «${selected.name}» en internet (simulado).`); }
+  });
+  if (REAL()) {
+    list.innerHTML = `<div class="sk-rows" style="padding:8px">${Array.from({ length: 9 }, (_, k) => `<div class="sk-row"><div class="sk a" style="--dl:${k * .07}s"></div><div class="sk b" style="--w:${[38, 52, 30, 46, 41][k % 5]}%;--dl:${k * .07}s"></div><div class="sk c"></div></div>`).join('')}</div>`;
+    $('#rpCnt', el).textContent = 'Leyendo los programas instalados…';
+    ensureReal().then(() => { build(); showSummary(true); }).catch(e => { list.innerHTML = `<div class="empty"><b>No se pudo leer la lista de programas</b>${esc(jobErr(e))}</div>`; });
+  } else { build(); showSummary(true); }
+  refreshers.add(() => {
+    const ids = new Set(PROGRAMS.map(p => p.id));
+    $$('.pr', list).forEach(r => { if (!ids.has(r.dataset.p)) { anim(r, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(30px)' }], { d: 220 }).finished.then(() => flip(list, () => r.remove())).catch(() => r.remove()); } });
+    PROGRAMS.forEach(p => { if (!$(`.pr[data-p="${p.id}"]`, list)) list.insertAdjacentHTML('beforeend', rowHTML(p)); });
+    if (selected && !ids.has(selected.id)) showSummary(false); setTimeout(() => apply(true), 260);
+  });
+  SH.remover = { select: key => { const p = PROGRAMS.find(x => x.eid === key || x.id === key || x.name === key); if (!p) return; filt = 'all'; q = ''; $('#rpQ', el).value = ''; apply(false); const r = $(`.pr[data-p="${p.id}"]`, list); if (r) r.scrollIntoView({ block: 'center' }); select(p, r); } };
+}
+
+/* ================= Por lotes ================= */
+function renderBatch(el) {
+  el.classList.add('fill', 'rv-batch');
+  el.innerHTML = `<div class="rv-left pan rv-listwrap" data-asm><div class="rv-tools"><label class="field">${ic('search')}<input id="rbQ" placeholder="Filtrar programas" spellcheck="false"></label><span class="cnt" id="rbCnt"></span></div>
+    <div class="tbl-head rv-cols"><span></span><span>Programa</span><span>Tamaño</span><span>Instalado</span></div><div class="rv-scroll" id="rbList"></div></div>
+    <div class="pan rq" data-asm><h4 class="pan-h">Cola de desinstalación <em id="rbN">0</em></h4><div class="opts">${segHTML([['silent', 'Silenciosa si se puede'], ['normal', 'Con ventanas']], 'silent')}</div>
+      <div class="list" id="rbQueue"><div class="empty"><b>La cola está vacía</b>Marca a la izquierda los programas que quieres quitar.</div></div>
+      <div class="rd-acts"><button class="btn pri lg" id="rbGo" disabled>${ic('remover')}Desinstalar</button></div></div>`;
+  const list = $('#rbList', el), queue = $('#rbQueue', el); const sel = new Set(); let mode = 'silent', running = false, q = '';
+  const avail = () => PROGRAMS.filter(p => !p.prot);
+  function build() {
+    list.innerHTML = avail().map(p => `<button class="pr rv-cols" data-p="${p.id}">${CHK(sel.has(p.id))}<span class="nm">${pi(p)}<span style="min-width:0"><b>${esc(p.name)}</b><span>${esc(p.pub)}</span></span></span><span class="c sz">${fmtMB(p.mb)}</span><span class="c">${fmtDate(p.date)}</span></button>`).join('');
+    filter(); stagger($$('.pr', list).slice(0, 16), 60, 22);
+  }
+  function filter() { const qq = q.toLowerCase(); let n = 0; $$('.pr', list).forEach(r => { const p = PROGRAMS.find(x => x.id === r.dataset.p); r.hidden = !!qq && !(p.name + ' ' + p.pub).toLowerCase().includes(qq); if (!r.hidden) n++; }); $('#rbCnt', el).textContent = `${n} programas`; }
+  $('#rbQ', el).addEventListener('input', e => { q = e.target.value.trim(); filter(); });
+  wireSeg($('.seg', el), v => { mode = v; });
+  function drawQueue() {
+    const ps = [...sel].map(id => PROGRAMS.find(p => p.id === id)).filter(Boolean);
+    $('#rbN', el).textContent = ps.length; $('#rbGo', el).disabled = !ps.length || running;
+    $('#rbGo', el).innerHTML = `${ic('remover')}${ps.length ? `Desinstalar ${ps.length} ${ps.length === 1 ? 'programa' : 'programas'}, ${fmtMB(ps.reduce((a, p) => a + p.mb, 0))}` : 'Desinstalar'}`;
+    if (!ps.length) { queue.innerHTML = '<div class="empty"><b>La cola está vacía</b>Marca a la izquierda los programas que quieres quitar.</div>'; return; }
+    flip(queue, () => {
+      $$('.empty', queue).forEach(x => x.remove());
+      $$('.qi', queue).forEach(x => { if (!sel.has(x.dataset.p)) x.remove(); });
+      ps.forEach(p => { if (!$(`.qi[data-p="${p.id}"]`, queue)) { queue.insertAdjacentHTML('beforeend', `<div class="qi" data-p="${p.id}">${pi(p)}<span class="rt"><b>${esc(p.name)}</b><span>${p.silent ? 'Silenciosa' : 'Normal'}, ${fmtMB(p.mb)}</span></span><span class="chip">En cola</span><span class="fill"></span></div>`); const n = queue.lastElementChild; anim(n, [{ opacity: 0, transform: 'translate3d(20px,0,0) scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring }); } });
+    });
+  }
+  list.addEventListener('click', e => { if (running) return; const r = e.target.closest('.pr'); if (!r) return; const id = r.dataset.p; sel.has(id) ? sel.delete(id) : sel.add(id); const c = $('.check', r); c.classList.toggle('on', sel.has(id)); anim(c, [{ transform: 'scale(.75)' }, { transform: 'none' }], { d: 320, e: EASE.spring }); drawQueue(); });
+  $('#rbGo', el).addEventListener('click', async () => {
+    const ps = [...sel].map(id => PROGRAMS.find(p => p.id === id)).filter(Boolean); if (!ps.length || running) return;
+    running = true; drawQueue();
+    let all = [];
+    const chipOf = p => { const it = $(`.qi[data-p="${p.id}"]`, queue); return it ? { chip: $('.chip', it), fill: $('.fill', it) } : null; };
+    const setChip = (p, t, c, fillTo) => { const o = chipOf(p); if (!o) return; o.chip.className = 'chip ' + (c || ''); o.chip.textContent = t; anim(o.chip, [{ opacity: 0, transform: 'scale(.85)' }, { opacity: 1, transform: 'none' }], { d: 280, e: EASE.spring }); if (fillTo != null) anim(o.fill, [{ transform: `scaleX(${fillTo > .5 ? .5 : 0})` }, { transform: `scaleX(${fillTo})` }], { d: 900 }); };
+    if (REAL()) {
+      const byId = new Map(ps.map(p => [p.eid, p]));
+      try {
+        const r = await SH.job('remover', 'batch_uninstall', [ps.map(p => p.eid), { quiet: mode === 'silent', level: 'moderate', restore_point: true }], { onProgress: m => {
+          const d = m.data || {}; const p = byId.get(d.pid); if (!p) return;
+          if (d.status === 'running') setChip(p, 'Desinstalando', 'acc', .6);
+          else setChip(p, d.status === 'done' ? 'Hecho' : d.status === 'warn' ? 'Con avisos' : 'Falló', d.status === 'error' ? 'bad' : d.status === 'warn' ? 'warn' : 'ok', 1);
+        } });
+        (r.results || []).forEach(x => { const p = byEid.get(x.program.id); if (x.scan) all = all.concat(x.scan.items.map(mapItem(x.scan.key, p ? p.name : x.program.name))); if (p && !x.error) setChip(p, `${x.scan ? x.scan.items.length : 0} restos`, 'ok'); if (p && x.error) setChip(p, x.error.slice(0, 40), 'bad'); });
+        SH.logActivity(`${ps.length} programas desinstalados por lotes`, { ic: 'remover', go: 'remover', tab: 'history' });
+      } catch (e) { SH.toast(jobErr(e)); }
+      running = false;
+      const done = document.createElement('div'); done.className = 'rd-acts'; done.style.marginTop = '8px';
+      done.innerHTML = `<button class="btn sec lg" id="rbReview">${ic('eye')}Revisar ${all.length} restos</button>`;
+      $('#rbGo', el).parentElement.replaceWith(done); anim(done, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring });
+      $('#rbReview', el).addEventListener('click', () => openFlow(ps, { startAt: 'review', items: all, mode: mode === 'silent' ? 'silent' : 'normal', onDone: () => { sel.clear(); renderBatch(el); } }));
+      ensureReal(true).then(refresh);
+      return;
+    }
+    await API.restorePoint();
+    for (const p of ps) {
+      const it = $(`.qi[data-p="${p.id}"]`, queue); const chip = $('.chip', it); const fill = $('.fill', it);
+      const set = (t, c) => { chip.className = 'chip ' + (c || ''); chip.textContent = t; anim(chip, [{ opacity: 0, transform: 'scale(.85)' }, { opacity: 1, transform: 'none' }], { d: 280, e: EASE.spring }); };
+      set('Desinstalando', 'acc'); anim(fill, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(.7)' }], { d: 1600 });
+      await API.runUninstaller(p, mode === 'silent' && p.silent ? 'silent' : 'normal');
+      set('Buscando restos', 'acc'); anim(fill, [{ transform: 'scaleX(.7)' }, { transform: 'scaleX(1)' }], { d: 700 }); await wait(700);
+      const lo = leftoversFor(p); all = all.concat(lo); set(`${lo.length} restos`, 'ok');
+    }
+    running = false;
+    const done = document.createElement('div'); done.className = 'rd-acts'; done.style.marginTop = '8px';
+    done.innerHTML = `<button class="btn sec lg" id="rbReview">${ic('eye')}Revisar ${all.length} restos</button>`;
+    $('#rbGo', el).parentElement.replaceWith(done); anim(done, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring });
+    $('#rbReview', el).addEventListener('click', () => openFlow(ps, { startAt: 'review', items: all, mode: mode === 'silent' ? 'silent' : 'normal', onDone: () => { sel.clear(); renderBatch(el); } }));
+  });
+  if (REAL()) { list.innerHTML = '<div class="empty"><b>Leyendo los programas…</b></div>'; ensureReal().then(() => { build(); drawQueue(); }).catch(e => { list.innerHTML = `<div class="empty"><b>No se pudo leer la lista</b>${esc(jobErr(e))}</div>`; }); }
+  else { build(); drawQueue(); }
+  refreshers.add(() => { if (!running && el.isConnected) { const keep = [...sel].filter(id => PROGRAMS.some(p => p.id === id)); sel.clear(); keep.forEach(id => sel.add(id)); build(); drawQueue(); } });
+}
+
+/* ================= Instalación vigilada ================= */
+function renderWatch(el) {
+  el.innerHTML = `<div class="wv">
+    <div class="pan wv-hero" data-asm><div class="wv-eye" id="wvEye"><i style="--in:0"></i><i style="--in:18px"></i><span class="pulse"></span><span class="pulse"></span><span class="pulse"></span><span class="core">${ic('eye')}</span></div>
+      <div id="wvBody"></div>
+      <ol class="wv-steps"><li><b>Foto inicial</b><span>Archivos, registro, servicios y tareas tal como están ahora.</span></li><li><b>Instalas</b><span>Usa el instalador como siempre; StellarHub solo mira.</span></li><li><b>Foto final</b><span>Compara las dos y guarda lo que el instalador creó.</span></li></ol></div>
+    <div class="pan wv-listp" data-asm><h4>Instalaciones vigiladas <em id="wvN">${traces.length}</em></h4><div class="tbl-head wv-cols"><span>Instalación</span><span>Archivos</span><span>Claves</span><span>Tamaño</span><span></span></div><div class="rows wv-scroll" id="wvList"></div></div></div>`;
+  const eye = $('#wvEye', el), wb = $('#wvBody', el), wl = $('#wvList', el);
+  const trRow = t => `<div class="row wv-cols" data-t="${t.id}"><span class="rt"><b>${esc(t.name)}</b><span>${fmtDate(t.date)}</span></span><span class="muted">${t.files}</span><span class="muted">${t.keys}</span><span class="muted">${fmtMB(t.mb)}</span><span style="display:flex;gap:4px"><button class="btn sm sec" data-a="undo">Quitar lo que instaló</button><button class="btn sm ghost" data-a="del" title="Olvidar">${ic('trash')}</button></span></div>`;
+  wl.innerHTML = traces.map(trRow).join('');
+  function idle() {
+    eye.classList.remove('on');
+    swap(wb, `<h3>Vigila una instalación</h3><p>StellarHub toma una foto del sistema antes de instalar algo y otra al terminar. Después puedes quitar exactamente lo que creó, sin depender de su desinstalador.</p>
+      <div class="wv-form"><label class="field">${ic('package')}<input id="wvName" placeholder="Qué vas a instalar (por ejemplo, un plugin)" spellcheck="false"></label><button class="btn pri" id="wvStart">${ic('eye')}Tomar la foto inicial</button></div>`);
+  }
+  let timer = 0;
+  async function start(name) {
+    swap(wb, `<h3>Tomando la foto inicial</h3><p>Se registran archivos, claves, servicios y tareas. Tarda unos segundos.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar" style="transform:scaleX(0)"></span></div>`);
+    await wait(200); const b = $('#wvBar', wb); if (b) anim(b, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { d: 2200, e: EASE.io }); await wait(2300);
+    eye.classList.add('on'); anim($('.core', eye), [{ transform: 'scale(.7)' }, { transform: 'none' }], { d: 500, e: EASE.spring });
+    const c = { f: 0, k: 0, s: 0, t: 0 }; const t0 = Date.now();
+    swap(wb, `<h3>Vigilando: ${esc(name)}</h3><p>Instala el programa como siempre. Cuando termine, vuelve y pulsa el botón. <span class="faint" id="wvT">0:00</span></p>
+      <div class="wv-live"><div><b id="wvF">0</b><span>archivos nuevos</span></div><div><b id="wvK">0</b><span>claves del registro</span></div><div><b id="wvS">0</b><span>servicios</span></div><div><b id="wvTk">0</b><span>tareas</span></div></div>
+      <div class="wv-form"><button class="btn pri" id="wvStop">${ic('check')}Ya terminé de instalar</button><button class="btn ghost" id="wvCancel">Cancelar</button></div>`);
+    timer = setInterval(() => {
+      if (rnd() > .3) c.f += Math.floor(rnd() * 14); if (rnd() > .6) c.k += Math.floor(rnd() * 4); if (rnd() > .97) c.s++; if (rnd() > .97) c.t++;
+      const s = Math.floor((Date.now() - t0) / 1000); const set = (id, v) => { const x = $(id, wb); if (x && x.textContent !== String(v)) { x.textContent = v; anim(x, [{ transform: 'translate3d(0,-4px,0)', opacity: .5 }, { transform: 'none', opacity: 1 }], { d: 260 }); } };
+      set('#wvF', c.f); set('#wvK', c.k); set('#wvS', c.s); set('#wvTk', c.t); const t = $('#wvT', wb); if (t) t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    }, 600);
+    wb.onclick = async e => {
+      if (e.target.closest('#wvCancel')) { clearInterval(timer); wb.onclick = null; idle(); return; }
+      if (!e.target.closest('#wvStop')) return; clearInterval(timer); wb.onclick = null; eye.classList.remove('on');
+      swap(wb, `<h3>Comparando fotos</h3><p>Buscando todo lo que cambió desde que empezaste.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar2" style="transform:scaleX(0)"></span></div>`);
+      await wait(200); const b2 = $('#wvBar2', wb); if (b2) anim(b2, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { d: 1600, e: EASE.io }); await wait(1700);
+      const t = { id: 't' + Date.now(), name, date: new Date(TODAY), files: Math.max(c.f, 24), keys: Math.max(c.k, 6), mb: Math.round(c.f * 1.7 + 12) };
+      traces.unshift(t); history.unshift({ type: 'watch', title: `Instalación vigilada: ${name}`, sub: `${t.files} archivos y ${t.keys} claves registradas`, date: new Date(TODAY) });
+      flip(wl, () => wl.insertAdjacentHTML('afterbegin', trRow(t))); anim(wl.firstElementChild, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring }); $('#wvN', el).textContent = traces.length;
+      SH.toast(`Registrado: ${t.files} archivos y ${t.keys} claves de ${name}.`); refresh(); idle();
+    };
+  }
+  el.addEventListener('click', e => {
+    if (e.target.closest('#wvStart')) { const n = ($('#wvName', el).value || '').trim(); if (!n) { const f = $('#wvName', el).closest('.field'); anim(f, [{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'none' }], { d: 360 }); $('#wvName', el).focus(); return; } start(n); }
+    const a = e.target.closest('[data-a]'); if (!a) return; const row = a.closest('.row'); const t = traces.find(x => x.id === row.dataset.t);
+    if (a.dataset.a === 'undo') { openFlow([{ id: t.id, name: t.name, pub: 'Instalación vigilada', mb: t.mb, h: 160, ini: t.name.slice(0, 2).toUpperCase(), silent: false, store: false, prot: false, loc: `C:\\Program Files\\${t.name}`, audio: false }], { startAt: 'review', items: leftoversFor({ name: t.name, pub: t.name.split(' ')[0], loc: `C:\\Program Files\\${t.name}`, mb: t.mb }).filter(l => !l.personal).map(l => ({ ...l, conf: 99, why: 'Lo creó esta instalación (está en la foto de después y no en la de antes)' })), mode: 'forced' }); }
+    if (a.dataset.a === 'del') { const i = traces.indexOf(t); traces.splice(i, 1); anim(row, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(28px)' }], { d: 220 }).finished.then(() => flip(wl, () => row.remove())).catch(() => row.remove()); $('#wvN', el).textContent = traces.length; SH.toast('Instalación olvidada.', { action: { label: 'Deshacer', run: () => { traces.splice(i, 0, t); wl.innerHTML = traces.map(trRow).join(''); $('#wvN', el).textContent = traces.length; } } }); }
+  });
+  if (REAL()) { realWatch(el, { eye, wb, wl, idle }); return; }
+  idle(); setTimeout(() => stagger($$('.row', wl), 120, 50), 10);
+}
+/* instalación vigilada de verdad: foto antes y después con el motor; los restos se quitan con la revisión normal */
+function realWatch(el, { eye, wb, wl, idle }) {
+  let list = [];
+  const head = $('.wv-listp .tbl-head', el); if (head) head.innerHTML = '<span>Instalación</span><span>Elementos</span><span>Estado</span><span></span><span></span>';
+  const row = t => `<div class="row wv-cols" data-t="${esc(t.id)}"><span class="rt"><b>${esc(t.name)}</b><span>${fmtDate(t.started ? new Date(t.started * 1000) : null)}</span></span><span class="muted">${t.count ?? '—'}</span><span class="muted">${t.status === 'running' ? 'Vigilando' : 'Terminada'}</span><span></span>
+    <span style="display:flex;gap:4px">${t.status === 'running' ? '<button class="btn sm sec" data-a="resume">Terminar</button>' : `<button class="btn sm sec" data-a="undo"${t.count ? '' : ' disabled'}>Quitar lo que instaló</button>`}<button class="btn sm ghost" data-a="del" title="Olvidar">${ic('trash')}</button></span></div>`;
+  async function load(anim0) {
+    try { list = await SH.engine('remover', 'traces') || []; } catch { list = []; }
+    $('#wvN', el).textContent = list.length;
+    wl.innerHTML = list.length ? list.map(row).join('') : '<div class="empty"><b>Ninguna todavía</b>Las instalaciones que vigiles aparecerán aquí.</div>';
+    if (anim0) stagger($$('.row', wl), 80, 50);
+  }
+  function watching(meta) {
+    eye.classList.add('on'); anim($('.core', eye), [{ transform: 'scale(.7)' }, { transform: 'none' }], { d: 500, e: EASE.spring });
+    const t0 = (meta.started || Date.now() / 1000) * 1000;
+    swap(wb, `<h3>Vigilando: ${esc(meta.name)}</h3><p>Instala el programa como siempre. Cuando termine (y lo hayas abierto una vez, si quieres captar su configuración), vuelve y pulsa el botón. <span class="faint" id="wvT">0:00</span></p>
+      <div class="wv-form"><button class="btn pri" id="wvStop">${ic('check')}Ya terminé de instalar</button></div>`);
+    const tm = setInterval(() => { const t = $('#wvT', wb); if (!t) { clearInterval(tm); return; } const s = Math.floor((Date.now() - t0) / 1000); t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 1000);
+    wb.onclick = async e => {
+      if (!e.target.closest('#wvStop')) return; wb.onclick = null; clearInterval(tm); eye.classList.remove('on');
+      swap(wb, `<h3>Comparando fotos</h3><p>Buscando todo lo que cambió desde que empezaste. Puede tardar un poco.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar2" style="transform:scaleX(.08)"></span></div>`);
+      try {
+        const r = await SH.job('remover', 'monitor_stop', [meta.id], { onProgress: m => { const b = $('#wvBar2', wb); if (b) b.style.transform = `scaleX(${Math.max(.08, m.pct || 0)})`; } });
+        SH.toast(`Registrado: ${r.count || 0} elementos creados por ${meta.name}.`);
+        SH.logActivity(`Instalación vigilada: ${meta.name}`, { sub: `${r.count || 0} elementos registrados`, ic: 'eye', go: 'remover', tab: 'watch' });
+      } catch (err) { SH.toast(jobErr(err)); }
+      idle(); load(true);
+    };
+  }
+  async function start(name) {
+    swap(wb, `<h3>Tomando la foto inicial</h3><p>Se registran archivos, claves, servicios y tareas. Tarda unos segundos.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar" style="transform:scaleX(0)"></span></div>`);
+    setTimeout(() => { const b = $('#wvBar', wb); if (b) anim(b, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(.9)' }], { d: 6000, e: EASE.out }); }, 200);
+    try { const meta = await SH.job('remover', 'monitor_start', [name]); load(false); watching(meta); }
+    catch (e) { SH.toast(jobErr(e)); idle(); }
+  }
+  el.addEventListener('click', async e => {
+    if (e.target.closest('#wvStart')) { e.stopImmediatePropagation(); const n = ($('#wvName', el).value || '').trim(); if (!n) { $('#wvName', el).focus(); return; } start(n); return; }
+    const a = e.target.closest('[data-a]'); if (!a) return; e.stopImmediatePropagation();
+    const rowEl = a.closest('.row'); const t = list.find(x => x.id === rowEl.dataset.t); if (!t) return;
+    if (a.dataset.a === 'resume') { watching(t); return; }
+    if (a.dataset.a === 'undo') {
+      a.disabled = true; a.textContent = 'Buscando…';
+      try {
+        const r = await SH.job('remover', 'trace_scan', [t.id]);
+        openFlow([{ id: 'w' + t.id, name: t.name, pub: 'Instalación vigilada', mb: (r.total_size || 0) / 1048576, h: 160, ini: iniOf(t.name), silent: false, store: false, prot: false, loc: '', audio: false }],
+          { startAt: 'review', items: r.items.map(mapItem(r.key, t.name)), mode: 'forced', onDone: () => load(false) });
+      } catch (err) { SH.toast(jobErr(err)); }
+      a.disabled = false; a.textContent = 'Quitar lo que instaló'; return;
+    }
+    if (a.dataset.a === 'del') {
+      anim(rowEl, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(28px)' }], { d: 220 }).finished.then(() => rowEl.remove()).catch(() => rowEl.remove());
+      let undone = false; const timer = setTimeout(() => { if (!undone) SH.engine('remover', 'trace_delete', t.id).then(() => load(false)); }, 4200);
+      SH.toast('Instalación olvidada.', { action: { label: 'Deshacer', run: () => { undone = true; clearTimeout(timer); load(true); } }, ms: 4000 });
+    }
+  }, true);
+  load(true).then(() => { const run = list.find(x => x.status === 'running'); run ? watching(run) : idle(); });
+}
+
+/* ================= Cuarentena ================= */
+function renderQuarantine(el) {
+  el.innerHTML = `<div class="du-wrap" style="display:flex;flex-direction:column;gap:14px">
+    <div class="pan qz-hero" data-asm><div class="n"><b id="qzS">0</b><span>desinstalaciones</span></div><div class="n"><b id="qzI">0</b><span>elementos guardados</span></div><div class="n"><b id="qzM">0</b><span>ocupado</span></div><span class="sp"></span>
+      <div class="days">Se vacía sola a los ${segHTML([['7', '7 días'], ['14', '14 días'], ['30', '30 días']], String(qDays))}</div><button class="btn danger" id="qzEmpty">${ic('trash')}Vaciar ahora</button></div>
+    <div class="qz-grid"><div class="pan qz-main" data-asm><h4>Desinstalaciones guardadas <em>clic para ver cada elemento</em></h4><div id="qzList" class="qz-list"></div></div>
+      <div class="pan qz-side" data-asm><h4>Qué hay guardado</h4><div class="qz-types" id="qzTypes"></div>
+        <p class="qz-note">Cada elemento se guarda tal cual estaba: los archivos, las claves del registro como .reg y las tareas y servicios con su configuración. Restaurar los devuelve a su sitio.</p></div></div></div>`;
+  const listEl = $('#qzList', el);
+  const tot = () => { const items = sessions.flatMap(s => s.items); $('#qzS', el).textContent = sessions.length; $('#qzI', el).textContent = items.length; $('#qzM', el).textContent = fmtMB(items.reduce((a, l) => a + l.mb, 0));
+    const by = {}; items.forEach(l => { by[l.type] = (by[l.type] || 0) + 1; }); const mx = Math.max(1, ...Object.values(by));
+    const tEl = $('#qzTypes', el); if (tEl) tEl.innerHTML = Object.keys(by).length ? Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<div class="qt"><span class="ri">${ic(TYPES[k][1])}</span><span class="tn">${TYPES[k][0]}</span><b>${n}</b><span class="bar"><span style="transform:scaleX(${(n / mx).toFixed(3)})"></span></span></div>`).join('') : '<p class="faint" style="font-size:12.5px">Nada guardado ahora mismo.</p>'; };
+  const sHTML = s => { const left = Math.max(0, qDays - daysSince(s.date)); const mb = s.items.reduce((a, l) => a + l.mb, 0);
+    return `<div class="qs" data-s="${s.id}"><div class="qs-h" role="button" tabindex="0">${ic('chev', 'i cv')}<span class="pi" style="--h:${s.h}">${esc(s.ini)}</span><span class="rt"><b>${esc(s.prog)}</b><span>${fmtDate(s.date)}, modo ${esc(s.mode.toLowerCase())}</span></span><span class="muted" style="font-size:12.5px">${s.items.length} elementos, ${fmtMB(mb)}</span>
+      <span class="left">Quedan ${left} ${left === 1 ? 'día' : 'días'}<span class="bar ${left < 4 ? 'warn' : ''}"><span style="transform:scaleX(${(left / qDays).toFixed(3)})"></span></span></span>${s.restorable === false ? '<span class="chip">borrado definitivo</span>' : `<button class="btn sm sec" data-a="all">${ic('restore')}Restaurar todo</button>`}</div>
+      <div class="qs-b"><div><div class="qs-in">${s.items.map(l => `<div class="qit" data-l="${l.id}">${ic(TYPES[l.type][1])}<span class="p" title="${esc(l.path)}">${esc(l.path)}</span><span class="s">${l.mb ? fmtMB(l.mb) : ''}</span>${s.restorable === false ? '' : '<button class="btn sm ghost" data-a="one">Restaurar</button>'}</div>`).join('')}</div></div></div></div>`; };
+  function draw() { tot(); listEl.innerHTML = sessions.length ? sessions.map(sHTML).join('') : `<div class="empty"><b>La cuarentena está vacía</b>Lo que borres al desinstalar se guarda aquí ${qDays} días por si necesitas devolverlo.</div>`; stagger([...listEl.children], 60, 50); }
+  listEl.addEventListener('click', async e => {
+    const qs = e.target.closest('.qs'); if (!qs) return; const s = sessions.find(x => x.id === qs.dataset.s);
+    const a = e.target.closest('[data-a]');
+    if (!a) { if (e.target.closest('.qs-h')) { qs.classList.toggle('open'); if (qs.classList.contains('open')) stagger($$('.qit', qs).slice(0, 12), 80, 20); } return; }
+    if (a.dataset.a === 'all') { a.disabled = true; await API.restore(s); anim(qs, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(40px) scale(.97)' }], { d: 260 }).finished.then(() => flip(listEl, () => qs.remove())).catch(() => qs.remove()); setTimeout(() => { tot(); if (!sessions.length) draw(); }, 300); SH.toast(`${s.prog}: todo devuelto a su sitio.`); refresh(); }
+    if (a.dataset.a === 'one') { const row = a.closest('.qit'); const it = s.items.find(l => l.id === row.dataset.l); await API.restore(s, it); anim(row, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(24px)' }], { d: 200 }).finished.then(() => { row.remove(); if (!sessions.includes(s)) { qs.remove(); if (!sessions.length) draw(); } else { const m = $('.qs-h .muted', qs); m.textContent = `${s.items.length} elementos, ${fmtMB(s.items.reduce((x, l) => x + l.mb, 0))}`; } tot(); }).catch(() => {}); SH.toast('Restaurado.'); }
+  });
+  wireSeg($('.seg', el), v => { qDays = +v; draw(); if (REAL()) SH.engine('remover', 'set_settings', { quarantine_days: +v }); SH.toast(`La cuarentena se vaciará sola a los ${v} días.`); });
+  let armed = 0; $('#qzEmpty', el).addEventListener('click', e => {
+    const b = e.currentTarget; if (!sessions.length) { SH.toast('La cuarentena ya está vacía.'); return; }
+    if (!armed) { armed = setTimeout(() => { armed = 0; b.innerHTML = `${ic('trash')}Vaciar ahora`; }, 3000); b.innerHTML = `${ic('alert')}Pulsa otra vez: no se puede deshacer`; anim(b, [{ transform: 'scale(.95)' }, { transform: 'none' }], { d: 300, e: EASE.spring }); return; }
+    clearTimeout(armed); armed = 0; b.innerHTML = `${ic('trash')}Vaciar ahora`;
+    const n = sessions.flatMap(s => s.items).length; if (REAL()) SH.engine('remover', 'quarantine_empty').catch(err => SH.toast(jobErr(err))); sessions.splice(0); history.unshift({ type: 'empty', title: 'Cuarentena vaciada', sub: `${n} elementos borrados para siempre`, date: new Date(TODAY) });
+    $$('.qs', listEl).forEach((q, i) => anim(q, [{ opacity: 1 }, { opacity: 0, transform: 'translateY(-10px) scale(.97)' }], { d: 220, delay: i * 50 })); setTimeout(draw, 400); SH.toast(`${n} elementos borrados para siempre.`); refresh();
+  });
+  if (REAL()) {
+    listEl.innerHTML = '<div class="empty"><b>Leyendo la cuarentena…</b></div>';
+    const seg = $('.seg', el);
+    loadRealSessions().then(() => { $$('button', seg).forEach(b => b.classList.toggle('on', b.dataset.v === String(qDays))); SH.placeSeg(seg, true); draw(); });
+    refreshers.add(() => { if (el.isConnected) loadRealSessions().then(draw); });
+    return;
+  }
+  draw(); refreshers.add(() => { if (el.isConnected) draw(); });
+}
+/* cuarentena e historial reales -> las mismas estructuras que usa la interfaz */
+async function loadRealSessions() {
+  if (!realInfo) { try { realInfo = await SH.engine('remover', 'init'); qDays = (realInfo.settings || {}).quarantine_days || qDays; } catch { /* sigue */ } }
+  let list = []; try { list = await SH.engine('remover', 'quarantine_list') || []; } catch { list = []; }
+  sessions.splice(0, sessions.length, ...list.map(s => {
+    const name = s.program || 'Sin nombre';
+    return { id: s.id, prog: name, pub: s.publisher || '', h: hueOf(name), ini: iniOf(name), date: s.created ? new Date(s.created * 1000) : null,
+      mode: s.mode === 'quarantine' ? 'Cuarentena' : 'Borrado definitivo', restorable: s.restorable,
+      items: (s.items || []).filter(i => i.status === 'done').map(i => ({ id: 'q' + i.idx, idx: i.idx, type: typeOf({ kind: i.kind, target: i.target || i.display }), path: i.display, mb: (i.size || 0) / 1048576 })) };
+  }).filter(s => s.items.length));
+}
+const HIST_TYPE = { uninstall: 'uninstall', remove: 'uninstall', restore: 'restore', watch: 'watch', empty: 'empty', delete_session: 'empty' };
+async function loadRealHistory() {
+  let list = []; try { list = await SH.engine('remover', 'history') || []; } catch { list = []; }
+  const sub = h => { const d = h.detail || {};
+    if (h.action === 'uninstall') return `Modo ${({ normal: 'normal', quiet: 'silencioso', forced: 'forzado', batch: 'por lotes' })[d.mode] || d.mode || 'normal'}${d.ok === false ? ', con avisos' : ''}${d.seconds ? `, ${Math.round(d.seconds)} s` : ''}`;
+    if (h.action === 'remove') return `${d.ok || 0} restos ${d.mode === 'delete' ? 'borrados' : 'a la cuarentena'}${d.failed ? `, ${d.failed} fallaron` : ''}`;
+    if (h.action === 'restore') return `${d.ok || 0} elementos devueltos${d.failed ? `, ${d.failed} fallaron` : ''}`;
+    if (h.action === 'empty') return `${d.items || 0} elementos borrados para siempre`;
+    return ''; };
+  const title = h => ({ uninstall: `${h.title} desinstalado`, remove: `Restos de ${h.title}`, restore: 'Restaurado desde la cuarentena', watch: `Instalación vigilada: ${h.title}`, empty: 'Cuarentena vaciada', delete_session: 'Borrada una desinstalación de la cuarentena' })[h.action] || h.title;
+  history.splice(0, history.length, ...list.filter(h => HIST_TYPE[h.action]).map(h => ({ type: HIST_TYPE[h.action], title: title(h), sub: sub(h), date: new Date(h.time * 1000) })));
+}
+
+/* ================= Historial ================= */
+function renderHistory(el) {
+  const COL = { uninstall: 'var(--accent)', restore: 'var(--ok)', watch: 'var(--accent2)', empty: 'var(--warn)' };
+  function draw() {
+    const cnt = t => history.filter(h => h.type === t).length;
+    el.innerHTML = `<div class="hv-grid"><div class="pan hv-main" data-asm><h4>Lo que ha hecho Program Remover <em><button class="btn sm ghost" id="hvClear">Borrar historial</button></em></h4>
+      ${history.length ? `<div class="hv-scroll"><div class="hv">${history.map(h => `<div class="he" style="--c:${COL[h.type]}"><div><b>${esc(h.title)}</b><span>${esc(h.sub)}</span></div><span class="d">${fmtDate(h.date)}</span></div>`).join('')}</div></div>` : '<div class="empty"><b>Sin actividad</b>Aquí aparecerá cada desinstalación, restauración e instalación vigilada.</div>'}</div>
+      <div class="pan hv-side" data-asm><h4>En resumen</h4><div class="hv-stats">
+        <div><b>${cnt('uninstall')}</b><span>programas desinstalados</span></div><div><b>${cnt('restore')}</b><span>restauraciones</span></div>
+        <div><b>${cnt('watch')}</b><span>instalaciones vigiladas</span></div><div><b>${sessions.flatMap(x => x.items).length}</b><span>restos en cuarentena</span></div></div>
+        <div class="hv-legend"><span><i style="background:var(--accent)"></i>desinstalación</span><span><i style="background:var(--ok)"></i>restauración</span><span><i style="background:var(--accent2)"></i>instalación vigilada</span><span><i style="background:var(--warn)"></i>cuarentena vaciada</span></div></div></div>`;
+    stagger($$('.he', el), 60, 40);
+    $('#hvClear', el).addEventListener('click', () => {
+      const old = history.splice(0); draw(); let undone = false;
+      const t = REAL() ? setTimeout(() => { if (!undone) SH.engine('remover', 'clear_history'); }, 4200) : 0;
+      SH.toast('Historial borrado.', { action: { label: 'Deshacer', run: () => { undone = true; clearTimeout(t); history.push(...old); draw(); } }, ms: 4000 });
+    });
+  }
+  if (REAL()) { el.innerHTML = '<div class="empty"><b>Leyendo el historial…</b></div>'; Promise.all([loadRealHistory(), loadRealSessions()]).then(draw); refreshers.add(() => { if (el.isConnected) Promise.all([loadRealHistory(), loadRealSessions()]).then(draw); }); return; }
+  draw(); refreshers.add(() => { if (el.isConnected) draw(); });
+}
+
+/* ================= Modo cazador ================= */
+const HUNT_TIP = 'Pulsa «Apuntar a una ventana»: StellarHub se esconde y tienes 3 segundos para dejar el ratón encima de la ventana que quieras.';
+function hunter() {
+  const mod = sectionEl(); if (!mod || $('.hunt', mod)) return;
+  const h = document.createElement('div'); h.className = 'hunt';
+  h.innerHTML = `<div class="tip2"><h3>Modo cazador</h3><p>${REAL() ? HUNT_TIP : 'Arrastra la mira hasta cualquier ventana abierta y te digo qué programa es.'}</p><div class="row-btns">${REAL() ? '<button class="btn sec" data-h="win">Apuntar a una ventana</button>' : '<button class="btn sec" data-h="demo">Probar con la ventana de FL Studio</button>'}<button class="btn ghost" data-h="file">Elegir un .exe o acceso directo</button><button class="btn ghost" data-h="x">Salir</button></div></div><div class="cross">${ic('crosshair')}</div>`;
+  mod.appendChild(h);
+  anim(h, [{ opacity: 0 }, { opacity: 1 }], { d: 260 }); anim($('.tip2', h), [{ opacity: 0, transform: 'translate(-50%,-12px)', filter: 'blur(6px)' }, { opacity: 1, transform: 'translate(-50%,0)', filter: 'blur(0px)' }], { d: 480, e: EASE.spring });
+  const cx = new Spring(0, 260, 22), cy = new Spring(0, 260, 22); const r0 = h.getBoundingClientRect(); cx.set(r0.width / 2); cy.set(r0.height / 2 + 40);
+  const cross = $('.cross', h); let rot = 0;
+  const tk = dt => { cx.step(dt); cy.step(dt); rot += dt * 40 * (SH.state.settings.intensity === 'min' ? 0 : 1); cross.style.transform = `translate3d(${cx.v.toFixed(1)}px,${cy.v.toFixed(1)}px,0) rotate(${rot.toFixed(1)}deg)`; };
+  tickers.add(tk);
+  h.addEventListener('pointermove', e => { const r = h.getBoundingClientRect(); cx.t = e.clientX - r.left; cy.t = e.clientY - r.top; });
+  const close = () => { tickers.delete(tk); anim(h, [{ opacity: 1 }, { opacity: 0 }], { d: 200 }).finished.then(() => h.remove()).catch(() => h.remove()); };
+  function showResult(r) {
+    $$('.pan.res', h).forEach(x => x.remove());
+    const res = document.createElement('div'); res.className = 'pan res';
+    const p = r && r.program ? fromEngine(r.program) : null;
+    const file = r && r.info && r.info.path ? r.info.path.split('\\').pop() : '';
+    res.innerHTML = p ? `<div class="rd-top">${pi(p, true)}<div><h3>Es ${esc(p.name)}</h3><div class="who">${esc(p.pub || '')}${file ? `, ${esc(file)}` : ''}</div></div></div><div class="row-btns"><button class="btn pri" data-h="goreal" data-e="${esc(p.eid)}">Ver en la lista</button><button class="btn ghost" data-h="x">Cerrar</button></div>`
+      : `<div class="rd-top"><div><h3>No es un programa instalado</h3><div class="who">${r && r.info && (r.info.path || r.info.title) ? esc(r.info.path || r.info.title) : 'No se pudo identificar la ventana'}</div></div></div><div class="row-btns"><button class="btn ghost" data-h="x">Cerrar</button></div>`;
+    h.appendChild(res); anim(res, [{ opacity: 0, transform: 'scale(.9)', filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 480, e: EASE.spring });
+  }
+  h.addEventListener('click', async e => {
+    const b = e.target.closest('[data-h]'); if (!b) return;
+    if (b.dataset.h === 'x') { close(); return; }
+    if (b.dataset.h === 'goreal') { const eid = b.dataset.e; close(); ctxRef && ctxRef.setTab('programs'); ensureReal().then(() => setTimeout(() => SH.remover && SH.remover.select(eid), 300 * SH.motion())); return; }
+    if (REAL() && b.dataset.h === 'win') {
+      b.disabled = true; const tip = $('.tip2 p', h);
+      try { const r = await SH.job('remover', 'hunter_window', [], { onProgress: m => { if (m.data && m.data.count && tip) tip.textContent = `Pon el ratón sobre la ventana… ${m.data.count}`; } }); showResult(r); }
+      catch (err) { SH.toast(jobErr(err)); }
+      b.disabled = false; if (tip) tip.textContent = HUNT_TIP; return;
+    }
+    if (REAL() && b.dataset.h === 'file') { try { const r = await SH.engine('remover', 'hunter_file'); if (r) showResult(r); } catch (err) { SH.toast(jobErr(err)); } return; }
+    if (b.dataset.h === 'file') SH.toast('Aquí se abrirá el selector de archivos de Windows.');
+    if (b.dataset.h === 'demo' || b.dataset.h === 'go') {
+      if (b.dataset.h === 'go') { close(); ctxRef && ctxRef.setTab('programs'); setTimeout(() => SH.remover && SH.remover.select('FL Studio 2025'), 300 * SH.motion()); return; }
+      const p = PROGRAMS.find(x => x.name === 'FL Studio 2025'); if (!p) { SH.toast('FL Studio ya no está instalado.'); return; }
+      const r = h.getBoundingClientRect(); cx.t = r.width / 2; cy.t = r.height / 2 - 20;
+      setTimeout(() => {
+        const res = document.createElement('div'); res.className = 'pan res';
+        res.innerHTML = `<div class="rd-top">${pi(p, true)}<div><h3>Es ${esc(p.name)}</h3><div class="who">${esc(p.pub)}, proceso FL64.exe</div></div></div><div class="row-btns"><button class="btn pri" data-h="go">Ver en la lista</button><button class="btn ghost" data-h="x">Cerrar</button></div>`;
+        h.appendChild(res); anim(res, [{ opacity: 0, transform: 'scale(.9)', filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 480, e: EASE.spring });
+        anim(cross, [{ opacity: 1 }, { opacity: 0 }], { d: 300, keep: true });
+      }, 500 * SH.motion());
+    }
+  });
+}
+
+SH.module({
+  id: 'remover', real: true,
+  actions(el, ctx) {
+    ctxRef = ctx;
+    el.innerHTML = `<button class="btn ghost" id="rvExport">${ic('export')}Exportar lista</button><button class="btn sec" id="rvHunt">${ic('crosshair')}Modo cazador</button>`;
+    $('#rvHunt', el).addEventListener('click', hunter);
+    $('#rvExport', el).addEventListener('click', async () => {
+      if (!REAL()) { SH.toast(`Lista de ${PROGRAMS.length} programas guardada en Documentos (simulado).`); return; }
+      try { const path = await SH.engine('remover', 'export_programs'); if (path) SH.toast(`Lista guardada en ${path.split('\\').pop()}.`); } catch (err) { SH.toast(jobErr(err)); }
+    });
+  },
+  renderTab(tab, el, ctx) {
+    ctxRef = ctx;
+    if (tab === 'programs') renderPrograms(el, ctx);
+    else if (tab === 'batch') renderBatch(el);
+    else if (tab === 'watch') renderWatch(el);
+    else if (tab === 'quarantine') renderQuarantine(el);
+    else if (tab === 'history') renderHistory(el);
+  },
+  enterTab(tab, el) { requestAnimationFrame(() => $$('.seg', el).forEach(s => SH.placeSeg(s, true))); },
+});
+SH.actions.add([
+  { t: 'Desinstalación por lotes', go: 'remover', tab: 'batch', ic: 'list' },
+  { t: 'Vigilar la instalación de un programa', go: 'remover', tab: 'watch', ic: 'eye' },
+  { t: 'Qué programa es esta ventana (modo cazador)', run: () => { SH.go('remover'); setTimeout(hunter, 650 * SH.motion()); }, ic: 'crosshair' },
+  { t: 'Ver los programas que más ocupan', go: 'remover', tab: 'programs', ic: 'sort' },
+]);
+})();

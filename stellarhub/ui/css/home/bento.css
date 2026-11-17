@@ -1,0 +1,150 @@
+/* StellarHub · vista de Inicio "Mosaico" */
+.hv-bento{position:absolute;inset:0 0 4px 0;display:grid;gap:10px;container-type:size;
+  grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:1fr 1fr .82fr .82fr;
+  grid-template-areas:"gpu gpu cpu cpu" "gpu gpu cpu cpu" "ram ssd dsp dsp" "bat wif aud sys"}
+.hv-bento .bt{position:relative;perspective:900px;min-width:0;min-height:0;cursor:pointer;outline:none;border-radius:var(--r-l)}
+.hv-bento .a-ram,.hv-bento .a-ssd,.hv-bento .a-bat,.hv-bento .a-wif,.hv-bento .a-aud,.hv-bento .a-sys{border-radius:var(--r-m)}
+.hv-bento .tilt{position:absolute;inset:0;border-radius:inherit;transform-style:preserve-3d;will-change:transform;overflow:hidden;
+  display:flex;flex-direction:column;padding:14px 16px 14px;border:1px solid var(--line);background:var(--raise);
+  transition:border-color calc(200ms*var(--f)),background-color calc(200ms*var(--f))}
+.hv-bento .a-ram .tilt,.hv-bento .a-ssd .tilt,.hv-bento .a-bat .tilt,.hv-bento .a-wif .tilt,.hv-bento .a-aud .tilt,.hv-bento .a-sys .tilt{padding:11px 13px 12px}
+
+/* tratamientos: cada mosaico pesa distinto */
+.hv-bento .k-hero .tilt{border-color:color-mix(in oklab,var(--accent2) 26%,transparent);
+  background:radial-gradient(120% 95% at 72% 22%,color-mix(in oklab,var(--accent2) 15%,transparent),transparent 62%),var(--raise)}
+.hv-bento .k-chip .tilt{border-color:color-mix(in oklab,var(--accent) 30%,transparent);
+  background:radial-gradient(90% 80% at 50% 36%,color-mix(in oklab,var(--accent) 11%,transparent),transparent 66%),var(--raise)}
+.hv-bento .k-open .tilt{background:transparent}
+.hv-bento .k-deep .tilt{background:color-mix(in oklab,var(--void) 72%,transparent);box-shadow:inset 0 1px 0 var(--line)}
+.hv-bento .bt.hot .tilt{border-color:var(--line2)}
+.hv-bento .k-hero.hot .tilt{border-color:color-mix(in oklab,var(--accent2) 55%,transparent)}
+.hv-bento .k-chip.hot .tilt{border-color:color-mix(in oklab,var(--accent) 60%,transparent)}
+.hv-bento .bt:focus-visible .tilt{outline:2px solid var(--accent2);outline-offset:2px}
+
+/* brillo que sigue al cursor */
+.hv-bento .glow{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity calc(220ms*var(--f));
+  background:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),color-mix(in oklab,var(--accent2) 15%,transparent),transparent 62%)}
+.hv-bento .k-chip .glow{background:radial-gradient(240px circle at var(--mx,50%) var(--my,50%),color-mix(in oklab,var(--accent) 16%,transparent),transparent 62%)}
+.hv-bento .bt.hot .glow{opacity:1}
+
+/* mosaicos anchos y bajos: ilustración a la izquierda, texto a la derecha */
+.hv-bento .a-dsp .tilt{flex-direction:row;align-items:center;gap:14px}
+.hv-bento .a-dsp .art{flex:0 0 46%;height:100%;padding:0}
+.hv-bento .a-dsp .meta{flex:1}
+
+/* mosaicos pequeños: la ilustración arriba, más grande, y el texto abajo */
+.hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .tilt{justify-content:flex-end}
+.hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .art{position:absolute;right:14px;top:14px;left:auto;width:48%;height:min(40px,calc(100% - 96px));min-height:22px;padding:0;justify-content:flex-end}
+.hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .art svg{width:auto;max-width:100%}
+
+/* contenido */
+.hv-bento .art{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;transform:translateZ(26px);padding:4px 0 8px}
+.hv-bento .art svg{width:100%;height:100%;display:block;overflow:visible}
+.hv-bento .meta{transform:translateZ(12px);min-width:0}
+.hv-bento .meta .k{font-size:11.5px;color:var(--mute)}
+.hv-bento .meta .t{display:block;font:500 12.5px/1.25 var(--display);letter-spacing:-.01em;margin-top:2px;overflow-wrap:anywhere}
+.hv-bento .a-gpu .meta .t{font-size:16px}
+.hv-bento .a-cpu .meta .t{font-size:14.5px}
+.hv-bento .live{margin-top:8px}
+.hv-bento .nums{display:flex;gap:18px;align-items:baseline;margin-bottom:8px}
+.hv-bento .nums b{font:500 17px var(--display);letter-spacing:-.02em}
+.hv-bento .nums b.n{font-size:32px;letter-spacing:-.04em}
+.hv-bento .nums small{font-size:11.5px;color:var(--mute);margin-left:3px}
+.hv-bento .lbar{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;font-size:12px;line-height:1.35;color:var(--mute);margin-bottom:6px}
+.hv-bento .lbar b{color:var(--ink);font-weight:500}
+.hv-bento .lbar em{font-style:normal;color:var(--faint)}
+.hv-bento .bar{height:5px}
+.hv-bento .bar>span{transition:none;transform:scaleX(0)}
+.hv-bento .a-cpu .nums{margin-bottom:0}
+
+/* ilustraciones */
+.hv-bento svg text{font:400 11px var(--text);fill:var(--mute)}
+.hv-bento svg text.sm{font-size:8.5px}
+.hv-bento .art-gpu .body{fill:var(--raise2);stroke:var(--accent2);stroke-opacity:.45;stroke-width:1.2}
+.hv-bento .art-gpu .bracket{fill:var(--raise3);stroke:var(--accent2);stroke-opacity:.3}
+.hv-bento .art-gpu .strip{stroke:var(--accent);stroke-width:2;stroke-linecap:round;opacity:.85}
+.hv-bento .art-gpu .fin{stroke:var(--accent2);stroke-opacity:.28}
+.hv-bento .ring{fill:var(--void);fill-opacity:.65;stroke:var(--accent2);stroke-opacity:.35}
+.hv-bento .gfan{will-change:transform}
+.hv-bento .gfan path{fill:var(--accent2);fill-opacity:.14;stroke:var(--accent2);stroke-opacity:.55;stroke-width:1}
+.hv-bento .hub{fill:var(--deep);stroke:var(--accent2);stroke-opacity:.6}
+.hv-bento .gold{fill:var(--warn);fill-opacity:.16}
+.hv-bento .pin{fill:var(--warn);opacity:.6}
+
+.hv-bento .art-cpu .sub{fill:var(--raise2);stroke:var(--accent);stroke-opacity:.45;stroke-width:1.2}
+.hv-bento .art-cpu .pad{fill:var(--warn);opacity:.5}
+.hv-bento .art-cpu .cap{fill:var(--raise3);stroke:var(--accent2);stroke-opacity:.3}
+.hv-bento .art-cpu .die{fill:var(--accent);fill-opacity:.07;stroke:var(--accent);stroke-opacity:.6}
+.hv-bento .art-cpu .th{fill:var(--accent);opacity:.2;transition:opacity calc(600ms*var(--f)),fill calc(300ms*var(--f))}
+.hv-bento .art-cpu .th.busy{fill:color-mix(in oklab,var(--accent) 60%,#fff)}
+.hv-bento .art-cpu .pulse{fill:none;stroke:var(--accent);stroke-width:1.2;opacity:0;transform-box:fill-box;transform-origin:50% 50%}
+.hv-bento .bt.hot .art-cpu .pulse{animation:hvbPulse calc(1600ms*var(--f) + 400ms) cubic-bezier(.16,1,.3,1) infinite}
+@keyframes hvbPulse{0%{opacity:.6;transform:scale(.62)}100%{opacity:0;transform:scale(1.12)}}
+
+.hv-bento .pcb{fill:var(--raise2);stroke:var(--accent2);stroke-opacity:.45;stroke-width:1.1}
+.hv-bento .mchip{fill:var(--void);fill-opacity:.7;stroke:var(--accent2);stroke-opacity:.35}
+.hv-bento .hole{fill:var(--void);stroke:var(--accent2);stroke-opacity:.3}
+.hv-bento .bt.hot .art-ram .mchip{animation:hvbChip 900ms ease-in-out infinite alternate}
+.hv-bento .bt.hot .art-ram .mchip:nth-of-type(2){animation-delay:150ms}
+.hv-bento .bt.hot .art-ram .mchip:nth-of-type(3){animation-delay:300ms}
+.hv-bento .bt.hot .art-ram .mchip:nth-of-type(4){animation-delay:450ms}
+@keyframes hvbChip{to{fill:var(--accent2);fill-opacity:.28}}
+.hv-bento .art-ssd .led{fill:var(--ok);opacity:.5}
+.hv-bento .bt.hot .art-ssd .led{animation:hvbLed 260ms steps(2) infinite}
+@keyframes hvbLed{50%{opacity:1}}
+
+.hv-bento .art-dsp .frame{fill:var(--raise2);stroke:var(--accent2);stroke-opacity:.45}
+.hv-bento .art-dsp .screen{fill:var(--void);fill-opacity:.85}
+.hv-bento .art-dsp .sweep{fill:var(--accent2);fill-opacity:.1;opacity:0}
+.hv-bento .bt.hot .art-dsp .sweep{animation:hvbSweep calc(1300ms*var(--f) + 300ms) cubic-bezier(.45,0,.2,1) infinite}
+@keyframes hvbSweep{0%{opacity:1;transform:translateX(0)}100%{opacity:0;transform:translateX(112px)}}
+.hv-bento .art-dsp .stand{fill:none;stroke:var(--accent2);stroke-opacity:.45;stroke-width:1.5;stroke-linecap:round}
+
+.hv-bento .art-bat .body{fill:none;stroke:var(--accent2);stroke-opacity:.55;stroke-width:1.5}
+.hv-bento .art-bat .term{fill:var(--accent2);fill-opacity:.5}
+.hv-bento .art-bat .fill{fill:var(--ok);opacity:.5;transform-box:fill-box;transform-origin:0 50%;transform:scaleX(.97)}
+.hv-bento .art-bat .bolt{fill:var(--void);opacity:0;transition:opacity calc(200ms*var(--f))}
+.hv-bento .bt.hot .art-bat .bolt{opacity:.85}
+.hv-bento .bt.hot .art-bat .fill{animation:hvbCharge calc(1200ms*var(--f) + 300ms) ease-in-out infinite alternate}
+@keyframes hvbCharge{to{opacity:.85}}
+
+.hv-bento .art-wif .arc{fill:none;stroke:var(--accent2);stroke-width:5;stroke-linecap:round;opacity:.35}
+.hv-bento .art-wif .dotw{fill:var(--accent2)}
+.hv-bento .bt.hot .art-wif .arc{animation:hvbWave 1100ms ease-out infinite}
+.hv-bento .bt.hot .art-wif .a2{animation-delay:140ms}
+.hv-bento .bt.hot .art-wif .a3{animation-delay:280ms}
+@keyframes hvbWave{0%{opacity:.25}30%{opacity:1}100%{opacity:.25}}
+
+.hv-bento .art-aud .eq{fill:var(--accent);opacity:.75;transform-box:fill-box;transform-origin:50% 100%;transform:scaleY(.55)}
+.hv-bento .bt.hot .art-aud .eq{animation:hvbEq 520ms ease-in-out infinite alternate;animation-delay:var(--d)}
+@keyframes hvbEq{from{transform:scaleY(.25)}to{transform:scaleY(1)}}
+
+.hv-bento .art-sys .lay{fill:var(--accent2);fill-opacity:.1;stroke:var(--accent2);stroke-opacity:.6;stroke-linejoin:round;
+  transition:transform calc(380ms*var(--f)) cubic-bezier(.3,1.5,.5,1),fill-opacity calc(200ms*var(--f))}
+.hv-bento .bt.hot .art-sys .l1{transform:translateY(-7px);fill-opacity:.22}
+.hv-bento .bt.hot .art-sys .l3{transform:translateY(7px)}
+
+/* escenario estrecho o bajo */
+@container (max-width:640px){
+  .hv-bento .a-gpu .meta .t{font-size:14px}
+  .hv-bento .a-cpu .meta .t{font-size:13px}
+  .hv-bento .nums{gap:12px}
+  .hv-bento .nums b{font-size:15px}
+  .hv-bento .nums b.n{font-size:26px}
+  .hv-bento .meta .t{font-size:11.5px}
+  .hv-bento .lbar{font-size:11.5px}
+}
+@container (max-height:540px){
+  .hv-bento .nums b.n{font-size:24px}
+  .hv-bento .a-ram .art,.hv-bento .a-ssd .art,.hv-bento .a-bat .art,.hv-bento .a-wif .art,.hv-bento .a-aud .art,.hv-bento .a-sys .art{padding:0 0 4px}
+}
+
+html[data-int=min] .hv-bento *{animation:none!important}
+
+/* ---------- todos los mosaicos con el mismo fondo (antes Red, Audio y Pantallas se veían "apagados") ---------- */
+.hv-bento .k-deep .tilt,.hv-bento .k-open .tilt{background:var(--raise);box-shadow:none}
+/* el escenario nunca lleva el desvanecido de las zonas con scroll */
+#stage,#stage .vwrap,.hv-bento{-webkit-mask-image:none!important;mask-image:none!important}
+/* rejilla dinámica: la monta bento.js según los componentes que tenga el equipo */
+.hv-bento{grid-template-areas:none}
+.hv-bento .na{color:var(--faint)}

@@ -1,0 +1,725 @@
+"""Storage Checker real: escaneo de una unidad o carpeta (como WinDirStat), mapa, tipos, más grandes, duplicados,
+comparación con el escaneo anterior, abrir en el Explorador y enviar a la papelera (con restauración).
+
+El árbol completo se queda aquí (en memoria); a la interfaz solo se le mandan niveles agregados con view(id, depth)
+y los subárboles se piden al hacer zoom. Los archivos pequeños de cada carpeta se agrupan en un único bloque
+"archivos pequeños" para que el árbol aguante millones de archivos sin gastar cientos de MB.
+"""
+import ctypes
+import hashlib
+import heapq
+import json
+import os
+import queue
+import stat as _stat
+import string
+import subprocess
+import threading
+import time
+from ctypes import wintypes
+
+EXPORTS = {"drives", "pick_folder", "view", "info", "types", "largest", "compare", "reveal", "trash", "restore", "can_delete"}
+JOBS = {"scan", "duplicates"}
+
+FILE_MIN = 1024 * 1024         # archivos más pequeños: se agrupan por carpeta (ahorra memoria con millones)
+BIG_KEEP = 400                 # los N archivos más grandes de todo el escaneo
+NO_WINDOW = 0x08000000
+REPARSE = 0x400
+DATA = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "storage")
+
+# ---------------- tipos (mismas claves que la interfaz) ----------------
+EXT_TYPE = {}
+for t, exts in {
+    "game": "vpk pak bin bank pck upk uasset ubulk forge bundle assets resource rpf arc",
+    "exe": "exe dll sys mui pyd ocx drv efi so node",
+    "video": "mp4 mkv mov avi wmv webm m4v flv ts mts",
+    "vm": "vdi vhd vhdx vmdk iso img qcow2 wim esd",
+    "audio": "wav flac mp3 ogg m4a aac aif aiff ncw nki nkx nicnt mid wma opus",
+    "ai": "gguf safetensors ckpt pt pth onnx bin.gguf",
+    "cache": "tmp cache db dat log ldb etl evtx temp jrs chk old bak dmp lock",
+    "plugin": "vst3 clap aax component vst",
+    "inst": "msi cab msu msp msix appx appxbundle msixbundle",
+    "archive": "zip 7z rar tar gz xz bz2 zst tgz",
+    "image": "jpg jpeg png psd gif webp bmp tif tiff heic raw cr2 nef svg ico",
+    "doc": "pdf docx doc xlsx xls pptx ppt md txt rtf odt csv epub",
+    "code": "py js ts json pyc manifest html css cpp h c cs java go rs lua xml yml yaml ini cfg toml map jar class",
+}.items():
+    for e in exts.split():
+        EXT_TYPE[e] = t
+SYS_NAMES = {"pagefile.sys", "hiberfil.sys", "swapfile.sys", "dumpstack.log.tmp"}
+
+
+def ftype(name, ext):
+    if name.lower() in SYS_NAMES:
+        return "system"
+    return EXT_TYPE.get(ext, "cache" if not ext else "other")
+
+
+# ---------------- estructura en memoria ----------------
+_ids = [0]
+
+
+def _nid():
+    _ids[0] += 1
+    return _ids[0]
+
+
+class D:
+    __slots__ = ("id", "name", "parent", "kids", "files", "small", "size", "fc", "dirs", "mtime", "cats", "err")
+
+    def __init__(self, name, parent):
+        self.id = _nid()
+        self.name = name
+        self.parent = parent
+        self.kids = []
+        self.files = []          # [id, nombre, tamaño, mtime, ext] de los archivos >= FILE_MIN
+        self.small = None        # [tamaño, cuenta, {tipo: tamaño}] de los pequeños
+        self.size = 0
+        self.fc = 0
+        self.dirs = 0
+        self.mtime = 0
+        self.cats = None
+        self.err = False
+
+
+class Scan:
+    def __init__(self, target):
+        self.target = target
+        self.root = None
+        self.index = {}          # id -> D
+        self.fidx = {}           # id de archivo -> (D, entrada)
+        self.big = []            # heap (tamaño, id)
+        self.exts = {}           # ext -> [tamaño, cuenta, tipo]
+        self.files = 0
+        self.bytes = 0
+        self.errors = 0
+        self.when = 0
+        self.secs = 0
+        self.disk = None
+
+
+_cur = {"scan": None}
+_lock = threading.Lock()
+
+
+def _path(d):
+    parts = []
+    while d is not None:
+        parts.append(d.name)
+        d = d.parent
+    parts.reverse()
+    p = parts[0]
+    if p.endswith(":"):
+        p += "\\"          # "C:" + "Users" tiene que dar "C:\Users", no "C:Users"
+    for x in parts[1:]:
+        p = os.path.join(p, x)
+    return p
+
+
+# ---------------- unidades y carpeta ----------------
+def drives():
+    out = []
+    k32 = ctypes.windll.kernel32
+    mask = k32.GetLogicalDrives()
+    for i, letter in enumerate(string.ascii_uppercase):
+        if not mask & (1 << i):
+            continue
+        root = f"{letter}:\\"
+        kind = k32.GetDriveTypeW(root)
+        if kind not in (2, 3):      # extraíble o fija
+            continue
+        free, total = ctypes.c_ulonglong(), ctypes.c_ulonglong()
+        if not k32.GetDiskFreeSpaceExW(root, None, ctypes.byref(total), ctypes.byref(free)):
+            continue
+        label = ctypes.create_unicode_buffer(261)
+        fs = ctypes.create_unicode_buffer(261)
+        k32.GetVolumeInformationW(root, label, 261, None, None, None, fs, 261)
+        out.append({"root": root, "letter": f"{letter}:", "label": label.value, "fs": fs.value, "total": total.value,
+                    "free": free.value, "used": total.value - free.value, "removable": kind == 2,
+                    "system": root.lower() == (os.environ.get("SystemDrive", "C:") + "\\").lower()})
+    return out
+
+
+def pick_folder():
+    """Diálogo de Windows para elegir una carpeta (por encima de la app)."""
+    ps = ("Add-Type -AssemblyName System.Windows.Forms; $o=New-Object System.Windows.Forms.Form -Property @{TopMost=$true;ShowInTaskbar=$false};"
+          "$f=New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description='Elige la carpeta que quieres analizar';"
+          "$f.UseDescriptionForTitle=$true; if($f.ShowDialog($o) -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; $f.SelectedPath}")
+    r = subprocess.run(["powershell.exe", "-NoProfile", "-STA", "-Command", ps], capture_output=True, creationflags=NO_WINDOW)
+    p = r.stdout.decode("utf-8", "replace").strip()
+    return p if p and os.path.isdir(p) else None
+
+
+def _disk_of(target):
+    root = os.path.splitdrive(os.path.abspath(target))[0] + "\\"
+    free, total = ctypes.c_ulonglong(), ctypes.c_ulonglong()
+    if ctypes.windll.kernel32.GetDiskFreeSpaceExW(root, None, ctypes.byref(total), ctypes.byref(free)):
+        return {"root": root, "total": total.value, "free": free.value, "used": total.value - free.value}
+    return {"root": root, "total": 0, "free": 0, "used": 0}
+
+
+# ---------------- escaneo ----------------
+def scan(job, target="C:\\", threads=8):
+    target = os.path.abspath(target)
+    if len(target) == 2 and target[1] == ":":
+        target += "\\"
+    if not os.path.isdir(target):
+        raise ValueError(f"No existe la carpeta {target}")
+    with _lock:
+        _cur["scan"] = None   # suelta la memoria del análisis anterior antes de empezar otro
+    s = Scan(target)
+    s.disk = _disk_of(target)
+    whole_drive = os.path.normcase(target) == os.path.normcase(s.disk["root"])
+    expect = s.disk["used"] if whole_drive else 0
+    root = D(target.rstrip("\\") if not whole_drive else target[:2], None)
+    s.root = root
+    s.index[root.id] = root
+    q = queue.Queue()
+    q.put((root, target))
+    lk = threading.Lock()
+    state = {"cur": target, "pending": 1}
+    done = threading.Event()
+    t0 = time.monotonic()
+
+    def work():
+        while not done.is_set():
+            try:
+                d, p = q.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            files = []
+            small = None
+            nf = 0
+            nb = 0
+            mt = 0
+            kids = []
+            try:
+                with os.scandir(p) as it:
+                    for e in it:
+                        try:
+                            st = e.stat(follow_symlinks=False)
+                        except OSError:
+                            continue
+                        attrs = getattr(st, "st_file_attributes", 0)
+                        if _stat.S_ISDIR(st.st_mode):
+                            if attrs & REPARSE:
+                                continue          # uniones y enlaces: no se siguen (no se cuenta dos veces)
+                            kids.append(e.name)
+                            continue
+                        if attrs & REPARSE:
+                            continue
+                        size = st.st_size
+                        nf += 1
+                        nb += size
+                        if st.st_mtime > mt:
+                            mt = st.st_mtime
+                        ext = os.path.splitext(e.name)[1][1:].lower()
+                        ty = ftype(e.name, ext)
+                        with lk:
+                            ex = s.exts.get(ext)
+                            if ex is None:
+                                s.exts[ext] = [size, 1, ty]
+                            else:
+                                ex[0] += size
+                                ex[1] += 1
+                        if size >= FILE_MIN:
+                            fid = _nid()
+                            ent = [fid, e.name, size, st.st_mtime, ext]
+                            files.append(ent)
+                            with lk:
+                                s.fidx[fid] = (d, ent)
+                                if len(s.big) < BIG_KEEP:
+                                    heapq.heappush(s.big, (size, fid))
+                                elif size > s.big[0][0]:
+                                    heapq.heapreplace(s.big, (size, fid))
+                        else:
+                            if small is None:
+                                small = [0, 0, {}]
+                            small[0] += size
+                            small[1] += 1
+                            small[2][ty] = small[2].get(ty, 0) + size
+            except OSError:
+                d.err = True
+                with lk:
+                    s.errors += 1
+            d.files = files
+            d.small = small
+            d.mtime = mt
+            d.size = nb
+            d.fc = nf
+            subs = []
+            for name in kids:
+                c = D(name, d)
+                subs.append(c)
+            d.kids = subs
+            with lk:
+                for c in subs:
+                    s.index[c.id] = c
+                s.files += nf
+                s.bytes += nb
+                state["cur"] = p
+                state["pending"] += len(subs) - 1
+                last = state["pending"] == 0
+            for c in subs:
+                q.put((c, os.path.join(p, c.name)))
+            if last:
+                done.set()
+            q.task_done()
+
+    ws = [threading.Thread(target=work, daemon=True, name=f"scan-{i}") for i in range(max(2, threads))]
+    for w in ws:
+        w.start()
+    while not done.wait(0.12):
+        if job.cancelled:
+            done.set()
+            job.stop()
+        el = time.monotonic() - t0
+        frac = min(0.99, s.bytes / expect) if expect else None
+        job.progress(frac if frac is not None else min(0.95, 1 - 1 / (1 + el / 20)), state["cur"],
+                     files=s.files, bytes=s.bytes, rate=round(s.files / max(.1, el)), secs=round(el, 1), exact=bool(expect))
+    for w in ws:
+        w.join(timeout=1)
+    job.progress(.995, "Ordenando…", force=True, files=s.files, bytes=s.bytes)
+    _finish(s)
+    s.secs = round(time.monotonic() - t0, 1)
+    s.when = time.time()
+    with _lock:
+        _cur["scan"] = s
+    _save_snapshot(s)
+    return {"root": view(root.id, 3), "info": info()}
+
+
+def _finish(s):
+    """Tamaños, cuentas y tipos de abajo arriba (sin recursión: hay árboles muy profundos)."""
+    order = []
+    stack = [s.root]
+    while stack:
+        d = stack.pop()
+        order.append(d)
+        stack.extend(d.kids)
+    for d in reversed(order):
+        cats = {}
+        for f in d.files:
+            ty = ftype(f[1], f[4])
+            cats[ty] = cats.get(ty, 0) + f[2]
+        if d.small:
+            for ty, b in d.small[2].items():
+                cats[ty] = cats.get(ty, 0) + b
+        for c in d.kids:
+            d.size += c.size
+            d.fc += c.fc
+            d.dirs += 1 + c.dirs
+            if c.mtime > d.mtime:
+                d.mtime = c.mtime
+            for ty, b in c.cats.items():
+                cats[ty] = cats.get(ty, 0) + b
+        d.cats = cats
+        d.kids.sort(key=lambda x: x.size, reverse=True)
+        d.files.sort(key=lambda x: x[2], reverse=True)
+
+
+def _get():
+    s = _cur["scan"]
+    if s is None:
+        raise RuntimeError("Todavía no hay ningún análisis")
+    return s
+
+
+def _dom(cats):
+    return max(cats.items(), key=lambda kv: kv[1])[0] if cats else "other"
+
+
+def _node(d, depth, min_bytes, max_kids):
+    """Una carpeta para la interfaz, con sus hijos hasta `depth` niveles; lo demasiado pequeño se agrupa."""
+    out = {"id": d.id, "name": d.name, "dir": True, "size": d.size, "fc": d.fc, "dirs": d.dirs, "mtime": int(d.mtime * 1000),
+           "cats": d.cats, "dom": _dom(d.cats), "err": d.err}
+    if depth <= 0:
+        out["lazy"] = bool(d.kids or d.files or d.small)
+        out["kids"] = []
+        return out
+    items = []
+    for c in d.kids:
+        items.append((c.size, "d", c))
+    for f in d.files:
+        items.append((f[2], "f", f))
+    if d.small:
+        items.append((d.small[0], "s", d.small))
+    items.sort(key=lambda x: x[0], reverse=True)
+    kids, rest, rest_n, rest_cats = [], 0, 0, {}
+    for size, kind, x in items:
+        if size <= 0:
+            continue
+        if len(kids) >= max_kids or (size < min_bytes and len(kids) >= 3):
+            rest += size
+            if kind == "d":
+                rest_n += x.fc
+                for ty, b in x.cats.items():
+                    rest_cats[ty] = rest_cats.get(ty, 0) + b
+            elif kind == "f":
+                rest_n += 1
+                ty = ftype(x[1], x[4])
+                rest_cats[ty] = rest_cats.get(ty, 0) + x[2]
+            else:
+                rest_n += x[1]
+                for ty, b in x[2].items():
+                    rest_cats[ty] = rest_cats.get(ty, 0) + b
+            continue
+        if kind == "d":
+            kids.append(_node(x, depth - 1, min_bytes, max_kids))
+        elif kind == "f":
+            kids.append({"id": x[0], "name": x[1], "size": x[2], "mtime": int(x[3] * 1000), "ext": x[4], "type": ftype(x[1], x[4])})
+        else:
+            cats = x[2]
+            kids.append({"id": -d.id, "name": f"{x[1]} archivo{'s' if x[1] != 1 else ''} pequeño{'s' if x[1] != 1 else ''}",
+                         "size": x[0], "fc": x[1], "ext": "", "type": _dom(cats), "group": True, "mtime": int(d.mtime * 1000)})
+    if rest > 0:
+        kids.append({"id": -(10_000_000 + d.id), "name": "Otros elementos más pequeños", "size": rest, "fc": rest_n,
+                     "ext": "", "type": _dom(rest_cats), "group": True, "mtime": int(d.mtime * 1000)})
+    out["kids"] = kids
+    return out
+
+
+def view(node_id=None, depth=3, max_kids=70):
+    """El nodo con sus descendientes hasta `depth` niveles (lo que se dibuja en el mapa o en el árbol)."""
+    s = _get()
+    d = s.index.get(int(node_id)) if node_id else s.root
+    if d is None:
+        raise KeyError("Esa carpeta ya no está en el análisis")
+    min_bytes = max(1, int(d.size * 0.0012))
+    return _node(d, int(depth), min_bytes, int(max_kids))
+
+
+def info():
+    s = _get()
+    return {"target": s.target, "files": s.files, "bytes": s.bytes, "dirs": s.root.dirs, "errors": s.errors,
+            "when": int(s.when * 1000), "secs": s.secs, "disk": s.disk, "rootId": s.root.id,
+            "admin": bool(ctypes.windll.shell32.IsUserAnAdmin())}
+
+
+def types():
+    s = _get()
+    by = {}
+    for ext, (size, n, ty) in s.exts.items():
+        b = by.setdefault(ty, {"type": ty, "size": 0, "count": 0, "exts": []})
+        b["size"] += size
+        b["count"] += n
+        b["exts"].append([ext or "(sin extensión)", size])
+    out = sorted(by.values(), key=lambda b: b["size"], reverse=True)
+    for b in out:
+        b["exts"] = sorted(b["exts"], key=lambda x: x[1], reverse=True)[:6]
+    return out
+
+
+def largest(n=200):
+    s = _get()
+    out = []
+    for size, fid in sorted(s.big, reverse=True)[:int(n)]:
+        d, ent = s.fidx.get(fid, (None, None))
+        if d is None:
+            continue
+        out.append({"id": fid, "name": ent[1], "size": ent[2], "mtime": int(ent[3] * 1000), "ext": ent[4],
+                    "type": ftype(ent[1], ent[4]), "dir": _path(d), "dirId": d.id})
+    return out
+
+
+# ---------------- duplicados ----------------
+SKIP_DUP = ("\\windows\\", "\\$recycle.bin\\", "\\system volume information\\", "\\windowsapps\\", "\\winsxs\\")
+
+
+def duplicates(job, min_mb=1):
+    """Agrupa por tamaño, luego por huella parcial (inicio + final) y al final por huella completa."""
+    s = _get()
+    min_b = int(float(min_mb) * 1024 * 1024)
+    by_size = {}
+    for fid, (d, ent) in s.fidx.items():
+        if ent[2] < min_b:
+            continue
+        by_size.setdefault(ent[2], []).append((d, ent))
+    cands = [(sz, lst) for sz, lst in by_size.items() if len(lst) > 1]
+    paths = []
+    for sz, lst in cands:
+        group = []
+        for d, ent in lst:
+            p = os.path.join(_path(d), ent[1])
+            if not any(k in p.lower() + "\\" for k in SKIP_DUP):
+                group.append((p, ent))
+        if len(group) > 1:
+            paths.append((sz, group))
+    paths.sort(key=lambda x: x[0] * (len(x[1]) - 1), reverse=True)
+    total = sum(sz * len(g) for sz, g in paths) or 1
+    done_b = 0
+    groups = []
+
+    def part(p, sz):
+        h = hashlib.blake2b(digest_size=16)
+        with open(p, "rb") as fh:
+            h.update(fh.read(65536))
+            if sz > 131072:
+                fh.seek(-65536, 2)
+                h.update(fh.read(65536))
+        return h.hexdigest()
+
+    def full(p):
+        h = hashlib.blake2b(digest_size=20)
+        with open(p, "rb") as fh:
+            while True:
+                if job.cancelled:
+                    job.stop()
+                b = fh.read(4 * 1024 * 1024)
+                if not b:
+                    break
+                h.update(b)
+        return h.hexdigest()
+
+    for sz, group in paths:
+        job.check()
+        sub = {}
+        for p, ent in group:
+            try:
+                sub.setdefault(part(p, sz), []).append((p, ent))
+            except OSError:
+                pass
+        for lst in sub.values():
+            if len(lst) < 2:
+                continue
+            fulls = {}
+            for p, ent in lst:
+                job.progress(done_b / total, p, groups=len(groups))
+                try:
+                    fulls.setdefault(full(p) if sz > 131072 else "x", []).append((p, ent))
+                except OSError:
+                    pass
+                done_b += sz
+            for lst2 in fulls.values():
+                if len(lst2) > 1:
+                    groups.append({"name": lst2[0][1][1], "size": sz, "ext": lst2[0][1][4], "type": ftype(lst2[0][1][1], lst2[0][1][4]),
+                                   "copies": [{"path": p, "dir": os.path.dirname(p), "mtime": int(e[3] * 1000)} for p, e in sorted(lst2, key=lambda x: x[1][3])]})
+        if len(groups) >= 300:
+            break
+    groups.sort(key=lambda g: g["size"] * (len(g["copies"]) - 1), reverse=True)
+    return {"groups": groups[:200], "wasted": sum(g["size"] * (len(g["copies"]) - 1) for g in groups)}
+
+
+# ---------------- comparar con el escaneo anterior ----------------
+def _key(target):
+    return "".join(ch if ch.isalnum() else "_" for ch in target.lower()).strip("_") or "raiz"
+
+
+def _save_snapshot(s):
+    """Resumen por carpeta (las que pesan) + archivos grandes, para comparar la próxima vez."""
+    try:
+        os.makedirs(DATA, exist_ok=True)
+        dirs = {}
+        stack = [(s.root, 0)]
+        floor = max(50 * 1024 * 1024, s.root.size * 0.0005)
+        while stack:
+            d, depth = stack.pop()
+            if d.size < floor or depth > 7:
+                continue
+            dirs[_path(d)] = [d.size, d.fc]
+            stack.extend((c, depth + 1) for c in d.kids)
+        bigs = []
+        for size, fid in s.big:
+            if size >= 300 * 1024 * 1024:
+                d, ent = s.fidx[fid]
+                bigs.append([os.path.join(_path(d), ent[1]), size, int(ent[3])])
+        snap = {"v": 2, "target": s.target, "when": s.when, "size": s.root.size, "files": s.files, "dirs": dirs, "big": bigs}
+        f = os.path.join(DATA, _key(s.target) + ".json")
+        hist = []
+        prev = None
+        if os.path.exists(f):
+            with open(f, encoding="utf-8") as fh:
+                old = json.load(fh)
+            prev = old.get("last")
+            hist = old.get("history", [])
+        hist = (hist + [[s.when, s.root.size]])[-24:]
+        with open(f + ".tmp", "w", encoding="utf-8") as fh:
+            json.dump({"last": snap, "prev": prev, "history": hist}, fh)
+        os.replace(f + ".tmp", f)
+    except Exception as e:  # comparar es un extra: nunca rompe el análisis
+        print("storage snapshot:", e)
+
+
+def compare():
+    s = _get()
+    f = os.path.join(DATA, _key(s.target) + ".json")
+    if not os.path.exists(f):
+        return {"prev": None}
+    with open(f, encoding="utf-8") as fh:
+        data = json.load(fh)
+    cur, prev = data.get("last"), data.get("prev")
+    hist = data.get("history", [])
+    if not prev or prev.get("v") != 2:   # instantáneas de un formato anterior no son comparables
+        return {"prev": None, "history": hist}
+    a, b = prev["dirs"], cur["dirs"]
+    changes = []
+    root = os.path.normcase(cur["target"].rstrip("\\"))
+    for p in set(a) | set(b):
+        if os.path.normcase(p.rstrip("\\")) == root:
+            continue                     # la raíz es el total: ya sale en la cabecera
+        sa, sb = a.get(p, [0, 0]), b.get(p, [0, 0])
+        dd = sb[0] - sa[0]
+        if abs(dd) >= 64 * 1024 * 1024:
+            changes.append([p, dd, sb[1] - sa[1]])
+    changes.sort(key=lambda c: abs(c[1]), reverse=True)
+    picked = []
+    for p, dd, df in changes:
+        pl = p.lower().rstrip("\\") + "\\"
+        # si ya hay una subcarpeta que explica casi todo el cambio, la carpeta madre sobra
+        if any(q.lower().startswith(pl) and abs(qd) >= abs(dd) * .8 for q, qd, _ in picked):
+            continue
+        picked = [x for x in picked if not (pl.startswith(x[0].lower().rstrip("\\") + "\\") and abs(dd) >= abs(x[1]) * .8)] + [[p, dd, df]]
+        if len(picked) >= 14:
+            break
+    picked.sort(key=lambda c: abs(c[1]), reverse=True)
+    newbig = [x for x in cur.get("big", []) if x[2] > prev["when"]]
+    newbig.sort(key=lambda x: x[1], reverse=True)
+    return {"prev": prev["when"] * 1000, "now": cur["when"] * 1000, "delta": cur["size"] - prev["size"],
+            "dfiles": cur["files"] - prev["files"], "changes": picked, "newbig": newbig[:12], "history": hist}
+
+
+# ---------------- acciones sobre archivos ----------------
+def _protected(path):
+    p = os.path.normcase(os.path.abspath(path))
+    win = os.path.normcase(os.environ.get("SystemRoot", r"C:\Windows"))
+    roots = [win, os.path.normcase(r"C:\$Recycle.Bin"), os.path.normcase(r"C:\System Volume Information")]
+    pd = os.environ.get("ProgramData", r"C:\ProgramData")
+    roots += [os.path.normcase(os.path.join(pd, "Microsoft")), os.path.normcase(os.path.join(pd, "StellarHub"))]
+    app = os.path.normcase(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    roots.append(app)
+    for r in roots:
+        if p == r or p.startswith(r + os.sep):
+            return "Está dentro de una carpeta que StellarHub no toca."
+    for pf in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramW6432")):
+        if pf and (p == os.path.normcase(pf) or os.path.dirname(p) == os.path.normcase(pf)):
+            return "Es una carpeta de programas: desinstálalo desde Program Remover."
+    if os.path.basename(p) in SYS_NAMES:
+        return "Es un archivo de Windows (memoria virtual o hibernación)."
+    drive, rest = os.path.splitdrive(p)
+    if rest in ("", "\\"):
+        return "Es la raíz de una unidad."
+    try:
+        from .removal import paths as rp
+        home = os.path.normcase(os.path.expanduser("~"))
+        if p in (home, os.path.normcase(rp.kf("Documents") or ""), os.path.normcase(rp.kf("Desktop") or ""),
+                 os.path.normcase(rp.kf("Downloads") or "")):
+            return "Es una carpeta principal de tu perfil."
+    except Exception:
+        pass
+    return None
+
+
+def can_delete(path):
+    why = _protected(path)
+    return {"ok": why is None, "why": why}
+
+
+def reveal(path):
+    if os.path.exists(path):
+        subprocess.Popen(["explorer.exe", "/select,", os.path.normpath(path)], creationflags=NO_WINDOW)
+        return True
+    d = os.path.dirname(path)
+    if os.path.isdir(d):
+        os.startfile(d)
+        return True
+    return False
+
+
+class _SHFILEOPSTRUCTW(ctypes.Structure):
+    _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", wintypes.LPCWSTR), ("pTo", wintypes.LPCWSTR),
+                ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL), ("hNameMappings", ctypes.c_void_p),
+                ("lpszProgressTitle", wintypes.LPCWSTR)]
+
+
+def trash(path):
+    """Envía a la papelera de Windows (se puede restaurar). Nunca dentro de las zonas protegidas."""
+    path = os.path.abspath(path)
+    why = _protected(path)
+    if why:
+        return {"ok": False, "error": why}
+    if not os.path.exists(path):
+        return {"ok": False, "error": "Ya no existe."}
+    size = 0
+    try:
+        size = os.path.getsize(path) if os.path.isfile(path) else 0
+    except OSError:
+        pass
+    op = _SHFILEOPSTRUCTW()
+    op.wFunc = 3  # FO_DELETE
+    op.pFrom = path + "\0"
+    op.fFlags = 0x0040 | 0x0010 | 0x0004 | 0x0400  # ALLOWUNDO | NOCONFIRMATION | SILENT | NOERRORUI
+    r = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+    if r != 0 or op.fAnyOperationsAborted or os.path.exists(path):
+        return {"ok": False, "error": "Windows no pudo moverlo a la papelera (¿está abierto o necesita permisos de administrador?)."}
+    s = _cur["scan"]
+    if s is not None:
+        _forget(s, path)
+    return {"ok": True, "size": size}
+
+
+def _forget(s, path):
+    """Quita del análisis lo enviado a la papelera, para que las vistas no lo sigan mostrando."""
+    pl = os.path.normcase(path)
+    for fid, (d, ent) in list(s.fidx.items()):
+        if os.path.normcase(os.path.join(_path(d), ent[1])) == pl:
+            d.files = [f for f in d.files if f[0] != fid]
+            s.fidx.pop(fid, None)
+            s.big = [x for x in s.big if x[1] != fid]
+            heapq.heapify(s.big)
+            x = d
+            while x is not None:
+                x.size -= ent[2]
+                x.fc -= 1
+                ty = ftype(ent[1], ent[4])
+                if x.cats and ty in x.cats:
+                    x.cats[ty] = max(0, x.cats[ty] - ent[2])
+                x = x.parent
+            return
+
+
+def restore(path):
+    """Saca de la papelera lo último borrado con esa ruta original y lo devuelve a su sitio."""
+    path = os.path.abspath(path)
+    drive = os.path.splitdrive(path)[0] or "C:"
+    rb = drive + "\\$Recycle.Bin"
+    best = None
+    try:
+        for sid in os.listdir(rb):
+            folder = os.path.join(rb, sid)
+            try:
+                names = os.listdir(folder)
+            except OSError:
+                continue
+            for n in names:
+                if not n.startswith("$I"):
+                    continue
+                try:
+                    with open(os.path.join(folder, n), "rb") as fh:
+                        raw = fh.read()
+                    ver = int.from_bytes(raw[0:8], "little")
+                    when = int.from_bytes(raw[16:24], "little")
+                    if ver == 2:
+                        ln = int.from_bytes(raw[24:28], "little")
+                        orig = raw[28:28 + ln * 2].decode("utf-16-le").rstrip("\0")
+                    else:
+                        orig = raw[24:24 + 520].decode("utf-16-le").split("\0")[0]
+                except OSError:
+                    continue
+                if os.path.normcase(orig) == os.path.normcase(path) and (best is None or when > best[0]):
+                    best = (when, os.path.join(folder, "$R" + n[2:]), os.path.join(folder, n))
+    except OSError:
+        pass
+    if not best:
+        return {"ok": False, "error": "No está en la papelera. Puedes buscarlo en la Papelera de reciclaje de Windows."}
+    if os.path.exists(path):
+        return {"ok": False, "error": "Ya hay otro archivo con ese nombre en su sitio."}
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        os.replace(best[1], path)
+        try:
+            os.remove(best[2])
+        except OSError:
+            pass
+    except OSError:
+        return {"ok": False, "error": "No se pudo restaurar desde aquí: ábrelo desde la Papelera de reciclaje de Windows."}
+    return {"ok": True}
