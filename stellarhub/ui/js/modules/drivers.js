@@ -153,6 +153,11 @@ const API = {
     for (let i = 1; i <= total; i++) { const d = list[i % list.length]; onFile(i, total, `${d.inf}  ${d.name}`); await wait(18 + rnd() * 22); }
     return { count: total, gb: thirdOnly ? 2.0 : 2.7 };
   },
+  store: { supported: true, packages: 86, mb: 79.8, old: [
+    { inf: 'oem4.inf', name: 'asussci2.inf', provider: 'ASUSTeK COMPUTER INC.', cls: 'SYSTEM', version: '3.1.70.0', date: '2026-08-19', newer: '3.1.72.0', newerDate: '2026-09-14', mb: 48.5 },
+    { inf: 'oem18.inf', name: 'cui_dch.inf', provider: 'Intel Corporation', cls: 'SOFTWARECOMPONENT', version: '32.0.101.6629', date: '2025-02-18', newer: '32.0.101.7088', newerDate: '2026-06-17', mb: 21.3 },
+    { inf: 'oem3.inf', name: 'netrtwlane602.inf', provider: 'Realtek Semiconductor Corp.', cls: 'NET', version: '6001.16.170.0', date: '2025-07-31', newer: '6001.16.172.0', newerDate: '2025-10-16', mb: 9.7 },
+  ] },
   history: [
     { date: '2026-11-09', name: 'NVIDIA GeForce RTX 5070 Laptop GPU', from: '32.0.15.8157', to: '32.0.16.1742', ok: true, rp: true, src: 'Windows Update' },
     { date: '2026-11-02', name: 'Intel(R) UHD Graphics', from: '31.0.101.5590', to: '32.0.101.7088', ok: true, rp: true, src: 'Windows Update' },
@@ -532,8 +537,12 @@ async function renderBackup(el) {
       <button class="btn pri lg" id="dbGo">${ic('download')}Create backup</button>
       <div class="db-prog" id="dbProg"><div class="big"><span id="dbN">0</span><small>of <span id="dbT">${third}</span></small></div><div class="w"><div class="bar"><span id="dbBar" style="transform:scaleX(0)"></span></div><div class="f" id="dbF">Preparing…</div></div></div>
     </div>
-    <div class="pan" data-asm><h4>Saved backups <em id="dbCount">–</em></h4>
-      <div class="tbl-head db-cols"><span>Date</span><span>Drivers</span><span>Size</span><span>Folder</span><span></span></div><div class="rows" id="dbRows">${skRows(2)}</div></div></div>`;
+    <div class="db-lower"><div class="pan db-list" data-asm><h4>Saved backups <em id="dbCount">–</em></h4>
+      <div class="tbl-head db-cols"><span>Date</span><span>Drivers</span><span>Size</span><span>Folder</span><span></span></div><div class="rows" id="dbRows">${skRows(2)}</div></div>
+    <div class="pan db-store" data-asm><h4>Old driver copies <em id="dsCount">–</em></h4>
+      <p class="ds-note">Previous versions Windows kept after a driver update. Only copies that a newer version replaced and no device uses (not even a disconnected one) are listed, and Windows refuses to remove anything in use.</p>
+      <div class="rows" id="dsRows">${skRows(2)}</div>
+      <div class="ds-foot" id="dsFoot" hidden><span class="muted" id="dsSum"></span><button class="btn sec" id="dsGo">${ic('trash')}Remove selected</button></div></div></div></div>`;
   const rows = $('#dbRows', el); let LIST = [];
   const rowHTML = (b, i) => `<div class="db-row db-cols" data-i="${i}"><b style="font-weight:500">${fmtDateS(b.date)}</b><span class="muted">${b.count}</span><span class="muted">${fmt1(b.gb)} GB</span><span class="p" title="${esc(b.path)}">${esc(b.path)}</span><span class="a"><button class="btn sm sec" data-a="restore">${ic('restore')}Restore</button><button class="btn sm ghost" data-a="open" title="Open folder">${ic('folder')}</button><button class="btn sm ghost" data-a="del" title="Send to the Recycle Bin">${ic('trash')}</button></span></div>`;
   async function loadList(anim_) {
@@ -562,6 +571,52 @@ async function renderBackup(el) {
     SH.logActivity('Driver backup', { sub: `${r.count} drivers saved`, ic: 'download', go: 'drivers', tab: 'backup' });
     SH.toast(`Backup created: ${r.count} drivers, ${fmt1(r.gb)} GB.`, { action: { label: 'Open folder', run: () => REAL ? SH.engine('drivers', 'open_folder', r.path) : SH.toast('Only inside the app.') } });
   });
+  /* ---- old copies in the DriverStore (read-only scan; removal re-checked by the engine and refused by Windows if in use) ---- */
+  const ds = $('#dsRows', el), dsSel = new Set(); let OLD = [];
+  const dsRow = o => `<div class="ds-row${dsSel.has(o.inf) ? ' sel' : ''}" data-inf="${esc(o.inf)}">${CHECK.replace('class="check"', `class="check${dsSel.has(o.inf) ? ' on' : ''}"`)}
+    <span class="ri">${ic(clsInfo(o.cls)[1])}</span><span class="rt"><b>${esc(o.provider)} · ${esc(o.name)}</b><span>${esc(o.version)} (${fmtDateS(o.date)}), replaced by ${esc(o.newer)} (${fmtDateS(o.newerDate)})</span></span>
+    <span class="muted ds-mb">${o.mb >= 1 ? fmt1(o.mb) + ' MB' : '<1 MB'}</span></div>`;
+  const dsSync = () => {
+    const mb = OLD.filter(o => dsSel.has(o.inf)).reduce((s, o) => s + o.mb, 0);
+    $('#dsSum', el).textContent = dsSel.size ? `${dsSel.size} selected · ${fmt1(mb)} MB` : 'Nothing selected';
+    $('#dsGo', el).disabled = !dsSel.size; $('#dsFoot', el).hidden = !OLD.length;
+  };
+  async function loadStore(fresh) {
+    let r; try { r = REAL ? await SH.engine('drivers', 'store_packages', !!fresh) : API.store; } catch { r = null; }
+    OLD = (r && r.old) || []; dsSel.clear(); OLD.forEach(o => dsSel.add(o.inf));
+    $('#dsCount', el).textContent = OLD.length;
+    ds.innerHTML = !r ? '<div class="empty" style="padding:20px"><b>The driver store could not be read</b>Try again in a moment.</div>'
+      : r.supported === false ? '<div class="empty" style="padding:20px"><b>Not available on this Windows version</b>It needs Windows 11 22H2 or newer.</div>'
+      : !OLD.length ? `<div class="empty" style="padding:20px"><b>Nothing to clean</b>${r.packages ? `The ${r.packages} manufacturer driver packages in the store are all current or in use.` : (r.msg || '')}</div>`
+      : OLD.map(dsRow).join('');
+    if (OLD.length) stagger($$('.ds-row', ds), 0, 40);
+    dsSync();
+  }
+  loadStore(false);
+  ds.addEventListener('click', e => {
+    const row = e.target.closest('.ds-row'); if (!row) return; const k = row.dataset.inf;
+    if (dsSel.has(k)) dsSel.delete(k); else dsSel.add(k);
+    row.classList.toggle('sel', dsSel.has(k)); $('.check', row).classList.toggle('on', dsSel.has(k)); dsSync();
+  });
+  $('#dsGo', el).addEventListener('click', async e => {
+    const btn = e.currentTarget; if (btn.disabled || !dsSel.size) return;
+    if (REAL && !SH.state.admin) { SH.requireAdmin('to remove packages from the Windows driver store.'); return; }
+    const pick = OLD.filter(o => dsSel.has(o.inf)), mb = pick.reduce((s, o) => s + o.mb, 0);
+    if (!await ask('Remove old driver copies', `${pick.length} old ${pick.length === 1 ? 'copy' : 'copies'} (${fmt1(mb)} MB) will be removed from the driver store. The current versions stay installed. Removed copies cannot be used to roll a driver back, so create a backup above first if you might want them.`, 'Remove', true)) return;
+    btn.disabled = true; btn.innerHTML = `${ic('trash')}Removing…`;
+    let r;
+    try { r = REAL ? await SH.job('drivers', 'delete_packages', [pick.map(o => o.inf)], { onProgress: m => { if (m.text) $('#dsSum', el).textContent = m.text; } }) : { ok: true, results: pick.map(o => ({ inf: o.inf, ok: true })), freedMb: mb }; }
+    catch (er) { r = { ok: false, msg: er.message }; }
+    btn.innerHTML = `${ic('trash')}Remove selected`;
+    if (needAdmin(r, 'to remove packages from the driver store.')) { dsSync(); return; }
+    const okN = ((r && r.results) || []).filter(x => x.ok).length, bad = ((r && r.results) || []).filter(x => !x.ok);
+    if (!REAL) { API.store.old = API.store.old.filter(o => !dsSel.has(o.inf)); API.store.mb = 0; }
+    await loadStore(true);
+    if (okN) SH.logActivity('Old driver copies removed', { sub: `${okN} packages, ${fmt1(r.freedMb || 0)} MB`, ic: 'trash', go: 'drivers', tab: 'backup' });
+    SH.toast(okN ? `Removed ${okN} old ${okN === 1 ? 'copy' : 'copies'} (${fmt1(r.freedMb || 0)} MB).${bad.length ? ` ${bad.length} kept: Windows reported them in use.` : ''}`
+      : `Nothing was removed${bad.length ? `: ${bad[0].msg}` : r && r.msg ? `: ${r.msg}` : ' (they are in use now).'}`);
+  });
+
   rows.addEventListener('click', async e => {
     const b = e.target.closest('[data-a]'); if (!b) return; const row = b.closest('.db-row'); const bk = LIST[+row.dataset.i]; if (!bk) return;
     if (b.dataset.a === 'open') { if (!REAL || !await SH.engine('drivers', 'open_folder', bk.path)) SH.toast(REAL ? 'That folder no longer exists.' : 'Only inside the app.'); }

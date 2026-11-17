@@ -12,7 +12,7 @@ const v = {
   ram: 9.4, ramTotal: 15.6, ramCache: 3.2, ramCommit: 14.1, procs: 280,
   diskRead: 40, diskWrite: 12, diskUsed: 592, diskTotal: 953, diskTemp: 41,
   down: 12, up: 1.4, ping: 18, wifiSignal: 82,
-  battery: 100, charging: true, batteryPower: 0, batteryHealth: 97, fanCpu: 2600, fanGpu: 2400,
+  battery: 100, charging: true, batteryPower: 0, batteryHealth: 97, fanCpu: 2600, fanGpu: 38, /* CPU fan in rpm; GPU fan in % (as NVML reports it) */
   uptime: 3 * 3600 + 1240,
 };
 const KEYS = ['cpu', 'cpuTemp', 'cpuFreq', 'gpu', 'gpuTemp', 'gpuPower', 'vram', 'ram', 'diskRead', 'diskWrite', 'down', 'up', 'ping', 'battery', 'batteryPower'];
@@ -34,7 +34,7 @@ function tick() {
   v.down = Math.max(.2, rw(v.down, .2, 180, Math.random() < .15 ? 90 : 10)); v.up = rw(v.up, .1, 24, 2); v.ping = rw(v.ping, 9, 60, 6);
   v.diskRead = rw(v.diskRead, 0, 900, Math.random() < .12 ? 600 : 40); v.diskWrite = rw(v.diskWrite, 0, 500, Math.random() < .1 ? 300 : 20);
   v.threads = v.threads.map((t, i) => Math.max(.02, Math.min(1, v.cpu / 100 + (Math.random() - .5) * .5 + (i < 16 ? .08 : -.04))));
-  v.fanCpu = Math.round(rw(1800 + v.cpu * 32, 0, 5600, 120)); v.fanGpu = Math.round(rw(1700 + v.gpu * 34, 0, 5600, 120));
+  v.fanCpu = Math.round(rw(1800 + v.cpu * 32, 0, 5600, 120)); v.fanGpu = Math.round(rw(30 + v.gpu * .6, 0, 100, 3));
   v.uptime += .7;
   record(); emit();
 }

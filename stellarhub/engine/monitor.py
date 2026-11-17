@@ -269,21 +269,56 @@ def memory_info():
             "handles": pi.HandleCount, "threads": pi.ThreadCount, "processes": pi.ProcessCount, "compressed": comp}
 
 
+_gpu_info_cache = {}
+
+
 def gpu_info():
-    """Spec sheet of the NVIDIA GPU (if there is one) from nvidia-smi."""
-    q = "name,driver_version,memory.total,power.limit,clocks.max.graphics,temperature.gpu.tlimit,pcie.link.gen.max,pcie.link.width.max"
+    """Spec sheet of the NVIDIA GPU (if there is one) through NVML (in-process, ~40 ms; nvidia-smi was ~120 ms + a process).
+    If the dedicated GPU is powered down (D3) it is NOT woken up just for this: the last sheet read is returned with
+    asleep=True, or {"asleep": True} if there is none yet."""
+    from .telemetry import _Nvml, _display_power_states
+    states = _display_power_states()
+    nv_state = next((s for n, s in states.items() if "nvidia" in n.lower()), None)
+    if nv_state is None and states:
+        return None  # no NVIDIA adapter
+    if nv_state is not None and nv_state > 1:
+        return dict(_gpu_info_cache, asleep=True) if _gpu_info_cache else {"asleep": True}
+    nv = _Nvml()
+    if not nv.init():
+        return None
+    L, d = nv.lib, nv.dev
     try:
-        out = subprocess.run(["nvidia-smi", f"--query-gpu={q}", "--format=csv,noheader,nounits"], capture_output=True,
-                             text=True, timeout=6, creationflags=NO_WINDOW).stdout.strip().splitlines()
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if not out:
-        return None
-    v = [x.strip() for x in out[0].split(",")]
-    num = lambda s: None if not s or "N/A" in s or "[" in s else s
-    return {"name": v[0], "driver": v[1], "vram": round(int(v[2]) / 1024) if num(v[2]) else None,
-            "powerLimit": round(float(v[3])) if num(v[3]) else None, "maxClock": round(int(v[4]) / 1000, 2) if num(v[4]) else None,
-            "tlimitMargin": num(v[5]), "pcie": f"PCIe {v[6]}.0 ×{v[7]}" if num(v[6]) and num(v[7]) else None}
+        ok = lambda rc: rc == 0
+        name, drv = ctypes.create_string_buffer(96), ctypes.create_string_buffer(80)
+        L.nvmlDeviceGetName(d, name, 96)
+        L.nvmlSystemGetDriverVersion(drv, 80)
+        mem = (ctypes.c_ulonglong * 3)()
+        plim, mclk, gen, width, slow, temp = (ctypes.c_uint() for _ in range(6))
+        out = {"name": name.value.decode(errors="replace"), "driver": drv.value.decode(errors="replace"),
+               "vram": round(mem[0] / GB) if ok(L.nvmlDeviceGetMemoryInfo(d, mem)) else None,
+               "powerLimit": round(plim.value / 1000) if ok(L.nvmlDeviceGetPowerManagementLimit(d, ctypes.byref(plim))) else None,
+               "maxClock": round(mclk.value / 1000, 2) if ok(L.nvmlDeviceGetMaxClockInfo(d, 0, ctypes.byref(mclk))) else None,
+               "pcie": None, "tlimitMargin": None, "asleep": False}
+        if ok(L.nvmlDeviceGetMaxPcieLinkGeneration(d, ctypes.byref(gen))) and ok(L.nvmlDeviceGetMaxPcieLinkWidth(d, ctypes.byref(width))):
+            out["pcie"] = f"PCIe {gen.value}.0 ×{width.value}"
+        # nvidia-smi temperature.gpu.tlimit: degrees left before the GPU slows itself down. Newer drivers expose it as
+        # nvmlDeviceGetMarginTemperature; older ones only have the "GPU max" threshold (3), which gives the same margin.
+        class _Margin(ctypes.Structure):
+            _fields_ = [("version", ctypes.c_uint), ("margin", ctypes.c_int)]
+        mg = _Margin(ctypes.sizeof(_Margin) | (1 << 24), 0)
+        try:
+            if ok(L.nvmlDeviceGetMarginTemperature(d, ctypes.byref(mg))):
+                out["tlimitMargin"] = mg.margin
+        except AttributeError:
+            pass
+        if out["tlimitMargin"] is None and ok(L.nvmlDeviceGetTemperatureThreshold(d, 3, ctypes.byref(slow))) \
+                and ok(L.nvmlDeviceGetTemperature(d, 0, ctypes.byref(temp))):
+            out["tlimitMargin"] = int(slow.value) - int(temp.value)
+        _gpu_info_cache.clear()
+        _gpu_info_cache.update({k: v for k, v in out.items() if k != "tlimitMargin"})
+        return out
+    finally:
+        nv.shutdown()
 
 
 # ======================================================================================= disks

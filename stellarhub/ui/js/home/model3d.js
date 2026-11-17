@@ -282,7 +282,7 @@ function frame(dt, t) {
     if (!dragging && !focused) R.laptop.rotation.y = Math.sin(t / 3200) * .025;
     /* Windows does not report fan rpm (they arrive as null): the fans follow the load. Never NaN, which breaks the scene */
     const v = SH.tele.v, rpm = (f, load) => (f != null && !Number.isNaN(f)) ? f : 900 + (load || 0) * 32;
-    R.fans[0].rotation.y += dt * rpm(v.fanCpu, v.cpu) / 60 * .9; R.fans[1].rotation.y -= dt * rpm(v.fanGpu, v.gpu) / 60 * .9;
+    R.fans[0].rotation.y += dt * rpm(v.fanCpu, v.cpu) / 60 * .9; R.fans[1].rotation.y -= dt * rpm(v.fanGpu != null ? v.fanGpu * 50 : null, v.gpu) / 60 * .9; /* GPU fan arrives in % */
   }
   R.renderer.render(R.scene, c);
 }

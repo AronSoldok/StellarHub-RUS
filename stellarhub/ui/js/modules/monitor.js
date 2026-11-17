@@ -164,7 +164,7 @@ const jit = (b, j, lo = 0) => Math.max(lo, b * (1 + (Math.random() - .5) * j));
 const pushLoc = (k, x) => { LOC[k].push(x ?? 0); LOC[k].shift(); };
 function simTick(v) {
   if (REAL()) {
-    pushLoc('gpuClock', v.gpuClock); pushLoc('sysPower', v.charging === false && !nil(v.batteryPower) ? Math.abs(v.batteryPower) : null);
+    pushLoc('igpu', v.igpu); pushLoc('gpuClock', v.gpuClock); pushLoc('sysPower', v.charging === false && !nil(v.batteryPower) ? Math.abs(v.batteryPower) : null);
     if (!nil(v.cpuTemp) && (MAXT.cpu == null || v.cpuTemp > MAXT.cpu)) { MAXT.cpu = v.cpuTemp; MAXT.cpuAt = Date.now(); }
     if (!nil(v.gpuTemp) && (MAXT.gpu == null || v.gpuTemp > MAXT.gpu)) { MAXT.gpu = v.gpuTemp; MAXT.gpuAt = Date.now(); }
     return;
@@ -251,7 +251,9 @@ const gpuTitle = () => comp('gpu').title || 'GPU';
 const NA = (why) => `<span class="na" title="${esc(why)}">—</span>`;
 /* short explanation of a value that does not arrive */
 const why = {
-  cpuTemp: () => SH.state.admin ? 'Windows does not report this processor\'s temperature without the manufacturer\'s driver.' : 'Windows only reports it in administrator mode.',
+  cpuTemp: () => 'Windows only exposes the ACPI thermal zone, and on this PC it is missing or a fixed placeholder. Reading the processor\'s own sensors needs a kernel driver (WinRing0) that Microsoft Defender blocks as vulnerable, so StellarHub does not install one.',
+  gpuState: { asleep: 'The dedicated GPU is powered down to save energy. StellarHub does not wake it just to read its sensors: they come back as soon as a program uses it.',
+    idle: 'On battery and idle: sensor reading is paused so the dedicated GPU can power down. Usage and video memory are still live.' },
   fan: 'Windows does not report fan speed; the manufacturer\'s firmware controls it (on this PC, Armoury Crate).',
 };
 
@@ -311,7 +313,8 @@ R.cpu = (el, t) => {
   chart(t, S(el, 'cCh'), { series: [{ key: 'cpu', col: 'accent', fill: true, label: 'Usage' }, { key: 'cpuTemp', col: 'accent2', dash: [5, 4], w: 1.5, label: 'Temp.', unit: ' °C', opt: true }] });
   num(t, S(el, 'cF'), v => v.cpuFreq, fmt1); num(t, S(el, 'cT'), v => v.cpuTemp); num(t, S(el, 'cFn'), v => v.fanCpu); fan(t, S(el, 'cFan'), v => v.fanCpu);
   fn(t, v => {
-    S(el, 'cTw').textContent = nil(v.cpuTemp) ? (SH.state.admin ? 'Windows does not report it' : 'administrator mode only') : 'package';
+    S(el, 'cTw').textContent = nil(v.cpuTemp) ? 'Windows does not report it' : 'ACPI thermal zone';
+    S(el, 'cTw').title = nil(v.cpuTemp) ? why.cpuTemp() : '';
     S(el, 'cFnW').textContent = nil(v.fanCpu) ? 'Windows does not report it' : 'automatic';
     S(el, 'cFnW').title = why.fan; $('.ltemp', el).hidden = REAL() && nil(v.cpuTemp);
     S(el, 'cPh').textContent = nil(v.threadsTotal) ? '' : `and ${fmtInt(v.threadsTotal)} threads`;
@@ -334,10 +337,11 @@ R.gpu = (el, t) => {
           <div class="st"><span class="sl">Fan</span><b>${fanIc('gFan')}<span id="gFn">–</span><small id="gFnU">%</small></b><span class="ss" id="gFnW"></span></div></div></div>
           <div class="vram"><span>Video memory</span><b><span id="gV">–</span> of <span id="gVT">–</span> GB</b><div class="bar acc"><span id="gVB"></span></div></div></div>
         <div class="gr"><div class="legend"><span><i style="background:var(--accent)"></i>usage</span><span><i class="dash" style="border-color:var(--accent2)"></i>temperature</span></div>
-          <div class="chwrap">${cv('gCh')}</div>${axis}</div></div></div>
+          <div class="chwrap">${cv('gCh')}</div>${axis}</div></div>
+      <p class="mnote gstate" id="gState" hidden></p></div>
     <div class="pan" data-asm>${head(esc(short(igpu) || 'Integrated graphics'), 'integrated')}
-      <p class="mnote">${igpu ? 'Drives the laptop screen and saves battery. The dedicated GPU kicks in when a program asks for it.' : 'This PC has no active integrated graphics.'}</p>
-      <p class="mnote faint">Windows does not split usage per graphics card without extra Microsoft tools, so this shows the dedicated GPU in detail.</p></div>
+      ${igpu ? `<div class="igu"><div class="big"><span id="gI">–</span><small>%</small></div><div class="chwrap sm">${cv('gICh')}</div></div>` : ''}
+      <p class="mnote">${igpu ? 'Drives the laptop screen and saves battery. The dedicated GPU kicks in when a program asks for it.' : 'This PC has no active integrated graphics.'}</p></div>
     <div class="pan" data-asm>${head('Using the GPU', procInfo.gpuPerProcess === false ? 'not available' : '')}<div class="tops" id="gTop"></div></div>
     <div class="pan" data-asm>${head('Displays', `${mons.length || '–'}`)}<div class="rows">
       ${mons.map(m => `<div class="row"><span class="ri">${ic('display')}</span><span class="rt"><b>${m.internal ? 'Laptop screen' : 'External monitor'}</b><span>${esc([m.vendor, m.name || m.code].filter(Boolean).join(' '))}${m.inches ? `, ${m.inches}"` : ''}</span></span><span class="chip ok">active</span></div>`).join('') || '<div class="muted">No display data.</div>'}</div></div>
@@ -346,12 +350,17 @@ R.gpu = (el, t) => {
   </div>`;
   arc(t, S(el, 'gGA'), v => v.gpu / 100, 235.6, 314.2); num(t, S(el, 'gGV'), v => v.gpu);
   num(t, S(el, 'gT'), v => v.gpuTemp); num(t, S(el, 'gP'), v => v.gpuPower); num(t, S(el, 'gC'), v => v.gpuClock, fmt1); num(t, S(el, 'gFn'), v => v.fanGpu); fan(t, S(el, 'gFan'), v => (v.fanGpu || 0) * 40);
-  fn(t, v => { S(el, 'gFnW').textContent = nil(v.fanGpu) ? 'Windows does not report it' : 'automatic'; S(el, 'gFnW').title = why.fan; });
+  fn(t, v => {
+    S(el, 'gFnW').textContent = nil(v.fanGpu) ? 'Windows does not report it' : 'automatic'; S(el, 'gFnW').title = why.fan;
+    const st = S(el, 'gState'), msg = why.gpuState[v.gpuState] || '';
+    if (st.textContent !== msg) { st.textContent = msg; st.hidden = !msg; }
+  });
+  if (S(el, 'gI')) { num(t, S(el, 'gI'), v => v.igpu); chart(t, S(el, 'gICh'), { series: [{ key: 'igpu', col: 'accent2', fill: true, label: 'Usage' }] }); }
   num(t, S(el, 'gV'), v => v.vram, fmt1); num(t, S(el, 'gVT'), v => v.vramTotal); bar(t, S(el, 'gVB'), v => v.vram / (v.vramTotal || 8));
   chart(t, S(el, 'gCh'), { series: [{ key: 'gpu', col: 'accent', fill: true, label: 'Usage' }, { key: 'gpuTemp', col: 'accent2', dash: [5, 4], w: 1.5, label: 'Temp.', unit: ' °C', opt: true }] });
   topList(t, S(el, 'gTop'), 'gpu', 6, pct, 0);
   load('gpu', 'gpu_info').then(gi => {
-    if (!gi) return;
+    if (!gi || !gi.driver) return; /* {asleep:true} with nothing cached: the GPU was not woken up to read it */
     S(el, 'gDrv').textContent = gi.driver;
     if (gi.maxClock) S(el, 'gCm').textContent = `max ${fmt1(gi.maxClock)} GHz`;
     if (gi.tlimitMargin != null) S(el, 'gTl').textContent = `${gi.tlimitMargin} °C before throttling`;

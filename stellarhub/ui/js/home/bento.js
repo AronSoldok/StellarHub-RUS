@@ -176,7 +176,7 @@ function mount(el, ctx) {
   tick = dt => {
     if (!root || (SH.state.view !== 'home' && !SH.homeAnimating)) return;
     const still = SH.state.settings.intensity === 'min';
-    const fv = SH.tele.v.fanGpu, gu = SH.tele.v.gpu; gfan.sp.t = still ? 0 : !nil(fv) ? fv / 2400 * .9 : .15 + (gu || 0) / 100 * .9; gfan.sp.step(dt); gfan.boost.step(dt);
+    const fv = SH.tele.v.fanGpu, gu = SH.tele.v.gpu; gfan.sp.t = still ? 0 : !nil(fv) ? fv / 100 * 1.1 : .15 + (gu || 0) / 100 * .9; gfan.sp.step(dt); gfan.boost.step(dt);
     if (!still) { gfan.a = (gfan.a + (gfan.sp.v + gfan.boost.v * 1.6) * 360 * dt) % 360; fans.forEach(f => { f.style.transform = `rotate(${gfan.a.toFixed(2)}deg)`; }); }
     for (const k in bars) { bars[k].step(dt); const e = $(`[data-b="${k}"]`, root); if (e) e.style.transform = `scaleX(${Math.max(0, bars[k].v).toFixed(4)})`; }
     for (const t of tiles) {

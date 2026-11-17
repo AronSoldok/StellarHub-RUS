@@ -1,10 +1,23 @@
 """Real live telemetry for the PC. A thread measures every `rate` seconds and hands a dict to `push`.
 
-Sources: psutil (CPU per thread, RAM, disk, network, battery), Windows performance counters (real CPU
-frequency), nvidia-smi (NVIDIA GPU: usage, temperature, power, clock, VRAM), WMI (battery watts, ACPI
-temperature if Windows provides it), netsh (Wi-Fi signal) and a short TCP connection for latency.
-Anything Windows does not provide without special drivers (real CPU temperature on many laptops, fans) is
-sent as None: the UI shows "—" instead of making it up.
+Sources (all read-only, no extra processes in the hot path):
+- psutil: CPU per thread, RAM, disk and network throughput.
+- Windows performance counters (PDH): real CPU frequency (% Processor Performance, because psutil.cpu_freq()
+  only returns the nominal clock on Windows), GPU usage per adapter and dedicated VRAM (the same numbers Task
+  Manager shows: busiest engine per adapter), and ACPI thermal zones.
+- NVML (nvml.dll through ctypes): NVIDIA temperature, power, clock and fan. It replaces a looping nvidia-smi
+  process (~116 ms and a whole process per query). NVML is only queried while the dedicated GPU is awake (D0,
+  read through SetupAPI, which does not wake it) and, on battery, only while it is actually busy: polling an
+  idle dGPU keeps it out of D3cold on Optimus laptops and drains the battery (the same problem KDE and other
+  monitors have with nvidia-smi).
+- Battery driver IOCTLs: charge/discharge rate, design and full-charge capacity, cycle count (0.2 ms, against
+  ~190 ms of CPU for the equivalent WMI query).
+- netsh for the Wi-Fi signal and a short TCP connection for latency.
+
+CPU package temperature: Windows only exposes ACPI thermal zones. Many laptops report a fixed placeholder there
+(27.8 °C), so implausible values are discarded. Real CPU sensors need a kernel driver such as WinRing0, which
+Microsoft Defender now flags as a vulnerable driver (CVE-2020-14979); StellarHub deliberately does not ship one.
+Anything Windows does not provide is sent as None: the UI shows "—" instead of making it up.
 """
 import ctypes
 import re
@@ -18,38 +31,69 @@ import psutil
 
 NO_WINDOW = 0x08000000
 GB = 1024 ** 3
+_PDH_FMT_DOUBLE = 0x00000200
 
 
-# ---------- performance counter: % processor performance (real frequency) ----------
+# ---------- performance counters ----------
+class _PdhVal(ctypes.Structure):
+    _fields_ = [("CStatus", wintypes.DWORD), ("dbl", ctypes.c_double)]
+
+
+class _PdhItem(ctypes.Structure):
+    _fields_ = [("szName", wintypes.LPWSTR), ("FmtValue", _PdhVal)]
+
+
 class _Pdh:
-    def __init__(self, path):
+    """One PDH query with several counters, single or multi-instance (\\GPU Engine(*)\\...)."""
+
+    def __init__(self, paths):
         self.ok = False
+        self.c = {}
         try:
-            pdh = ctypes.windll.pdh
-            self.pdh = pdh
+            self.pdh = ctypes.windll.pdh
             self.q = wintypes.HANDLE()
-            self.c = wintypes.HANDLE()
-            if pdh.PdhOpenQueryW(None, 0, ctypes.byref(self.q)) != 0:
+            if self.pdh.PdhOpenQueryW(None, 0, ctypes.byref(self.q)) != 0:
                 return
-            if pdh.PdhAddEnglishCounterW(self.q, path, 0, ctypes.byref(self.c)) != 0:
-                return
-            pdh.PdhCollectQueryData(self.q)
-            self.ok = True
+            for key, path in paths.items():
+                h = wintypes.HANDLE()
+                if self.pdh.PdhAddEnglishCounterW(self.q, path, 0, ctypes.byref(h)) == 0:
+                    self.c[key] = h
+            self.pdh.PdhCollectQueryData(self.q)
+            self.ok = bool(self.c)
         except Exception:
             pass
 
-    def read(self):
-        if not self.ok:
-            return None
+    def collect(self):
+        return self.ok and self.pdh.PdhCollectQueryData(self.q) == 0
 
-        class V(ctypes.Structure):
-            _fields_ = [("CStatus", wintypes.DWORD), ("dbl", ctypes.c_double)]
-        v = V()
-        if self.pdh.PdhCollectQueryData(self.q) != 0:
+    def value(self, key):
+        h = self.c.get(key)
+        if h is None:
             return None
-        if self.pdh.PdhGetFormattedCounterValue(self.c, 0x00000200, None, ctypes.byref(v)) != 0:  # PDH_FMT_DOUBLE
+        v = _PdhVal()
+        if self.pdh.PdhGetFormattedCounterValue(h, _PDH_FMT_DOUBLE, None, ctypes.byref(v)) != 0:
             return None
         return v.dbl
+
+    def array(self, key, nonzero=False):
+        """[(instance, value)]. nonzero=True skips zeros before decoding their names (GPU Engine has 1000+ instances)."""
+        h = self.c.get(key)
+        if h is None:
+            return []
+        size, count = wintypes.DWORD(0), wintypes.DWORD(0)
+        self.pdh.PdhGetFormattedCounterArrayW(h, _PDH_FMT_DOUBLE, ctypes.byref(size), ctypes.byref(count), None)
+        if not size.value:
+            return []
+        buf = ctypes.create_string_buffer(size.value)
+        if self.pdh.PdhGetFormattedCounterArrayW(h, _PDH_FMT_DOUBLE, ctypes.byref(size), ctypes.byref(count), buf) != 0:
+            return []
+        items = ctypes.cast(buf, ctypes.POINTER(_PdhItem))
+        out = []
+        for i in range(count.value):
+            fv = items[i].FmtValue
+            if fv.CStatus in (0, 1) and (fv.dbl > 0 or not nonzero):
+                out.append((items[i].szName, fv.dbl))
+        return out
 
 
 class _PerfInfo(ctypes.Structure):
@@ -68,19 +112,285 @@ def _perf_info():
     return pi
 
 
+# ---------- graphics adapters: LUID -> name (D3DKMT, does not wake the GPU) ----------
+class _LUID(ctypes.Structure):
+    _fields_ = [("Low", wintypes.DWORD), ("High", wintypes.LONG)]
+
+
+class _ADAPTERINFO(ctypes.Structure):
+    _fields_ = [("hAdapter", wintypes.UINT), ("AdapterLuid", _LUID), ("NumOfSources", wintypes.ULONG), ("bPrecise", wintypes.BOOL)]
+
+
+class _ENUM2(ctypes.Structure):
+    _fields_ = [("NumAdapters", wintypes.ULONG), ("pAdapters", ctypes.POINTER(_ADAPTERINFO))]
+
+
+class _QUERY(ctypes.Structure):
+    _fields_ = [("hAdapter", wintypes.UINT), ("Type", ctypes.c_int), ("pData", ctypes.c_void_p), ("Size", wintypes.UINT)]
+
+
+class _REGINFO(ctypes.Structure):
+    _fields_ = [("AdapterString", wintypes.WCHAR * 260), ("BiosString", wintypes.WCHAR * 260),
+                ("DacType", wintypes.WCHAR * 260), ("ChipType", wintypes.WCHAR * 260)]
+
+
+_RE_LUID = re.compile(r"luid_0x([0-9a-f]+)_0x([0-9a-f]+)(?:_phys_\d+_eng_(\d+))?", re.I)
+
+
+def _luid_key(s):
+    m = _RE_LUID.search(s)
+    return f"{int(m.group(1), 16):08x}{int(m.group(2), 16):08x}" if m else None
+
+
+def _adapters():
+    """[(luid_key, name)] of the graphics adapters, without opening a D3D device."""
+    try:
+        gdi = ctypes.WinDLL("gdi32")
+        e = _ENUM2()
+        if gdi.D3DKMTEnumAdapters2(ctypes.byref(e)) != 0 or not e.NumAdapters:
+            return []
+        arr = (_ADAPTERINFO * e.NumAdapters)()
+        e.pAdapters = arr
+        if gdi.D3DKMTEnumAdapters2(ctypes.byref(e)) != 0:
+            return []
+        out = []
+        for a in arr[:e.NumAdapters]:
+            ri = _REGINFO()
+            q = _QUERY(a.hAdapter, 8, ctypes.cast(ctypes.byref(ri), ctypes.c_void_p), ctypes.sizeof(ri))  # ADAPTERREGISTRYINFO
+            name = ri.AdapterString if gdi.D3DKMTQueryAdapterInfo(ctypes.byref(q)) == 0 else ""
+            out.append((f"{a.AdapterLuid.High & 0xFFFFFFFF:08x}{a.AdapterLuid.Low:08x}", name))
+            gdi.D3DKMTCloseAdapter(ctypes.byref(wintypes.UINT(a.hAdapter)))
+        return out
+    except Exception:
+        return []
+
+
+def _is_integrated(name):
+    n = name.lower()
+    return ("intel" in n and "arc" not in n) or "radeon(tm) graphics" in n or n.endswith("radeon graphics")
+
+
+# ---------- PnP power state of the display adapters (SetupAPI: read from the PnP manager, no wake-up) ----------
+class _GUID(ctypes.Structure):
+    _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD), ("Data3", wintypes.WORD), ("Data4", ctypes.c_ubyte * 8)]
+
+
+class _DEVINFO(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("ClassGuid", _GUID), ("DevInst", wintypes.DWORD), ("Reserved", ctypes.c_void_p)]
+
+
+_GUID_DISPLAY = _GUID(0x4d36e968, 0xe325, 0x11ce, (ctypes.c_ubyte * 8)(0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18))
+
+
+def _display_power_states():
+    """{device name: D-state} (1 = D0 working ... 4 = D3 off). Empty dict if it cannot be read."""
+    out = {}
+    try:
+        sa = ctypes.WinDLL("setupapi")
+        sa.SetupDiGetClassDevsW.restype = ctypes.c_void_p
+        sa.SetupDiGetClassDevsW.argtypes = [ctypes.POINTER(_GUID), wintypes.LPCWSTR, wintypes.HWND, wintypes.DWORD]
+        sa.SetupDiEnumDeviceInfo.argtypes = [ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(_DEVINFO)]
+        sa.SetupDiGetDeviceRegistryPropertyW.argtypes = [ctypes.c_void_p, ctypes.POINTER(_DEVINFO), wintypes.DWORD,
+                                                         ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p]
+        sa.SetupDiDestroyDeviceInfoList.argtypes = [ctypes.c_void_p]
+        h = sa.SetupDiGetClassDevsW(ctypes.byref(_GUID_DISPLAY), None, None, 0x2)  # DIGCF_PRESENT
+        if not h or h == ctypes.c_void_p(-1).value:
+            return out
+        i = 0
+        while True:
+            d = _DEVINFO()
+            d.cbSize = ctypes.sizeof(d)
+            if not sa.SetupDiEnumDeviceInfo(h, i, ctypes.byref(d)):
+                break
+            name = ctypes.create_unicode_buffer(256)
+            sa.SetupDiGetDeviceRegistryPropertyW(h, ctypes.byref(d), 0x0, None, name, 512, None)  # SPDRP_DEVICEDESC
+            pdata = (ctypes.c_ubyte * 64)()
+            if sa.SetupDiGetDeviceRegistryPropertyW(h, ctypes.byref(d), 0x1E, None, pdata, 64, None):  # SPDRP_DEVICE_POWER_DATA
+                out[name.value] = int.from_bytes(bytes(pdata[4:8]), "little")  # CM_POWER_DATA.PD_MostRecentPowerState
+            i += 1
+        sa.SetupDiDestroyDeviceInfoList(h)
+    except Exception:
+        pass
+    return out
+
+
+# ---------- NVML (NVIDIA Management Library) through ctypes ----------
+class _NvUtil(ctypes.Structure):
+    _fields_ = [("gpu", ctypes.c_uint), ("memory", ctypes.c_uint)]
+
+
+class _NvMem(ctypes.Structure):
+    _fields_ = [("total", ctypes.c_ulonglong), ("free", ctypes.c_ulonglong), ("used", ctypes.c_ulonglong)]
+
+
+class _Nvml:
+    """Lazy NVML session. init() costs ~40 ms once; each read ~0.05 ms (vs ~116 ms per nvidia-smi run)."""
+
+    def __init__(self):
+        self.lib = None
+        self.dev = None
+        self.missing = False
+
+    def init(self):
+        if self.dev is not None:
+            return True
+        if self.missing:
+            return False
+        try:
+            if self.lib is None:
+                try:
+                    self.lib = ctypes.WinDLL("nvml.dll")
+                except OSError:
+                    self.lib = ctypes.WinDLL(r"C:\Program Files\NVIDIA Corporation\NVSMI\nvml.dll")
+            if self.lib.nvmlInit_v2() != 0:
+                return False
+            dev = ctypes.c_void_p()
+            if self.lib.nvmlDeviceGetHandleByIndex_v2(0, ctypes.byref(dev)) != 0:
+                self.lib.nvmlShutdown()
+                return False
+            self.dev = dev
+            return True
+        except OSError:
+            self.missing = True  # no NVIDIA driver on this PC
+            return False
+
+    def shutdown(self):
+        if self.dev is not None and self.lib is not None:
+            try:
+                self.lib.nvmlShutdown()
+            except OSError:
+                pass
+        self.dev = None
+
+    def read(self):
+        if not self.init():
+            return None
+        L, d = self.lib, self.dev
+        u, temp, power, clock, fan, mem = _NvUtil(), ctypes.c_uint(), ctypes.c_uint(), ctypes.c_uint(), ctypes.c_uint(), _NvMem()
+        ok = lambda rc: rc == 0
+        return {
+            "gpu": u.gpu if ok(L.nvmlDeviceGetUtilizationRates(d, ctypes.byref(u))) else None,
+            "temp": temp.value if ok(L.nvmlDeviceGetTemperature(d, 0, ctypes.byref(temp))) else None,
+            "power": round(power.value / 1000) if ok(L.nvmlDeviceGetPowerUsage(d, ctypes.byref(power))) else None,
+            "clock": round(clock.value / 1000, 2) if ok(L.nvmlDeviceGetClockInfo(d, 0, ctypes.byref(clock))) else None,
+            "fan": fan.value if ok(L.nvmlDeviceGetFanSpeed(d, ctypes.byref(fan))) else None,
+            "vramTotal": round(mem.total / GB) if ok(L.nvmlDeviceGetMemoryInfo(d, ctypes.byref(mem))) else None,
+            "vramUsed": round(mem.used / GB, 2) if mem.total else None,
+        }
+
+
+# ---------- battery through its driver (IOCTL_BATTERY_*) ----------
+class _BQI(ctypes.Structure):
+    _fields_ = [("BatteryTag", wintypes.ULONG), ("InformationLevel", ctypes.c_int), ("AtRate", wintypes.LONG)]
+
+
+class _BINFO(ctypes.Structure):
+    _fields_ = [("Capabilities", wintypes.ULONG), ("Technology", ctypes.c_ubyte), ("Reserved", ctypes.c_ubyte * 3),
+                ("Chemistry", ctypes.c_ubyte * 4), ("DesignedCapacity", wintypes.ULONG), ("FullChargedCapacity", wintypes.ULONG),
+                ("DefaultAlert1", wintypes.ULONG), ("DefaultAlert2", wintypes.ULONG), ("CriticalBias", wintypes.ULONG),
+                ("CycleCount", wintypes.ULONG)]
+
+
+class _BWS(ctypes.Structure):
+    _fields_ = [("BatteryTag", wintypes.ULONG), ("Timeout", wintypes.ULONG), ("PowerState", wintypes.ULONG),
+                ("LowCapacity", wintypes.ULONG), ("HighCapacity", wintypes.ULONG)]
+
+
+class _BSTATUS(ctypes.Structure):
+    _fields_ = [("PowerState", wintypes.ULONG), ("Capacity", wintypes.ULONG), ("Voltage", wintypes.ULONG), ("Rate", wintypes.LONG)]
+
+
+class _SPIFACE(ctypes.Structure):
+    _fields_ = [("cbSize", wintypes.DWORD), ("InterfaceClassGuid", _GUID), ("Flags", wintypes.DWORD), ("Reserved", ctypes.c_void_p)]
+
+
+_GUID_DEVICE_BATTERY = _GUID(0x72631e54, 0x78A4, 0x11d0, (ctypes.c_ubyte * 8)(0xbc, 0xf7, 0x00, 0xaa, 0x00, 0xb7, 0xb3, 0x2a))
+_UNKNOWN_RATE = -0x80000000  # BATTERY_UNKNOWN_RATE
+
+
+def _battery_paths():
+    out = []
+    try:
+        sa = ctypes.WinDLL("setupapi")
+        sa.SetupDiGetClassDevsW.restype = ctypes.c_void_p
+        sa.SetupDiGetClassDevsW.argtypes = [ctypes.POINTER(_GUID), wintypes.LPCWSTR, wintypes.HWND, wintypes.DWORD]
+        sa.SetupDiEnumDeviceInterfaces.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(_GUID), wintypes.DWORD, ctypes.POINTER(_SPIFACE)]
+        sa.SetupDiGetDeviceInterfaceDetailW.argtypes = [ctypes.c_void_p, ctypes.POINTER(_SPIFACE), ctypes.c_void_p, wintypes.DWORD,
+                                                        ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+        sa.SetupDiDestroyDeviceInfoList.argtypes = [ctypes.c_void_p]
+        h = sa.SetupDiGetClassDevsW(ctypes.byref(_GUID_DEVICE_BATTERY), None, None, 0x12)  # PRESENT | DEVICEINTERFACE
+        if not h or h == ctypes.c_void_p(-1).value:
+            return out
+        i = 0
+        while True:
+            d = _SPIFACE()
+            d.cbSize = ctypes.sizeof(d)
+            if not sa.SetupDiEnumDeviceInterfaces(h, None, ctypes.byref(_GUID_DEVICE_BATTERY), i, ctypes.byref(d)):
+                break
+            need = wintypes.DWORD()
+            sa.SetupDiGetDeviceInterfaceDetailW(h, ctypes.byref(d), None, 0, ctypes.byref(need), None)
+            buf = ctypes.create_string_buffer(max(need.value, 16))
+            ctypes.cast(buf, ctypes.POINTER(wintypes.DWORD))[0] = 8 if ctypes.sizeof(ctypes.c_void_p) == 8 else 6
+            if sa.SetupDiGetDeviceInterfaceDetailW(h, ctypes.byref(d), buf, need, None, None):
+                out.append(ctypes.wstring_at(ctypes.addressof(buf) + 4))
+            i += 1
+        sa.SetupDiDestroyDeviceInfoList(h)
+    except Exception:
+        pass
+    return out
+
+
+def _battery_read(path):
+    k32 = ctypes.WinDLL("kernel32")
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    k32.DeviceIoControl.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                                    ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+    hb = k32.CreateFileW(path, 0xC0000000, 3, None, 3, 0x80, None)
+    if not hb or hb == wintypes.HANDLE(-1).value:
+        return None
+    try:
+        tag, wait, n = wintypes.ULONG(), wintypes.ULONG(0), wintypes.DWORD()
+        if not k32.DeviceIoControl(hb, 0x294040, ctypes.byref(wait), 4, ctypes.byref(tag), 4, ctypes.byref(n), None) or not tag.value:
+            return None
+        q, bi = _BQI(tag.value, 0, 0), _BINFO()
+        info = k32.DeviceIoControl(hb, 0x294044, ctypes.byref(q), ctypes.sizeof(q), ctypes.byref(bi), ctypes.sizeof(bi), ctypes.byref(n), None)
+        ws, st = _BWS(tag.value, 0, 0, 0, 0), _BSTATUS()
+        stat = k32.DeviceIoControl(hb, 0x29404C, ctypes.byref(ws), ctypes.sizeof(ws), ctypes.byref(st), ctypes.sizeof(st), ctypes.byref(n), None)
+        return {"design": bi.DesignedCapacity if info else 0, "full": bi.FullChargedCapacity if info else 0,
+                "cycles": bi.CycleCount if info else 0, "rate": st.Rate if stat and st.Rate != _UNKNOWN_RATE else None}
+    finally:
+        k32.CloseHandle(hb)
+
+
 class Sampler:
     def __init__(self, push):
         self.push = push
         self.rate = 1.0
         self.active = True          # window visible or widget open
-        self.gpu_wanted = True      # nvidia-smi wakes up the dedicated GPU: only when needed
+        self.gpu_wanted = True      # NVML only while someone is looking at GPU data
         self._stop = threading.Event()
-        self._gpu = {}
-        self._nv = None
-        self._slow = {"battery": {}, "cpuTemp": None, "wifiSignal": None, "ping": None}
-        self._perf = _Pdh(r"\Processor Information(_Total)\% Processor Performance")
+        self._slow = {"wifiSignal": None, "ping": None}
+        self._pdh = _Pdh({
+            "perf": r"\Processor Information(_Total)\% Processor Performance",
+            "eng": r"\GPU Engine(*)\Utilization Percentage",
+            "ded": r"\GPU Adapter Memory(*)\Dedicated Usage",
+            "tz": r"\Thermal Zone Information(*)\High Precision Temperature",
+            "rx": r"\Network Interface(*)\Bytes Received/sec",
+            "tx": r"\Network Interface(*)\Bytes Sent/sec",
+        })
         self._base_mhz = self._base_clock()
         self._last_io = None
+        self._adapters = []
+        self._adapters_at = 0
+        self._nv = _Nvml()
+        self._nv_last = {}
+        self._dgpu_quiet_since = None
+        self._pstate = {}
+        self._pstate_at = 0
+        self._bat_path = None
+        self._bat_paths_at = 0
+        self._bat_static = {}
 
     # ---------- startup and control ----------
     def start(self):
@@ -94,16 +404,15 @@ class Sampler:
 
     def stop(self):
         self._stop.set()
-        self._kill_nv()
+        self._nv.shutdown()
 
     def set_rate(self, seconds):
         self.rate = max(0.25, min(5.0, float(seconds)))
-        self._kill_nv()  # reopened with the new interval
 
     def set_active(self, active, gpu=True):
         self.active, self.gpu_wanted = bool(active), bool(gpu)
         if not (active and gpu):
-            self._kill_nv()
+            self._nv.shutdown()  # release the GPU so it can power down
 
     # ---------- main loop ----------
     def _loop(self):
@@ -121,34 +430,36 @@ class Sampler:
         now = time.monotonic()
         per = psutil.cpu_percent(None, percpu=True)
         cpu = sum(per) / len(per) if per else psutil.cpu_percent(None)
-        perf = self._perf.read()
+        self._pdh.collect()
+        perf = self._pdh.value("perf")
         freq = (self._base_mhz * perf / 100 / 1000) if (perf and self._base_mhz) else None
         vm = psutil.virtual_memory()
         pi = _perf_info()
         page = pi.PageSize if pi else 4096
         io = psutil.disk_io_counters()
-        net = psutil.net_io_counters()
-        d = {"read": 0.0, "write": 0.0, "down": 0.0, "up": 0.0}
+        # network: PDH rates (~0.1 ms) instead of psutil.net_io_counters (~6 ms of CPU per call on Windows)
+        rx, tx = self._pdh.array("rx"), self._pdh.array("tx")
+        net = None if (rx or tx) else psutil.net_io_counters()
+        d = {"read": 0.0, "write": 0.0, "down": sum(v for _, v in rx) * 8 / 1e6, "up": sum(v for _, v in tx) * 8 / 1e6}
         if self._last_io:
             lt, lio, lnet = self._last_io
             dt = max(0.05, now - lt)
             d["read"] = max(0, io.read_bytes - lio.read_bytes) / dt / 1e6
             d["write"] = max(0, io.write_bytes - lio.write_bytes) / dt / 1e6
-            d["down"] = max(0, net.bytes_recv - lnet.bytes_recv) / dt * 8 / 1e6
-            d["up"] = max(0, net.bytes_sent - lnet.bytes_sent) / dt * 8 / 1e6
+            if net and lnet:
+                d["down"] = max(0, net.bytes_recv - lnet.bytes_recv) / dt * 8 / 1e6
+                d["up"] = max(0, net.bytes_sent - lnet.bytes_sent) / dt * 8 / 1e6
         self._last_io = (now, io, net)
         try:
             du = psutil.disk_usage("C:\\")
         except OSError:
             du = None
         bat = psutil.sensors_battery()
-        sb = self._slow["battery"]
-        if self.gpu_wanted:
-            self._ensure_nv()
-        g = self._gpu
+        b = self._battery()
+        g = self._gpu(on_battery=bool(bat and not bat.power_plugged))
         return {
             "cpu": round(cpu, 1), "threads": [round(x / 100, 3) for x in per], "cpuFreq": round(freq, 2) if freq else None,
-            "cpuTemp": self._slow["cpuTemp"],
+            "cpuTemp": self._acpi_temp(),
             "ram": round((vm.total - vm.available) / GB, 2), "ramTotal": round(vm.total / GB, 1),
             "ramCache": round(pi.SystemCache * page / GB, 2) if pi else None,
             "ramCommit": round(pi.CommitTotal * page / GB, 2) if pi else None,
@@ -159,47 +470,112 @@ class Sampler:
             "down": round(d["down"], 2), "up": round(d["up"], 2), "ping": self._slow["ping"], "wifiSignal": self._slow["wifiSignal"],
             "battery": round(bat.percent) if bat else None, "charging": bool(bat.power_plugged) if bat else None,
             "batterySecs": bat.secsleft if bat and bat.secsleft not in (psutil.POWER_TIME_UNLIMITED, psutil.POWER_TIME_UNKNOWN) else None,
-            "batteryPower": sb.get("power"), "batteryHealth": sb.get("health"),
+            "batteryPower": b.get("power"), "batteryHealth": b.get("health"), "batteryCycles": b.get("cycles"),
+            "batteryDesignWh": b.get("designWh"), "batteryFullWh": b.get("fullWh"),
             "gpu": g.get("gpu"), "gpuTemp": g.get("temp"), "gpuPower": g.get("power"), "gpuClock": g.get("clock"),
             "vram": g.get("vram"), "vramTotal": g.get("vramTotal"), "fanGpu": g.get("fan"), "fanCpu": None,
+            "igpu": g.get("igpu"), "gpuState": g.get("state"),
             "uptime": int(time.time() - psutil.boot_time()), "ts": time.time(),
         }
 
-    # ---------- NVIDIA GPU (nvidia-smi in loop mode) ----------
-    def _ensure_nv(self):
-        if self._nv and self._nv.poll() is None:
-            return
-        ms = int(max(1000, self.rate * 1000))
-        try:
-            self._nv = subprocess.Popen(
-                ["nvidia-smi", "--query-gpu=utilization.gpu,temperature.gpu,power.draw,clocks.gr,memory.used,memory.total,fan.speed",
-                 "--format=csv,noheader,nounits", f"-lms={ms}"],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, creationflags=NO_WINDOW, text=True)
-        except OSError:
-            self._nv = None
-            self.gpu_wanted = False
-            return
-        threading.Thread(target=self._read_nv, args=(self._nv,), daemon=True).start()
+    # ---------- GPU: PDH for usage/VRAM (never wakes it), NVML for sensors only while awake ----------
+    def _gpu(self, on_battery):
+        now = time.monotonic()
+        if not self._adapters or now - self._adapters_at > 300:
+            self._adapters = _adapters()
+            self._adapters_at = now
+        names = dict(self._adapters)
+        dgpu = next((k for k, n in self._adapters if n and not _is_integrated(n) and "basic" not in n.lower()), None)
+        igpu = next((k for k, n in self._adapters if n and _is_integrated(n)), None)
+        per_engine = {}
+        for inst, v in self._pdh.array("eng", nonzero=True):
+            m = _RE_LUID.search(inst)
+            if m and m.group(3):
+                k = (m.group(1), m.group(2), m.group(3))
+                per_engine[k] = per_engine.get(k, 0.0) + v
+        util = {k: 0.0 for k, _n in self._adapters}  # an adapter with no busy engine is at 0 %
+        for (hi, lo, _eng), v in per_engine.items():
+            key = f"{int(hi, 16):08x}{int(lo, 16):08x}"
+            util[key] = max(util.get(key, 0.0), min(100.0, v))  # Task Manager: busiest engine of the adapter
+        ded = {}
+        for inst, v in self._pdh.array("ded"):
+            key = _luid_key(inst)
+            if key:
+                ded[key] = ded.get(key, 0.0) + v
+        out = {"igpu": round(util[igpu], 1) if igpu in util else None}
+        if dgpu is None:  # no dedicated GPU: the integrated one is "the GPU"
+            out.update(gpu=out["igpu"], state="integrated" if igpu else None)
+            return out
+        out["gpu"] = round(util.get(dgpu, 0.0), 1) if util else None
+        out["vram"] = round(ded[dgpu] / GB, 2) if dgpu in ded else None
+        # power state of the dedicated GPU (cheap; refreshed every 2 s)
+        if now - self._pstate_at > 2:
+            self._pstate = _display_power_states()
+            self._pstate_at = now
+        dname = names.get(dgpu, "")
+        dstate = next((s for n, s in self._pstate.items() if n == dname), None)
+        if dstate is not None and dstate > 1:
+            self._nv.shutdown()
+            out["state"] = "asleep"  # D3: powered down, nothing to read without waking it
+            out["vramTotal"] = self._nv_last.get("vramTotal")
+            return out
+        busy = (out["gpu"] or 0) >= 1
+        if busy:
+            self._dgpu_quiet_since = None
+        elif self._dgpu_quiet_since is None:
+            self._dgpu_quiet_since = now
+        quiet_for = 0 if busy else now - (self._dgpu_quiet_since or now)
+        if not self.gpu_wanted or (on_battery and quiet_for > 15):
+            # on battery an idle dGPU must be left alone or it never reaches D3cold
+            self._nv.shutdown()
+            out["state"] = "idle"
+            out["vramTotal"] = self._nv_last.get("vramTotal")
+            return out
+        nv = self._nv.read() if "nvidia" in dname.lower() else None
+        if nv:
+            self._nv_last = nv
+            out.update(temp=nv["temp"], power=nv["power"], clock=nv["clock"], fan=nv["fan"], vramTotal=nv["vramTotal"])
+            if out["gpu"] is None:
+                out["gpu"] = nv["gpu"]
+            if out["vram"] is None:
+                out["vram"] = nv["vramUsed"]
+        out["state"] = "active"
+        return out
 
-    def _read_nv(self, proc):
-        num = lambda s: None if not s or "N/A" in s or "Not" in s else float(s)
-        for line in proc.stdout:
-            parts = [p.strip() for p in line.split(",")]
-            if len(parts) < 7:
-                continue
-            u, t, pw, clk, mu, mt, fan = (num(p) for p in parts[:7])
-            self._gpu = {"gpu": u, "temp": t, "power": round(pw) if pw is not None else None,
-                         "clock": round(clk / 1000, 2) if clk else None,
-                         "vram": round(mu / 1024, 2) if mu is not None else None,
-                         "vramTotal": round(mt / 1024) if mt else None, "fan": fan}
+    # ---------- battery (IOCTL; WMI is ~1000x more expensive) ----------
+    def _battery(self):
+        now = time.monotonic()
+        if self._bat_path is None and now - self._bat_paths_at > 30:
+            paths = _battery_paths()
+            self._bat_path = paths[0] if paths else None
+            self._bat_paths_at = now
+        if not self._bat_path:
+            return {}
+        r = _battery_read(self._bat_path)
+        if r is None:
+            self._bat_path = None
+            return {}
+        out = {}
+        if r["rate"] is not None:
+            out["power"] = round(r["rate"] / 1000, 1)  # mW, negative while discharging
+        if r["design"] and r["full"]:
+            out["health"] = round(min(100, r["full"] / r["design"] * 100))
+            out["designWh"], out["fullWh"] = round(r["design"] / 1000, 1), round(r["full"] / 1000, 1)
+        out["cycles"] = r["cycles"] or None  # 0 = the firmware does not report it
+        self._bat_static = out
+        return out
 
-    def _kill_nv(self):
-        if self._nv and self._nv.poll() is None:
-            try:
-                self._nv.kill()
-            except OSError:
-                pass
-        self._nv = None
+    def battery_info(self):
+        return dict(self._bat_static)
+
+    # ---------- CPU temperature: ACPI thermal zones only, with the classic fake values discarded ----------
+    def _acpi_temp(self):
+        temps = []
+        for _inst, v in self._pdh.array("tz"):
+            c = v / 10 - 273.15  # tenths of a kelvin
+            if 35 < c < 110:  # many laptops report a fixed 27.8 °C placeholder: not a real reading
+                temps.append(c)
+        return round(max(temps)) if temps else None
 
     # ---------- slow data: every few seconds ----------
     def _slow_loop(self):
@@ -207,9 +583,6 @@ class Sampler:
         while not self._stop.is_set():
             if self.active:
                 self._ping()
-                if n % 3 == 0:
-                    self._battery_wmi()
-                    self._cpu_temp()
                 if n % 5 == 0:
                     self._wifi()
                 n += 1
@@ -224,60 +597,6 @@ class Sampler:
         except OSError:
             self._slow["ping"] = None
 
-    def _wmi(self, ns, query):
-        """Queries WMI in-process (pythonnet + System.Management): without opening PowerShell."""
-        # CAREFUL: never list()/len() on the collection: if WMI denies access, the .NET exception fires inside
-        # a pythonnet slot and takes down the whole process. Walking the enumerator by hand makes it catchable.
-        out = []
-        try:
-            import clr  # noqa: F401
-            clr.AddReference("System.Management")
-            from System.Management import ManagementObjectSearcher
-            en = ManagementObjectSearcher(ns, query).Get().GetEnumerator()
-            while en.MoveNext():
-                out.append(en.Current)
-        except Exception:
-            pass
-        return out
-
-    def _battery_wmi(self):
-        st = self._wmi(r"root\WMI", "SELECT ChargeRate, DischargeRate, Charging, Discharging FROM BatteryStatus")
-        out = {}
-        for o in st:
-            try:
-                rate = int(o["ChargeRate"] or 0) if o["Charging"] else -int(o["DischargeRate"] or 0)
-                out["power"] = round(rate / 1000, 1)
-            except Exception:
-                pass
-        if "health" not in self._slow["battery"]:
-            des = self._wmi(r"root\WMI", "SELECT DesignedCapacity FROM BatteryStaticData")
-            full = self._wmi(r"root\WMI", "SELECT FullChargedCapacity FROM BatteryFullChargedCapacity")
-            try:
-                d, f = int(des[0]["DesignedCapacity"]), int(full[0]["FullChargedCapacity"])
-                if d > 0:
-                    out["health"] = round(min(100, f / d * 100))
-                    out["designWh"], out["fullWh"] = round(d / 1000, 1), round(f / 1000, 1)
-            except Exception:
-                pass
-        else:
-            out["health"] = self._slow["battery"]["health"]
-        self._slow["battery"].update(out)
-
-    def _cpu_temp(self):
-        if not ctypes.windll.shell32.IsUserAnAdmin():
-            self._slow["cpuTemp"] = None  # Windows only provides it to administrators
-            return
-        zs = self._wmi(r"root\WMI", "SELECT CurrentTemperature FROM MSAcpi_ThermalZoneTemperature")
-        temps = []
-        for z in zs:
-            try:
-                c = int(z["CurrentTemperature"]) / 10 - 273.15
-                if 25 < c < 110:
-                    temps.append(c)
-            except Exception:
-                pass
-        self._slow["cpuTemp"] = round(max(temps)) if temps else None
-
     def _wifi(self):
         try:
             raw = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, timeout=4,
@@ -286,13 +605,11 @@ class Sampler:
                 out = raw.decode("utf-8")  # netsh writes UTF-8 on Windows 11
             except UnicodeDecodeError:
                 out = raw.decode("cp850", "replace")
+            # "Señal" / "Signal": the label is localized, so both are matched (detection pattern, not UI text)
             m = re.search(r"(?:Se.al|Signal)\s*:\s*(\d+)\s*%", out)
             self._slow["wifiSignal"] = int(m.group(1)) if m else None
         except Exception:
             self._slow["wifiSignal"] = None
-
-    def battery_info(self):
-        return dict(self._slow["battery"])
 
     @staticmethod
     def _base_clock():

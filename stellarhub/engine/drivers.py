@@ -5,6 +5,7 @@
 - backup: pnputil /export-driver and /add-driver
 - history: Windows Update history filtered to drivers
 - stored versions and rollback: pnputil /enum-devices /drivers + UpdateDriverForPlugAndPlayDevices
+- DriverStore cleanup: old, unused copies of updated drivers (pnputil /enum-drivers /devices; /delete-driver without /force)
 Anything that changes the system needs administrator rights: checked here, returning {"needAdmin": True}.
 """
 import ctypes
@@ -19,8 +20,8 @@ from .jobs import Cancelled
 from .ps import ps_json, run, NO_WINDOW
 
 EXPORTS = {"list_drivers", "last_search", "problems", "history", "backups", "default_backup_dir", "pick_folder",
-           "open_folder", "driver_versions", "restart", "cancel_restart", "is_admin"}
-JOBS = {"search", "install", "export", "restore_backup", "set_enabled", "remove_device", "rollback", "delete_backup"}
+           "open_folder", "driver_versions", "restart", "cancel_restart", "is_admin", "store_packages"}
+JOBS = {"search", "install", "export", "restore_backup", "set_enabled", "remove_device", "rollback", "delete_backup", "delete_packages"}
 
 DATA = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub")
 LAST = os.path.join(DATA, "drivers_last_search.json")
@@ -597,3 +598,138 @@ def rollback(job, instance_id, inf, hwid):
     err = ctypes.GetLastError()
     _cache["at"] = 0
     return {"ok": bool(ok), "reboot": bool(reboot.value), "restorePoint": rp, "msg": None if ok else f"Windows returned error {err}."}
+
+
+# ================= DriverStore: old copies of the same driver =================
+# Every driver update leaves the previous package in C:\Windows\System32\DriverStore\FileRepository. Like
+# DriverStoreExplorer's "select old drivers", a package counts as old only when a NEWER version of the same INF from
+# the same provider and class is in the store. On top of that it must not be in use: no device (present OR
+# disconnected) lists it in pnputil /devices, which also catches extension INFs, and Win32_PnPSignedDriver does
+# not name it. Removal uses "pnputil /delete-driver" WITHOUT /force, so Windows itself refuses anything in use.
+FILE_REPO = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "System32", "DriverStore", "FileRepository")
+_store = {"data": None, "at": 0}
+
+
+def _pnputil_xml(args, timeout=120):
+    """Runs pnputil with /format xml (Windows 11 22H2+; language-independent). None if not supported."""
+    import xml.etree.ElementTree as ET
+    path = os.path.join(os.environ.get("TEMP", DATA), f"sh_pnp_{os.getpid()}_{time.time_ns()}.xml")
+    try:
+        subprocess.run(["pnputil", *args, "/format", "xml", "/output-file", path], capture_output=True, timeout=timeout,
+                       creationflags=NO_WINDOW)
+        if not os.path.isfile(path) or os.path.getsize(path) == 0:
+            return None
+        return ET.parse(path).getroot()
+    except (OSError, subprocess.SubprocessError, ET.ParseError):
+        return None
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def _drv_ver_key(s):
+    """'MM/DD/YYYY 1.2.3.4' -> ((1, 2, 3, 4), (YYYY, MM, DD)) for sorting."""
+    m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})\s+([\d.]+)", s or "")
+    if not m:
+        return ((), ())
+    ver = tuple(int(x) for x in m.group(4).split(".") if x.isdigit())
+    return (ver, (int(m.group(3)), int(m.group(1)), int(m.group(2))))
+
+
+def _package_folder(oem, original):
+    """FileRepository folder of a published package: the one whose copy of the INF is identical to INF\\oemN.inf."""
+    try:
+        with open(os.path.join(INF_DIR, oem), "rb") as fh:
+            ref = fh.read()
+    except OSError:
+        return None
+    prefix = original.lower() + "_"
+    try:
+        names = [n for n in os.listdir(FILE_REPO) if n.lower().startswith(prefix)]
+    except OSError:
+        return None
+    for n in names:
+        p = os.path.join(FILE_REPO, n, original)
+        try:
+            if os.path.getsize(p) == len(ref):
+                with open(p, "rb") as fh:
+                    if fh.read() == ref:
+                        return os.path.join(FILE_REPO, n)
+        except OSError:
+            continue
+    return None
+
+
+def store_packages(fresh=False):
+    """Read-only. {"supported", "packages": third-party packages in the store, "old": [...], "mb": size of the old ones}."""
+    if not fresh and _store["data"] and time.time() - _store["at"] < 60:
+        return _store["data"]
+    root = _pnputil_xml(["/enum-drivers", "/devices"])
+    if root is None:
+        return {"supported": False, "packages": 0, "old": [], "mb": 0}
+    try:
+        current = {(d.get("inf") or "").lower() for d in list_drivers(fresh=fresh)}
+    except Exception:
+        current = None
+    if not current:
+        # without the inventory usage cannot be double-checked: offer nothing rather than guess
+        return {"supported": True, "packages": len(root.findall("Driver")), "old": [], "mb": 0,
+                "msg": "The driver inventory could not be read."}
+    groups = {}
+    for d in root.findall("Driver"):
+        inf = (d.get("DriverName") or "").lower()
+        if not re.fullmatch(r"oem\d+\.inf", inf):
+            continue
+        item = {"inf": inf, "name": d.findtext("OriginalName") or "", "provider": d.findtext("ProviderName") or "",
+                "cls": d.findtext("ClassName") or "", "raw": d.findtext("DriverVersion") or "",
+                "devices": [(x.findtext("DeviceDescription") or "", x.findtext("Status") or "") for x in d.findall("Devices/Device")]}
+        m = re.match(r"\s*(\d{1,2})/(\d{1,2})/(\d{4})\s+(\S+)", item["raw"])
+        item["date"] = f"{m.group(3)}-{int(m.group(1)):02d}-{int(m.group(2)):02d}" if m else ""
+        item["version"] = m.group(4) if m else item["raw"]
+        groups.setdefault((item["name"].lower(), item["provider"].lower(), item["cls"].lower()), []).append(item)
+    old = []
+    for items in groups.values():
+        if len(items) < 2:
+            continue
+        items.sort(key=lambda i: _drv_ver_key(i["raw"]), reverse=True)
+        newest = items[0]
+        for it in items[1:]:
+            if it["devices"] or it["inf"] in current or _drv_ver_key(it["raw"]) == _drv_ver_key(newest["raw"]):
+                continue  # in use, or not actually older
+            folder = _package_folder(it["inf"], it["name"])
+            size = _dir_stats(folder)[1] if folder else 0
+            old.append({"inf": it["inf"], "name": it["name"], "provider": it["provider"], "cls": it["cls"].upper(),
+                        "version": it["version"], "date": it["date"], "newer": newest["version"], "newerDate": newest["date"],
+                        "mb": round(size / 1024 ** 2, 1), "folder": folder or ""})
+    old.sort(key=lambda o: -o["mb"])
+    data = {"supported": True, "packages": sum(len(v) for v in groups.values()), "old": old,
+            "mb": round(sum(o["mb"] for o in old), 1)}
+    _store.update(data=data, at=time.time())
+    return data
+
+
+def delete_packages(job, infs):
+    """Removes old driver packages. The list is checked again here: only packages that are old and unused RIGHT NOW
+    are removed, whatever the interface sends. pnputil /delete-driver without /force: Windows refuses anything in use."""
+    need = _need_admin()
+    if need:
+        return need
+    asked = [str(i).lower() for i in (infs or []) if re.fullmatch(r"oem\d+\.inf", str(i), re.I)]
+    job.progress(0, "Checking which packages are still unused", force=True)
+    data = store_packages(fresh=True)
+    allowed = {o["inf"]: o for o in data.get("old", [])}
+    todo = [i for i in asked if i in allowed]
+    results = []
+    for k, inf in enumerate(todo):
+        job.check()
+        job.progress(k / max(1, len(todo)), f"Removing {allowed[inf]['name']} {allowed[inf]['version']}", n=k, total=len(todo))
+        code, out = run(["pnputil", "/delete-driver", inf], encoding="cp1252", job=job, timeout=300)
+        lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+        results.append({"inf": inf, "ok": code == 0, "msg": "" if code == 0 else (lines[-1] if lines else f"pnputil exit code {code}")})
+    job.progress(1, "Done", n=len(todo), total=len(todo), force=True)
+    _store.update(data=None, at=0)
+    freed = sum(allowed[r["inf"]]["mb"] for r in results if r["ok"])
+    return {"ok": any(r["ok"] for r in results) or not todo, "results": results,
+            "skipped": [i for i in asked if i not in allowed], "freedMb": round(freed, 1)}

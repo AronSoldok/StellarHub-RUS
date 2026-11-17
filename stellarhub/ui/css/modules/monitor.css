@@ -346,3 +346,9 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .allok.warn h3{color:var(--warn)}
 /* process table: rows out of view are not painted (smooth scrolling with 150+ programs) */
 #v-monitor .pr{content-visibility:auto;contain-intrinsic-size:auto 46px}
+
+/* graphics: integrated GPU usage (PDH, per adapter) and the dedicated GPU's power state */
+#v-monitor .igu{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:16px}
+#v-monitor .igu .big{font-size:30px}
+#v-monitor .igu .chwrap.sm{height:64px;margin-top:0}
+#v-monitor .gstate{margin-top:12px;border-color:color-mix(in srgb,var(--accent2) 35%,var(--line))}
