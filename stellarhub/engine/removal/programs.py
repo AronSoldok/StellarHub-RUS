@@ -102,8 +102,10 @@ KIND_LABEL = {"msi": "Windows Installer", "inno": "Inno Setup", "nsis": "NSIS", 
               "c2r": "Click-to-Run", "squirrel": "Squirrel", "other": "Built into the program",
               "store": "Microsoft Store", "steam": "Steam", "burn": "WiX Burn", "chromium": "Chromium",
               "installshield": "InstallShield"}
+# Silent switches per installer family (the same ones Bulk Crap Uninstaller uses). Squirrel (Discord, Teams
+# classic, Slack...): "Update.exe --uninstall -s".
 SILENT = {"inno": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART", "nsis": "/S", "burn": "/quiet /norestart",
-          "chromium": "--force-uninstall"}
+          "chromium": "--force-uninstall", "squirrel": "-s"}
 
 
 def uninstall_command(p, quiet=False):
@@ -124,7 +126,7 @@ def uninstall_command(p, quiet=False):
 
 
 def can_quiet(p):
-    return bool(p.get("quiet")) or p.get("kind") in ("msi", "inno", "nsis", "winget", "burn", "chromium")
+    return bool(p.get("quiet")) or p.get("kind") in ("msi", "inno", "nsis", "winget", "burn", "chromium", "squirrel")
 
 
 # ---------------------------------------------------------------- Win32 inventory
@@ -375,7 +377,7 @@ def get_store_apps():
             "name": name, "version": a.get("Ver", ""), "publisher": pub, "location": a.get("Loc") or "",
             "uninstall": "", "quiet": "", "icon": _store_logo(a.get("Loc"), a.get("Logo")), "user": True,
             "windows_installer": False, "size": 0, "date": "", "url": "", "no_remove": False,
-            "arch": "Tienda", "kind": "store", "kind_label": KIND_LABEL["store"], "msi_code": "",
+            "arch": "", "kind": "store", "kind_label": KIND_LABEL["store"], "msi_code": "",
             "package": a["Full"], "family": a.get("Family", ""), "package_name": a["Name"],
             "broken": False, "orphan": False, "no_uninstaller": False, "location_inferred": False,
             "can_quiet": True, "signature": a.get("Sig", ""),
@@ -403,7 +405,12 @@ def cached_store_apps():
     try:
         with open(paths.data_path("cache", _STORE_CACHE), encoding="utf-8") as f:
             data = json.load(f)
-        return data if isinstance(data, list) else []
+        if not isinstance(data, list):
+            return []
+        for p in data:  # caches saved by the Spanish build said "Tienda"
+            if isinstance(p, dict) and p.get("arch") == "Tienda":
+                p["arch"] = ""
+        return data
     except (OSError, ValueError):
         return []
 

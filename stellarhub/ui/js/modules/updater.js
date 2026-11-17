@@ -76,7 +76,10 @@ function tile(it) {
   return `<span class="u-tile" style="--c:${CAT_COL[it.cat] || 'var(--accent2)'}">${ic((CATS[it.cat] || CATS.apps).ic)}</span>`;
 }
 const smallTile = (o, fallbackIc = 'package', col = 'var(--mute)') => o.icon ? `<span class="u-tile img sm"><img src="${o.icon}" alt="" decoding="async"></span>` : `<span class="u-tile sm" style="--c:${o.name ? colorFor(o.name) : col}">${o.name ? esc(initial(o.name)) : ic(fallbackIc)}</span>`;
-const vers = it => it.from ? `<span class="u-ver"><span>${esc(it.from)}</span>${ic('arrow')}<b>${esc(it.to)}</b></span>` : `<span class="u-ver"><b>${esc(it.to || '')}</b></span>`;
+/* "Unknown": winget can't read the installed version, so updating reinstalls the latest one (not in Update all) */
+const vers = it => it.unknownVersion
+  ? `<span class="u-ver" title="winget can't read the installed version: updating reinstalls the latest one"><span class="u-unk">Unknown</span>${ic('arrow')}<b>${esc(it.to)}</b></span>`
+  : it.from ? `<span class="u-ver"><span>${esc(it.from)}</span>${ic('arrow')}<b>${esc(it.to)}</b></span>` : `<span class="u-ver"><b>${esc(it.to || '')}</b></span>`;
 const ago = ts => { if (!ts) return 'not yet'; const s = (Date.now() - ts) / 1000; if (s < 60) return 'a moment ago'; if (s < 3600) return `${Math.round(s / 60)} min ago`; if (s < 86400) return `${Math.round(s / 3600)} h ago`; const d = Math.round(s / 86400); return d === 1 ? '1 day ago' : `${d} days ago`; };
 const fdate = d => { const t = Date.parse(d); return isNaN(t) ? esc(d) : new Date(t).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }); };
 let ctxRef = null;

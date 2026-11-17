@@ -193,7 +193,7 @@ def background(job):
                     del _progs[k]
                 for p in store:
                     _progs[p["id"]] = p
-            job.progress(.45, "Tienda", force=True, icons={}, sizes={},
+            job.progress(.45, "Microsoft Store", force=True, icons={}, sizes={},
                          store=[{**_ui(p), "icon": _icons.get_icon(p, extract=False)} for p in store])
             sb = {}
             for p in store:

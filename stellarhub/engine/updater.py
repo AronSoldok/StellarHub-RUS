@@ -92,10 +92,23 @@ def _winget(args, timeout=180):
     return r.stdout.decode("utf-8", "replace")
 
 
+_PAD = "⁠"  # word joiner: placeholder for the second display cell of a wide character
+
+
+def _cells(s):
+    if s.isascii():
+        return s
+    import unicodedata
+    return "".join(ch + _PAD if unicodedata.east_asian_width(ch) in ("W", "F") else ch for ch in s)
+
+
 def parse_table(text):
     """winget table to a list of dicts {name,id,version,available,source}. Columns by header position
     (works with Spanish and English Windows and with variable widths)."""
-    lines = [ln.split("\r")[-1] for ln in text.splitlines()]
+    # winget pads columns by DISPLAY width: a wide character (CJK, fullwidth) takes two cells, so slicing by
+    # character index would shift every column after it. Wide characters get a zero-width placeholder so that
+    # character positions match display cells again; the placeholder is dropped from the values.
+    lines = [_cells(ln.split("\r")[-1]) for ln in text.splitlines()]
     hdr_i = next((i for i in range(len(lines) - 1) if re.match(r"^-{10,}\s*$", lines[i + 1] or "")), None)
     if hdr_i is None:
         return []
@@ -127,7 +140,7 @@ def parse_table(text):
         for j, k in enumerate(keys):
             a = starts[j]
             b = starts[j + 1] if j + 1 < len(starts) else len(ln)
-            d[k] = ln[a:b].strip()
+            d[k] = ln[a:b].replace(_PAD, "").strip()
         if not d.get("id") or " " in d["id"] and not d["id"].startswith(("ARP\\", "MSIX\\")):
             # a summary line ("14 upgrades available.", also matched in Spanish) or something that is not a row
             if re.search(r"\d+ (upgrades|actualizaciones|package|paquete)", ln, re.I):
@@ -250,11 +263,18 @@ def scan_apps(job):
         if not u.get("available"):
             continue
         p = _match(u)
+        # "Unknown"/"desconocido" (Spanish winget) or "< x": winget can't read the installed version, so "updating"
+        # just reinstalls the latest one every time (a long-standing winget complaint). Shown, but optional:
+        # not in "Update all" nor in the pending count.
+        ver = u.get("version") or ""
+        unk = ver.lower() in ("", "unknown", "desconocido") or ver.startswith("<")
         items.append({"id": u["id"], "wid": u["id"], "kind": "winget", "name": u["name"].replace("…", "").strip(),
                       "pub": (p or {}).get("publisher") or (u.get("source") == "msstore" and "Microsoft Store") or "",
-                      "from": "unknown" if (u.get("version") or "").lower() in ("", "unknown", "desconocido") else u["version"],  # "desconocido" = Spanish winget
+                      "from": "unknown" if unk else ver, "unknownVersion": unk, "optional": unk,
                       "to": u["available"], "source": u.get("source") or "",
-                      "cat": _category(u), "mb": None, "admin": False, "reboot": False, "notes": [],
+                      "cat": _category(u), "mb": None, "admin": False, "reboot": False,
+                      "notes": ["winget can't read the installed version, so updating reinstalls the latest one. "
+                                "That's why it isn't included in Update all."] if unk else [],
                       "pinned": u["id"] in pins, "user": bool((p or {}).get("user")), "_p": p})
     # outside winget: registry programs (ARP) that winget can't update
     unknown, store_ok, rt_ok, dev_ok = [], [], [], []
@@ -568,12 +588,38 @@ def _winget_upgrade(job, it, report):
     if code == 0 or re.search(r"Successfully installed|Instalado correctamente|se instaló correctamente", out, re.I):
         return "done", None
     hexc = f"0x{code & 0xFFFFFFFF:08X}" if code is not None else "?"
-    msgs = {"0x8A15002B": "There's no newer version to install anymore.", "0x8A150011": "The installer failed.",
-            "0x8A15010C": "The update needs the program to be closed first.",
-            "0x8A150056": "The program is open: close it and try again.", "0x8A150077": "A restart is needed to finish.",
-            "0x80073D02": "The app is open: close it and try again."}
+    if hexc in WINGET_REBOOT_OK:
+        return "done", "Installed. Restart the PC to finish.", True
     tail = [ln for ln in out.splitlines() if ln.strip()][-1:] or [""]
-    return "fail", msgs.get(hexc, f"The installer returned {hexc}. {tail[0][:120]}")
+    return "fail", WINGET_CODES.get(hexc, f"The installer returned {hexc}. {tail[0][:120]}")
+
+
+# winget return codes, from the official table:
+# https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md
+WINGET_REBOOT_OK = {"0x8A150109", "0x8A15010B"}  # installed, a restart finishes it / Windows will restart
+WINGET_CODES = {
+    "0x8A150010": "No installer fits this PC (architecture or Windows version).",
+    "0x8A150011": "The downloaded installer didn't match its expected hash, so it wasn't run.",
+    "0x8A150014": "winget can't find this package anymore.",
+    "0x8A15002B": "There's no newer version to install anymore.",
+    "0x8A15004F": "The available version isn't newer than the installed one.",
+    "0x8A150056": "This installer refuses to run as administrator. Open StellarHub in normal mode to update it.",
+    "0x8A150061": "This version is already installed.",
+    "0x8A150077": "The sign-in was cancelled.",
+    "0x8A150101": "The program is open: close it and try again.",
+    "0x8A150102": "Another installation is running. Try again when it finishes.",
+    "0x8A150103": "Some of its files are in use: close the program and try again.",
+    "0x8A150104": "It needs a component that's missing on this PC.",
+    "0x8A150105": "There isn't enough free disk space.",
+    "0x8A150106": "There isn't enough free memory: close some apps and try again.",
+    "0x8A150107": "It needs an internet connection.",
+    "0x8A150108": "The installer failed. The publisher's support may help.",
+    "0x8A15010A": "Restart the PC, then try again.",
+    "0x8A15010C": "The installation was cancelled.",
+    "0x8A15010D": "Another version of this app is already installed.",
+    "0x8A15010E": "A newer version is already installed.",
+    "0x80073D02": "The app is open: close it and try again.",
+}
 
 
 _WU_INSTALL = r"""
