@@ -393,7 +393,7 @@ function sectionHTML(id) {
     case 'about': return `<div class="about-h"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.4"/><circle cx="20.2" cy="8.3" r="1.5" style="fill:var(--accent2)"/></svg>
         <div><h3>StellarHub</h3><p>Versión ${state.version}. El centro de control de tu PC.</p></div></div>
       <div class="set inline"><div class="lbl"><div>Creado por<span>Esteban Arosemena y Claude</span></div></div></div>
-      <div class="set inline"><div class="lbl"><div>Código fuente<span>El repositorio de GitHub se publicará pronto.</span></div></div><span class="chip">GitHub</span></div>
+      <div class="set inline"><div class="lbl"><div>Código fuente<span>Software libre con licencia GNU GPLv3. github.com/Chivitos100/StellarHub</span></div></div><button class="btn sec" data-act="github">${ic('external')}Abrir en GitHub</button></div>
       <div class="set"><div class="lbl"><div>Lenguajes<span>Cuánto código hay de cada uno.</span></div></div><div id="langs" class="langs"><div class="sk" style="height:10px"></div></div></div>
       <div class="set inline"><div class="lbl"><div>Hecho con<span>Python, pywebview y WebView2; three.js para el modelo 3D; fuentes Unbounded y Onest.</span></div></div></div>
       <div class="set inline"><div class="lbl"><div>Este equipo<span>${esc(SH.PC.model)}, ${esc(SH.PC.os)}</span></div></div></div>`;
@@ -441,6 +441,7 @@ sheet.addEventListener('click', e => {
 async function runAct(a) {
   if (a === 'admin') askAdmin(true);
   else if (a === 'checkupd') toast('Estás en la última versión.');
+  else if (a === 'github') { if (await SH.call('open_url', 'https://github.com/Chivitos100/StellarHub') === undefined) window.open('https://github.com/Chivitos100/StellarHub'); }
   else if (a === 'autozoom') {
     const v = String(autoZoom); const s = $('.seg[data-key="zoom"]', sheet);
     if (s) { $$('button', s).forEach(x => x.classList.toggle('on', x.dataset.v === v)); placeSeg(s); }
