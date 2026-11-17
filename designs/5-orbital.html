@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="es" data-theme="deep">
+<html lang="en" data-theme="deep">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>StellarHub, diseño orbital</title>
+<title>StellarHub, orbital design</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@400;500;600&display=swap" rel="stylesheet">
@@ -127,7 +127,7 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 .health div{font-size:12px;color:var(--mute)}
 .health div b{display:block;color:var(--ink);font-weight:500;font-size:13px}
 
-/* ---------- módulos ---------- */
+/* ---------- modules ---------- */
 .mod{position:absolute;inset:6px 28px 96px;display:flex;flex-direction:column}
 .mhead{display:flex;align-items:flex-end;gap:20px;margin-bottom:22px}
 .mhead .ttl{flex:1}
@@ -203,7 +203,7 @@ canvas.ch{width:100%;flex:1 1 0;height:0;min-height:0;display:block;margin-top:1
 .dock .dot{position:absolute;bottom:4px;left:0;width:16px;height:3px;border-radius:3px;background:var(--accent);will-change:transform}
 .dock .sep{width:1px;height:24px;background:var(--line);margin:0 5px 10px}
 
-/* ---------- paleta ---------- */
+/* ---------- palette ---------- */
 .overlay{position:fixed;inset:0;z-index:60;visibility:hidden}
 .overlay.on{visibility:visible}
 .scrim{position:absolute;inset:0;background:rgba(3,5,11,.55);opacity:0}
@@ -223,7 +223,7 @@ canvas.ch{width:100%;flex:1 1 0;height:0;min-height:0;display:block;margin-top:1
 .pal .empty{padding:26px 12px;color:var(--mute);text-align:center}
 .pal .foot{display:flex;gap:16px;padding:9px 18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--faint)}
 
-/* ---------- ajustes ---------- */
+/* ---------- settings ---------- */
 .sheet{position:absolute;top:12px;right:12px;bottom:12px;width:360px;border-radius:20px;background:var(--deep);border:1px solid var(--line2);
   box-shadow:0 40px 100px -30px rgba(0,0,0,.9);padding:22px;opacity:0;display:flex;flex-direction:column;gap:24px}
 .sheet header{display:flex;align-items:center}
@@ -258,19 +258,19 @@ canvas.ch{width:100%;flex:1 1 0;height:0;min-height:0;display:block;margin-top:1
     <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.4"/><circle cx="20.2" cy="8.3" r="1.5" style="fill:var(--accent2)"/></svg>
     StellarHub
   </div>
-  <button class="search" id="searchBtn" aria-label="Buscar">
+  <button class="search" id="searchBtn" aria-label="Search">
     <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
-    <span>Buscar una herramienta o acción</span>
+    <span>Search for a tool or action</span>
     <span class="kbd">Ctrl K</span>
   </button>
   <div class="right">
-    <button class="mode" id="modePill"><span class="d"></span><span id="modeTxt">Modo normal</span></button>
-    <button class="gear" id="gearBtn" aria-label="Ajustes">
+    <button class="mode" id="modePill"><span class="d"></span><span id="modeTxt">Normal mode</span></button>
+    <button class="gear" id="gearBtn" aria-label="Settings">
       <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
     </button>
-    <div class="note" id="adminNote" role="dialog" aria-label="Modo administrador">
-      <p><b>Activa el modo administrador</b> para instalar drivers, limpiar archivos del sistema y reparar Windows. Sin él, StellarHub funciona en modo limitado.</p>
-      <div class="row-btns"><button class="btn pri" id="adminYes">Activar</button><button class="btn ghost" id="adminNo">Ahora no</button></div>
+    <div class="note" id="adminNote" role="dialog" aria-label="Administrator mode">
+      <p><b>Turn on administrator mode</b> to install drivers, clean system files and repair Windows. Without it, StellarHub runs in limited mode.</p>
+      <div class="row-btns"><button class="btn pri" id="adminYes">Turn on</button><button class="btn ghost" id="adminNo">Not now</button></div>
     </div>
   </div>
 </header>
@@ -288,64 +288,64 @@ canvas.ch{width:100%;flex:1 1 0;height:0;min-height:0;display:block;margin-top:1
     </div>
     <div class="home-info" id="homeInfo">
       <div class="model" data-intro>ASUS TUF Gaming F16</div>
-      <div class="sub" data-intro>Portátil, modelo FX608JPR. Windows 11 Pro 25H2.</div>
+      <div class="sub" data-intro>Laptop, model FX608JPR. Windows 11 Pro 25H2.</div>
       <div class="facts" data-intro>
         <div><b data-count="303">0</b><span>drivers</span></div>
-        <div><b data-count="116">0</b><span>programas</span></div>
-        <div><b data-count="361">0</b><span>GB libres en C:</span></div>
+        <div><b data-count="116">0</b><span>programs</span></div>
+        <div><b data-count="361">0</b><span>GB free on C:</span></div>
       </div>
     </div>
     <div class="pending" id="pending">
-      <h2 data-intro>Por revisar</h2>
-      <button class="pend" data-go="drivers" data-intro><b>4</b><span>drivers con actualización disponible</span><svg class="i" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
-      <button class="pend" data-go="updater" data-intro><b>12</b><span>programas por actualizar</span><svg class="i" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
-      <button class="pend" data-go="optimizer" data-intro><b>18<small style="font-size:12px"> GB</small></b><span>que se pueden liberar</span><svg class="i" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
+      <h2 data-intro>To review</h2>
+      <button class="pend" data-go="drivers" data-intro><b>4</b><span>drivers with an update available</span><svg class="i" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
+      <button class="pend" data-go="updater" data-intro><b>12</b><span>programs to update</span><svg class="i" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
+      <button class="pend" data-go="optimizer" data-intro><b>18<small style="font-size:12px"> GB</small></b><span>that can be freed</span><svg class="i" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
       <div class="health" data-intro>
         <svg class="g" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="none" style="stroke:var(--raise2)" stroke-width="4"/><circle id="healthArc" cx="20" cy="20" r="16" fill="none" style="stroke:var(--accent2)" stroke-width="4" stroke-linecap="round" stroke-dasharray="100.5" stroke-dashoffset="100.5"/></svg>
-        <div><b>Salud del sistema: buena</b>batería al 97 %, sin errores de dispositivos</div>
+        <div><b>System health: good</b>battery at 97%, no device errors</div>
       </div>
     </div>
   </section>
 
   <section class="view" data-view="monitor" id="v-monitor">
     <div class="mod">
-      <div class="mhead" data-asm><div class="ttl"><h1>Live Monitor</h1><p>Tu equipo en tiempo real. Pasa el ratón por una gráfica para ver su historial.</p></div>
-        <button class="btn ghost">Modo compacto</button></div>
+      <div class="mhead" data-asm><div class="ttl"><h1>Live Monitor</h1><p>Your PC in real time. Hover a chart to see its history.</p></div>
+        <button class="btn ghost">Compact mode</button></div>
       <div class="mon">
         <div class="pan p-cpu" data-asm>
-          <h4>Procesador <em>Intel Core i7-14650HX</em></h4>
+          <h4>Processor <em>Intel Core i7-14650HX</em></h4>
           <div class="cpu-top"><div class="big"><span id="cpuV">0</span><small>%</small></div>
-            <div class="meta"><b id="cpuF">3,9</b> GHz<br>24 hilos</div>
-            <div class="meta"><b id="cpuT">61</b> °C<br>paquete</div></div>
+            <div class="meta"><b id="cpuF">3,9</b> GHz<br>24 threads</div>
+            <div class="meta"><b id="cpuT">61</b> °C<br>package</div></div>
           <canvas class="ch" id="chCpu"></canvas>
           <div class="threads" id="threads"></div>
         </div>
         <div class="pan p-gpu" data-asm>
-          <h4>Gráficos <em>RTX 5070 Laptop</em></h4>
+          <h4>Graphics <em>RTX 5070 Laptop</em></h4>
           <div class="gpu-body">
             <div class="gauge"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" fill="none" style="stroke:var(--raise2)" stroke-width="9" stroke-linecap="round" stroke-dasharray="235.6 314.2"/><circle id="gpuArc" cx="60" cy="60" r="50" fill="none" style="stroke:var(--accent)" stroke-width="9" stroke-linecap="round" stroke-dasharray="0 314.2"/></svg>
-              <div class="v"><div><b id="gpuV">0</b><span>% de uso</span></div></div></div>
+              <div class="v"><div><b id="gpuV">0</b><span>% usage</span></div></div></div>
             <div class="gstats">
-              <div class="s"><b><span id="gpuT">52</span> °C</b>temperatura</div>
-              <div class="s"><b><span id="gpuP">38</span> W</b>consumo</div>
-              <div class="s"><b><span id="vramV">3,1</span> de 8 GB</b>memoria de vídeo<div class="hbar c"><span id="vramB"></span></div></div>
+              <div class="s"><b><span id="gpuT">52</span> °C</b>temperature</div>
+              <div class="s"><b><span id="gpuP">38</span> W</b>power</div>
+              <div class="s"><b><span id="vramV">3,1</span> of 8 GB</b>video memory<div class="hbar c"><span id="vramB"></span></div></div>
             </div>
           </div>
         </div>
         <div class="pan p-ram" data-asm>
-          <h4>Memoria <em>DDR5 5600</em></h4>
-          <div class="big"><span id="ramV">9,4</span><small>de 16 GB</small></div>
+          <h4>Memory <em>DDR5 5600</em></h4>
+          <div class="big"><span id="ramV">9,4</span><small>of 16 GB</small></div>
           <div class="hbar" style="margin-top:12px"><span id="ramB"></span></div>
-          <div class="procs"><div>Chrome<b>2,1 GB</b></div><div>FL Studio<b>1,4 GB</b></div><div>Explorador<b>310 MB</b></div></div>
+          <div class="procs"><div>Chrome<b>2.1 GB</b></div><div>FL Studio<b>1.4 GB</b></div><div>Explorer<b>310 MB</b></div></div>
         </div>
         <div class="pan p-net" data-asm>
-          <h4>Red <em>Wi-Fi 6E</em></h4>
-          <div class="netnums"><div><span class="sw" style="background:var(--accent2)"></span><span><b id="netD">0</b> Mb/s bajada</span></div><div><span class="sw" style="background:var(--accent)"></span><span><b id="netU">0</b> Mb/s subida</span></div></div>
+          <h4>Network <em>Wi-Fi 6E</em></h4>
+          <div class="netnums"><div><span class="sw" style="background:var(--accent2)"></span><span><b id="netD">0</b> Mb/s down</span></div><div><span class="sw" style="background:var(--accent)"></span><span><b id="netU">0</b> Mb/s up</span></div></div>
           <canvas class="ch" id="chNet"></canvas>
         </div>
         <div class="pan p-disk" data-asm>
-          <h4>Disco <em>WD SN5000S</em></h4>
-          <div class="netnums"><div><span class="sw" style="background:var(--accent2)"></span><span><b id="dR">0</b> MB/s lectura</span></div><div><span class="sw" style="background:var(--accent)"></span><span><b id="dW">0</b> MB/s escritura</span></div></div>
+          <h4>Disk <em>WD SN5000S</em></h4>
+          <div class="netnums"><div><span class="sw" style="background:var(--accent2)"></span><span><b id="dR">0</b> MB/s read</span></div><div><span class="sw" style="background:var(--accent)"></span><span><b id="dW">0</b> MB/s write</span></div></div>
           <canvas class="ch" id="chDisk"></canvas>
         </div>
       </div>
@@ -353,32 +353,32 @@ canvas.ch{width:100%;flex:1 1 0;height:0;min-height:0;display:block;margin-top:1
   </section>
 </main>
 
-<nav class="dock" id="dock" aria-label="Módulos"></nav>
+<nav class="dock" id="dock" aria-label="Modules"></nav>
 
 <div class="overlay" id="palO">
   <div class="scrim" data-close></div>
-  <div class="pal" id="pal" role="dialog" aria-label="Buscar">
+  <div class="pal" id="pal" role="dialog" aria-label="Search">
     <div class="in"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
-      <input id="palIn" placeholder="Escribe lo que quieres hacer" autocomplete="off" spellcheck="false"></div>
+      <input id="palIn" placeholder="Type what you want to do" autocomplete="off" spellcheck="false"></div>
     <div class="res" id="palRes"></div>
-    <div class="foot"><span>Flechas para moverte</span><span>Enter para abrir</span><span>Esc para cerrar</span></div>
+    <div class="foot"><span>Arrows to move</span><span>Enter to open</span><span>Esc to close</span></div>
   </div>
 </div>
 
 <div class="overlay" id="setO">
   <div class="scrim" data-close></div>
-  <aside class="sheet" id="sheet" aria-label="Ajustes">
-    <header><h2>Ajustes</h2><button class="x" data-close aria-label="Cerrar"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
-    <div class="set"><label>Tema</label><div class="seg" id="segTheme"><span class="ind"></span><button data-v="deep" class="on">Espacio profundo</button><button data-v="dusk">Crepúsculo</button></div></div>
-    <div class="set"><label>Color de acento</label><div class="sw-row" id="swatches">
+  <aside class="sheet" id="sheet" aria-label="Settings">
+    <header><h2>Settings</h2><button class="x" data-close aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+    <div class="set"><label>Theme</label><div class="seg" id="segTheme"><span class="ind"></span><button data-v="deep" class="on">Deep space</button><button data-v="dusk">Dusk</button></div></div>
+    <div class="set"><label>Accent color</label><div class="sw-row" id="swatches">
       <button class="swatch on" style="--s:#FF7A66" data-a="#FF7A66" data-b="#9ED6FF" aria-label="Coral"></button>
-      <button class="swatch" style="--s:#9ED6FF" data-a="#9ED6FF" data-b="#FF9E7A" aria-label="Hielo"></button>
-      <button class="swatch" style="--s:#F4C26B" data-a="#F4C26B" data-b="#8FD3E8" aria-label="Ámbar"></button>
-      <button class="swatch" style="--s:#7FE0B4" data-a="#7FE0B4" data-b="#FFB08A" aria-label="Menta"></button></div></div>
-    <div class="set"><label>Intensidad de animación</label><div class="seg" id="segInt"><span class="ind"></span><button data-v="max" class="on">Máxima</button><button data-v="normal">Normal</button><button data-v="min">Mínima</button></div>
-      <div class="hint" id="intHint">Todo se mueve: órbitas, estrellas y viajes de cámara.</div></div>
-    <div class="set tg"><span>Polvo de estrellas</span><button class="toggle on" id="tgStars" aria-label="Polvo de estrellas"><i></i></button></div>
-    <div class="ver">StellarHub 0.1, maqueta de diseño</div>
+      <button class="swatch" style="--s:#9ED6FF" data-a="#9ED6FF" data-b="#FF9E7A" aria-label="Ice"></button>
+      <button class="swatch" style="--s:#F4C26B" data-a="#F4C26B" data-b="#8FD3E8" aria-label="Amber"></button>
+      <button class="swatch" style="--s:#7FE0B4" data-a="#7FE0B4" data-b="#FFB08A" aria-label="Mint"></button></div></div>
+    <div class="set"><label>Animation intensity</label><div class="seg" id="segInt"><span class="ind"></span><button data-v="max" class="on">Maximum</button><button data-v="normal">Normal</button><button data-v="min">Minimum</button></div>
+      <div class="hint" id="intHint">Everything moves: orbits, stars and camera flights.</div></div>
+    <div class="set tg"><span>Stardust</span><button class="toggle on" id="tgStars" aria-label="Stardust"><i></i></button></div>
+    <div class="ver">StellarHub 0.1, design mockup</div>
   </aside>
 </div>
 
@@ -403,7 +403,7 @@ class Spring{
     for(let i=0;i<n;i++){const a=-k*(this.v-this.t)-c*this.vel;this.vel+=a*h;this.v+=this.vel*h}
     return this.v}
 }
-function springEase(k=180,c=19){ // curva de muelle para WAAPI
+function springEase(k=180,c=19){ // spring curve for WAAPI
   let x=0,v=0;const pts=[];const h=1/60;
   for(let i=0;i<=60;i++){pts.push(+x.toFixed(4));for(let j=0;j<4;j++){const a=-k*(x-1)-c*v;v+=a*h/4;x+=v*h/4}}
   pts[pts.length-1]=1;return `linear(${pts.join(',')})`}
@@ -448,23 +448,23 @@ const P={
 };
 const ic=(n,cls='i')=>`<svg class="${cls}" viewBox="0 0 24 24">${P[n]||''}</svg>`;
 
-/* ---------- módulos ---------- */
+/* ---------- modules ---------- */
 const MODS=[
-  {id:'home',name:'Inicio'},
+  {id:'home',name:'Home'},
   {id:'monitor',name:'Live Monitor'},
-  {id:'drivers',name:'Driver Updater',desc:'Revisa tus 303 drivers y busca versiones nuevas en Windows Update.',cta:'Buscar actualizaciones',sk:'rows'},
-  {id:'remover',name:'Program Remover',desc:'116 programas instalados. Desinstala y borra lo que dejan atrás.',cta:'Elegir programas',sk:'rows'},
-  {id:'updater',name:'Program Updater',desc:'Programas, Windows y componentes al día, en una sola cola.',cta:'Buscar actualizaciones',sk:'groups'},
-  {id:'storage',name:'Storage Checker',desc:'Mira qué ocupa cada carpeta de tus discos.',cta:'Analizar el disco C:',sk:'tree'},
-  {id:'optimizer',name:'Super Optimizer',desc:'Limpia, repara y acelera el arranque de Windows.',cta:'Analizar el sistema',sk:'rows'},
-  {id:'tester',name:'Device Tester',desc:'Prueba teclado, pantalla, micrófono, altavoces y cámara.',cta:'Empezar una prueba',sk:'tiles'},
+  {id:'drivers',name:'Driver Updater',desc:'Check your 303 drivers and find new versions in Windows Update.',cta:'Check for updates',sk:'rows'},
+  {id:'remover',name:'Program Remover',desc:'116 programs installed. Uninstall them and remove what they leave behind.',cta:'Choose programs',sk:'rows'},
+  {id:'updater',name:'Program Updater',desc:'Programs, Windows and components up to date, in one queue.',cta:'Check for updates',sk:'groups'},
+  {id:'storage',name:'Storage Checker',desc:'See what fills each folder on your disks.',cta:'Analyze drive C:',sk:'tree'},
+  {id:'optimizer',name:'Super Optimizer',desc:'Clean up, repair and speed up Windows startup.',cta:'Analyze the system',sk:'rows'},
+  {id:'tester',name:'Device Tester',desc:'Test the keyboard, screen, microphone, speakers and camera.',cta:'Start a test',sk:'tiles'},
 ];
 function skeleton(type){
   const r=(n,i)=>`<div class="sk-row" data-asm><div class="sk a" style="--dl:${i*.08}s"></div><div class="sk b" style="--w:${[38,52,30,46,41,27,49][i%7]}%;--dl:${i*.08+.04}s"></div><div class="sk c" style="--dl:${i*.08+.08}s"></div></div>`;
   if(type==='rows')return `<div class="sk-rows">${Array.from({length:7},r).join('')}</div>`;
-  if(type==='groups')return `<div class="sk-groups">${['Programas','Windows','Componentes'].map((g,i)=>`<div class="g" data-asm><div style="font-size:12.5px;color:var(--mute)">${g}</div>${[60,82,48,70].map((w,j)=>`<div class="sk" style="height:12px;width:${w}%;--dl:${(i*4+j)*.06}s"></div>`).join('')}</div>`).join('')}</div>`;
+  if(type==='groups')return `<div class="sk-groups">${['Programs','Windows','Components'].map((g,i)=>`<div class="g" data-asm><div style="font-size:12.5px;color:var(--mute)">${g}</div>${[60,82,48,70].map((w,j)=>`<div class="sk" style="height:12px;width:${w}%;--dl:${(i*4+j)*.06}s"></div>`).join('')}</div>`).join('')}</div>`;
   if(type==='tree')return `<div class="sk-tree">${Array.from({length:5},(_,i)=>`<div class="sk" data-asm style="--dl:${i*.1}s"></div>`).join('')}</div>`;
-  const names=['Teclado','Pantalla','Micrófono','Altavoces','Cámara'];const icons=['tester','display','mic','speaker','camera'];
+  const names=['Keyboard','Screen','Microphone','Speakers','Camera'];const icons=['tester','display','mic','speaker','camera'];
   return `<div class="sk-tiles">${names.map((n,i)=>`<div class="t" data-asm><div style="color:var(--mute)">${ic(icons[i])}</div><div style="font-weight:500">${n}</div><div class="sk" style="height:8px;width:60%;--dl:${i*.08}s"></div></div>`).join('')}</div>`;
 }
 const views=$('#views');
@@ -493,7 +493,7 @@ tickers.add(dt=>{
 dotX.v=dotX.t=dockTarget();
 dock.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b)go(b.dataset.go)});
 
-/* ---------- estrellas ---------- */
+/* ---------- stars ---------- */
 const cv=$('#stars'),cx2=cv.getContext('2d');let SW=0,SH=0,DPR=1;
 const stars=Array.from({length:230},()=>({x:Math.random(),y:Math.random(),z:.15+Math.random()*.85,r:Math.random()*1.1+.25,p:Math.random()*6.28,tw:.4+Math.random()*1.4}));
 const warp=new Spring(0,70,13);
@@ -522,7 +522,7 @@ tickers.add((dt,t)=>{
   ctx.globalAlpha=1;
 });
 
-/* ---------- portátil ---------- */
+/* ---------- laptop ---------- */
 function laptopSVG(){
   const L=(a,b,t)=>a+(b-a)*t;
   let keys='';
@@ -582,16 +582,16 @@ function laptopSVG(){
 }
 $('#laptop').innerHTML=laptopSVG();
 
-/* ---------- órbitas ---------- */
+/* ---------- orbits ---------- */
 const COMP=[
-  {id:'cpu',ring:0,a:.4,c:'var(--accent)',ic:'#1C0A06',name:'Procesador',title:'Intel Core i7-14650HX',rows:[['Núcleos','16 (8 de rendimiento + 8 eficientes)'],['Hilos','24'],['Frecuencia máxima','5,2 GHz']]},
-  {id:'gpu',ring:0,a:2.5,c:'var(--accent2)',ic:'#06121C',name:'Gráficos',title:'NVIDIA GeForce RTX 5070 Laptop',rows:[['Memoria','8 GB GDDR7'],['Integrada','Intel UHD Graphics'],['Driver','32.0.16.1742']]},
-  {id:'ram',ring:0,a:4.5,c:'var(--accent2)',ic:'#06121C',name:'Memoria',title:'16 GB DDR5',rows:[['Velocidad','5600 MT/s'],['Fabricante','Samsung'],['Módulos','1 de 16 GB']]},
-  {id:'ssd',ring:1,a:1.2,c:'var(--accent)',ic:'#1C0A06',name:'Almacenamiento',title:'WD PC SN5000S 1 TB',rows:[['Tipo','SSD NVMe'],['Usado','592 GB'],['Libre','361 GB']],bar:.62},
-  {id:'display',ring:1,a:3.3,c:'var(--accent2)',ic:'#06121C',name:'Pantallas',title:'16 pulgadas, 2560 × 1600',rows:[['Frecuencia','165 Hz'],['Externa','1920 × 1080, 144 Hz']]},
-  {id:'battery',ring:1,a:5.3,c:'var(--accent)',ic:'#1C0A06',name:'Batería',title:'90 Wh, salud al 97 %',rows:[['Capacidad actual','87,2 Wh'],['Estado','En buen estado']],bar:.97},
-  {id:'wifi',ring:2,a:2.0,c:'var(--accent2)',ic:'#06121C',name:'Red',title:'Wi-Fi 6E',rows:[['Adaptador','Realtek 8852CE'],['Enlace','1,2 Gb/s']]},
-  {id:'sys',ring:2,a:5.0,c:'var(--accent)',ic:'#1C0A06',name:'Sistema',title:'Windows 11 Pro 25H2',rows:[['Compilación','26200'],['BIOS','FX608JPR.312']]},
+  {id:'cpu',ring:0,a:.4,c:'var(--accent)',ic:'#1C0A06',name:'Processor',title:'Intel Core i7-14650HX',rows:[['Cores','16 (8 performance + 8 efficient)'],['Threads','24'],['Maximum frequency','5.2 GHz']]},
+  {id:'gpu',ring:0,a:2.5,c:'var(--accent2)',ic:'#06121C',name:'Graphics',title:'NVIDIA GeForce RTX 5070 Laptop',rows:[['Memory','8 GB GDDR7'],['Integrated','Intel UHD Graphics'],['Driver','32.0.16.1742']]},
+  {id:'ram',ring:0,a:4.5,c:'var(--accent2)',ic:'#06121C',name:'Memory',title:'16 GB DDR5',rows:[['Speed','5600 MT/s'],['Manufacturer','Samsung'],['Modules','1 of 16 GB']]},
+  {id:'ssd',ring:1,a:1.2,c:'var(--accent)',ic:'#1C0A06',name:'Storage',title:'WD PC SN5000S 1 TB',rows:[['Type','SSD NVMe'],['Used','592 GB'],['Free','361 GB']],bar:.62},
+  {id:'display',ring:1,a:3.3,c:'var(--accent2)',ic:'#06121C',name:'Displays',title:'16 inch, 2560 × 1600',rows:[['Refresh rate','165 Hz'],['External','1920 × 1080, 144 Hz']]},
+  {id:'battery',ring:1,a:5.3,c:'var(--accent)',ic:'#1C0A06',name:'Battery',title:'90 Wh, 97% health',rows:[['Current capacity','87.2 Wh'],['Status','Good']],bar:.97},
+  {id:'wifi',ring:2,a:2.0,c:'var(--accent2)',ic:'#06121C',name:'Network',title:'Wi-Fi 6E',rows:[['Adapter','Realtek 8852CE'],['Link','1.2 Gb/s']]},
+  {id:'sys',ring:2,a:5.0,c:'var(--accent)',ic:'#1C0A06',name:'System',title:'Windows 11 Pro 25H2',rows:[['Build','26200'],['BIOS','FX608JPR.312']]},
 ];
 const RING_SPEED=[.16,.105,.07];
 const pl=$('#planets');
@@ -683,7 +683,7 @@ tickers.add((dt)=>{
   if(fichaShown&&!ficha.getAnimations().length)ficha.style.transform=`translate3d(${fx.v.toFixed(2)}px,${fy.v.toFixed(2)}px,0)`;
 });
 
-/* ---------- navegación con cámara ---------- */
+/* ---------- camera navigation ---------- */
 let homeAnimating=false,navToken=0;
 function viewEl(n){return $('#v-'+n)}
 function assemble(view,base=0){
@@ -722,15 +722,15 @@ function go(name){
   }
   if(name==='monitor')startMonitor();
   if(outA)outA.finished.then(()=>{if(token===navToken&&state.view!==fromName){from.classList.remove('is-on')}if(token===navToken)homeAnimating=false}).catch(()=>{});
-  // otras vistas que quedaron visibles por una navegación interrumpida
+  // other views left visible by an interrupted navigation
   $$('.view.is-on').forEach(v=>{if(v!==to&&v!==from)v.classList.remove('is-on')});
 }
 $('#pending').addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b)go(b.dataset.go)});
 
-/* ---------- entrada de inicio ---------- */
+/* ---------- home entrance ---------- */
 function countUp(el,to,d=900){
   const t0=performance.now(),dur=d*motion();
-  const f=t=>{const k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,4);el.textContent=Math.round(to*e).toLocaleString('es');if(k<1)requestAnimationFrame(f)};
+  const f=t=>{const k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,4);el.textContent=Math.round(to*e).toLocaleString('en-US');if(k<1)requestAnimationFrame(f)};
   requestAnimationFrame(f);
 }
 function introHome(back){
@@ -768,7 +768,7 @@ setInterval(()=>{
   live.freq.t=rw(2.6+live.cpu.t/100*2.4,2.2,5.2,.2);live.ct.t=rw(52+live.cpu.t*.32,44,92,2);
   thr.forEach((s,i)=>{s.t=Math.max(.02,Math.min(1,live.cpu.t/100+(Math.random()-.5)*.5+(i<8?.08:-.04)))});
 },700);
-const fmt1=v=>v.toLocaleString('es',{minimumFractionDigits:1,maximumFractionDigits:1});
+const fmt1=v=>v.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
 const charts={};
 function setupCanvas(id){const c=$('#'+id);const ctx=c.getContext('2d');charts[id]={c,ctx,w:0,h:0};
   new ResizeObserver(()=>{const r=c.getBoundingClientRect();const d=Math.min(2,devicePixelRatio||1);c.width=r.width*d;c.height=r.height*d;charts[id].w=r.width;charts[id].h=r.height;ctx.setTransform(d,0,0,d,0,0)}).observe(c)}
@@ -810,30 +810,30 @@ tickers.add((dt,t)=>{
   const c3=charts.chDisk;if(c3.w){c3.ctx.clearRect(0,0,c3.w,c3.h);gridLines(c3);const m=Math.max(100,...H.rd,...H.wr)*1.15;drawSeries(c3,[{data:H.rd,col:B,fill:true},{data:H.wr,col:A}],m,frac)}
 });
 
-/* ---------- paleta de comandos ---------- */
+/* ---------- command palette ---------- */
 const ACTIONS=[
-  {t:'Buscar drivers nuevos',go:'drivers',ic:'drivers'},
-  {t:'Limpiar archivos temporales',go:'optimizer',ic:'broom'},
-  {t:'Qué ocupa el disco C:',go:'storage',ic:'storage'},
-  {t:'Actualizar todos los programas',go:'updater',ic:'updater'},
-  {t:'Desinstalar un programa',go:'remover',ic:'remover'},
-  {t:'Ver la temperatura de la GPU',go:'monitor',ic:'gpu'},
-  {t:'Probar el teclado',go:'tester',ic:'tester'},
-  {t:'Acelerar el arranque de Windows',go:'optimizer',ic:'optimizer'},
-  {t:'Activar el modo administrador',go:'admin',ic:'shield'},
-  {t:'Abrir ajustes',go:'settings',ic:'gear'},
+  {t:'Find new drivers',go:'drivers',ic:'drivers'},
+  {t:'Clean temporary files',go:'optimizer',ic:'broom'},
+  {t:'What fills drive C:',go:'storage',ic:'storage'},
+  {t:'Update every program',go:'updater',ic:'updater'},
+  {t:'Uninstall a program',go:'remover',ic:'remover'},
+  {t:'See the GPU temperature',go:'monitor',ic:'gpu'},
+  {t:'Test the keyboard',go:'tester',ic:'tester'},
+  {t:'Speed up Windows startup',go:'optimizer',ic:'optimizer'},
+  {t:'Turn on administrator mode',go:'admin',ic:'shield'},
+  {t:'Open settings',go:'settings',ic:'gear'},
 ];
-const ITEMS=[...MODS.map(m=>({t:m.name,go:m.id,ic:m.id,g:'Módulos'})),...ACTIONS.map(a=>({...a,g:'Acciones'}))];
+const ITEMS=[...MODS.map(m=>({t:m.name,go:m.id,ic:m.id,g:'Modules'})),...ACTIONS.map(a=>({...a,g:'Actions'}))];
 const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 let palList=[],palIdx=0;const hlY=new Spring(0,420,30);
 function renderPal(q){
   const n=norm(q.trim());
   palList=ITEMS.filter(i=>!n||n.split(/\s+/).every(w=>norm(i.t).includes(w)));
   palIdx=0;const res=$('#palRes');
-  if(!palList.length){res.innerHTML=`<div class="empty">No hay nada con «${q.replace(/[<>&]/g,'')}». Prueba con «drivers», «disco» o «limpiar».</div>`;return}
+  if(!palList.length){res.innerHTML=`<div class="empty">Nothing found for “${q.replace(/[<>&]/g,'')}”. Try “drivers”, “disk” or “clean”.</div>`;return}
   let html='<div class="hl" id="palHl"></div>',g='';
   palList.forEach((it,i)=>{if(it.g!==g){g=it.g;html+=`<div class="grp">${g}</div>`}
-    html+=`<button class="it" data-i="${i}"><span class="ic">${ic(it.ic)}</span>${it.t}<small>${it.g==='Módulos'?'Abrir':'Hacer'}</small></button>`});
+    html+=`<button class="it" data-i="${i}"><span class="ic">${ic(it.ic)}</span>${it.t}<small>${it.g==='Modules'?'Open':'Run'}</small></button>`});
   res.innerHTML=html;
   $$('.it',res).forEach((el,i)=>anim(el,[{opacity:0,transform:'translate3d(0,6px,0)'},{opacity:1,transform:'translate3d(0,0,0)'}],{d:260,delay:Math.min(i,8)*22,e:EASE.out}));
   const first=$('.it',res);if(first){hlY.v=hlY.t=first.offsetTop}
@@ -865,7 +865,7 @@ $('#palRes').addEventListener('click',e=>{const b=e.target.closest('.it');if(b)r
 $('#palRes').addEventListener('pointermove',e=>{const b=e.target.closest('.it');if(b&&+b.dataset.i!==palIdx)setPalIdx(+b.dataset.i)});
 function runItem(it){if(!it)return;closePal();setTimeout(()=>go(it.go),90*motion())}
 
-/* ---------- ajustes ---------- */
+/* ---------- settings ---------- */
 function openSettings(){
   if(state.palOpen)closePal();
   state.setOpen=true;const o=$('#setO');o.classList.add('on');
@@ -892,7 +892,7 @@ function placeInd(seg,snap){
 }
 function segClick(seg,cb){seg.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.classList.contains('on'))return;
   $$('button',seg).forEach(x=>x.classList.toggle('on',x===b));placeInd(seg);cb(b.dataset.v)})}
-const INT_HINT={max:'Todo se mueve: órbitas, estrellas y viajes de cámara.',normal:'Animaciones más cortas y órbitas más lentas.',min:'Transiciones breves. Las órbitas y las estrellas se quedan quietas.'};
+const INT_HINT={max:'Everything moves: orbits, stars and camera flights.',normal:'Shorter animations and slower orbits.',min:'Short transitions. The orbits and stars stay still.'};
 segClick($('#segTheme'),v=>{ROOT.dataset.theme=v;setTimeout(readCols,50)});
 segClick($('#segInt'),v=>setIntensity(v));
 function setIntensity(v){state.intensity=v;ROOT.dataset.int=v;ROOT.style.setProperty('--f',FACT[v]);
@@ -902,7 +902,7 @@ $('#swatches').addEventListener('click',e=>{const b=e.target.closest('.swatch');
 $('#tgStars').addEventListener('click',e=>{const t=e.currentTarget;t.classList.toggle('on');state.stars=t.classList.contains('on');
   anim(cv,[{opacity:state.stars?0:1},{opacity:1}],{d:500})});
 
-/* ---------- modo administrador ---------- */
+/* ---------- administrator mode ---------- */
 const note=$('#adminNote');let noteShown=false;
 function showNote(){
   if(state.admin||noteShown)return;noteShown=true;note.classList.add('on');
@@ -917,7 +917,7 @@ function activateAdmin(){
   const pill=$('#modePill');pill.classList.add('admin');
   const txt=$('#modeTxt');
   anim(txt,[{opacity:1,transform:'translate3d(0,0,0)',filter:'blur(0px)'},{opacity:0,transform:'translate3d(0,-8px,0)',filter:'blur(4px)'}],{d:160}).finished.then(()=>{
-    txt.textContent='Modo administrador';
+    txt.textContent='Administrator mode';
     anim(txt,[{opacity:0,transform:'translate3d(0,8px,0)',filter:'blur(4px)'},{opacity:1,transform:'translate3d(0,0,0)',filter:'blur(0px)'}],{d:300,e:EASE.spring});
   }).catch(()=>{});
   anim(pill,[{transform:'scale(1)'},{transform:'scale(1.08)',offset:.35},{transform:'scale(1)'}],{d:460,e:EASE.out});
@@ -926,7 +926,7 @@ $('#modePill').addEventListener('click',()=>{if(state.admin)return;noteShown?hid
 $('#adminYes').addEventListener('click',activateAdmin);
 $('#adminNo').addEventListener('click',hideNote);
 
-/* ---------- teclado ---------- */
+/* ---------- keyboard ---------- */
 addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();state.palOpen?closePal():openPal();return}
   if(e.key==='Escape'){if(state.palOpen)closePal();else if(state.setOpen)closeSettings();else if(noteShown)hideNote();else if(state.view!=='home')go('home');return}
@@ -937,7 +937,7 @@ addEventListener('keydown',e=>{
   }
 });
 
-/* ---------- arranque ---------- */
+/* ---------- boot ---------- */
 if(reduceMQ.matches){state.intensity='min';$$('#segInt button').forEach(b=>b.classList.toggle('on',b.dataset.v==='min'));$('#intHint').textContent=INT_HINT.min}
 ROOT.dataset.int=state.intensity;ROOT.style.setProperty('--f',FACT[state.intensity]);
 readCols();

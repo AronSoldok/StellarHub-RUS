@@ -1,5 +1,5 @@
-/* StellarHub · vista de Inicio "Explosionada": el portátil en isométrico, separado en capas que flotan.
-   Entrada: llega cerrado y se despieza con muelle. Al pasar por una capa, las de encima se apartan para dejarla ver. */
+/* StellarHub · "Exploded" Home view: the laptop in isometric, split into floating layers.
+   Entrance: it arrives closed and comes apart with a spring. Hovering a layer moves the ones above aside so it can be seen. */
 'use strict';
 (() => {
 const { $, $$, Spring, EASE, anim, tickers, ic, state, esc } = SH;
@@ -8,13 +8,13 @@ const P = (x, y) => [+((x - y) * C30).toFixed(2), +((x + y) * .5).toFixed(2)];
 const ISO = 'matrix(0.8660254,0.5,-0.8660254,0.5,0,0)';
 const GAP = 72, UP = 84, DOWN = 46;
 
-/* capas, de abajo arriba: t = grosor visible en px */
+/* layers, bottom to top: t = visible thickness in px */
 const LAYERS = [
-  { id: 'bottom', name: 'Carcasa y ventilación', desc: 'Dos ventiladores y rejillas traseras.', t: 14, comps: [] },
-  { id: 'battery', name: 'Batería', desc: 'Celda de 90 Wh bajo el teclado.', t: 12, comps: ['battery'] },
-  { id: 'board', name: 'Placa base', desc: 'Procesador, gráficos, memoria, disco y Wi-Fi.', t: 5, comps: ['cpu', 'gpu', 'ram', 'ssd', 'wifi'] },
-  { id: 'deck', name: 'Teclado', desc: 'Teclado retroiluminado, touchpad y altavoces.', t: 10, comps: ['audio'] },
-  { id: 'lid', name: 'Pantalla', desc: 'Panel de 16 pulgadas y el sistema que corre en él.', t: 8, comps: ['display', 'sys'] },
+  { id: 'bottom', name: 'Chassis and ventilation', desc: 'Two fans and rear vents.', t: 14, comps: [] },
+  { id: 'battery', name: 'Battery', desc: 'A 90 Wh cell under the keyboard.', t: 12, comps: ['battery'] },
+  { id: 'board', name: 'Motherboard', desc: 'Processor, graphics, memory, disk and Wi-Fi.', t: 5, comps: ['cpu', 'gpu', 'ram', 'ssd', 'wifi'] },
+  { id: 'deck', name: 'Keyboard', desc: 'Backlit keyboard, touchpad and speakers.', t: 10, comps: ['audio'] },
+  { id: 'lid', name: 'Screen', desc: 'A 16-inch panel and the system running on it.', t: 8, comps: ['display', 'sys'] },
 ];
 const CLOSED = []; LAYERS.reduce((zz, L, i) => { CLOSED[i] = zz; return zz + L.t; }, 0);
 
@@ -78,7 +78,7 @@ function batteryContent() {
   return `<rect x="36" y="112" width="248" height="84" rx="7" fill="url(#exBat)" stroke="rgba(170,200,245,.2)"/>
     <rect class="batfill" x="40" y="116" width="240" height="76" rx="5"/>
     ${[1, 2, 3].map(i => `<line x1="${36 + i * 62}" y1="116" x2="${36 + i * 62}" y2="192" stroke="rgba(170,200,245,.16)"/>`).join('')}
-    <text x="52" y="160" class="pt">90 Wh</text><text x="52" y="176" class="pt sm">Li-ion, 4 celdas</text>
+    <text x="52" y="160" class="pt">90 Wh</text><text x="52" y="176" class="pt sm">Li-ion, 4 cells</text>
     <rect x="60" y="26" width="200" height="60" rx="5" fill="none" stroke="rgba(170,200,245,.08)"/>
     ${zone('battery', 32, 108, 256, 92, 8)}`;
 }
@@ -92,7 +92,7 @@ function stackSVG() {
   const fills = [['url(#exBottom)', '#0f1624', '#0a101b'], ['#121a2b', '#111827', '#0b111c'], ['url(#exPcb)', '#0d1626', '#0a111d'], ['url(#exDeck)', '#151d2f', '#0f1522'], ['url(#exLid)', '#161f31', '#10172a']];
   const content = [bottomContent(), batteryContent(), boardContent(), deckContent(), lidContent()];
   const sc = P(W / 2, D / 2);
-  return `<svg class="ex-svg" viewBox="-215 -392 690 730" preserveAspectRatio="xMidYMid meet" aria-label="Vista explosionada del equipo">
+  return `<svg class="ex-svg" viewBox="-215 -392 690 730" preserveAspectRatio="xMidYMid meet" aria-label="Exploded view of the PC">
     <defs>
       <linearGradient id="exLid" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#25304a"/><stop offset="1" stop-color="#161d2e"/></linearGradient>
       <linearGradient id="exDeck" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#232e45"/><stop offset="1" stop-color="#151c2c"/></linearGradient>
@@ -126,7 +126,7 @@ function targets() {
 function explode(stagger) {
   exploded = true; hov = -1;
   if (!stagger) { targets(); return; }
-  // de arriba abajo: la tapa sale primero, como al levantar piezas
+  // top to bottom: the lid comes off first, like lifting parts
   for (let i = LAYERS.length - 1; i >= 0; i--) timers.push(setTimeout(() => { if (hov < 0) z[i].t = i * GAP; }, (LAYERS.length - 1 - i) * 70 * SH.motion()));
 }
 function closeStack() { exploded = false; setHover(-1); targets(); }
@@ -145,7 +145,7 @@ function cardHTML(L) {
   if (L.id === 'bottom') {
     const v = SH.tele.v;
     return `<div class="k">${esc(L.name)}</div><p>${esc(L.desc)}</p>
-      <div class="fans"><div><b data-fanv="cpu">${SH.fmtInt(v.fanCpu)}</b><span>rpm, ventilador del procesador</span></div><div><b data-fanv="gpu">${SH.fmtInt(v.fanGpu)}</b><span>rpm, ventilador de los gráficos</span></div></div>`;
+      <div class="fans"><div><b data-fanv="cpu">${SH.fmtInt(v.fanCpu)}</b><span>rpm, processor fan</span></div><div><b data-fanv="gpu">${SH.fmtInt(v.fanGpu)}</b><span>rpm, graphics fan</span></div></div>`;
   }
   const rows = L.comps.map(compById).filter(Boolean).map(c => `<button class="cr" data-comp="${c.id}"><span class="ci">${ic(c.id === 'sys' ? 'windows' : c.id)}</span><span class="ct"><b>${esc(c.name)}</b><span>${esc(c.title)}</span></span>${ic('chev')}</button>`).join('');
   return `<div class="k">${esc(L.name)}</div><p>${esc(L.desc)}</p><div class="crs">${rows}</div>`;
@@ -184,7 +184,7 @@ function frame(dt, t) {
   const moving = state.settings.intensity !== 'min';
   const par = moving && state.settings.parallax ? 1 : 0;
   const mx = SH.mouse ? SH.mouse.x.v * par : 0, my = SH.mouse ? SH.mouse.y.v * par : 0;
-  const corner = P(W, 0); // esquina derecha: de ahí sale la línea guía de la etiqueta
+  const corner = P(W, 0); // right corner: the label's leader line starts there
   LAYERS.forEach((L, i) => {
     z[i].step(dt);
     const breathe = moving && exploded && hov < 0 ? Math.sin(t / 900 + i * .7) * 3 : 0;
@@ -193,7 +193,7 @@ function frame(dt, t) {
     offs[i].setAttribute('transform', `translate(${dx.toFixed(2)},${y.toFixed(2)})`);
     els.labs[i].setAttribute('transform', `translate(${(corner[0] + 18 + dx).toFixed(2)},${(corner[1] + y).toFixed(2)})`);
   });
-  // la sombra se aclara al despiezar (las piezas se alejan del suelo)
+  // the shadow fades when exploding (the parts move away from the floor)
   const spread = Math.max(0, Math.min(1, z[LAYERS.length - 1].v / ((LAYERS.length - 1) * GAP)));
   els.shadow.setAttribute('transform', `translate(${(mx * -6).toFixed(2)},0)`);
   els.shadow.style.opacity = (1 - spread * .45).toFixed(3);
@@ -214,12 +214,12 @@ function onTele(v) {
 }
 
 SH.homeVariant({
-  id: 'exploded', name: 'Vista explosionada', short: 'Explosionada',
-  desc: 'El equipo por capas: pasa por una para ver qué lleva dentro.',
+  id: 'exploded', name: 'Exploded view', short: 'Exploded',
+  desc: 'Your PC in layers: hover one to see what is inside.',
   mount(el, ctx) {
     mounted = true;
     root = document.createElement('div'); root.className = 'hv-exploded'; el.appendChild(root);
-    root.innerHTML = stackSVG() + '<div class="ex-card" role="dialog" aria-live="polite"></div><div class="ex-hint">Pasa el ratón por una capa</div>';
+    root.innerHTML = stackSVG() + '<div class="ex-card" role="dialog" aria-live="polite"></div><div class="ex-hint">Hover a layer</div>';
     offs = $$('.ly > .lyin', root);
     els = { card: $('.ex-card', root), shadow: $('.ex-shadow', root), labs: $$('.lab', root), fans: $$('.fan', root), batfill: $('.batfill', root), stack: $('.ex-stack', root) };
     $$('.ly', root).forEach((g, i) => { g.addEventListener('pointerenter', () => setHover(i)); g.addEventListener('pointerleave', leaveSoon); });
@@ -241,7 +241,7 @@ SH.homeVariant({
     exploded = false; hov = -1;
     tickers.add(frame); frame(0, performance.now());
     if (ctx.intro) {
-      // entrada: llega como portátil cerrado y se despieza
+      // entrance: arrives as a closed laptop and explodes
       anim(els.stack, [{ opacity: 0, transform: 'translate(0px,-60px)', filter: 'blur(10px)' }, { opacity: 1, transform: 'translate(0px,0px)', filter: 'blur(0px)' }], { d: 700, delay: 150, e: EASE.soft });
       anim($('.ex-labels', root), [{ opacity: 0 }, { opacity: 1 }], { d: 500, delay: 1150 });
       anim($('.ex-hint', root), [{ opacity: 0, transform: 'translate3d(-50%,8px,0)' }, { opacity: 1, transform: 'translate3d(-50%,0,0)' }], { d: 500, delay: 1600, e: EASE.spring });
@@ -255,7 +255,7 @@ SH.homeVariant({
   resize() { if (hov >= 0) placeCard(hov, true); },
   onReturn() {
     if (!mounted) return;
-    // al volver: se cierra un instante y se vuelve a despiezar
+    // on return: it closes for a moment and explodes again
     closeStack(); timers.push(setTimeout(() => explode(true), 260 * SH.motion()));
   },
 });

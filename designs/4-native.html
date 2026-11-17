@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="es" data-theme="dark">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>StellarHub nativo</title>
+<title>StellarHub native</title>
 <style>
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -318,28 +318,28 @@ button{font:inherit;color:inherit}
       <span>StellarHub</span>
     </div>
     <div class="searchwrap" id="searchwrap">
-      <label class="search"><i class="ico">&#xE721;</i><input id="q" autocomplete="off" spellcheck="false" placeholder="Busca un módulo o una acción"><kbd>Ctrl+K</kbd></label>
-      <div class="pal" id="pal" role="listbox" aria-label="Resultados"></div>
+      <label class="search"><i class="ico">&#xE721;</i><input id="q" autocomplete="off" spellcheck="false" placeholder="Search for a module or action"><kbd>Ctrl+K</kbd></label>
+      <div class="pal" id="pal" role="listbox" aria-label="Results"></div>
     </div>
     <div class="caption" aria-hidden="true">
       <button tabindex="-1"><i class="ico">&#xE921;</i></button><button tabindex="-1"><i class="ico">&#xE922;</i></button><button tabindex="-1" class="x"><i class="ico">&#xE8BB;</i></button>
     </div>
   </header>
 
-  <nav class="nav" id="nav" aria-label="Módulos">
+  <nav class="nav" id="nav" aria-label="Modules">
     <div class="nav-ind" id="navInd"></div>
     <div class="nav-list" id="navList"></div>
     <div class="nav-foot">
       <div class="collapse" id="navIbar"><div>
         <div class="ibar">
-          <div class="ibar-h"><i class="ico">&#xEA18;</i>Modo normal<button class="ibar-x" id="navIbarX" aria-label="Cerrar"><i class="ico">&#xE8BB;</i></button></div>
-          <p>Con el modo administrador puedes instalar drivers, desinstalar a fondo y optimizar servicios.</p>
-          <div class="row"><button class="btn accent" data-admin-on><span class="swap"><span>Activar</span><span class="off">Esperando…</span></span></button><button class="btn" id="navIbarLater">Ahora no</button></div>
+          <div class="ibar-h"><i class="ico">&#xEA18;</i>Normal mode<button class="ibar-x" id="navIbarX" aria-label="Close"><i class="ico">&#xE8BB;</i></button></div>
+          <p>In administrator mode you can install drivers, uninstall thoroughly and optimize services.</p>
+          <div class="row"><button class="btn accent" data-admin-on><span class="swap"><span>Turn on</span><span class="off">Waiting…</span></span></button><button class="btn" id="navIbarLater">Not now</button></div>
         </div>
       </div></div>
       <div class="nav-sep"></div>
-      <button class="nav-item mode" id="modeItem"><i class="ico">&#xEA18;</i><span class="lines"><span id="modeName">Modo normal</span><span class="cap" id="modeCap">Algunas funciones están limitadas</span></span></button>
-      <button class="nav-item" data-go="settings"><i class="ico">&#xE713;</i><span>Ajustes</span></button>
+      <button class="nav-item mode" id="modeItem"><i class="ico">&#xEA18;</i><span class="lines"><span id="modeName">Normal mode</span><span class="cap" id="modeCap">Some features are limited</span></span></button>
+      <button class="nav-item" data-go="settings"><i class="ico">&#xE713;</i><span>Settings</span></button>
     </div>
   </nav>
 
@@ -354,7 +354,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
-const f = (n, d = 0) => n.toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
+const f = (n, d = 0) => n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 /* ---------------- motion ---------------- */
 const MOTION = { max: { d: 1, t: 1, s: 1 }, normal: { d: .7, t: .55, s: .5 }, min: { d: .45, t: 0, s: 0 } };
@@ -366,25 +366,25 @@ applyMotion();
 
 /* ---------------- data ---------------- */
 const ACCENTS = [
-  { id: 'azul', name: 'Azul', dark: '#60CDFF', light: '#005FB8' },
-  { id: 'turquesa', name: 'Turquesa', dark: '#4CC2C4', light: '#00727A' },
-  { id: 'verde', name: 'Verde', dark: '#6CCB5F', light: '#107C10' },
-  { id: 'ambar', name: 'Ámbar', dark: '#F7B955', light: '#9D5D00' },
-  { id: 'rosa', name: 'Rosa', dark: '#FF99A4', light: '#BF0077' },
-  { id: 'grafito', name: 'Grafito', dark: '#C8C8C8', light: '#505050' },
+  { id: 'azul', name: 'Blue', dark: '#60CDFF', light: '#005FB8' },
+  { id: 'turquesa', name: 'Teal', dark: '#4CC2C4', light: '#00727A' },
+  { id: 'verde', name: 'Green', dark: '#6CCB5F', light: '#107C10' },
+  { id: 'ambar', name: 'Amber', dark: '#F7B955', light: '#9D5D00' },
+  { id: 'rosa', name: 'Pink', dark: '#FF99A4', light: '#BF0077' },
+  { id: 'grafito', name: 'Graphite', dark: '#C8C8C8', light: '#505050' },
 ];
 let accent = ACCENTS[0];
 
 const MODS = {
-  home: { name: 'Inicio', ico: '' },
-  monitor: { name: 'Live Monitor', ico: '', desc: 'Uso en vivo de CPU, GPU, memoria, disco, red y batería.' },
-  drivers: { name: 'Driver Updater', ico: '', desc: 'Busca drivers firmados en Windows Update e instálalos con un punto de restauración.', act: 'Buscar drivers', admin: true, sk: 'table' },
-  remover: { name: 'Program Remover', ico: '', desc: 'Desinstala programas y borra lo que dejan atrás, con opción de deshacer.', act: 'Elegir un programa', admin: true, sk: 'table' },
-  updater: { name: 'Program Updater', ico: '', desc: 'Actualiza programas, Windows, apps de la Tienda y componentes desde un solo sitio.', act: 'Buscar actualizaciones', sk: 'table' },
-  storage: { name: 'Storage Checker', ico: '', desc: 'Mira qué ocupa cada disco, carpeta por carpeta.', act: 'Analizar C:', sk: 'tree' },
-  optimizer: { name: 'Super Optimizer', ico: '', desc: 'Limpia, repara y decide qué arranca con Windows.', act: 'Analizar el sistema', admin: true, sk: 'list' },
-  tester: { name: 'Device Tester', ico: '', desc: 'Prueba el teclado, la pantalla, el micrófono, los altavoces y la cámara.', act: 'Empezar una prueba', sk: 'tiles' },
-  settings: { name: 'Ajustes', ico: '', desc: 'Apariencia, animaciones y comportamiento de StellarHub.' },
+  home: { name: 'Home', ico: '' },
+  monitor: { name: 'Live Monitor', ico: '', desc: 'Live CPU, GPU, memory, disk, network and battery usage.' },
+  drivers: { name: 'Driver Updater', ico: '', desc: 'Find signed drivers in Windows Update and install them with a restore point.', act: 'Find drivers', admin: true, sk: 'table' },
+  remover: { name: 'Program Remover', ico: '', desc: 'Uninstall programs and remove what they leave behind, with undo.', act: 'Choose a program', admin: true, sk: 'table' },
+  updater: { name: 'Program Updater', ico: '', desc: 'Update programs, Windows, Store apps and components from one place.', act: 'Check for updates', sk: 'table' },
+  storage: { name: 'Storage Checker', ico: '', desc: 'See what fills each disk, folder by folder.', act: 'Analyze C:', sk: 'tree' },
+  optimizer: { name: 'Super Optimizer', ico: '', desc: 'Clean up, repair and decide what starts with Windows.', act: 'Analyze the system', admin: true, sk: 'list' },
+  tester: { name: 'Device Tester', ico: '', desc: 'Test the keyboard, screen, microphone, speakers and camera.', act: 'Start a test', sk: 'tiles' },
+  settings: { name: 'Settings', ico: '', desc: 'Appearance, animations and behavior of StellarHub.' },
 };
 const NAV_ORDER = ['home', 'monitor', 'drivers', 'remover', 'updater', 'storage', 'optimizer', 'tester'];
 
@@ -400,16 +400,16 @@ const ICONS = {
 };
 
 const COMPS = [
-  { z: 'cpu', k: 'Procesador', v: 'Intel Core i7-14650HX', x: '16 núcleos, 24 hilos', go: 'monitor', sub: 'cpu' },
-  { z: 'gpu', k: 'Gráficos', v: 'NVIDIA GeForce RTX 5070 Laptop', x: '8 GB, más Intel UHD Graphics', go: 'monitor', sub: 'gpu' },
-  { z: 'ram', k: 'Memoria', v: '16 GB DDR5', x: '5600 MT/s, Samsung', go: 'monitor', sub: 'mem' },
-  { z: 'ssd', k: 'Almacenamiento', v: 'WD PC SN5000S 1 TB NVMe', bar: 592 / 953, x: '592 GB usados, 361 GB libres', go: 'storage' },
-  { z: 'display', k: 'Pantallas', v: '16" 2560 × 1600 a 165 Hz', x: 'más un monitor de 1920 × 1080 a 144 Hz', go: 'tester' },
-  { z: 'battery', k: 'Batería', v: '90 Wh', x: 'salud 97 %', go: 'monitor', sub: 'bat' },
-  { z: 'wifi', k: 'Red', v: 'Wi-Fi 6E Realtek 8852CE', x: 'conectada a 1,2 Gbps', go: 'monitor', sub: 'net' },
-  { z: 'os', icon: 'system', k: 'Sistema', v: 'Windows 11 Pro 25H2', x: 'BIOS FX608JPR.312', go: 'updater' },
+  { z: 'cpu', k: 'Processor', v: 'Intel Core i7-14650HX', x: '16 cores, 24 threads', go: 'monitor', sub: 'cpu' },
+  { z: 'gpu', k: 'Graphics', v: 'NVIDIA GeForce RTX 5070 Laptop', x: '8 GB, plus Intel UHD Graphics', go: 'monitor', sub: 'gpu' },
+  { z: 'ram', k: 'Memory', v: '16 GB DDR5', x: '5600 MT/s, Samsung', go: 'monitor', sub: 'mem' },
+  { z: 'ssd', k: 'Storage', v: 'WD PC SN5000S 1 TB NVMe', bar: 592 / 953, x: '592 GB used, 361 GB free', go: 'storage' },
+  { z: 'display', k: 'Displays', v: '16" 2560 × 1600 at 165 Hz', x: 'plus a 1920 × 1080 monitor at 144 Hz', go: 'tester' },
+  { z: 'battery', k: 'Battery', v: '90 Wh', x: '97% health', go: 'monitor', sub: 'bat' },
+  { z: 'wifi', k: 'Network', v: 'Wi-Fi 6E Realtek 8852CE', x: 'connected at 1.2 Gbps', go: 'monitor', sub: 'net' },
+  { z: 'os', icon: 'system', k: 'System', v: 'Windows 11 Pro 25H2', x: 'BIOS FX608JPR.312', go: 'updater' },
 ];
-const ZONE_NAMES = { cpu: 'Procesador', gpu: 'Gráficos', ram: 'Memoria', ssd: 'SSD', display: 'Pantalla', battery: 'Batería', wifi: 'Antena Wi-Fi', os: 'Windows 11 Pro' };
+const ZONE_NAMES = { cpu: 'Processor', gpu: 'Graphics', ram: 'Memory', ssd: 'SSD', display: 'Screen', battery: 'Battery', wifi: 'Wi-Fi antenna', os: 'Windows 11 Pro' };
 
 /* ---------------- laptop svg ---------------- */
 function bil(Q, u, v) {
@@ -452,7 +452,7 @@ function laptopSVG() {
   const taskIc = [.44, .48, .52, .56].map(u => `<polygon points="${pts(sub(scr, u, .91, u + .025, .94))}" fill="#fff" opacity=".55"/>`).join('');
   const cam = bil(scr, .5, .022);
   const zones = Object.entries(ZONES).map(([k, q]) => `<polygon class="zone" data-zone="${k}" points="${pts(q)}"/>`).join('');
-  return `<svg class="laptop" viewBox="0 0 ${VB[0]} ${VB[1]}" aria-label="Ilustración de un portátil">
+  return `<svg class="laptop" viewBox="0 0 ${VB[0]} ${VB[1]}" aria-label="Laptop illustration">
   <defs>
     <linearGradient id="gTop" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="var(--lp-top1)"/><stop offset="1" stop-color="var(--lp-top2)"/></linearGradient>
     <linearGradient id="gWall" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".95"/><stop offset=".55" stop-color="var(--accent)" stop-opacity=".35"/><stop offset="1" stop-color="#0b1220"/></linearGradient>
@@ -493,42 +493,42 @@ function header(id) {
     <div class="ph-text"><h1 class="ph-title" data-ph-title>${m.name}</h1><div class="ph-desc" data-ph-desc>${m.desc}</div></div>
     ${m.act ? `<button class="btn accent ph-act" data-ph-act>${m.act}</button>` : ''}
   </header>
-  ${m.admin ? `<div class="collapse page-ibar" data-admin-bar><div><div class="ibar"><i class="ico">&#xEA18;</i><p>Para ${id === 'drivers' ? 'instalar drivers' : id === 'remover' ? 'desinstalar a fondo y borrar restos' : 'reparar y optimizar servicios'} hace falta el modo administrador.</p><button class="btn accent" data-admin-on><span class="swap"><span>Activar</span><span class="off">Esperando…</span></span></button></div></div></div>` : ''}`;
+  ${m.admin ? `<div class="collapse page-ibar" data-admin-bar><div><div class="ibar"><i class="ico">&#xEA18;</i><p>${id === 'drivers' ? 'Installing drivers' : id === 'remover' ? 'Deep uninstalling and removing leftovers' : 'Repairing and optimizing services'} needs administrator mode.</p><button class="btn accent" data-admin-on><span class="swap"><span>Turn on</span><span class="off">Waiting…</span></span></button></div></div></div>` : ''}`;
 }
 
 function homeHTML() {
   const pend = [
-    { ico: '', n: 4, t: 'drivers con actualización', s: 'Intel, Realtek y NVIDIA', go: 'drivers' },
-    { ico: '', n: 12, t: 'programas por actualizar', s: 'Dos son de seguridad', go: 'updater' },
-    { ico: '', n: 18, t: 'GB que se pueden liberar', s: 'Temporales, cachés y restos', go: 'optimizer' },
+    { ico: '', n: 4, t: 'drivers with updates', s: 'Intel, Realtek and NVIDIA', go: 'drivers' },
+    { ico: '', n: 12, t: 'programs to update', s: 'Two are security updates', go: 'updater' },
+    { ico: '', n: 18, t: 'GB that can be freed', s: 'Temporary files, caches and leftovers', go: 'optimizer' },
   ];
-  return `<h1 class="title" data-enter>Inicio</h1>
+  return `<h1 class="title" data-enter>Home</h1>
   <div class="home-top">
     <section class="hero" data-enter>
       <div class="stage" id="stage">${laptopSVG()}<div class="zone-tip" id="zoneTip"></div></div>
       <div class="hero-info">
         <h2>ASUS TUF Gaming F16</h2>
         <div class="facts">
-          <div class="fact"><div class="cap">Modelo</div><div>FX608JPR</div></div>
-          <div class="fact"><div class="cap">Tipo</div><div>Portátil</div></div>
-          <div class="fact"><div class="cap">Sistema</div><div>Windows 11 Pro 25H2</div></div>
-          <div class="fact"><div class="cap">Encendido desde hace</div><div>3 h 12 min</div></div>
+          <div class="fact"><div class="cap">Model</div><div>FX608JPR</div></div>
+          <div class="fact"><div class="cap">Type</div><div>Laptop</div></div>
+          <div class="fact"><div class="cap">System</div><div>Windows 11 Pro 25H2</div></div>
+          <div class="fact"><div class="cap">Up for</div><div>3 h 12 min</div></div>
         </div>
         <div class="hero-actions">
-          <button class="btn" id="copySpec"><span class="swap"><span><i class="ico">&#xE8C8;</i>Copiar ficha</span><span class="off"><i class="ico">&#xE73E;</i>Ficha copiada</span></span></button>
-          <button class="btn" data-go="monitor">Abrir Live Monitor</button>
+          <button class="btn" id="copySpec"><span class="swap"><span><i class="ico">&#xE8C8;</i>Copy specs</span><span class="off"><i class="ico">&#xE73E;</i>Specs copied</span></span></button>
+          <button class="btn" data-go="monitor">Open Live Monitor</button>
         </div>
       </div>
     </section>
     <section class="pend" data-enter>
-      <div class="pend-head">Pendiente <span class="badge">3</span></div>
+      <div class="pend-head">Pending <span class="badge">3</span></div>
       ${pend.map(p => `<button class="pend-item" data-go="${p.go}">
         <span class="pend-ic" data-c-icon><i class="ico">${p.ico}</i></span>
         <span data-c-title><span class="num" data-count data-to="${p.n}">${p.n}</span> ${p.t}<div class="cap">${p.s}</div></span>
         <i class="ico chev">&#xE76C;</i></button>`).join('')}
     </section>
   </div>
-  <div class="sec-head" data-enter><h3>Componentes</h3><span class="cap t3">Pasa el ratón por encima para verlos en el equipo</span></div>
+  <div class="sec-head" data-enter><h3>Components</h3><span class="cap t3">Hover to see them on the PC</span></div>
   <div class="comps">
     ${COMPS.map(c => `<button class="comp" data-enter data-zone="${c.z}" data-go="${c.go}"${c.sub ? ` data-sub="${c.sub}"` : ''}>
       <span class="comp-ic" data-c-icon>${ICONS[c.icon || c.z]}</span>
@@ -552,10 +552,10 @@ function skeleton(kind) {
       <div class="sk-card tm" data-enter>${spans.map((s, i) => `<div class="sk" style="grid-column:${s[0]}/${s[1]};grid-row:${s[2]}/${s[3]};--dl:${i * 70}ms"></div>`).join('')}</div></div>`;
   }
   if (kind === 'list') {
-    return ['Limpieza', 'Arranque', 'Reparación'].map((t, j) => `<div class="sk-card opt-sec" data-enter><div class="cap" style="margin-bottom:10px">${t}</div>
+    return ['Cleanup', 'Startup', 'Repair'].map((t, j) => `<div class="sk-card opt-sec" data-enter><div class="cap" style="margin-bottom:10px">${t}</div>
       ${Array.from({ length: 3 }, (_, i) => `<div class="opt-row"><div><div class="sk" style="width:${w(i + j)}%;--dl:${(i + j * 3) * 80}ms"></div><div class="sk" style="width:${w(i + j + 4) - 20}%;height:8px;margin-top:8px;--dl:${(i + j * 3) * 80 + 40}ms"></div></div><div class="sk sk-pill" style="height:20px;--dl:${(i + j * 3) * 80 + 80}ms"></div></div>`).join('')}</div>`).join('');
   }
-  return `<div class="tiles">${['Teclado', 'Pantalla', 'Micrófono', 'Altavoces', 'Cámara', 'Ratón'].map((t, i) => `<div class="sk-card tile" data-enter>
+  return `<div class="tiles">${['Keyboard', 'Screen', 'Microphone', 'Speakers', 'Camera', 'Mouse'].map((t, i) => `<div class="sk-card tile" data-enter>
     <div class="sk sk-circ" style="--dl:${i * 80}ms"></div><div class="cap">${t}</div><div class="sk" style="width:${w(i)}%;--dl:${i * 80 + 40}ms"></div><div class="sk" style="width:${w(i + 3) - 15}%;height:8px;--dl:${i * 80 + 80}ms"></div></div>`).join('')}</div>`;
 }
 
@@ -571,20 +571,20 @@ function monitorHTML() {
 
 function settingsHTML() {
   return `${header('settings')}
-  <h3 class="set-h" data-enter>Apariencia</h3>
-  <div class="set-card" data-enter><i class="ico">&#xE790;</i><div><div>Tema</div><div class="d">Claro u oscuro. El cambio se aplica al momento.</div></div>
+  <h3 class="set-h" data-enter>Appearance</h3>
+  <div class="set-card" data-enter><i class="ico">&#xE790;</i><div><div>Theme</div><div class="d">Light or dark. The change applies instantly.</div></div>
     <div class="combo" id="cbTheme"></div></div>
-  <div class="set-card" data-enter><i class="ico">&#xE771;</i><div><div>Color de acento</div><div class="d">Se usa en botones, gráficas e indicadores.</div></div>
+  <div class="set-card" data-enter><i class="ico">&#xE771;</i><div><div>Accent color</div><div class="d">Used on buttons, charts and gauges.</div></div>
     <div class="swatches" id="swatches"><div class="sw-ring" id="swRing"></div>${ACCENTS.map(a => `<button class="sw" data-acc="${a.id}" aria-label="${a.name}" title="${a.name}" style="--c:${a.dark}"></button>`).join('')}</div></div>
-  <div class="set-card" data-enter><i class="ico">&#xE768;</i><div><div>Intensidad de las animaciones</div><div class="d">Máxima lo anima todo. Mínima deja solo fundidos breves.</div></div>
+  <div class="set-card" data-enter><i class="ico">&#xE768;</i><div><div>Animation intensity</div><div class="d">Maximum animates everything. Minimum keeps only short fades.</div></div>
     <div class="combo" id="cbMotion"></div></div>
-  <h3 class="set-h" data-enter>Comportamiento</h3>
-  <div class="set-card" data-enter><i class="ico">&#xE7E8;</i><div><div>Iniciar StellarHub con Windows</div><div class="d">Se abre minimizado en la bandeja del sistema.</div></div>
-    <div class="tg-wrap"><span class="tg-lab">Desactivado</span><button class="tg" role="switch" aria-checked="false" aria-label="Iniciar con Windows"></button></div></div>
-  <div class="set-card" data-enter><i class="ico">&#xE7F8;</i><div><div>Icono en la bandeja del sistema</div><div class="d">Mini monitor al pasar el ratón y acciones rápidas.</div></div>
-    <div class="tg-wrap"><span class="tg-lab">Activado</span><button class="tg" role="switch" aria-checked="true" aria-label="Icono en la bandeja"></button></div></div>
-  <div class="set-card" data-enter><i class="ico">&#xEA18;</i><div><div>Recordarme activar el modo administrador</div><div class="d">Como mucho una vez por sesión, y solo cuando una función lo necesite.</div></div>
-    <div class="tg-wrap"><span class="tg-lab">Activado</span><button class="tg" role="switch" aria-checked="true" aria-label="Recordar modo administrador"></button></div></div>`;
+  <h3 class="set-h" data-enter>Behavior</h3>
+  <div class="set-card" data-enter><i class="ico">&#xE7E8;</i><div><div>Start StellarHub with Windows</div><div class="d">Opens minimized in the system tray.</div></div>
+    <div class="tg-wrap"><span class="tg-lab">Off</span><button class="tg" role="switch" aria-checked="false" aria-label="Start with Windows"></button></div></div>
+  <div class="set-card" data-enter><i class="ico">&#xE7F8;</i><div><div>Icon in the system tray</div><div class="d">Mini monitor on hover and quick actions.</div></div>
+    <div class="tg-wrap"><span class="tg-lab">On</span><button class="tg" role="switch" aria-checked="true" aria-label="Tray icon"></button></div></div>
+  <div class="set-card" data-enter><i class="ico">&#xEA18;</i><div><div>Remind me to turn on administrator mode</div><div class="d">At most once per session, and only when a feature needs it.</div></div>
+    <div class="tg-wrap"><span class="tg-lab">On</span><button class="tg" role="switch" aria-checked="true" aria-label="Administrator mode reminder"></button></div></div>`;
 }
 
 /* ---------------- monitor data ---------------- */
@@ -606,36 +606,36 @@ function hm(h) { if (!isFinite(h)) return '–'; const H = Math.floor(h), M = Ma
 function niceCeil(v) { const p = Math.pow(10, Math.floor(Math.log10(Math.max(v, 1)))); for (const m of [1, 2, 5, 10]) if (v <= m * p) return m * p; return 10 * p; }
 
 const RES = [
-  { id: 'cpu', name: 'CPU', dev: 'Intel Core i7-14650HX', label: '% de uso', max: 100,
+  { id: 'cpu', name: 'CPU', dev: 'Intel Core i7-14650HX', label: '% usage', max: 100,
     s: [series(walker({ min: 1, max: 100, vol: 9, pull: .3, jump: .08, lo: 6, hi: 55 }), 20)],
     meta: ([u]) => `${f(u)} %  ${f(2.2 + u / 100 * 2.6, 2)} GHz`,
-    labels: ['Uso', 'Velocidad', 'Temperatura', 'Procesos', 'Hilos', 'Tiempo activo'],
+    labels: ['Usage', 'Speed', 'Temperature', 'Processes', 'Threads', 'Uptime'],
     stats: ([u]) => [f(u) + ' %', f(2.2 + u / 100 * 2.6, 2) + ' GHz', f(47 + u * .36) + ' °C', f(Math.round(287 + Math.sin(performance.now() / 7000) * 3)), f(3912 + Math.round(u * 4)), uptime()] },
-  { id: 'gpu', name: 'GPU', dev: 'NVIDIA GeForce RTX 5070 Laptop', label: '% de uso 3D', max: 100,
+  { id: 'gpu', name: 'GPU', dev: 'NVIDIA GeForce RTX 5070 Laptop', label: '% 3D usage', max: 100,
     s: [series(walker({ min: 0, max: 100, vol: 8, pull: .25, jump: .06, lo: 2, hi: 45 }), 10)],
     meta: ([u]) => `${f(u)} %  ${f(44 + u * .38)} °C`,
-    labels: ['Uso', 'Temperatura', 'Memoria dedicada', 'Consumo', 'Frecuencia', 'Driver'],
-    stats: ([u]) => [f(u) + ' %', f(44 + u * .38) + ' °C', f(1.9 + u * .045, 1) + ' de 8 GB', f(11 + u * .95) + ' W', f(990 + u * 17) + ' MHz', '32.0.16.1742'] },
-  { id: 'mem', name: 'Memoria', dev: '16 GB DDR5 a 5600 MT/s', label: 'Memoria en uso', max: 15.6, maxLabel: '15,6 GB',
+    labels: ['Usage', 'Temperature', 'Dedicated memory', 'Power', 'Clock', 'Driver'],
+    stats: ([u]) => [f(u) + ' %', f(44 + u * .38) + ' °C', f(1.9 + u * .045, 1) + ' of 8 GB', f(11 + u * .95) + ' W', f(990 + u * 17) + ' MHz', '32.0.16.1742'] },
+  { id: 'mem', name: 'Memory', dev: '16 GB DDR5 at 5600 MT/s', label: 'Memory in use', max: 15.6, maxLabel: '15.6 GB',
     s: [series(walker({ min: 6, max: 14.5, vol: .16, pull: .1, jump: .03, lo: 8.6, hi: 10.6 }), 9.4)],
-    meta: ([m]) => `${f(m, 1)} de 15,6 GB (${f(m / 15.6 * 100)} %)`,
-    labels: ['En uso', 'Disponible', 'Comprometida', 'En caché', 'Velocidad', 'Ranuras usadas'],
-    stats: ([m]) => [f(m, 1) + ' GB', f(15.6 - m, 1) + ' GB', f(m + 4.7, 1) + ' de 22,6 GB', f((15.6 - m) * .78, 1) + ' GB', '5600 MT/s', '2 de 2'] },
-  { id: 'disk', name: 'Disco 0 (C:)', dev: 'WD PC SN5000S 1 TB', label: 'Velocidad de transferencia', unit: 'MB/s', dyn: true,
-    s: [series(burst(320, 30), 10), series(burst(120, 10), 4)], legend: ['Lectura', 'Escritura'],
+    meta: ([m]) => `${f(m, 1)} of 15.6 GB (${f(m / 15.6 * 100)} %)`,
+    labels: ['In use', 'Available', 'Committed', 'Cached', 'Speed', 'Slots used'],
+    stats: ([m]) => [f(m, 1) + ' GB', f(15.6 - m, 1) + ' GB', f(m + 4.7, 1) + ' of 22.6 GB', f((15.6 - m) * .78, 1) + ' GB', '5600 MT/s', '2 of 2'] },
+  { id: 'disk', name: 'Disco 0 (C:)', dev: 'WD PC SN5000S 1 TB', label: 'Transfer speed', unit: 'MB/s', dyn: true,
+    s: [series(burst(320, 30), 10), series(burst(120, 10), 4)], legend: ['Read', 'Write'],
     meta: ([r, w]) => `${f(clamp((r + w) / 4, .5, 100))} % activo`,
-    labels: ['Lectura', 'Escritura', 'Tiempo activo', 'Respuesta media', 'Capacidad', 'Libre'],
+    labels: ['Read', 'Write', 'Active time', 'Average response', 'Capacity', 'Free'],
     stats: ([r, w]) => { const a = clamp((r + w) / 4, .5, 100); return [f(r, 1) + ' MB/s', f(w, 1) + ' MB/s', f(a) + ' %', f(.1 + a * .02, 1) + ' ms', '953 GB', '361 GB']; } },
-  { id: 'net', name: 'Wi-Fi', dev: 'Realtek 8852CE Wi-Fi 6E', label: 'Rendimiento', unit: 'Mbps', dyn: true,
-    s: [series(burst(140, 8), 20), series(burst(24, 2), 3)], legend: ['Recepción', 'Envío'],
+  { id: 'net', name: 'Wi-Fi', dev: 'Realtek 8852CE Wi-Fi 6E', label: 'Throughput', unit: 'Mbps', dyn: true,
+    s: [series(burst(140, 8), 20), series(burst(24, 2), 3)], legend: ['Received', 'Sent'],
     meta: ([r, s]) => `Rec. ${f(r, 1)}  Env. ${f(s, 1)} Mbps`,
-    labels: ['Recepción', 'Envío', 'Señal', 'Tipo de conexión', 'Dirección IPv4', 'Velocidad del enlace'],
+    labels: ['Received', 'Sent', 'Signal', 'Connection type', 'IPv4 address', 'Link speed'],
     stats: ([r, s]) => [f(r, 1) + ' Mbps', f(s, 1) + ' Mbps', '84 %', 'Wi-Fi 6E', '192.168.1.34', '1,2 Gbps'] },
-  { id: 'bat', name: 'Batería', dev: '90 Wh, salud 97 %', label: 'Consumo', max: 60, maxLabel: '60 W',
+  { id: 'bat', name: 'Battery', dev: '90 Wh, 97% health', label: 'Consumo', max: 60, maxLabel: '60 W',
     s: [series(walker({ min: 9, max: 48, vol: 4, pull: .2, jump: .05, lo: 14, hi: 30 }), 18), series(v => Math.max(5, v - .01 - Math.random() * .012), 84.6)], draw: [0],
     meta: ([w, p]) => `${f(p)} %  ${f(w, 1)} W`,
-    labels: ['Carga', 'Estado', 'Consumo', 'Tiempo restante', 'Salud', 'Capacidad'],
-    stats: ([w, p]) => [f(p) + ' %', 'Descargando', f(w, 1) + ' W', hm(p / 100 * 87.2 / w), '97 %', '87,2 de 90 Wh'] },
+    labels: ['Charge', 'Status', 'Power', 'Time left', 'Health', 'Capacity'],
+    stats: ([w, p]) => [f(p) + ' %', 'Discharging', f(w, 1) + ' W', hm(p / 100 * 87.2 / w), '97 %', '87.2 of 90 Wh'] },
 ];
 RES.forEach(r => { r.curMax = r.max || 100; });
 const THREADS = Array.from({ length: 24 }, (_, i) => series(walker({ min: 0, max: 100, vol: 14, pull: .3, jump: .1, lo: 0, hi: i < 16 ? 70 : 40 }), 15));
@@ -710,14 +710,14 @@ function resMax(r, k) {
 
 /* ---------------- monitor ui ---------------- */
 function detailHTML(r) {
-  const extra = r.id === 'cpu' ? `<div class="sub-h">Uso de cada uno de los 24 hilos</div><canvas class="thr" id="thrChart"></canvas>`
-    : r.id === 'mem' ? `<div class="sub-h">Composición de la memoria</div><div class="memc" id="memc">
+  const extra = r.id === 'cpu' ? `<div class="sub-h">Usage of each of the 24 threads</div><canvas class="thr" id="thrChart"></canvas>`
+    : r.id === 'mem' ? `<div class="sub-h">Memory composition</div><div class="memc" id="memc">
       <i style="background:var(--accent)"></i><i style="background:color-mix(in srgb,var(--accent) 55%,transparent)"></i><i style="background:color-mix(in srgb,var(--accent) 25%,transparent)"></i></div>
-      <div class="memc-leg"><span><b style="background:var(--accent)"></b>En uso</span><span><b style="background:color-mix(in srgb,var(--accent) 55%,transparent)"></b>Modificada</span><span><b style="background:color-mix(in srgb,var(--accent) 25%,transparent)"></b>En espera</span><span><b style="background:var(--divider)"></b>Libre</span></div>` : '';
+      <div class="memc-leg"><span><b style="background:var(--accent)"></b>In use</span><span><b style="background:color-mix(in srgb,var(--accent) 55%,transparent)"></b>Modified</span><span><b style="background:color-mix(in srgb,var(--accent) 25%,transparent)"></b>Standby</span><span><b style="background:var(--divider)"></b>Free</span></div>` : '';
   return `<div class="d-in"><div class="d-head"><h2 class="d-name">${r.name}</h2><span class="d-dev">${r.dev}</span></div>
-    <div class="ch-top"><span>${r.label}${r.unit ? ` en ${r.unit}` : ''}</span><span data-chmax>${r.maxLabel || (r.dyn ? '' : '100 %')}</span></div>
+    <div class="ch-top"><span>${r.label}${r.unit ? ` in ${r.unit}` : ''}</span><span data-chmax>${r.maxLabel || (r.dyn ? '' : '100 %')}</span></div>
     <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
-    <div class="ch-bot"><span>60 segundos</span><span>0</span></div>
+    <div class="ch-bot"><span>60 seconds</span><span>0</span></div>
     ${r.legend ? `<div class="legend"><span><i></i>${r.legend[0]}</span><span><i class="dash"></i>${r.legend[1]}</span></div>` : ''}
     <div class="stats">${r.labels.map((l, i) => `<div class="stat"><div class="cap">${l}</div><div class="v" data-stat="${i}">–</div></div>`).join('')}</div>
     ${extra}</div>`;
@@ -906,17 +906,17 @@ function zoneOff() { $$('.zone.on').forEach(p => p.classList.remove('on')); $$('
 
 /* ---------------- palette ---------------- */
 const CMDS = [
-  ...['home', ...NAV_ORDER.slice(1), 'settings'].map(id => ({ g: 'Módulos', label: MODS[id].name, ico: MODS[id].ico, go: id, hint: 'Abrir' })),
-  { g: 'Acciones', label: 'Buscar drivers', ico: '', go: 'drivers', hint: 'Ir' },
-  { g: 'Acciones', label: 'Limpiar temporales', ico: '', go: 'optimizer', hint: 'Ir' },
-  { g: 'Acciones', label: 'Qué ocupa el disco C:', ico: '', go: 'storage', hint: 'Ir' },
-  { g: 'Acciones', label: 'Desinstalar un programa', ico: '', go: 'remover', hint: 'Ir' },
-  { g: 'Acciones', label: 'Actualizar todos los programas', ico: '', go: 'updater', hint: 'Ir' },
-  { g: 'Acciones', label: 'Ver la temperatura de la GPU', ico: '', go: 'monitor', sub: 'gpu', hint: 'Ir' },
-  { g: 'Acciones', label: 'Desactivar apps que arrancan con Windows', ico: '', go: 'optimizer', hint: 'Ir' },
-  { g: 'Acciones', label: 'Probar el teclado', ico: '', go: 'tester', hint: 'Ir' },
-  { g: 'Acciones', label: 'Cambiar entre tema claro y oscuro', ico: '', run: () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'), hint: 'Aplicar' },
-  { g: 'Acciones', label: 'Activar el modo administrador', ico: '', run: () => activateAdmin(), hint: 'Aplicar' },
+  ...['home', ...NAV_ORDER.slice(1), 'settings'].map(id => ({ g: 'Modules', label: MODS[id].name, ico: MODS[id].ico, go: id, hint: 'Open' })),
+  { g: 'Actions', label: 'Find drivers', ico: '', go: 'drivers', hint: 'Go' },
+  { g: 'Actions', label: 'Clean temporary files', ico: '', go: 'optimizer', hint: 'Go' },
+  { g: 'Actions', label: 'What fills drive C:', ico: '', go: 'storage', hint: 'Go' },
+  { g: 'Actions', label: 'Uninstall a program', ico: '', go: 'remover', hint: 'Go' },
+  { g: 'Actions', label: 'Update every program', ico: '', go: 'updater', hint: 'Go' },
+  { g: 'Actions', label: 'See the GPU temperature', ico: '', go: 'monitor', sub: 'gpu', hint: 'Go' },
+  { g: 'Actions', label: 'Disable apps that start with Windows', ico: '', go: 'optimizer', hint: 'Go' },
+  { g: 'Actions', label: 'Test the keyboard', ico: '', go: 'tester', hint: 'Go' },
+  { g: 'Actions', label: 'Switch between light and dark theme', ico: '', run: () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'), hint: 'Apply' },
+  { g: 'Actions', label: 'Turn on administrator mode', ico: '', run: () => activateAdmin(), hint: 'Apply' },
 ];
 const pal = $('#pal'), q = $('#q');
 let palOpen = false, results = [], selI = 0;
@@ -931,9 +931,9 @@ function highlight(label, nq) {
 }
 function renderPal(animate) {
   const nq = norm(q.value.trim());
-  results = CMDS.filter(c => !nq || norm(c.label).includes(nq) || (c.go && norm(MODS[c.go].name).includes(nq) && c.g === 'Acciones'));
+  results = CMDS.filter(c => !nq || norm(c.label).includes(nq) || (c.go && norm(MODS[c.go].name).includes(nq) && c.g === 'Actions'));
   selI = Math.min(selI, Math.max(0, results.length - 1));
-  if (!results.length) { pal.innerHTML = `<div class="pal-empty">No hay resultados para «${q.value.replace(/[<>&]/g, '')}». Prueba con «drivers», «disco» o «temperatura».</div>`; return; }
+  if (!results.length) { pal.innerHTML = `<div class="pal-empty">No results for “${q.value.replace(/[<>&]/g, '')}”. Try “drivers”, “disk” or “temperature”.</div>`; return; }
   let html = '<div class="pal-sel" id="palSel"></div>', g = '';
   results.forEach((c, i) => {
     if (c.g !== g) { g = c.g; html += `<div class="pal-g">${g}</div>`; }
@@ -976,7 +976,7 @@ function activateAdmin() {
     $('#navIbar').classList.add('closed');
     $$('[data-admin-bar]').forEach(b => b.classList.add('closed'));
     const mi = $('#modeItem'); mi.classList.add('admin');
-    swapText($('#modeName'), 'Modo administrador'); swapText($('#modeCap'), 'Todas las funciones disponibles');
+    swapText($('#modeName'), 'Administrator mode'); swapText($('#modeCap'), 'Every feature available');
     if (D(1) > .5) $('.ico', mi).animate([{ transform: 'scale(1)' }, { transform: 'scale(1.5)', offset: .4 }, { transform: 'scale(1)' }], { duration: D(420), easing: 'cubic-bezier(.3,1.4,.5,1)' });
   }, 750);
 }
@@ -1037,22 +1037,22 @@ function combo(el, opts, idx, onChange) {
   document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
 }
 function initSettings() {
-  combo($('#cbTheme'), ['Oscuro', 'Claro'], 0, i => setTheme(i === 0 ? 'dark' : 'light'));
+  combo($('#cbTheme'), ['Dark', 'Light'], 0, i => setTheme(i === 0 ? 'dark' : 'light'));
   const mo = ['max', 'normal', 'min'];
-  combo($('#cbMotion'), ['Máxima', 'Normal', 'Mínima'], mo.indexOf(motion), i => { motion = mo[i]; applyMotion(); });
+  combo($('#cbMotion'), ['Maximum', 'Normal', 'Minimum'], mo.indexOf(motion), i => { motion = mo[i]; applyMotion(); });
   $('#swatches').addEventListener('click', e => { const s = e.target.closest('.sw'); if (s) setAccent(s.dataset.acc); });
   $$('.tg').forEach(t => t.addEventListener('click', () => {
     const on = t.getAttribute('aria-checked') !== 'true'; t.setAttribute('aria-checked', on);
-    const lab = t.previousElementSibling; if (lab) swapText(lab, on ? 'Activado' : 'Desactivado');
+    const lab = t.previousElementSibling; if (lab) swapText(lab, on ? 'On' : 'Off');
   }));
   paintSwatches();
 }
 
 /* ---------------- misc ---------------- */
 function copySpec(btn) {
-  const txt = ['ASUS TUF Gaming F16 (FX608JPR), portátil', 'Windows 11 Pro 25H2, BIOS FX608JPR.312',
+  const txt = ['ASUS TUF Gaming F16 (FX608JPR), laptop', 'Windows 11 Pro 25H2, BIOS FX608JPR.312',
     ...COMPS.slice(0, 7).map(c => `${c.k}: ${c.v} (${c.x})`)].join('\n');
-  try { navigator.clipboard.writeText(txt).catch(() => {}); } catch (e) { /* sin portapapeles en esta vista */ }
+  try { navigator.clipboard.writeText(txt).catch(() => {}); } catch (e) { /* no clipboard in this view */ }
   const sw = $('.swap', btn); sw.children[0].classList.add('off'); sw.children[1].classList.remove('off');
   clearTimeout(btn._t); btn._t = setTimeout(() => { sw.children[0].classList.remove('off'); sw.children[1].classList.add('off'); }, 1700);
 }

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="es" data-theme="noche">
+<html lang="en" data-theme="noche">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>StellarHub · Observatorio</title>
+<title>StellarHub · Observatory</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Mona+Sans:wdth,wght@75..125,200..900&display=swap" rel="stylesheet">
@@ -43,7 +43,7 @@ svg{display:block}
 .swap,.swap *{transition:none!important}
 :focus-visible{outline:1.5px solid var(--acc);outline-offset:2px;border-radius:6px}
 
-/* ---------- estructura ---------- */
+/* ---------- structure ---------- */
 .app{display:grid;grid-template-columns:auto 1fr;height:100vh;min-width:980px;min-height:620px}
 .rail{width:212px;border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 10px 12px;
   transition:width var(--d4) var(--out);overflow:hidden;position:relative}
@@ -122,7 +122,7 @@ kbd{font-family:inherit;font-size:11px;color:var(--muted);border:1px solid var(-
 .btn.line:hover{border-color:var(--acc)}
 .btn.sm{height:26px;padding:0 10px;font-size:12px;border-radius:7px}
 
-/* ---------- inicio ---------- */
+/* ---------- home ---------- */
 .home{height:100%;display:flex;flex-direction:column;padding:20px 28px 14px}
 .home-head{display:flex;justify-content:space-between;align-items:flex-end;gap:28px}
 .kind{display:flex;align-items:center;gap:7px;color:var(--acc-text);font-size:12.5px;margin:0}
@@ -186,7 +186,7 @@ h1{font-size:31px;line-height:1.1;font-weight:600;font-stretch:116%;letter-spaci
 .node.lit .nm{color:var(--muted)}
 .node.lit .nh .ic{color:var(--acc);transform:scale(1.12)}
 
-/* ---------- módulos ---------- */
+/* ---------- modules ---------- */
 .mod{height:100%;padding:22px 28px;display:flex;flex-direction:column}
 .mod-head{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-bottom:18px}
 .mod-head h2{font-size:23px;font-weight:600;font-stretch:114%;letter-spacing:-.01em;margin:0 0 4px;line-height:1.15}
@@ -229,7 +229,7 @@ h1{font-size:31px;line-height:1.1;font-weight:600;font-stretch:116%;letter-spaci
 .seg button.on{color:var(--text)}
 .seg .pill{position:absolute;top:2px;bottom:2px;left:2px;border-radius:6px;background:var(--bg3);border:1px solid var(--line2);transition:transform var(--d4) var(--spring)}
 
-/* ---------- paleta ---------- */
+/* ---------- palette ---------- */
 .ovl{position:fixed;inset:0;background:rgba(4,8,15,.55);opacity:0;pointer-events:none;transition:opacity var(--d3) var(--out);z-index:20}
 [data-theme="amanecer"] .ovl{background:rgba(24,35,58,.25)}
 .ovl.show{opacity:1;pointer-events:auto}
@@ -252,7 +252,7 @@ h1{font-size:31px;line-height:1.1;font-weight:600;font-stretch:116%;letter-spaci
 .pal-empty{padding:22px 16px;color:var(--muted)}
 .pal-foot{display:flex;gap:16px;padding:8px 16px;border-top:1px solid var(--line);color:var(--faint);font-size:11.5px}
 
-/* ---------- ajustes ---------- */
+/* ---------- settings ---------- */
 .set{position:fixed;top:10px;bottom:10px;right:10px;width:340px;background:var(--bg2);border:1px solid var(--line2);border-radius:14px;z-index:21;
   box-shadow:-30px 0 80px -30px rgba(0,0,0,.6);transform:translateX(30px);opacity:0;pointer-events:none;
   transition:transform var(--d4) var(--spring),opacity var(--d3) var(--out);display:flex;flex-direction:column}
@@ -320,34 +320,34 @@ h1{font-size:31px;line-height:1.1;font-weight:600;font-stretch:116%;letter-spaci
     <nav id="nav"><span class="nav-star" id="navStar"></span></nav>
     <div class="rail-foot">
       <div class="admin" id="admin">
-        <button class="mode" id="modeBtn" title="Modo de permisos"><span class="ring"></span><span id="modeTxt">Modo normal</span></button>
+        <button class="mode" id="modeBtn" title="Permission mode"><span class="ring"></span><span id="modeTxt">Normal mode</span></button>
         <div class="invite" id="invite"><div>
-          <p>Con el modo administrador puedes instalar drivers y limpiar a fondo.</p>
-          <div class="inv-b"><button class="btn sm acc" id="admOn">Activar</button><button class="btn sm ghost" id="admNo">Ahora no</button></div>
+          <p>In administrator mode you can install drivers and clean thoroughly.</p>
+          <div class="inv-b"><button class="btn sm acc" id="admOn">Turn on</button><button class="btn sm ghost" id="admNo">Not now</button></div>
         </div></div>
       </div>
-      <button class="gear" id="gearBtn"><svg class="ic"><use href="#i-gear"/></svg><span>Ajustes</span></button>
+      <button class="gear" id="gearBtn"><svg class="ic"><use href="#i-gear"/></svg><span>Settings</span></button>
     </div>
   </aside>
 
   <div class="main">
     <header class="top">
-      <div class="crumb" id="crumb"><span><b>Inicio</b></span></div>
-      <button class="search" id="searchBtn"><svg class="ic"><use href="#i-search"/></svg><em>Buscar herramientas o acciones</em><kbd>Ctrl K</kbd></button>
+      <div class="crumb" id="crumb"><span><b>Home</b></span></div>
+      <button class="search" id="searchBtn"><svg class="ic"><use href="#i-search"/></svg><em>Search tools or actions</em><kbd>Ctrl K</kbd></button>
     </header>
     <section class="views" id="views">
       <div class="view on" id="v-home">
         <div class="home">
           <div class="home-head">
             <div data-st>
-              <p class="kind"><svg class="ic"><use href="#i-laptop"/></svg>portátil</p>
+              <p class="kind"><svg class="ic"><use href="#i-laptop"/></svg>laptop</p>
               <h1>ASUS TUF Gaming F16</h1>
-              <p class="sub">modelo FX608JPR, con Windows 11 Pro 25H2</p>
+              <p class="sub">model FX608JPR, with Windows 11 Pro 25H2</p>
             </div>
             <div class="pend" data-st>
-              <button class="rd" data-go="drivers"><b data-count="4">0</b><small>drivers con actualización</small></button>
-              <button class="rd" data-go="updater"><b data-count="12">0</b><small>programas por actualizar</small></button>
-              <button class="rd" data-go="optimizer"><b data-count="18" data-suffix=" GB">0</b><small>que se pueden liberar</small></button>
+              <button class="rd" data-go="drivers"><b data-count="4">0</b><small>drivers with updates</small></button>
+              <button class="rd" data-go="updater"><b data-count="12">0</b><small>programs to update</small></button>
+              <button class="rd" data-go="optimizer"><b data-count="18" data-suffix=" GB">0</b><small>that can be freed</small></button>
             </div>
           </div>
           <div class="chart-wrap"><div class="chart" id="chart"><svg class="sky" id="sky" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid meet"></svg></div></div>
@@ -357,44 +357,44 @@ h1{font-size:31px;line-height:1.1;font-weight:600;font-stretch:116%;letter-spaci
       <div class="view" id="v-monitor">
         <div class="mod">
           <div class="mod-head" data-st>
-            <div><h2>Live Monitor</h2><p>Cómo trabaja tu equipo ahora mismo. En esta maqueta los datos son de ejemplo.</p></div>
+            <div><h2>Live Monitor</h2><p>How your PC is working right now. In this mockup the data is sample data.</p></div>
             <div class="seg" id="rangeSeg"><span class="pill"></span><button class="on">1 min</button><button>5 min</button><button>15 min</button></div>
           </div>
           <div class="mgrid">
             <section class="pn cpu" data-st>
-              <div class="ph"><svg class="ic"><use href="#i-cpu"/></svg>procesador<span class="grow"></span>Intel Core i7-14650HX</div>
-              <div class="big"><b id="mCpu">0<small>%</small></b><span id="mCpuF">a 3,9 GHz</span></div>
+              <div class="ph"><svg class="ic"><use href="#i-cpu"/></svg>processor<span class="grow"></span>Intel Core i7-14650HX</div>
+              <div class="big"><b id="mCpu">0<small>%</small></b><span id="mCpuF">at 3.9 GHz</span></div>
               <canvas class="ch" id="chCpu"></canvas>
               <div class="threads" id="threads"></div>
-              <div class="legend"><span>24 hilos, uno por barra</span></div>
+              <div class="legend"><span>24 threads, one per bar</span></div>
             </section>
             <section class="pn gpu" data-st>
-              <div class="ph"><svg class="ic"><use href="#i-gpu"/></svg>gráfica dedicada<span class="grow"></span>RTX 5070 Laptop</div>
+              <div class="ph"><svg class="ic"><use href="#i-gpu"/></svg>dedicated graphics<span class="grow"></span>RTX 5070 Laptop</div>
               <div class="trio">
-                <div><b id="mGpu">0 %</b><span>uso</span></div>
-                <div><b id="mGpuT">0 °C</b><span>temperatura</span></div>
-                <div><b id="mVram">0 GB</b><span>de 8 GB de VRAM</span></div>
+                <div><b id="mGpu">0 %</b><span>usage</span></div>
+                <div><b id="mGpuT">0 °C</b><span>temperature</span></div>
+                <div><b id="mVram">0 GB</b><span>of 8 GB of VRAM</span></div>
               </div>
               <canvas class="ch" id="chGpu"></canvas>
               <div class="bar"><i id="vramBar" style="background:var(--data)"></i></div>
             </section>
             <section class="pn ram" data-st>
-              <div class="ph"><svg class="ic"><use href="#i-ram"/></svg>memoria</div>
-              <div class="big"><b id="mRam">0<small> GB</small></b><span>de 16 GB en uso</span></div>
+              <div class="ph"><svg class="ic"><use href="#i-ram"/></svg>memory</div>
+              <div class="big"><b id="mRam">0<small> GB</small></b><span>of 16 GB in use</span></div>
               <canvas class="ch" id="chRam"></canvas>
               <div class="bar"><i id="ramBar" style="background:var(--data)"></i></div>
             </section>
             <section class="pn net" data-st>
-              <div class="ph"><svg class="ic"><use href="#i-wifi"/></svg>red</div>
-              <div class="big"><b id="mDown">0<small> Mb/s</small></b><span id="mUp">subida 0 Mb/s</span></div>
+              <div class="ph"><svg class="ic"><use href="#i-wifi"/></svg>network</div>
+              <div class="big"><b id="mDown">0<small> Mb/s</small></b><span id="mUp">up 0 Mb/s</span></div>
               <canvas class="ch" id="chNet"></canvas>
-              <div class="legend"><span><i style="background:var(--data)"></i>bajada</span><span><i style="background:var(--data2)"></i>subida</span></div>
+              <div class="legend"><span><i style="background:var(--data)"></i>down</span><span><i style="background:var(--data2)"></i>up</span></div>
             </section>
             <section class="pn disk" data-st>
-              <div class="ph"><svg class="ic"><use href="#i-ssd"/></svg>disco</div>
-              <div class="big"><b id="mRead">0<small> MB/s</small></b><span id="mWrite">escritura 0 MB/s</span></div>
+              <div class="ph"><svg class="ic"><use href="#i-ssd"/></svg>disk</div>
+              <div class="big"><b id="mRead">0<small> MB/s</small></b><span id="mWrite">write 0 MB/s</span></div>
               <canvas class="ch" id="chDisk"></canvas>
-              <div class="legend"><span><i style="background:var(--data)"></i>lectura</span><span><i style="background:var(--data2)"></i>escritura</span></div>
+              <div class="legend"><span><i style="background:var(--data)"></i>read</span><span><i style="background:var(--data2)"></i>write</span></div>
             </section>
           </div>
         </div>
@@ -404,18 +404,18 @@ h1{font-size:31px;line-height:1.1;font-weight:600;font-stretch:116%;letter-spaci
 </div>
 
 <div class="ovl" id="ovl"></div>
-<div class="pal" id="pal" role="dialog" aria-label="Buscar">
-  <div class="pal-in"><svg class="ic"><use href="#i-search"/></svg><input id="palIn" placeholder="Busca un módulo o una acción" autocomplete="off" spellcheck="false"></div>
+<div class="pal" id="pal" role="dialog" aria-label="Search">
+  <div class="pal-in"><svg class="ic"><use href="#i-search"/></svg><input id="palIn" placeholder="Search for a module or action" autocomplete="off" spellcheck="false"></div>
   <div class="pal-list" id="palList"><div class="hl" id="palHl"></div></div>
-  <div class="pal-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> moverse</span><span><kbd>Enter</kbd> abrir</span><span><kbd>Esc</kbd> cerrar</span></div>
+  <div class="pal-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span></div>
 </div>
 
-<aside class="set" id="set" role="dialog" aria-label="Ajustes">
-  <div class="set-h"><h3>Ajustes</h3><button class="x" id="setX" title="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button></div>
+<aside class="set" id="set" role="dialog" aria-label="Settings">
+  <div class="set-h"><h3>Settings</h3><button class="x" id="setX" title="Close"><svg class="ic"><use href="#i-x"/></svg></button></div>
   <div class="set-b">
-    <div class="row" data-sst><label>Tema</label><p>Noche para trabajar a oscuras, amanecer con luz.</p>
-      <div class="seg" id="themeSeg"><span class="pill"></span><button class="on" data-v="noche">Noche</button><button data-v="amanecer">Amanecer</button></div></div>
-    <div class="row" data-sst><label>Color de acento</label><p>Cada uno lleva el nombre de una estrella.</p>
+    <div class="row" data-sst><label>Theme</label><p>Night for working in the dark, dawn for daylight.</p>
+      <div class="seg" id="themeSeg"><span class="pill"></span><button class="on" data-v="noche">Night</button><button data-v="amanecer">Dawn</button></div></div>
+    <div class="row" data-sst><label>Accent color</label><p>Each one is named after a star.</p>
       <div class="sw" id="sw">
         <button class="on" style="--c:#F2CF8A" data-name="Capella" data-c="#F2CF8A"></button>
         <button style="--c:#C8D9FF" data-name="Vega" data-c="#C8D9FF"></button>
@@ -424,9 +424,9 @@ h1{font-size:31px;line-height:1.1;font-weight:600;font-stretch:116%;letter-spaci
         <button style="--c:#F5E6B8" data-name="Polaris" data-c="#F5E6B8"></button>
       </div>
       <div class="sw-name" id="swName"><span style="position:absolute">Capella</span></div></div>
-    <div class="row" data-sst><label>Intensidad de animación</label><p>Cambia la duración de todo el movimiento de la app.</p>
-      <div class="seg" id="motionSeg"><span class="pill"></span><button data-v="1.3">Máxima</button><button class="on" data-v="1">Normal</button><button data-v="0.3">Mínima</button></div></div>
-    <div class="row" data-sst><div class="tg-row"><div><label>Barra lateral compacta</label><p style="margin:0">Deja solo los iconos.</p></div><button class="tg" id="compactTg" aria-label="Barra lateral compacta"><i></i></button></div></div>
+    <div class="row" data-sst><label>Animation intensity</label><p>Changes the duration of all motion in the app.</p>
+      <div class="seg" id="motionSeg"><span class="pill"></span><button data-v="1.3">Maximum</button><button class="on" data-v="1">Normal</button><button data-v="0.3">Minimum</button></div></div>
+    <div class="row" data-sst><div class="tg-row"><div><label>Compact sidebar</label><p style="margin:0">Leaves only the icons.</p></div><button class="tg" id="compactTg" aria-label="Compact sidebar"><i></i></button></div></div>
   </div>
 </aside>
 <div class="toasts" id="toasts"></div>
@@ -446,16 +446,16 @@ const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const fmt = (n, dec = 0) => n.toFixed(dec).replace('.', ',');
 const icon = (id, cls = 'ic') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
 
-/* ---------------- módulos ---------------- */
+/* ---------------- modules ---------------- */
 const MODS = [
-  { id: 'home', name: 'Inicio', icon: 'home' },
+  { id: 'home', name: 'Home', icon: 'home' },
   { id: 'monitor', name: 'Live Monitor', icon: 'pulse' },
-  { id: 'drivers', name: 'Driver Updater', icon: 'driver', desc: 'Busca versiones nuevas de tus drivers en Windows Update y las instala con un punto de restauración previo.', cta: 'Buscar drivers', cap: 'Revisando 303 drivers instalados' },
-  { id: 'remover', name: 'Program Remover', icon: 'remove', desc: 'Desinstala programas y borra lo que dejan atrás. Todo lo que se borra queda en cuarentena y se puede restaurar.', cta: 'Ver programas', cap: 'Leyendo 116 programas instalados' },
-  { id: 'updater', name: 'Program Updater', icon: 'update', desc: 'Actualiza tus programas, Windows, la Tienda y los componentes del sistema desde un solo lugar.', cta: 'Buscar actualizaciones', cap: 'Comparando versiones' },
-  { id: 'storage', name: 'Storage Checker', icon: 'storage', desc: 'Muestra qué ocupa cada disco, carpeta por carpeta y archivo por archivo.', cta: 'Analizar el disco C:', cap: 'Midiendo 953 GB' },
-  { id: 'optimizer', name: 'Super Optimizer', icon: 'optimize', desc: 'Limpia cachés y temporales, ordena lo que arranca con Windows y repara lo que esté roto.', cta: 'Analizar', cap: 'Buscando lo que sobra' },
-  { id: 'tester', name: 'Device Tester', icon: 'tester', desc: 'Prueba el teclado, la pantalla, el micrófono, los altavoces y la cámara.', cta: 'Elegir una prueba', cap: 'Detectando dispositivos' },
+  { id: 'drivers', name: 'Driver Updater', icon: 'driver', desc: 'Finds new versions of your drivers in Windows Update and installs them after creating a restore point.', cta: 'Find drivers', cap: 'Checking 303 installed drivers' },
+  { id: 'remover', name: 'Program Remover', icon: 'remove', desc: 'Uninstalls programs and removes what they leave behind. Everything removed goes to quarantine and can be restored.', cta: 'View programs', cap: 'Reading 116 installed programs' },
+  { id: 'updater', name: 'Program Updater', icon: 'update', desc: 'Updates your programs, Windows, the Store and system components from one place.', cta: 'Check for updates', cap: 'Comparing versions' },
+  { id: 'storage', name: 'Storage Checker', icon: 'storage', desc: 'Shows what fills each disk, folder by folder and file by file.', cta: 'Analyze drive C:', cap: 'Measuring 953 GB' },
+  { id: 'optimizer', name: 'Super Optimizer', icon: 'optimize', desc: 'Cleans caches and temporary files, tidies up what starts with Windows and repairs what is broken.', cta: 'Analyze', cap: 'Looking for what is not needed' },
+  { id: 'tester', name: 'Device Tester', icon: 'tester', desc: 'Test the keyboard, screen, microphone, speakers and camera.', cta: 'Choose a test', cap: 'Detecting devices' },
 ];
 const byId = Object.fromEntries(MODS.map(m => [m.id, m]));
 
@@ -476,7 +476,7 @@ MODS.filter(m => m.desc).forEach(m => {
   views.appendChild(v);
 });
 
-/* ---------------- navegación ---------------- */
+/* ---------------- navigation ---------------- */
 let cur = 'home';
 function placeStar(btn) {
   $('#navStar').style.setProperty('--y', (btn.offsetTop + btn.offsetHeight / 2 - 3.5) + 'px');
@@ -516,10 +516,10 @@ function go(id) {
 document.addEventListener('click', e => {
   const g = e.target.closest('[data-go]');
   if (g) go(g.dataset.go);
-  if (e.target.closest('[data-mock]')) toast('Esto es una maqueta: el módulo todavía no funciona.');
+  if (e.target.closest('[data-mock]')) toast('This is a mockup: the module does not work yet.');
 });
 
-/* ---------------- constelación ---------------- */
+/* ---------------- constellation ---------------- */
 const NS = 'http://www.w3.org/2000/svg';
 const sky = $('#sky');
 const el = (tag, attrs, parent) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; };
@@ -528,7 +528,7 @@ const poly = (u1, v1, u2, v2) => { const a = [P(u1, v1), P(u2, v1), P(u2, v2), P
 const rr = (x, y, w, h, r) => `M${x + r} ${y}H${x + w - r}Q${x + w} ${y} ${x + w} ${y + r}V${y + h - r}Q${x + w} ${y + h} ${x + w - r} ${y + h}H${x + r}Q${x} ${y + h} ${x} ${y + h - r}V${y + r}Q${x} ${y} ${x + r} ${y}Z`;
 const CX = 800, CY = 440;
 
-// retícula de carta celeste
+// star chart grid
 const gGrid = el('g', { id: 'gGrid' }, sky);
 [250, 370, 490, 620].forEach((r, i) => el('circle', { cx: CX, cy: CY, r, class: 'grid-c' + (i % 2 ? ' dash' : '') }, gGrid));
 for (let a = 0; a < 360; a += 30) {
@@ -543,7 +543,7 @@ for (let a = 0; a < 360; a += 5) {
   const rad = a * Math.PI / 180;
   const tx = el('text', { x: CX + Math.cos(rad) * 645, y: CY + Math.sin(rad) * 645 + 5, class: 'deg', 'text-anchor': 'middle' }, gGrid); tx.textContent = t;
 });
-// campo de estrellas (semilla fija)
+// star field (fixed seed)
 let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 for (let i = 0; i < 150; i++) {
   const x = rnd() * 1600, y = rnd() * 900;
@@ -552,23 +552,23 @@ for (let i = 0; i < 150; i++) {
   if (i % 11 === 0) s.style.animationDelay = (rnd() * -4).toFixed(2) + 's';
 }
 
-// portátil en línea fina
+// laptop in fine line art
 const gLap = el('g', { id: 'gLap' }, sky);
 const lap = (dd, soft) => el('path', { d: dd, class: 'lap' + (soft ? ' soft' : ''), pathLength: 1 }, gLap);
-lap(rr(608, 172, 384, 352, 12));                       // tapa
-lap(rr(624, 188, 352, 306, 4), true);                  // pantalla
-lap('M640 470 L700 210', true);                        // reflejo
-lap('M796 181a4 4 0 1 0 8 0a4 4 0 1 0 -8 0', true);   // cámara
+lap(rr(608, 172, 384, 352, 12));                       // lid
+lap(rr(624, 188, 352, 306, 4), true);                  // screen
+lap('M640 470 L700 210', true);                        // reflection
+lap('M796 181a4 4 0 1 0 8 0a4 4 0 1 0 -8 0', true);   // camera
 const [a0, b0, c0, d0] = [P(0, 0), P(1, 0), P(1, 1), P(0, 1)];
-lap(`M${a0} L${b0} L${c0} L${d0} Z`.replace(/,/g, ' '));                                         // cubierta
-lap(`M${d0[0]} ${d0[1]} L${d0[0] + 6} ${d0[1] + 12} L${c0[0] - 6} ${c0[1] + 12} L${c0[0]} ${c0[1]}`); // grosor
-lap(`M${P(.43, 1)[0]} ${P(.43, 1)[1] + 6} L${P(.57, 1)[0]} ${P(.57, 1)[1] + 6}`, true);              // ranura frontal
+lap(`M${a0} L${b0} L${c0} L${d0} Z`.replace(/,/g, ' '));                                         // deck
+lap(`M${d0[0]} ${d0[1]} L${d0[0] + 6} ${d0[1] + 12} L${c0[0] - 6} ${c0[1] + 12} L${c0[0]} ${c0[1]}`); // thickness
+lap(`M${P(.43, 1)[0]} ${P(.43, 1)[1] + 6} L${P(.57, 1)[0]} ${P(.57, 1)[1] + 6}`, true);              // front notch
 // teclado
 let kb = '';
 for (let r = 0; r <= 5; r++) { const v = .06 + r * .085, p1 = P(.1, v), p2 = P(.9, v); kb += `M${p1[0].toFixed(1)} ${p1[1].toFixed(1)}L${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`; }
 for (let c = 0; c <= 16; c++) { const u = .1 + c * .05, p1 = P(u, .06), p2 = P(u, .485); kb += `M${p1[0].toFixed(1)} ${p1[1].toFixed(1)}L${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`; }
 lap(kb, true).style.opacity = .55;
-lap(poly(.38, .6, .62, .9), true);                      // panel táctil
+lap(poly(.38, .6, .62, .9), true);                      // touchpad
 
 // zonas
 const ZONES = {
@@ -596,14 +596,14 @@ for (const k in ZONES) {
 }
 // nodos (estrellas)
 const NODES = [
-  { id: 'pantalla', zone: 'screen', side: 'l', x: 445, y: 235, icon: 'display', name: 'pantalla', val: '16" 2560 × 1600 a 165 Hz', meta: 'más un monitor externo de 1920 × 1080 a 144 Hz' },
-  { id: 'cpu', zone: 'cpu', side: 'l', x: 385, y: 470, icon: 'cpu', name: 'procesador', val: 'Intel Core i7-14650HX', meta: '16 núcleos y 24 hilos' },
-  { id: 'ssd', zone: 'ssd', side: 'l', x: 405, y: 650, icon: 'ssd', name: 'almacenamiento', val: 'WD PC SN5000S de 1 TB', meta: '592 GB usados, 361 GB libres', bar: .62 },
-  { id: 'bat', zone: 'bat', side: 'l', x: 520, y: 815, icon: 'battery', name: 'batería', val: '90 Wh, salud del 97 %', meta: 'carga completa actual: 87,2 Wh', bar: .97 },
-  { id: 'wifi', zone: 'wifi', side: 'r', x: 1150, y: 235, icon: 'wifi', name: 'red', val: 'Wi-Fi 6E Realtek 8852CE', meta: 'conectado a 1,2 Gb/s' },
-  { id: 'gpu', zone: 'gpu', side: 'r', x: 1190, y: 470, icon: 'gpu', name: 'gráficos', val: 'NVIDIA GeForce RTX 5070 Laptop', meta: '8 GB, junto a Intel UHD Graphics' },
-  { id: 'ram', zone: 'ram', side: 'r', x: 1170, y: 650, icon: 'ram', name: 'memoria', val: '16 GB DDR5 a 5600 MT/s', meta: 'módulos Samsung' },
-  { id: 'sys', zone: 'sys', side: 'r', x: 1075, y: 815, icon: 'system', name: 'sistema', val: 'Windows 11 Pro 25H2', meta: 'BIOS FX608JPR.312' },
+  { id: 'screen', zone: 'screen', side: 'l', x: 445, y: 235, icon: 'display', name: 'screen', val: '16" 2560 × 1600 at 165 Hz', meta: 'plus an external 1920 × 1080 monitor at 144 Hz' },
+  { id: 'cpu', zone: 'cpu', side: 'l', x: 385, y: 470, icon: 'cpu', name: 'processor', val: 'Intel Core i7-14650HX', meta: '16 cores and 24 threads' },
+  { id: 'ssd', zone: 'ssd', side: 'l', x: 405, y: 650, icon: 'ssd', name: 'storage', val: 'WD PC SN5000S 1 TB', meta: '592 GB used, 361 GB free', bar: .62 },
+  { id: 'bat', zone: 'bat', side: 'l', x: 520, y: 815, icon: 'battery', name: 'battery', val: '90 Wh, 97% health', meta: 'current full charge: 87.2 Wh', bar: .97 },
+  { id: 'wifi', zone: 'wifi', side: 'r', x: 1150, y: 235, icon: 'wifi', name: 'network', val: 'Wi-Fi 6E Realtek 8852CE', meta: 'connected at 1.2 Gb/s' },
+  { id: 'gpu', zone: 'gpu', side: 'r', x: 1190, y: 470, icon: 'gpu', name: 'graphics', val: 'NVIDIA GeForce RTX 5070 Laptop', meta: '8 GB, alongside Intel UHD Graphics' },
+  { id: 'ram', zone: 'ram', side: 'r', x: 1170, y: 650, icon: 'ram', name: 'memory', val: '16 GB DDR5 at 5600 MT/s', meta: 'Samsung modules' },
+  { id: 'sys', zone: 'sys', side: 'r', x: 1075, y: 815, icon: 'system', name: 'system', val: 'Windows 11 Pro 25H2', meta: 'BIOS FX608JPR.312' },
 ];
 const gChain = el('g', {}, sky);
 const chainPath = list => 'M' + list.map(n => `${n.x} ${n.y}`).join('L');
@@ -640,7 +640,7 @@ function lightNode(n, on) {
   n.anch.classList.toggle('lit', on);
   ZONES[n.zone].el.classList.toggle('lit', on);
   if (on) {
-    // se eleva por encima del resto
+    // rises above the rest
     n.line.parentNode.appendChild(n.line); n.anch.parentNode.appendChild(n.anch);
     ZONES[n.zone].el.parentNode.appendChild(ZONES[n.zone].el);
   }
@@ -738,8 +738,8 @@ function frame(now) {
   txt('mCpu', `${fmt(shown.cpu)}<small>%</small>`); txt('mCpuF', `a ${fmt(S.ghz, 1)} GHz`);
   txt('mGpu', `${fmt(shown.gpu)} %`); txt('mGpuT', `${fmt(shown.gpuT)} °C`); txt('mVram', `${fmt(shown.vram, 1)} GB`);
   txt('mRam', `${fmt(shown.ram, 1)}<small> GB</small>`);
-  txt('mDown', `${fmt(shown.down, 1)}<small> Mb/s</small>`); txt('mUp', `subida ${fmt(shown.up, 1)} Mb/s`);
-  txt('mRead', `${fmt(shown.read)}<small> MB/s</small>`); txt('mWrite', `escritura ${fmt(shown.write)} MB/s`);
+  txt('mDown', `${fmt(shown.down, 1)}<small> Mb/s</small>`); txt('mUp', `up ${fmt(shown.up, 1)} Mb/s`);
+  txt('mRead', `${fmt(shown.read)}<small> MB/s</small>`); txt('mWrite', `write ${fmt(shown.write)} MB/s`);
   charts.forEach(c => c.draw(now));
   monRaf = requestAnimationFrame(frame);
 }
@@ -769,7 +769,7 @@ function seg(box, onChange) {
 }
 seg($('#rangeSeg'));
 seg($('#themeSeg'), (v, e) => setTheme(v, e));
-seg($('#motionSeg'), v => { T = RM ? 0.01 : +v; root.style.setProperty('--t', T); toast(v === '0.3' ? 'Animaciones al mínimo.' : v === '1.3' ? 'Animaciones al máximo.' : 'Animaciones normales.'); });
+seg($('#motionSeg'), v => { T = RM ? 0.01 : +v; root.style.setProperty('--t', T); toast(v === '0.3' ? 'Animations at minimum.' : v === '1.3' ? 'Animations at maximum.' : 'Animations at normal.'); });
 
 function setTheme(t, e) {
   if (!document.startViewTransition || T < .2) { root.dataset.theme = t; readColors(); return; }
@@ -808,19 +808,19 @@ $('#compactTg').addEventListener('click', e => {
   setTimeout(() => placeStar($('.nv.on')), d(30));
 });
 
-/* ---------------- paleta de comandos ---------------- */
+/* ---------------- command palette ---------------- */
 const pal = $('#pal'), palIn = $('#palIn'), palList = $('#palList'), hl = $('#palHl');
 const ITEMS = [
-  ...MODS.map(m => ({ g: 'Módulos', name: m.name, icon: m.icon, go: m.id })),
-  { g: 'Acciones', name: 'Buscar drivers', icon: 'driver', go: 'drivers', hint: 'Driver Updater' },
-  { g: 'Acciones', name: 'Limpiar temporales', icon: 'optimize', go: 'optimizer', hint: 'Super Optimizer' },
-  { g: 'Acciones', name: 'Qué ocupa el disco C:', icon: 'storage', go: 'storage', hint: 'Storage Checker' },
-  { g: 'Acciones', name: 'Desinstalar un programa', icon: 'remove', go: 'remover', hint: 'Program Remover' },
-  { g: 'Acciones', name: 'Actualizar todos los programas', icon: 'update', go: 'updater', hint: 'Program Updater' },
-  { g: 'Acciones', name: 'Ver la temperatura de la GPU', icon: 'gpu', go: 'monitor', hint: 'Live Monitor' },
-  { g: 'Acciones', name: 'Probar el teclado', icon: 'tester', go: 'tester', hint: 'Device Tester' },
-  { g: 'Acciones', name: 'Activar el modo administrador', icon: 'shield', act: 'admin' },
-  { g: 'Acciones', name: 'Abrir ajustes', icon: 'gear', act: 'settings' },
+  ...MODS.map(m => ({ g: 'Modules', name: m.name, icon: m.icon, go: m.id })),
+  { g: 'Actions', name: 'Find drivers', icon: 'driver', go: 'drivers', hint: 'Driver Updater' },
+  { g: 'Actions', name: 'Clean temporary files', icon: 'optimize', go: 'optimizer', hint: 'Super Optimizer' },
+  { g: 'Actions', name: 'What fills drive C:', icon: 'storage', go: 'storage', hint: 'Storage Checker' },
+  { g: 'Actions', name: 'Uninstall a program', icon: 'remove', go: 'remover', hint: 'Program Remover' },
+  { g: 'Actions', name: 'Update every program', icon: 'update', go: 'updater', hint: 'Program Updater' },
+  { g: 'Actions', name: 'See the GPU temperature', icon: 'gpu', go: 'monitor', hint: 'Live Monitor' },
+  { g: 'Actions', name: 'Test the keyboard', icon: 'tester', go: 'tester', hint: 'Device Tester' },
+  { g: 'Actions', name: 'Turn on administrator mode', icon: 'shield', act: 'admin' },
+  { g: 'Actions', name: 'Open settings', icon: 'gear', act: 'settings' },
 ];
 let shownItems = [], sel = 0;
 function renderPal(q, animate) {
@@ -829,7 +829,7 @@ function renderPal(q, animate) {
   $$('.pg,.pi,.pal-empty', palList).forEach(n => n.remove());
   if (!shownItems.length) {
     const e = document.createElement('div'); e.className = 'pal-empty';
-    e.textContent = `No hay nada que coincida con «${q.trim()}». Prueba con «drivers» o «disco».`;
+    e.textContent = `Nothing matches “${q.trim()}”. Try “drivers” or “disk”.`;
     palList.appendChild(e); hl.style.opacity = 0; return;
   }
   hl.style.opacity = 1;
@@ -885,16 +885,16 @@ document.addEventListener('keydown', e => {
 /* ---------------- modo administrador ---------------- */
 let isAdmin = false;
 function enableAdmin() {
-  if (isAdmin) { toast('El modo administrador ya está activo.'); return; }
+  if (isAdmin) { toast('Administrator mode is already on.'); return; }
   isAdmin = true;
   $('#admin').classList.add('is-admin');
   $('#invite').classList.remove('show');
   const t = $('#modeTxt'); t.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: d(320), easing: EASE });
-  t.textContent = 'Modo administrador';
-  toast('Modo administrador activo. Ya puedes usar todas las funciones.', 'shield');
+  t.textContent = 'Administrator mode';
+  toast('Administrator mode on. Every feature is now available.', 'shield');
 }
 $('#admOn').addEventListener('click', enableAdmin);
-$('#admNo').addEventListener('click', () => { $('#invite').classList.remove('show'); toast('Te lo volveremos a sugerir cuando una función lo necesite.'); });
+$('#admNo').addEventListener('click', () => { $('#invite').classList.remove('show'); toast('We will suggest it again when a feature needs it.'); });
 $('#modeBtn').addEventListener('click', () => { if (!isAdmin) $('#invite').classList.toggle('show'); });
 setTimeout(() => { if (!isAdmin) $('#invite').classList.add('show'); }, 2600);
 
@@ -907,7 +907,7 @@ function toast(msg, ic = 'logo') {
   setTimeout(() => t.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(20px)' }], { duration: d(240), easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' }).finished.then(() => t.remove()).catch(() => t.remove()), 3200);
 }
 
-/* ---------------- arranque ---------------- */
+/* ---------------- boot ---------------- */
 root.style.setProperty('--t', T);
 readColors();
 requestAnimationFrame(() => {

@@ -1,6 +1,6 @@
-/* StellarHub · vista de Inicio "Rayos X": el portátil visto desde arriba con la carcasa transparente.
-   Ventiladores que giran con las rpm reales, tubos de calor que pasan de frío a cálido con la temperatura,
-   y cada pieza se puede señalar para ver su ficha. */
+/* StellarHub · "X-ray" Home view: the laptop seen from above with a transparent shell.
+   Fans that spin at the real rpm, heat pipes that go from cool to warm with the temperature,
+   and every part can be pointed at to see its card. */
 'use strict';
 (() => {
 const { $, $$, Spring, EASE, anim, tickers, esc, fmtInt } = SH;
@@ -43,7 +43,7 @@ const PIPES = [
 ];
 function svg() {
   const pipe = (p, k) => `<path class="pipe-base" d="${p.d}"/><path class="pipe-cold" d="${p.d}"/><path class="pipe-warm ${p.cls}" data-pw="${k}" d="${p.d}"/><path class="pipe-flow" data-pf="${k}" pathLength="1" d="${p.d}"/>`;
-  return `<svg class="xr-svg" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet" aria-label="Interior del portátil">
+  return `<svg class="xr-svg" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet" aria-label="Inside the laptop">
   <defs>
     <linearGradient id="xrScan" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--accent2)" stop-opacity="0"/><stop offset=".85" style="stop-color:var(--accent2)" stop-opacity=".16"/><stop offset="1" style="stop-color:var(--accent2)" stop-opacity=".75"/></linearGradient>
     <pattern id="xrGrid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M20 0H0V20" fill="none" style="stroke:var(--accent2)" stroke-opacity=".05" stroke-width="1"/></pattern>
@@ -95,7 +95,7 @@ function svg() {
     <rect ${L} class="ln" x="250" y="238" width="152" height="32" rx="3"/>
     ${chips(260, 246, 8, 12, 16, 4.5)}
     <rect class="slot-empty" x="250" y="280" width="152" height="32" rx="3"/>
-    <text class="tiny" x="326" y="300" text-anchor="middle">ranura libre</text>
+    <text class="tiny" x="326" y="300" text-anchor="middle">free slot</text>
     <rect class="hit" x="246" y="234" width="160" height="82"/>
   </g>
   <g class="part" data-part="ssd">
@@ -152,10 +152,10 @@ function mount(el, ctx) {
     <svg class="xr-lead" aria-hidden="true"><path class="lead" pathLength="1"/><circle class="lead-dot" r="3.5"/></svg>
     <div class="xr-card" role="tooltip"></div>
     <div class="xr-ro">
-      <div><i class="sw c"></i>Ventilador del procesador <b><span data-ro="fcpu">0</span> rpm</b></div>
-      <div><i class="sw g"></i>Ventilador de la gráfica <b><span data-ro="fgpu">0</span> rpm</b></div>
-      <div><i class="sw t"></i>Procesador <b><span data-ro="tcpu">0</span> °C</b></div>
-      <div><i class="sw t"></i>Gráfica <b><span data-ro="tgpu">0</span> °C</b></div>
+      <div><i class="sw c"></i>Processor fan <b><span data-ro="fcpu">0</span> rpm</b></div>
+      <div><i class="sw g"></i>Graphics fan <b><span data-ro="fgpu">0</span> rpm</b></div>
+      <div><i class="sw t"></i>Processor <b><span data-ro="tcpu">0</span> °C</b></div>
+      <div><i class="sw t"></i>Graphics <b><span data-ro="tgpu">0</span> °C</b></div>
     </div>`;
   const svgEl = $('.xr-svg', root);
   $$('.part', svgEl).forEach(p => {
@@ -210,7 +210,7 @@ function intro(quick) {
   $$('.xr-ro > div', root).forEach((d, i) => anim(d, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 480, delay: (quick ? 100 : D) + i * 60, e: EASE.spring }));
 }
 
-/* ---------- ficha con línea guía ---------- */
+/* ---------- card with leader line ---------- */
 function hover(id) {
   clearTimeout(leaveT); if (hovered === id || !root) return;
   const comp = SH.PC.components.find(c => c.id === id); if (!comp) return;
@@ -218,7 +218,7 @@ function hover(id) {
   const svgEl = $('.xr-svg', root); svgEl.classList.add('has-hot');
   $$('.part', svgEl).forEach(p => p.classList.toggle('hot', p.dataset.part === id));
   const cardEl = $('.xr-card', root);
-  cardEl.innerHTML = `<div class="k">${SH.ic(iconFor(id))}${esc(comp.name)}</div><h3>${esc(comp.title)}</h3><dl>${comp.rows.map(r => `<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('')}</dl>${comp.bar ? `<div class="bar acc"><span style="transform:scaleX(0)"></span></div>` : ''}<div class="go">Ver en Live Monitor</div>`;
+  cardEl.innerHTML = `<div class="k">${SH.ic(iconFor(id))}${esc(comp.name)}</div><h3>${esc(comp.title)}</h3><dl>${comp.rows.map(r => `<dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join('')}</dl>${comp.bar ? `<div class="bar acc"><span style="transform:scaleX(0)"></span></div>` : ''}<div class="go">View in Live Monitor</div>`;
   placeCard(!was || !card.shown);
   card.shown = true; cardEl.classList.add('on');
   const lead = $('.xr-lead', root); lead.getAnimations().forEach(a => a.cancel()); lead.style.opacity = 1;
@@ -267,8 +267,8 @@ function unmount() {
 }
 
 SH.homeVariant({
-  id: 'xray', name: 'Rayos X', short: 'Rayos X',
-  desc: 'El interior del portátil, con ventiladores y calor en vivo.',
+  id: 'xray', name: 'X-ray', short: 'X-ray',
+  desc: 'The inside of the laptop, with live fans and heat.',
   mount, unmount,
   resize() { if (root && hovered) placeCard(true); },
   onReturn() { if (root) intro(true); },
