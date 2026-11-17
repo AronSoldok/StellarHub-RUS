@@ -96,6 +96,8 @@ class Scan:
         self.when = 0
         self.secs = 0
         self.disk = None
+        self.method = "folders"  # "mft" (file table read directly) or "folders" (folder walker)
+        self.alloc = 0           # bytes actually used on disk (only measured by the MFT read)
 
 
 _cur = {"scan": None}
@@ -159,7 +161,17 @@ def _disk_of(target):
 
 
 # ---------------- scan ----------------
+FA_CLOUD = 0x1000 | 0x40000 | 0x400000   # offline / recall on open / recall on data access: OneDrive placeholders
+FA_DIR = 0x10
+LINK_TAGS = (0xA0000003, 0xA000000C)   # junction / mount point, symbolic link
+
+
 def scan(job, target="C:\\", threads=8):
+    """Scan a whole drive or a folder.
+
+    Whole NTFS drives with administrator rights: the MFT is read directly (ntfs.py), like WizTree; anything
+    else (folders, no admin, FAT/exFAT, network) uses the parallel folder walker. Sizes are logical file sizes
+    (what Explorer shows as "Size"); the MFT mode also measures the space actually used on disk."""
     target = os.path.abspath(target)
     if len(target) == 2 and target[1] == ":":
         target += "\\"
@@ -170,27 +182,163 @@ def scan(job, target="C:\\", threads=8):
     s = Scan(target)
     s.disk = _disk_of(target)
     whole_drive = os.path.normcase(target) == os.path.normcase(s.disk["root"])
-    expect = s.disk["used"] if whole_drive else 0
     root = D(target.rstrip("\\") if not whole_drive else target[:2], None)
     s.root = root
     s.index[root.id] = root
-    q = queue.Queue()
-    q.put((root, target))
-    lk = threading.Lock()
-    state = {"cur": target, "pending": 1}
-    done = threading.Event()
     t0 = time.monotonic()
+    s.method = "folders"
+    if whole_drive and ctypes.windll.shell32.IsUserAnAdmin():
+        try:
+            if _scan_mft(job, s, t0):
+                s.method = "mft"
+        except Exception as e:   # anything unexpected: the folder walker still gives a correct result
+            if getattr(job, "cancelled", False):
+                raise
+            print("[storage] MFT read not used:", e)
+            s.index = {root.id: root}
+            root.kids, root.files, root.small, root.size, root.fc = [], [], None, 0, 0
+            s.files = s.bytes = s.alloc = 0
+            s.exts, s.big, s.fidx = {}, [], {}
+    if s.method != "mft":
+        _scan_folders(job, s, target, whole_drive, threads, t0)
+    job.progress(.995, "Sorting…", force=True, files=s.files, bytes=s.bytes, method=s.method)
+    _finish(s)
+    s.secs = round(time.monotonic() - t0, 1)
+    s.when = time.time()
+    with _lock:
+        _cur["scan"] = s
+    _save_snapshot(s)
+    return {"root": view(root.id, 3), "info": info()}
 
-    def work():
-        while not done.is_set():
-            try:
-                d, p = q.get(timeout=0.2)
-            except queue.Empty:
-                continue
+
+def _scan_mft(job, s, t0):
+    """Fill the tree from the MFT. Returns False if the MFT can't be used here (then the walker runs)."""
+    from . import ntfs
+    expect = s.disk["used"]
+
+    def prog(frac, recs):
+        el = time.monotonic() - t0
+        job.progress(min(.9, frac * .9), "Reading the file table", files=recs, bytes=int(expect * frac),
+                     rate=round(recs / max(.1, el)), secs=round(el, 1), exact=True, method="mft", unit="entries")
+
+    try:
+        m = ntfs.read(s.target[:2], progress=prog, cancelled=lambda: job.cancelled)
+    except ntfs.NotAvailable as e:
+        print("[storage] MFT not available:", e)
+        return False
+    if m is None:
+        job.stop()
+    job.progress(.92, "Building the folder tree", force=True, method="mft", unit="entries")
+    n, fl, par, size, alloc, mt, ex = m["n"], m["flags"], m["parent"], m["size"], m["alloc"], m["mtime"], m["ext"]
+    names, exts = m["names"], m["exts"]
+    used_named_dir = ntfs.F_USED | ntfs.F_NAMED | ntfs.F_DIR
+    root = s.root
+    dmap = {ntfs.ROOT: root}
+    for r, nm in names.items():                       # every folder kept its name
+        f = fl[r]
+        if f & used_named_dir == used_named_dir and r != ntfs.ROOT and not ntfs.is_link(f):
+            dmap[r] = D(nm, None)
+    for r, d in dmap.items():
+        if r == ntfs.ROOT:
+            continue
+        p = dmap.get(par[r])
+        if p is not None and p is not d:
+            d.parent = p
+            p.kids.append(d)
+    # only folders reachable from the root count (orphans of a live volume are left out)
+    stack = [root]
+    reach = set()
+    while stack:
+        d = stack.pop()
+        if d in reach:
+            continue
+        reach.add(d)
+        s.index[d.id] = d
+        stack.extend(d.kids)
+    if len(reach) != len(dmap):
+        dmap = {k: v for k, v in dmap.items() if v in reach}
+    ext_type = [EXT_TYPE.get(e, "cache" if not e else "other") for e in exts]
+    ext_acc = [[0, 0] for _ in exts]
+    big = []
+    files = nbytes = nalloc = 0
+    used_named = ntfs.F_USED | ntfs.F_NAMED
+    skip = ntfs.F_DIR | ntfs.F_CLOUD
+    get_dir = dmap.get
+    get_name = names.get
+    for r in range(n):
+        f = fl[r]
+        if f & used_named != used_named or f & skip:
+            continue
+        d = get_dir(par[r])
+        if d is None:
+            continue
+        sz = size[r]
+        xi = ex[r]
+        files += 1
+        nbytes += sz
+        nalloc += alloc[r]
+        acc = ext_acc[xi]
+        acc[0] += sz
+        acc[1] += 1
+        tm = mt[r]
+        if tm > d.mtime:
+            d.mtime = tm
+        d.fc += 1
+        d.size += sz
+        nm = get_name(r)
+        ty = "system" if nm is not None and (nm[0] == "$" or nm.lower() in SYS_NAMES) else ext_type[xi]
+        if sz >= FILE_MIN:
+            fid = _nid()
+            ent = [fid, nm or f"file {r}", sz, tm, exts[xi]]
+            d.files.append(ent)
+            s.fidx[fid] = (d, ent)
+            if len(big) < BIG_KEEP:
+                heapq.heappush(big, (sz, fid))
+            elif sz > big[0][0]:
+                heapq.heapreplace(big, (sz, fid))
+        else:
+            sm = d.small
+            if sm is None:
+                sm = d.small = [0, 0, {}]
+            sm[0] += sz
+            sm[1] += 1
+            sm[2][ty] = sm[2].get(ty, 0) + sz
+        if r & 0x3FFFF == 0:
+            if job.cancelled:
+                job.stop()
+            job.progress(.92 + .06 * r / n, "Building the folder tree", files=files, method="mft", unit="entries")
+    for i, (b, c) in enumerate(ext_acc):
+        if c:
+            s.exts[exts[i]] = [b, c, ext_type[i]]
+    s.big = big
+    s.files, s.bytes, s.alloc = files, nbytes, nalloc
+    return True
+
+
+def _scan_folders(job, s, target, whole_drive, threads, t0):
+    """Parallel folder walker (os.scandir: on Windows the listing already brings size, dates and attributes).
+    Each thread keeps its own counters and merges them once at the end: no lock per file."""
+    expect = s.disk["used"] if whole_drive else 0
+    root = s.root
+    work = [(root, target)]
+    cond = threading.Condition()
+    state = {"cur": target, "pending": 1, "files": 0, "bytes": 0}
+    done = threading.Event()
+    results = []
+
+    def worker():
+        exts_l, big_l, fidx_l = {}, [], {}
+        errors_t = 0
+        while True:
+            with cond:
+                while not work and state["pending"] and not done.is_set():
+                    cond.wait(0.2)
+                if not work or done.is_set():
+                    break
+                d, p = work.pop()
             files = []
             small = None
-            nf = 0
-            nb = 0
+            nf = nb = 0
             mt = 0
             kids = []
             try:
@@ -200,39 +348,41 @@ def scan(job, target="C:\\", threads=8):
                             st = e.stat(follow_symlinks=False)
                         except OSError:
                             continue
-                        attrs = getattr(st, "st_file_attributes", 0)
-                        if _stat.S_ISDIR(st.st_mode):
-                            if attrs & REPARSE:
-                                continue          # junctions and links: not followed (nothing counted twice)
-                            kids.append(e.name)
+                        attrs = st.st_file_attributes
+                        if attrs & FA_DIR:
+                            # junctions and symbolic links are not followed (nothing is counted twice); other
+                            # reparse folders (OneDrive) hold real files and are walked
+                            if not attrs & REPARSE or st.st_reparse_tag not in LINK_TAGS:
+                                kids.append(e.name)
                             continue
-                        if attrs & REPARSE:
-                            continue
+                        if attrs & FA_CLOUD:
+                            continue                  # OneDrive placeholder: not stored on this disk
                         size = st.st_size
                         nf += 1
                         nb += size
-                        if st.st_mtime > mt:
-                            mt = st.st_mtime
-                        ext = os.path.splitext(e.name)[1][1:].lower()
-                        ty = ftype(e.name, ext)
-                        with lk:
-                            ex = s.exts.get(ext)
-                            if ex is None:
-                                s.exts[ext] = [size, 1, ty]
-                            else:
-                                ex[0] += size
-                                ex[1] += 1
+                        m = st.st_mtime
+                        if m > mt:
+                            mt = m
+                        name = e.name
+                        dot = name.rfind(".")
+                        ext = name[dot + 1:].lower() if dot > 0 else ""
+                        ex = exts_l.get(ext)
+                        if ex is None:
+                            exts_l[ext] = [size, 1]
+                        else:
+                            ex[0] += size
+                            ex[1] += 1
                         if size >= FILE_MIN:
                             fid = _nid()
-                            ent = [fid, e.name, size, st.st_mtime, ext]
+                            ent = [fid, name, size, m, ext]
                             files.append(ent)
-                            with lk:
-                                s.fidx[fid] = (d, ent)
-                                if len(s.big) < BIG_KEEP:
-                                    heapq.heappush(s.big, (size, fid))
-                                elif size > s.big[0][0]:
-                                    heapq.heapreplace(s.big, (size, fid))
+                            fidx_l[fid] = (d, ent)
+                            if len(big_l) < BIG_KEEP:
+                                heapq.heappush(big_l, (size, fid))
+                            elif size > big_l[0][0]:
+                                heapq.heapreplace(big_l, (size, fid))
                         else:
+                            ty = ftype(name, ext)
                             if small is None:
                                 small = [0, 0, {}]
                             small[0] += size
@@ -240,53 +390,60 @@ def scan(job, target="C:\\", threads=8):
                             small[2][ty] = small[2].get(ty, 0) + size
             except OSError:
                 d.err = True
-                with lk:
-                    s.errors += 1
+                errors_t += 1
             d.files = files
             d.small = small
             d.mtime = mt
             d.size = nb
             d.fc = nf
-            subs = []
-            for name in kids:
-                c = D(name, d)
-                subs.append(c)
+            subs = [D(name, d) for name in kids]
             d.kids = subs
-            with lk:
+            with cond:
                 for c in subs:
                     s.index[c.id] = c
-                s.files += nf
-                s.bytes += nb
+                state["files"] += nf
+                state["bytes"] += nb
                 state["cur"] = p
                 state["pending"] += len(subs) - 1
-                last = state["pending"] == 0
-            for c in subs:
-                q.put((c, os.path.join(p, c.name)))
-            if last:
-                done.set()
-            q.task_done()
+                work.extend((c, os.path.join(p, c.name)) for c in subs)
+                if state["pending"] == 0:
+                    done.set()
+                cond.notify_all()
+        results.append((exts_l, big_l, fidx_l, errors_t))
 
-    ws = [threading.Thread(target=work, daemon=True, name=f"scan-{i}") for i in range(max(2, threads))]
+    ws = [threading.Thread(target=worker, daemon=True, name=f"scan-{i}") for i in range(max(2, threads))]
     for w in ws:
         w.start()
     while not done.wait(0.12):
         if job.cancelled:
             done.set()
+            with cond:
+                cond.notify_all()
             job.stop()
         el = time.monotonic() - t0
-        frac = min(0.99, s.bytes / expect) if expect else None
+        frac = min(0.99, state["bytes"] / expect) if expect else None
         job.progress(frac if frac is not None else min(0.95, 1 - 1 / (1 + el / 20)), state["cur"],
-                     files=s.files, bytes=s.bytes, rate=round(s.files / max(.1, el)), secs=round(el, 1), exact=bool(expect))
+                     files=state["files"], bytes=state["bytes"], rate=round(state["files"] / max(.1, el)),
+                     secs=round(el, 1), exact=bool(expect), method="folders", unit="files")
+    with cond:
+        cond.notify_all()
     for w in ws:
-        w.join(timeout=1)
-    job.progress(.995, "Sorting…", force=True, files=s.files, bytes=s.bytes)
-    _finish(s)
-    s.secs = round(time.monotonic() - t0, 1)
-    s.when = time.time()
-    with _lock:
-        _cur["scan"] = s
-    _save_snapshot(s)
-    return {"root": view(root.id, 3), "info": info()}
+        w.join(timeout=2)
+    big = []
+    for exts_l, big_l, fidx_l, err in results:     # merge what each thread collected
+        for e, (b, c) in exts_l.items():
+            x = s.exts.get(e)
+            if x is None:
+                s.exts[e] = [b, c, ftype("", e)]
+            else:
+                x[0] += b
+                x[1] += c
+        big.extend(big_l)
+        s.fidx.update(fidx_l)
+        s.errors += err
+    s.big = heapq.nlargest(BIG_KEEP, big)
+    heapq.heapify(s.big)
+    s.files, s.bytes = state["files"], state["bytes"]
 
 
 def _finish(s):
@@ -393,7 +550,9 @@ def info():
     s = _get()
     return {"target": s.target, "files": s.files, "bytes": s.bytes, "dirs": s.root.dirs, "errors": s.errors,
             "when": int(s.when * 1000), "secs": s.secs, "disk": s.disk, "rootId": s.root.id,
-            "admin": bool(ctypes.windll.shell32.IsUserAnAdmin())}
+            "admin": bool(ctypes.windll.shell32.IsUserAnAdmin()), "method": s.method,
+            "alloc": s.alloc or None,           # space used on disk (MFT read only)
+            "hardlinks": "once" if s.method == "mft" else "each"}
 
 
 def types():

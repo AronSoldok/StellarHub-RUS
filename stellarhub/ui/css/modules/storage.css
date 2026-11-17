@@ -38,10 +38,11 @@
 #v-storage .st-tip span{overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 #v-storage .st-tip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
 /* scan: the ring surrounds the counter; path and speed below, all centered as one block */
-#v-storage .st-scan{position:absolute;inset:0;z-index:4;display:grid;place-items:center;background:rgba(6,10,20,.6)}
+/* every piece has a fixed size: changing numbers and paths can't push the block sideways */
+#v-storage .st-scan{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;background:rgba(6,10,20,.6);overflow:hidden;contain:strict}
 #v-storage .st-scan.done{display:none}
-#v-storage .st-sbox{display:flex;flex-direction:column;align-items:center;gap:6px;width:min(560px,90%)}
-#v-storage .st-dial{position:relative;width:250px;height:250px;display:grid;place-items:center;margin-bottom:4px}
+#v-storage .st-sbox{display:flex;flex-direction:column;align-items:center;gap:6px;width:min(520px,90%);flex:none;contain:layout}
+#v-storage .st-dial{position:relative;width:250px;height:250px;flex:none;display:grid;place-items:center;margin-bottom:4px}
 /* the SVG has margin in its viewBox and doesn't clip: the ring's glow no longer gets cut off */
 #v-storage .st-ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
 #v-storage .st-cancel{margin-top:8px;opacity:0;pointer-events:none;transition:opacity calc(200ms*var(--f))}
@@ -79,11 +80,11 @@
 #v-storage .st-ring circle{fill:none;stroke-width:4;stroke-linecap:round}
 #v-storage .st-ring .bg{stroke:var(--raise2)}
 #v-storage .st-ring .fg{stroke:var(--accent2);stroke-dasharray:0 400;filter:drop-shadow(0 0 6px color-mix(in oklab,var(--accent2) 60%,transparent))}
-#v-storage .st-sv{position:relative;display:flex;flex-direction:column;align-items:center;max-width:160px;text-align:center}
-#v-storage .st-sv b{font:500 23px/1.1 var(--display);letter-spacing:-.03em;font-variant-numeric:tabular-nums;white-space:nowrap}
-#v-storage .st-sv span{font-size:11.5px;color:var(--mute);margin-top:4px}
-#v-storage .st-sp{max-width:100%;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
-#v-storage .st-ss{font-size:12px}
+#v-storage .st-sv{position:relative;display:flex;flex-direction:column;align-items:center;width:170px;text-align:center}
+#v-storage .st-sv b{display:block;width:100%;font:500 23px/1.1 var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;white-space:nowrap}
+#v-storage .st-sv span{font-size:11.5px;color:var(--mute);margin-top:4px;white-space:nowrap}
+#v-storage .st-sp{width:100%;height:17px;line-height:17px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:clip;text-align:center;flex:none}
+#v-storage .st-ss{width:100%;height:17px;line-height:17px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;font-variant-numeric:tabular-nums;flex:none}
 #v-storage .st-side{display:flex;flex-direction:column;gap:14px;min-height:0}
 #v-storage .st-info{flex:none}
 #v-storage .st-ih{display:flex;gap:12px;align-items:flex-start;margin-bottom:12px}
@@ -99,7 +100,7 @@
 #v-storage .st-used span{display:block;height:100%;transform-origin:0 50%;transform:scaleX(var(--v));background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:6px}
 #v-storage .st-dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:12.5px;margin-top:12px}
 #v-storage .st-dl dt{color:var(--mute)}
-#v-storage .st-dl dd{text-align:right}
+#v-storage .st-dl dd{text-align:right;font-variant-numeric:tabular-nums}
 #v-storage .st-ia{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
 #v-storage .st-legend{flex:1;min-height:0;display:flex;flex-direction:column;padding:14px 8px 8px}
 #v-storage .st-legend>h4{padding:0 10px}

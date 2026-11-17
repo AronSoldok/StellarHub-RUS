@@ -36,15 +36,20 @@ const TYPES = {
 const EXT2T = {}; for (const [k, t] of Object.entries(TYPES)) t.ext.forEach(e => EXT2T[e] = k);
 const T_ = t => TYPES[t] || TYPES.other;
 /* one color per type; the variation between files is minimal (there used to be too much and the map looked dirty) */
-const SHADE = {};
+const SHADE = {}, SHEEN = {};
 (function () {
   const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const rgb = (c, f) => `rgb(${c.map(v => Math.round(v * f)).join(',')})`;
+  const lift = (c, k) => `rgb(${c.map(v => Math.round(v + (255 - v) * k)).join(',')})`;
   for (const [k, t] of Object.entries(TYPES)) {
-    const [r, g, b] = hex(t.c);
-    SHADE[k] = [1, .965, .935, 1, .86].map(f => `rgb(${Math.round(r * f)},${Math.round(g * f)},${Math.round(b * f)})`);
+    const c = hex(t.c);
+    SHADE[k] = [1, .965, .935, 1, .86].map(f => rgb(c, f));
+    /* each tile gets a soft light from its top-left corner: lighter tint, base color, a touch darker */
+    SHEEN[k] = [1, .965, .935, 1, .86].map(f => { const b = c.map(v => v * f); return [lift(b, .2), rgb(b, 1), rgb(b, .84)]; });
   }
 })();
 const shadeOf = (t, i) => (SHADE[t] || SHADE.other)[i];
+const sheenOf = (t, i) => (SHEEN[t] || SHEEN.other)[i];
 
 /* ---------------- sample data (deterministic) ---------------- */
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -196,7 +201,7 @@ const API = {
   /* scan with progress: onProgress({files, path, frac, rate}) */
   async scan(onProgress) {
     if (await isReal()) {
-      const job = SH.job('storage', 'scan', [ST.target], { onProgress: m => { if (m.kind === 'progress') onProgress({ files: m.data.files || 0, path: m.text, frac: m.pct, rate: m.data.rate, exact: m.data.exact }); } });
+      const job = SH.job('storage', 'scan', [ST.target], { onProgress: m => { if (m.kind === 'progress') onProgress({ files: m.data.files || 0, path: m.text, frac: m.pct, rate: m.data.rate, exact: m.data.exact, method: m.data.method, unit: m.data.unit }); } });
       ST.job = job;
       try {
         const r = await job; ST.info = r.info; NODES.clear(); TREE = adopt(r.root, null);
@@ -294,7 +299,14 @@ function fillLeaf(ctx, n, x, y, w, h, a) {
     ctx.fillStyle = hatch; ctx.fillRect(x + .5, y + .5, w - 1, h - 1);
     ctx.strokeStyle = 'rgba(158,190,240,.18)'; ctx.lineWidth = 1; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2); return;
   }
-  ctx.fillStyle = shadeOf(t, n.dir ? 4 : (n.group ? 2 : Math.abs(n.id) % 3));
+  const si = n.dir ? 4 : (n.group ? 2 : Math.abs(n.id) % 3);
+  if (w > 7 && h > 7) {
+    /* gradient along the tile's diagonal (capped, so big tiles get a soft corner glow rather than a long ramp) */
+    const S = sheenOf(t, si), D = Math.hypot(w, h), L = Math.min(D, 420);
+    const g = ctx.createLinearGradient(x, y, x + L * w / D, y + L * h / D);
+    g.addColorStop(0, S[0]); g.addColorStop(.5, S[1]); g.addColorStop(1, S[2]);
+    ctx.fillStyle = g;
+  } else ctx.fillStyle = shadeOf(t, si);
   /* same spacing across the whole map: half a pixel per side (1 px between neighbors) */
   if (w > 2.5 && h > 2.5) ctx.fillRect(x + .5, y + .5, w - 1, h - 1); else ctx.fillRect(x, y, w, h);
 }
@@ -505,6 +517,8 @@ function renderInfo() {
       : `<h4>Scanned folder</h4><div class="st-ih"><span class="st-it" style="--c:${T_(n.dom).c}">${ic('folder')}</span><div><b>${esc(targetName())}</b><span class="faint">${wp(I ? I.target : '')}</span></div></div>
       <div class="st-ib"><div class="big">${fmtB(n.size).replace(/ (\w+)$/, '<small>$1</small>')}</div><span class="muted">${pct(n.size / disk.total)} of the drive, which has ${fmtInt(disk.free / GB)} GB free.</span></div>`)
       + `<dl class="st-dl"><dt>Files</dt><dd>${fmtInt(n.fc)}</dd><dt>Folders</dt><dd>${fmtInt(n.dirs)}</dd><dt>Scanned</dt><dd>${whenText(I && I.when)}${I ? `, in ${fmt1(I.secs)} s` : ''}</dd>
+      ${I && I.method ? `<dt>Read from</dt><dd title="${I.method === 'mft' ? 'The NTFS master file table was read directly (admin mode): every file in seconds. Hard links count once.' : 'Every folder was listed one by one. Admin mode on an NTFS drive reads the file table instead, which is much faster.'}">${I.method === 'mft' ? 'NTFS file table' : 'Folder scan'}</dd>` : ''}
+      <dt>Sizes</dt><dd title="The map uses each file's real size, as Explorer shows it under Size. Space on disk can differ: small files fill whole clusters, compressed and sparse files take less.">File size${I && I.alloc ? ` · ${fmt1(I.alloc / GB)} GB on disk` : ''}</dd>
       ${I && I.errors ? `<dt>No access</dt><dd title="${I.admin ? 'Folders Windows won\'t let even an administrator read.' : 'Admin mode can read more system folders.'}">${fmtInt(I.errors)} folders</dd>` : ''}</dl>`;
   } else {
     const t = typeOf(n); const base = n === TM.cur ? (n.parent || n) : TM.cur;
@@ -538,6 +552,21 @@ function renderLegend() {
 }
 function markLegend() { $$(`#v-${ID} .st-lr`).forEach(b => { b.classList.toggle('on', TM.hiLock === b.dataset.leg); b.classList.toggle('dim', !!TM.hiLock && TM.hiLock !== b.dataset.leg); }); }
 
+/* the scanned path keeps a fixed width: long paths are cut in the middle (start and end stay readable) so
+   the line never changes size and nothing around it moves */
+let pathCtx = null, pathFont = '';
+function setPathText(el, s) {
+  if (!el || el.dataset.full === s) return;
+  el.dataset.full = s;
+  const W = el.clientWidth; if (!W) { el.textContent = s; return; }
+  if (!pathCtx) pathCtx = document.createElement('canvas').getContext('2d');
+  const cs = getComputedStyle(el), f = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; if (f !== pathFont) { pathFont = f; pathCtx.font = f; }
+  if (pathCtx.measureText(s).width <= W) { el.textContent = s; return; }
+  let lo = 0, hi = s.length;
+  while (lo < hi) { const k = (lo + hi + 1) >> 1, a = Math.ceil(k * .4); if (pathCtx.measureText(s.slice(0, a) + '…' + s.slice(s.length - (k - a))).width <= W) lo = k; else hi = k - 1; }
+  const a = Math.ceil(lo * .4); el.textContent = s.slice(0, a) + '…' + s.slice(s.length - (lo - a));
+}
+
 /* animated scan: a ring with the real progress; when it finishes, the ring shrinks into the center and the map
    opens from there with a soft wave (everything used to pop in place at once) */
 async function runScan() {
@@ -546,28 +575,36 @@ async function runScan() {
   if (sc) {
     sc.classList.remove('done'); sc.classList.add('busy');
     $$('.st-dial, .st-sp, .st-ss, .st-cancel', sc).forEach(x => { x.getAnimations().forEach(a => a.cancel()); });
-    $('.st-sn', sc).textContent = '0'; $('.st-sp', sc).textContent = 'Preparing the scan…'; $('.st-ss', sc).innerHTML = '&nbsp;';
+    $('.st-sn', sc).textContent = '0'; setPathText($('.st-sp', sc), 'Preparing the scan…'); $('.st-ss', sc).innerHTML = '&nbsp;';
     anim(sc, [{ opacity: 0, transform: 'scale(.94)', filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
   }
   const wasReady = TM.ready;
   if (TM.ready) { TM.ready = false; TM.dirty = true; }
   const fg = sc && $('.fg', sc); const C = 2 * Math.PI * 54; if (fg) fg.style.strokeDasharray = `0 ${C}`;
   let last = 0, lastT = performance.now(), shown = 0, t;
+  const spEl = sc && $('.st-sp', sc), unitEl = sc && $('.st-sv span', sc); if (unitEl) unitEl.textContent = 'files read';
   try {
     t = await API.scan(p => {
       if (!sc) return;
-      $('.st-sn', sc).textContent = fmtInt(p.files); $('.st-sp', sc).textContent = p.path || '';
-      const now = performance.now(); if (now - lastT > 300) { const rate = p.rate || (p.files - last) / ((now - lastT) / 1000); $('.st-ss', sc).textContent = `${fmtInt(rate)} files per second`; last = p.files; lastT = now; }
+      $('.st-sn', sc).textContent = fmtInt(p.files); setPathText(spEl, p.path || ' ');
+      if (unitEl && p.unit) { const u = p.unit === 'entries' ? 'entries read' : 'files read'; if (unitEl.textContent !== u) unitEl.textContent = u; }
+      const now = performance.now();
+      if (now - lastT > 500) {
+        /* 3 significant digits, so the speed line doesn't flicker on every update */
+        const r = p.rate || (p.files - last) / ((now - lastT) / 1000), m = Math.pow(10, Math.max(0, Math.floor(Math.log10(Math.max(1, r))) - 2));
+        $('.st-ss', sc).textContent = p.method === 'mft' ? `${fmtInt(Math.round(r / m) * m)} entries per second · reading the NTFS file table` : `${fmtInt(Math.round(r / m) * m)} files per second`;
+        last = p.files; lastT = now;
+      }
       shown = Math.max(shown, p.frac || 0); if (fg) fg.style.strokeDasharray = `${(C * shown).toFixed(1)} ${C}`;
     });
   } catch (e) {
     TM.scanning = false; if (sc) sc.classList.remove('busy');
     if (e && e.cancelled) {
       if (wasReady && TM.root) { TM.ready = true; relayout(); if (sc) anim(sc, [{ opacity: 1 }, { opacity: 0 }], { d: 260 }).finished.then(() => sc.classList.add('done')).catch(() => {}); }
-      else if (sc) { $('.st-sp', sc).textContent = 'Scan cancelled.'; $('.st-ss', sc).textContent = 'Press Scan to start again.'; }
+      else if (sc) { setPathText($('.st-sp', sc), 'Scan cancelled.'); $('.st-ss', sc).textContent = 'Press Scan to start again.'; }
       SH.toast('Scan cancelled.'); return;
     }
-    if (sc) { $('.st-sp', sc).textContent = 'Couldn\'t scan.'; $('.st-ss', sc).textContent = (e && e.message) || ''; }
+    if (sc) { setPathText($('.st-sp', sc), 'Couldn\'t scan.'); $('.st-ss', sc).textContent = (e && e.message) || ''; }
     console.error(e); return;
   }
   if (fg) fg.style.strokeDasharray = `${C} ${C}`;
@@ -776,7 +813,7 @@ function flipSort(list) {
 const U = 'C:\\Users\\user\\';
 const DUPS_MOCK = [
   { name: 'ubuntu-24.04.3-desktop-amd64.iso', size: 6.1 * GB, ext: 'iso', copies: [[U + 'Downloads', 'Sep 2, 2026'], [U + 'VirtualBox VMs\\ISOs', 'Sep 2, 2026']] },
-  { name: 'Serum Presets Pack.zip', size: 2.3 * GB, ext: 'zip', copies: [[U + 'Downloads\\PLUGINS', 'Oct 18, 2026'], [U + 'Documents\\0_MUSIC_PRODUCTION\\packs', 'Oct 19, 2026']] },
+  { name: 'Serum Presets Pack.zip', size: 2.3 * GB, ext: 'zip', copies: [[U + 'Downloads\\PLUGINS', 'Oct 18, 2026'], [U + 'Documents\\Music production\\packs', 'Oct 19, 2026']] },
   { name: 'matrix_backup.db', size: 412 * MB, ext: 'db', copies: Array.from({ length: 6 }, (_, i) => [U + `Documents\\Project_v${851 + i}\\data`, `Nov ${15 + Math.floor(i / 2)}, 2026`]) },
   { name: 'flstudio_win64_26.1.3.5570.exe', size: 1.1 * GB, ext: 'exe', copies: [[U + 'Downloads', 'Oct 2, 2026'], [U + 'Downloads\\Image-Line FL Studio Producer Edition 26.1.3.5570', 'Oct 2, 2026']] },
   { name: 'Match 2026-11-03 23-14.mp4', size: 820 * MB, ext: 'mp4', copies: [[U + 'Videos\\Medal', 'Nov 3, 2026'], [U + 'Videos\\Medal\\Exports', 'Nov 4, 2026']] },
