@@ -1,5 +1,5 @@
-/* StellarHub · el widget desde la ventana principal: abrir/cerrar (barra superior, Inicio, Ajustes, paleta),
-   estado sincronizado con la bandeja y cambios de ajustes aplicados al momento. */
+/* StellarHub · the widget from the main window: open/close (top bar, Home, Settings, palette),
+   state kept in sync with the tray, and settings changes applied instantly. */
 'use strict';
 (() => {
 const { $, $$, state } = SH;
@@ -11,16 +11,16 @@ function syncButtons() {
 async function toggleWidget(quiet) {
   const sz = SH.widgetSize(state.settings);
   const r = await SH.call('widget_toggle', sz.w, sz.h);
-  if (r === undefined) { SH.toast('El widget solo se abre dentro de la app.'); return; }
+  if (r === undefined) { SH.toast('The widget only opens inside the app.'); return; }
   SH.widgetOn = !!r; syncButtons();
-  if (quiet !== true) SH.toast(r ? 'Widget abierto. Arrástralo a donde quieras.' : 'Widget cerrado.', { group: 'widget' });
+  if (quiet !== true) SH.toast(r ? 'Widget open. Drag it wherever you like.' : 'Widget closed.', { group: 'widget' });
 }
-/* al arrancar: solo si lo pide el ajuste o si estaba abierto al cerrar (en una instalación nueva, apagado) */
+/* at startup: only if the setting asks for it or it was open when the app closed (off on a fresh install) */
 SH.on('boot', () => { const s = state.settings; if (s.widgetOnStart || s.widgetWasOpen) setTimeout(() => SH.call('widget_is_open').then(v => { if (v === false) toggleWidget(true); }), 1500); });
 SH.on('widget-mode', m => { const s = $('.seg[data-key="widgetMode"]'); if (s) { $$('button', s).forEach(x => x.classList.toggle('on', x.dataset.v === m)); SH.placeSeg(s); } });
 SH.on('widget', d => { SH.widgetOn = !!(d && d.on); syncButtons(); });
 SH.apiReady.then(() => SH.call('widget_is_open')).then(v => { SH.widgetOn = !!v; syncButtons(); });
-/* cualquier cambio que afecte al widget se le manda al momento */
+/* any change that affects the widget is sent to it right away */
 const KEYS = /^(widget|accent|theme|intensity)/;
 SH.on('setting', ({ key }) => {
   if (!KEYS.test(key) || !SH.widgetOn) return;
@@ -31,5 +31,5 @@ $('#widgetBtn').setAttribute('data-widget-btn', '');
 $('#widgetBtn').addEventListener('click', toggleWidget);
 document.addEventListener('click', e => { const b = e.target.closest('[data-widget-btn]'); if (b && b.id !== 'widgetBtn') toggleWidget(); });
 SH.toggleWidget = toggleWidget; SH.syncWidgetButtons = syncButtons;
-SH.actions.add([{ t: 'Abrir o cerrar el widget siempre visible', run: toggleWidget, ic: 'monitor' }]);
+SH.actions.add([{ t: 'Open or close the always-on-top widget', run: toggleWidget, ic: 'monitor' }]);
 })();

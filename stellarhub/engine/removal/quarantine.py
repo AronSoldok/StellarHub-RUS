@@ -1,11 +1,11 @@
-"""Eliminacion segura con cuarentena restaurable.
+"""Safe removal with a restorable quarantine.
 
-Cada eliminacion crea una sesion en ProgramData\\MiniRevo\\quarantine\\<id> con:
-  manifest.json  - que se quito, de donde y como devolverlo
-  files\\         - archivos y carpetas movidos
-  reg\\           - copias .reg de claves, servicios
-  tasks\\         - XML de tareas programadas
-La seguridad se vuelve a comprobar elemento a elemento justo antes de tocar nada.
+Every removal creates a session in <data>\\quarantine\\<id> with:
+  manifest.json  - what was removed, from where and how to put it back
+  files\\         - moved files and folders
+  reg\\           - .reg backups of keys and services
+  tasks\\         - XML of scheduled tasks
+Safety is checked again item by item right before touching anything.
 """
 import base64
 import datetime
@@ -36,7 +36,7 @@ def _save(manifest):
     d = _session_dir(manifest["id"])
     os.makedirs(d, exist_ok=True)
     tmp = os.path.join(d, "manifest.json.tmp")
-    for attempt in range(5):  # el antivirus puede tener el archivo abierto un instante
+    for attempt in range(5):  # the antivirus may hold the file open for a moment
         try:
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, ensure_ascii=False, indent=1)
@@ -52,7 +52,7 @@ def _slug(s):
     return re.sub(r"[^A-Za-z0-9]+", "-", s or "x").strip("-")[:30] or "x"
 
 
-# ---------------------------------------------------------------- utilidades de archivos
+# ---------------------------------------------------------------- file helpers
 def _make_writable(func, path, exc):
     try:
         os.chmod(path, stat.S_IWRITE)
@@ -66,7 +66,7 @@ def _rmtree(path):
 
 
 def _move_tree(src, dst, result):
-    """Mueve src a dst. Si algo esta bloqueado, mueve lo que pueda y programa el resto para el reinicio."""
+    """Move src to dst. If something is locked, move what it can and schedule the rest for reboot."""
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     try:
         os.replace(src, dst) if os.path.splitdrive(src)[0].lower() == os.path.splitdrive(dst)[0].lower() \
@@ -84,7 +84,7 @@ def _move_tree(src, dst, result):
             else:
                 raise
         return
-    # carpeta con archivos en uso: archivo a archivo
+    # folder with files in use: file by file
     for dp, dn, fn in os.walk(src, topdown=True):
         dn[:] = [d for d in dn if not paths.is_reparse_point(os.path.join(dp, d))]
         rel = os.path.relpath(dp, src)
@@ -142,7 +142,7 @@ def _delete_tree(path, result):
 
 
 def _real_move(src, dst):
-    """Mover de vuelta a su sitio. Con la Python de la Store, AppData se virtualiza: se usa un proceso hijo."""
+    """Move back to its place. With the Store Python, AppData is virtualized: a child process is used."""
     os.makedirs(os.path.dirname(dst), exist_ok=True) if not paths.running_packaged() else None
     if paths.running_packaged():
         ps_src, ps_dst = src.replace("'", "''"), dst.replace("'", "''")
@@ -158,7 +158,7 @@ def _real_move(src, dst):
         shutil.move(src, dst)
 
 
-# ---------------------------------------------------------------- valores del registro
+# ---------------------------------------------------------------- registry values
 def _pack_value(data, typ):
     if isinstance(data, bytes):
         return {"b64": base64.b64encode(data).decode(), "type": typ}
@@ -169,13 +169,13 @@ def _unpack_value(d):
     return (base64.b64decode(d["b64"]) if "b64" in d else d["v"]), d["type"]
 
 
-# ---------------------------------------------------------------- eliminar
+# ---------------------------------------------------------------- remove
 def remove(program, items, programs=(), mode="quarantine", progress=None):
-    """Elimina los elementos (dicts del escaner). Devuelve el resumen."""
+    """Remove the items (scanner dicts). Return the summary."""
     progress = progress or (lambda *a: None)
     base = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + _slug(program.get("name"))
-    # sesion unica: dos eliminaciones del mismo programa en el mismo segundo no pueden compartir carpeta
-    # (la segunda sobrescribiria el manifiesto y lo de la primera ya no se podria restaurar)
+    # unique session: two removals of the same program in the same second must not share a folder
+    # (the second would overwrite the manifest and the first one could no longer be restored)
     sid, n = base, 1
     while True:
         try:
@@ -199,7 +199,7 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
         try:
             blocked = _recheck(it, ctx)
             if blocked:
-                rec.update(status="skipped", error=f"Bloqueado por seguridad: {blocked}")
+                rec.update(status="skipped", error=f"Blocked for safety: {blocked}")
                 result["skipped"] += 1
                 continue
             k = it["kind"]
@@ -212,7 +212,7 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
                     continue
                 regf = os.path.join(sdir, "reg", f"{n}.reg")
                 if not registry.export_key(ref, regf):
-                    raise OSError("No se pudo hacer la copia .reg; por seguridad no se borra")
+                    raise OSError("Could not make the .reg backup; not deleting for safety")
                 rec.update(reg_file=regf, view=ref.view)
                 registry.delete_tree(ref)
             elif k == "regvalue":
@@ -228,7 +228,7 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
                 registry.export_key(RegRef("HKLM", rf"SYSTEM\CurrentControlSet\Services\{it['target']}"), regf)
                 rec["reg_file"] = regf
                 code, out = system.delete_service(it["target"])
-                if code not in (0, 1060):  # 1060 = ya no existe
+                if code not in (0, 1060):  # 1060 = no longer exists
                     raise OSError(out.strip()[:200])
             elif k == "task":
                 xml = system.export_task(it["target"])
@@ -244,7 +244,7 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
             elif k == "fwrule":
                 rec["fw_data"] = it.get("fw_data", "")
                 fw_batch.append((it["target"], rec))
-                continue  # se aplica en bloque al final
+                continue  # applied in one go at the end
             elif k == "envpath":
                 _do_envpath(it, rec)
             if rec["status"] == "pending":
@@ -276,7 +276,7 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
     manifest["result"] = {k: v for k, v in result.items() if k != "errors"}
     _save(manifest)
     index.invalidate()
-    progress(1.0, "Listo")
+    progress(1.0, "Done")
     return result
 
 
@@ -291,7 +291,7 @@ def _recheck(it, ctx):
     if k == "service":
         return safety.service_rule(it["target"])
     if k == "task" and it["target"].lower().startswith("\\microsoft\\"):
-        return "Tarea de Microsoft"
+        return "Microsoft task"
     return None
 
 
@@ -302,7 +302,7 @@ def _do_path(it, rec, sdir, n, mode, result):
         return
     if paths.is_reparse_point(src):
         rec["link_target"] = os.readlink(src) if hasattr(os, "readlink") else ""
-        (os.rmdir if os.path.isdir(src) else os.remove)(src)  # quita el enlace, nunca su contenido
+        (os.rmdir if os.path.isdir(src) else os.remove)(src)  # removes the link, never its contents
         rec["status"] = "done"
         return
     size = paths.path_size(src)
@@ -337,7 +337,7 @@ def _do_envpath(it, rec):
     system.broadcast_env_change()
 
 
-# ---------------------------------------------------------------- sesiones
+# ---------------------------------------------------------------- sessions
 def sessions():
     out = []
     root = qroot()
@@ -361,7 +361,7 @@ def sessions():
 
 
 def restore(sid, progress=None, only=None):
-    """Devuelve a su sitio lo guardado en una sesión. Con `only` (índices de sessions()[..]["items"]) solo esos."""
+    """Put back what a session stored. With `only` (indexes into sessions()[..]["items"]) just those."""
     progress = progress or (lambda *a: None)
     only = None if only is None else {int(x) for x in only}
     mf = os.path.join(_session_dir(sid), "manifest.json")
@@ -369,7 +369,7 @@ def restore(sid, progress=None, only=None):
         m = json.load(f)
     res = {"ok": 0, "failed": 0, "errors": [], "needs_reboot": False}
     items = [i for n, i in enumerate(m["items"]) if i["status"] == "done" and (only is None or n in only)]
-    # al reves: primero carpetas/archivos, luego registro, luego servicios
+    # reverse order: folders/files first, then registry, then services
     items.sort(key=lambda i: -ORDER.get(i["kind"], 9))
     for n, it in enumerate(items):
         progress(n / max(len(items), 1), it["display"][:80])
@@ -377,9 +377,9 @@ def restore(sid, progress=None, only=None):
             k = it["kind"]
             if k in ("file", "folder"):
                 if not it.get("stored"):
-                    raise OSError("Se eliminó de forma definitiva o era un enlace")
+                    raise OSError("It was deleted permanently or was a link")
                 if os.path.lexists(it["target"]):
-                    raise OSError("Ya existe algo en la ruta original")
+                    raise OSError("Something already exists at the original path")
                 _real_move(it["stored"], it["target"])
             elif k in ("regkey", "service"):
                 ok, out = registry.import_reg(it["reg_file"], it.get("view", 0))
@@ -416,7 +416,7 @@ def restore(sid, progress=None, only=None):
     m["restored"] = not any(i["status"] == "done" for i in m["items"])
     _save(m)
     index.invalidate()
-    progress(1.0, "Listo")
+    progress(1.0, "Done")
     return res
 
 

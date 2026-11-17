@@ -1,11 +1,11 @@
-"""Motor de StellarHub: la parte que toca Windows de verdad. Sin interfaz.
+"""StellarHub engine: the part that actually touches Windows. No UI.
 
-Cada módulo es un archivo stellarhub/engine/<nombre>.py que declara:
-    EXPORTS = {"funcion", ...}   funciones que la interfaz puede llamar y que responden rápido (< ~2 s)
-    JOBS = {"funcion", ...}      funciones largas: se ejecutan como tarea, reciben `job` como primer argumento
-                                 y avisan del progreso con job.progress(...) / job.log(...)
-La interfaz las llama con SH.engine('<modulo>', '<funcion>', ...args) o SH.job('<modulo>', '<funcion>', args, opciones).
-Todo lo que devuelven tiene que poder pasarse a JSON.
+Each module is a file stellarhub/engine/<name>.py that declares:
+    EXPORTS = {"function", ...}  functions the UI can call that answer quickly (< ~2 s)
+    JOBS = {"function", ...}     long functions: they run as a task, get `job` as their first argument
+                                 and report progress with job.progress(...) / job.log(...)
+The UI calls them with SH.engine('<module>', '<function>', ...args) or SH.job('<module>', '<function>', args, options).
+Everything they return must be JSON-serializable.
 """
 import importlib
 
@@ -14,7 +14,7 @@ _cache = {}
 
 def module(name):
     if not isinstance(name, str) or not name.isidentifier() or name.startswith("_"):
-        raise ValueError(f"módulo no válido: {name!r}")
+        raise ValueError(f"invalid module: {name!r}")
     if name not in _cache:
         _cache[name] = importlib.import_module(f"{__name__}.{name}")
     return _cache[name]
@@ -24,5 +24,5 @@ def resolve(mod, fn, kind):
     m = module(mod)
     allowed = getattr(m, "JOBS" if kind == "job" else "EXPORTS", set())
     if fn not in allowed:
-        raise PermissionError(f"{mod}.{fn} no está permitido como {kind}")
+        raise PermissionError(f"{mod}.{fn} is not allowed as a {kind}")
     return getattr(m, fn)

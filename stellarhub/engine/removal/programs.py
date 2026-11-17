@@ -1,4 +1,4 @@
-"""Inventario de programas instalados (Win32 + Microsoft Store)."""
+"""Inventory of installed programs (Win32 + Microsoft Store)."""
 import ctypes
 import datetime
 import json
@@ -29,7 +29,7 @@ def msi_info(code, prop):
 
 
 def msi_installed(code):
-    """True si Windows Installer aun tiene el producto instalado."""
+    """True if Windows Installer still has the product installed."""
     try:
         return ctypes.windll.msi.MsiQueryProductStateW(code) == 5  # INSTALLSTATE_DEFAULT
     except Exception:
@@ -37,7 +37,7 @@ def msi_installed(code):
 
 
 def pack_guid(code):
-    """GUID de MSI al formato 'empaquetado' de Classes\\Installer\\Products."""
+    """MSI GUID to the 'packed' format used by Classes\\Installer\\Products."""
     g = (code or "").strip("{}").replace("-", "")
     if len(g) != 32:
         return None
@@ -47,7 +47,7 @@ def pack_guid(code):
     return out.upper()
 
 
-# ---------------------------------------------------------------- tipo de instalador
+# ---------------------------------------------------------------- installer type
 def exe_from_command(cmd):
     cmd = os.path.expandvars((cmd or "").strip())
     if not cmd:
@@ -92,14 +92,14 @@ def detect_kind(p):
         return "installshield"
     exe = exe_from_command(p.get("uninstall")) or ""
     if re.search(r"\\(7-zip|winrar)\\uninstall\.exe$", exe, re.I):
-        return "nsis"  # aceptan /S igual que NSIS
+        return "nsis"  # they accept /S just like NSIS
     if re.search(r"(uninst|unins|uninstall|remove)[^\\]*\.exe$", exe, re.I) and _is_nsis(exe):
         return "nsis"
     return "other"
 
 
 KIND_LABEL = {"msi": "Windows Installer", "inno": "Inno Setup", "nsis": "NSIS", "winget": "WinGet",
-              "c2r": "Click-to-Run", "squirrel": "Squirrel", "other": "Propio del programa",
+              "c2r": "Click-to-Run", "squirrel": "Squirrel", "other": "Built into the program",
               "store": "Microsoft Store", "steam": "Steam", "burn": "WiX Burn", "chromium": "Chromium",
               "installshield": "InstallShield"}
 SILENT = {"inno": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART", "nsis": "/S", "burn": "/quiet /norestart",
@@ -107,7 +107,7 @@ SILENT = {"inno": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART", "nsis": "/S", "bur
 
 
 def uninstall_command(p, quiet=False):
-    """Comando a ejecutar. Devuelve (comando | None, es_silencioso)."""
+    """Command to run. Return (command | None, is_quiet)."""
     kind = p.get("kind")
     if kind == "msi" and p.get("msi_code"):
         return f'msiexec.exe /x {p["msi_code"]}' + (" /qn /norestart" if quiet else ""), quiet
@@ -127,7 +127,7 @@ def can_quiet(p):
     return bool(p.get("quiet")) or p.get("kind") in ("msi", "inno", "nsis", "winget", "burn", "chromium")
 
 
-# ---------------------------------------------------------------- inventario Win32
+# ---------------------------------------------------------------- Win32 inventory
 def _key_date(k):
     try:
         ts = winreg.QueryInfoKey(k)[2]
@@ -148,7 +148,7 @@ _BAD_LOC = re.compile(r"\\(uninstall(er)?s?|_uninstaller|setup|installer|package
 
 
 def _infer_location(p):
-    """Carpeta del programa cuando el registro no la dice (por el icono o el desinstalador)."""
+    """Program folder when the registry does not say (from the icon or the uninstaller)."""
     prot = safety.protected_exact()
     win = norm_path(paths.kf("Windows"))
     icon = (p.get("icon") or "").rsplit(",", 1)[0] if re.search(r",\s*-?\d+$", p.get("icon") or "") else p.get("icon")
@@ -158,7 +158,7 @@ def _infer_location(p):
         d = norm_path(os.path.dirname(cand))
         if not d or d in prot or (win and paths.is_within(d, win)) or _BAD_LOC.search(d):
             continue
-        # la carpeta del FABRICANTE (AppData\Local\Xfer) no es la del programa: puede tener otros productos
+        # the VENDOR folder (AppData\Local\Xfer) is not the program's folder: it may hold other products
         base = paths.norm_name(os.path.basename(d))
         pub = paths.norm_name(re.sub(r"[,.]?\s*\b(inc|ltd|llc|gmbh|corp|corporation|records|software|"
                                      r"technologies|limited|co)\b\.?", "", p.get("publisher") or "", flags=re.I))
@@ -203,7 +203,7 @@ def _read_entry(hive, view, keyname):
             "date": _fmt_date(g("InstallDate"), _key_date(k)),
             "url": str(g("URLInfoAbout") or g("HelpLink") or ""),
             "no_remove": g("NoRemove") == 1,
-            "arch": "32 bits" if view == V32 else ("64 bits" if hive == "HKLM" else "Usuario"),
+            "arch": "32-bit" if view == V32 else ("64-bit" if hive == "HKLM" else "Current user"),
         }
 
 
@@ -222,7 +222,7 @@ def _finish(p):
         p["location"] = _infer_location(p)
         p["location_inferred"] = bool(p["location"])
     if p["location"] and norm_path(p["location"]) in safety.protected_exact():
-        p["location"] = ""  # una InstallLocation = "C:\Program Files" no es la carpeta del programa
+        p["location"] = ""  # an InstallLocation of "C:\Program Files" is not the program's folder
     exe = exe_from_command(p["uninstall"])
     p["broken"] = bool(p["uninstall"]) and p["kind"] not in ("msi", "winget") and bool(exe) and \
         os.path.isabs(exe) and not os.path.exists(exe)
@@ -242,7 +242,7 @@ def get_win32_programs():
             if not p:
                 continue
             ident = (p["name"].lower(), p["version"].lower(), p["user"])
-            if ident in seen:  # misma entrada vista por las dos vistas del registro
+            if ident in seen:  # same entry seen through both registry views
                 continue
             seen.add(ident)
             progs.append(_finish(p))
@@ -291,7 +291,7 @@ STORE_ESSENTIAL = {
 
 
 def _resolve_resource(s, a):
-    """Convierte 'ms-resource:AppName' en el texto real; devuelve None si no se puede."""
+    """Turn 'ms-resource:AppName' into the real text; return None if that is not possible."""
     s = (s or "").strip()
     if not s:
         return None
@@ -332,7 +332,7 @@ def _manifest_props_ps(full):
 
 
 def _manifest_props(loc):
-    """DisplayName, PublisherDisplayName y Logo leidos del AppxManifest.xml (o None si no se puede)."""
+    """DisplayName, PublisherDisplayName and Logo read from AppxManifest.xml (or None if not possible)."""
     try:
         with open(os.path.join(loc, "AppxManifest.xml"), "rb") as f:
             root = ET.fromstring(f.read())
@@ -345,8 +345,8 @@ def _manifest_props(loc):
 
 
 def get_store_apps():
-    """Apps de la Tienda. Los manifiestos se leen del disco: Get-AppxPackageManifest por paquete
-    costaba 1,8 s de los 2,2 s de la consulta."""
+    """Store apps. Manifests are read from disk: Get-AppxPackageManifest per package
+    took 1.8 s of the query's 2.2 s."""
     ps = ("[Console]::OutputEncoding=[Text.Encoding]::UTF8; "
           "Get-AppxPackage | Where-Object { -not $_.IsFramework -and -not $_.NonRemovable -and "
           "$_.SignatureKind -ne 'System' -and -not $_.IsResourcePackage } | ForEach-Object { "
@@ -362,7 +362,7 @@ def get_store_apps():
     data = data if isinstance(data, list) else [data]
     for a in data:
         pr = _manifest_props(a.get("Loc"))
-        if pr is None:  # manifiesto ilegible: se pide a Windows solo para este paquete
+        if pr is None:  # unreadable manifest: ask Windows for this package only
             pr = _manifest_props_ps(a.get("Full", ""))
         a["Disp"], a["PubDisp"], a["Logo"] = (pr.get("DisplayName", ""), pr.get("PublisherDisplayName", ""),
                                               pr.get("Logo", ""))
@@ -385,12 +385,12 @@ def get_store_apps():
         except OSError:
             pass
         if a["Name"] in STORE_ESSENTIAL:
-            p["protected"] = {"category": "windows", "label": "Pieza esencial de Windows", "no_force": True,
+            p["protected"] = {"category": "windows", "label": "Essential part of Windows", "no_force": True,
                               "scan_level_max": "safe", "blocked": True}
         else:
             p["protected"] = safety.classify_program(p)
             if p["protected"] and p["protected"]["category"] in ("microsoft", "windows"):
-                p["protected"] = None  # las apps de Microsoft de la Tienda se pueden quitar sin riesgo
+                p["protected"] = None  # Microsoft's Store apps can be removed safely
         out.append(p)
     return out
 
@@ -399,7 +399,7 @@ _STORE_CACHE = "store.json"
 
 
 def cached_store_apps():
-    """Ultima lista de la Tienda guardada en disco (al instante). Solo para MOSTRAR: se refresca enseguida."""
+    """Last Store list saved on disk (instant). Only for DISPLAY: it is refreshed right away."""
     try:
         with open(paths.data_path("cache", _STORE_CACHE), encoding="utf-8") as f:
             data = json.load(f)
@@ -426,7 +426,7 @@ def get_programs(include_store=True):
     return progs
 
 
-# ---------------------------------------------------------------- tamanos
+# ---------------------------------------------------------------- sizes
 _SIZE_CACHE = None
 
 
@@ -451,9 +451,9 @@ def save_size_cache():
 
 
 def real_size(p, cached_only=False):
-    """Tamano real de la carpeta del programa (con cache por fecha de modificacion).
+    """Real size of the program folder (cached by modification date).
 
-    cached_only: devuelve el valor de la cache si sigue valido, y None en vez de medir.
+    cached_only: return the cached value if it is still valid, and None instead of measuring.
     """
     loc = p.get("location")
     if not loc or not os.path.isdir(loc) or p.get("location_inferred") and p.get("source") != "win32":

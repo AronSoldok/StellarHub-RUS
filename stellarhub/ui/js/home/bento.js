@@ -1,10 +1,10 @@
-/* StellarHub · vista de Inicio "Mosaico": un mosaico por componente, de tamaños distintos, cada uno con su
-   ilustración y un dato en vivo. Se inclinan siguiendo el ratón y la ilustración cobra vida al señalarla. */
+/* StellarHub · "Mosaic" Home view: one tile per component, in different sizes, each with its own
+   illustration and a live stat. Tiles tilt with the mouse and the illustration comes alive on hover. */
 'use strict';
 (() => {
 const { $, $$, Spring, EASE, anim, tickers, esc, fmt1 } = SH;
 
-/* ---------- ilustraciones ---------- */
+/* ---------- illustrations ---------- */
 function fanSVG(cx, cy, r, cls) {
   let b = ''; for (let i = 0; i < 9; i++) b += `<path d="M${cx} ${cy - r * .28} C ${cx + r * .3} ${cy - r * .45} ${cx + r * .5} ${cy - r * .75} ${cx + r * .25} ${cy - r * .95} C ${cx + r * .1} ${cy - r * .7} ${cx - r * .05} ${cy - r * .5} ${cx} ${cy - r * .28} Z" transform="rotate(${i * 40} ${cx} ${cy})"/>`;
   return `<circle class="ring" cx="${cx}" cy="${cy}" r="${r + 4}"/><g class="${cls}" style="transform-origin:${cx}px ${cy}px">${b}<circle class="hub" cx="${cx}" cy="${cy}" r="${r * .26}"/></g>`;
@@ -65,8 +65,8 @@ const ART = {
   </svg>`,
 };
 
-/* ---------- mosaicos ---------- */
-/* orden y tamaño: GPU y CPU grandes (2×2); pantallas ancha (2×1); el resto 1×1. Solo los que tenga el equipo. */
+/* ---------- tiles ---------- */
+/* order and size: GPU and CPU large (2×2); displays wide (2×1); the rest 1×1. Only the ones this PC has. */
 const TILES = [
   { area: 'gpu', comp: 'gpu', kind: 'hero', big: true },
   { area: 'cpu', comp: 'cpu', kind: 'chip', big: true },
@@ -82,23 +82,23 @@ const dash = '<span class="na">—</span>';
 const nil = x => x == null || Number.isNaN(x);
 const comp = id => SH.PC.components.find(x => x.id === id);
 const rowv = (id, label) => ((comp(id) || {}).rows || []).find(r => r[0] === label)?.[1] || '';
-/* títulos cortos a partir de los datos reales (el completo queda en el tooltip) */
+/* short titles built from the real data (the full one stays in the tooltip) */
 function shortTitle(t, c) {
   const title = c.title || '';
   switch (t.area) {
     case 'ram': return title;
     case 'ssd': { const w = title.split(/\s+/).filter(x => !/[-_]/.test(x) && !/^\d+(\.\d+)?$/.test(x) && x !== 'TB' && x.toUpperCase() !== 'PC'); const cap = (title.match(/(\d+(?:[.,]\d+)?)\s*TB/) || [])[0]; return [w.slice(0, 2).join(' '), cap].filter(Boolean).join(', '); }
-    case 'dsp': { const m = c.monitors || []; return m.length > 1 ? `${m.length} pantallas` : (m[0] ? [m[0].inches ? m[0].inches + '"' : '', m[0].internal ? 'del portátil' : 'externa'].filter(Boolean).join(' ') : title); }
-    case 'bat': return title.replace(/,\s*salud.*$/i, '');
+    case 'dsp': { const m = c.monitors || []; return m.length > 1 ? `${m.length} displays` : (m[0] ? [m[0].inches ? m[0].inches + '"' : '', m[0].internal ? 'laptop screen' : 'external'].filter(Boolean).join(' ') : title); }
+    case 'bat': return title.replace(/,\s*(salud|health).*$/i, '');
     case 'wif': return /6E/i.test(title) ? 'Wi-Fi 6E' : /wi-?fi ?7|BE\d/i.test(title) ? 'Wi-Fi 7' : /wi-?fi ?6|AX\d/i.test(title) ? 'Wi-Fi 6' : /wi-?fi|wireless|802\.11/i.test(title) ? 'Wi-Fi' : /ethernet|gbe|lan/i.test(title) ? 'Ethernet' : title.split(/\s+/).slice(0, 2).join(' ');
-    case 'aud': return title.replace(/\(R\)|\(TM\)/g, '').replace(/High Definition Audio/i, 'HD Audio').replace(/Dispositivo de audio/i, 'Audio').trim();
+    case 'aud': return title.replace(/\(R\)|\(TM\)/g, '').replace(/High Definition Audio/i, 'HD Audio').replace(/Dispositivo de audio|USB Audio Device/i, 'Audio').trim();
     case 'sys': return (SH.PC.os || title).replace(/\s+\d{2}H\d$/, '');
     case 'gpu': return title.replace(/\s+GPU$/i, '').replace(/^NVIDIA GeForce /i, 'GeForce ').replace(/\(R\)|\(TM\)/g, '');
     default: return title.replace(/\(R\)|\(TM\)/g, '');
   }
 }
-/* rejilla de 4 columnas sin huecos: grandes arriba (2 filas), el resto en filas de 4 celdas;
-   si la última fila queda corta, el último mosaico se estira hasta el final */
+/* 4-column grid with no gaps: large tiles on top (2 rows), the rest in rows of 4 cells;
+   if the last row comes up short, its last tile stretches to the end */
 function layout(list) {
   const big = list.filter(t => t.big), small = list.filter(t => !t.big);
   const rows = [], rowH = [];
@@ -121,16 +121,16 @@ function layout(list) {
 }
 function liveHTML(area) {
   switch (area) {
-    case 'gpu': return `<div class="nums"><div><b class="n" data-l="gpu">–</b><small>% de uso</small></div><div><b data-l="gtemp">–</b><small>°C</small></div><div><b data-l="gpow">–</b><small>W</small></div></div>
-      <div class="lbar"><span>Memoria de vídeo</span><em data-l="vram">–</em></div><div class="bar"><span data-b="vram"></span></div>`;
-    case 'cpu': return `<div class="nums"><div><b class="n" data-l="cpu">–</b><small>% de uso</small></div><div><b data-l="freq">–</b><small>GHz</small></div><div><b data-l="ctemp">–</b><small>°C</small></div></div>`;
-    case 'ram': return `<div class="lbar"><span><b data-l="ram">–</b> de <span data-l="ramt">–</span> GB</span></div><div class="bar"><span data-b="ram"></span></div>`;
-    case 'ssd': return `<div class="lbar"><span><b data-l="free">–</b> GB libres</span></div><div class="bar acc"><span data-b="disk"></span></div>`;
-    case 'dsp': return `<div class="lbar"><span data-l="dsp">${esc(((comp('display') || {}).rows || []).map(r => r[1]).join(' y ') || '—')}</span></div>`;
-    case 'bat': return `<div class="lbar"><span>Salud <b data-l="bath">–</b></span></div>`;
+    case 'gpu': return `<div class="nums"><div><b class="n" data-l="gpu">–</b><small>% usage</small></div><div><b data-l="gtemp">–</b><small>°C</small></div><div><b data-l="gpow">–</b><small>W</small></div></div>
+      <div class="lbar"><span>Video memory</span><em data-l="vram">–</em></div><div class="bar"><span data-b="vram"></span></div>`;
+    case 'cpu': return `<div class="nums"><div><b class="n" data-l="cpu">–</b><small>% usage</small></div><div><b data-l="freq">–</b><small>GHz</small></div><div><b data-l="ctemp">–</b><small>°C</small></div></div>`;
+    case 'ram': return `<div class="lbar"><span><b data-l="ram">–</b> of <span data-l="ramt">–</span> GB</span></div><div class="bar"><span data-b="ram"></span></div>`;
+    case 'ssd': return `<div class="lbar"><span><b data-l="free">–</b> GB free</span></div><div class="bar acc"><span data-b="disk"></span></div>`;
+    case 'dsp': return `<div class="lbar"><span data-l="dsp">${esc(((comp('display') || {}).rows || []).map(r => r[1]).join(' and ') || '—')}</span></div>`;
+    case 'bat': return `<div class="lbar"><span>Health <b data-l="bath">–</b></span></div>`;
     case 'wif': return `<div class="lbar"><span><b data-l="down">–</b> Mb/s</span></div>`;
-    case 'aud': { const n = 1 + (rowv('audio', 'Otros').split(',').filter(x => x.trim() && x.trim() !== '–').length); return `<div class="lbar"><span>${n} dispositivo${n > 1 ? 's' : ''}</span></div>`; }
-    case 'sys': return `<div class="lbar"><span>Encendido <b data-l="up">–</b></span></div>`;
+    case 'aud': { const n = 1 + (rowv('audio', 'Others').split(',').filter(x => x.trim() && x.trim() !== '–').length); return `<div class="lbar"><span>${n} device${n > 1 ? 's' : ''}</span></div>`; }
+    case 'sys': return `<div class="lbar"><span>Up <b data-l="up">–</b></span></div>`;
   }
   return '';
 }
@@ -150,7 +150,7 @@ function mount(el, ctx) {
       <div class="tilt"><div class="glow"></div><div class="art">${ART[t.area]()}</div>
       <div class="meta"><span class="k">${esc(c.name)}</span><b class="t" title="${esc(c.title)}">${esc(shortTitle(t, c))}</b><div class="live">${liveHTML(t.area)}</div></div></div></div>`;
   }).join('');
-  /* el dibujo de pantallas con las resoluciones reales */
+  /* the display drawing with the real resolutions */
   if (SH.engine) SH.engine('system', 'displays').then(ds => {
     if (!ds || !root) return; const tx = $$('.art-dsp text', root); const sorted = ds.slice().sort((x, y) => y.w * y.h - x.w * x.h);
     tx.forEach((e, i) => { e.textContent = sorted[i] ? `${sorted[i].w} × ${sorted[i].h}` : ''; });
@@ -192,12 +192,12 @@ function mount(el, ctx) {
 }
 function read() {
   if (!root) return; const v = SH.tele.v;
-  /* null = Windows no da ese dato: "—", nunca 0 */
+  /* null = Windows does not provide this stat: "—", never 0 */
   const set = (k, x, f = Math.round) => { const e = $(`[data-l="${k}"]`, root); if (!e) return; const t = nil(x) ? '—' : f(x); if (e.textContent !== String(t)) e.textContent = t; e.classList.toggle('na', nil(x)); };
   set('gpu', v.gpu); set('gtemp', v.gpuTemp); set('gpow', v.gpuPower);
-  const ve = $('[data-l="vram"]', root); if (ve) ve.textContent = nil(v.vram) ? '—' : `${fmt1(v.vram)} de ${v.vramTotal || '–'} GB`;
+  const ve = $('[data-l="vram"]', root); if (ve) ve.textContent = nil(v.vram) ? '—' : `${fmt1(v.vram)} of ${v.vramTotal || '–'} GB`;
   set('cpu', v.cpu); set('freq', v.cpuFreq, fmt1); set('ctemp', v.cpuTemp);
-  const ct = $('[data-l="ctemp"]', root); if (ct) ct.parentElement.title = nil(v.cpuTemp) ? (SH.state.admin ? 'Windows no informa la temperatura de este procesador' : 'La temperatura de la CPU solo se ve en modo administrador') : '';
+  const ct = $('[data-l="ctemp"]', root); if (ct) ct.parentElement.title = nil(v.cpuTemp) ? (SH.state.admin ? 'Windows does not report this processor\'s temperature' : 'The CPU temperature is only visible in administrator mode') : '';
   set('ram', v.ram, fmt1); set('ramt', v.ramTotal, x => Math.round(x)); set('free', nil(v.diskTotal) ? null : v.diskTotal - v.diskUsed);
   set('down', v.down, fmt1); set('up', v.uptime, uptime); set('bat', v.battery); set('bath', nil(v.batteryHealth) ? null : v.batteryHealth, x => x + ' %');
   bars.vram.t = (v.vram || 0) / (v.vramTotal || 8); bars.ram.t = (v.ram || 0) / (v.ramTotal || 1); bars.disk.t = (v.diskUsed || 0) / (v.diskTotal || 1);
@@ -220,8 +220,8 @@ function unmount() {
 }
 
 SH.homeVariant({
-  id: 'bento', name: 'Mosaico', short: 'Mosaico',
-  desc: 'Un mosaico por componente, con su dato en vivo.',
+  id: 'bento', name: 'Mosaic', short: 'Mosaic',
+  desc: 'One tile per component, with its live stat.',
   mount, unmount, resize() {}, onReturn() { intro(true); },
 });
 })();

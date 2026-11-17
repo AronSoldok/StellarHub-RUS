@@ -1,11 +1,11 @@
-"""Motor del Program Updater: todo lo que se puede actualizar en el equipo, de verdad.
+"""Program Updater engine: everything on this PC that can be updated, for real.
 
-- Programas, Tienda, componentes y herramientas de desarrollo: winget (tabla de `winget upgrade` y `winget list`).
-  Los iconos salen del programa instalado (registro de desinstalación), con el mismo extractor que el Program Remover.
-- Windows Update (software, no drivers): COM Microsoft.Update.Session (buscar, historial, instalar), pausa en el
-  registro como hace Configuración, reinicio pendiente.
-- Desarrollo: pip (del Python del usuario) y npm globales.
-Las tareas largas (buscar e instalar) son JOBS con progreso real; buscar es de solo lectura.
+- Apps, Store, components and developer tools: winget (the `winget upgrade` and `winget list` tables).
+  Icons come from the installed program (uninstall registry), with the same extractor as the Program Remover.
+- Windows Update (software, not drivers): COM Microsoft.Update.Session (search, history, install), pause in the
+  registry the same way Settings does it, pending restart.
+- Development: pip (from the user's Python) and global npm packages.
+Long tasks (search and install) are JOBS with real progress; searching is read-only.
 """
 import ctypes
 import json
@@ -23,7 +23,7 @@ from .ps import ps_json, NO_WINDOW
 EXPORTS = {"status", "notes", "pin", "unpin", "set_pause", "store_auto", "set_store_auto", "icon_for"}
 JOBS = {"scan_apps", "scan_windows", "scan_dev", "install"}
 
-# ---------------------------------------------------------------- utilidades
+# ---------------------------------------------------------------- helpers
 def _admin():
     try:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
@@ -37,7 +37,7 @@ def _exe(name):
 
 
 def _python():
-    """El Python del usuario (no pythonw): el mismo con el que corre StellarHub."""
+    """The user's Python (not pythonw): the same one StellarHub runs on."""
     exe = sys.executable
     if exe.lower().endswith("pythonw.exe"):
         cand = exe[:-11] + "python.exe"
@@ -47,8 +47,8 @@ def _python():
 
 
 def _stream(cmd, on_text=None, job=None, timeout=None, env=None):
-    """Ejecuta y entrega el texto a trozos partiendo por \\r y \\n (winget pinta las barras con \\r).
-    Devuelve (código, salida). Si el job se cancela, mata el proceso."""
+    """Runs a command and hands over the text in pieces split on \\r and \\n (winget draws its bars with \\r).
+    Returns (code, output). If the job is cancelled, kills the process."""
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                          creationflags=NO_WINDOW, env=env)
     out, buf = [], b""
@@ -93,8 +93,8 @@ def _winget(args, timeout=180):
 
 
 def parse_table(text):
-    """Tabla de winget a lista de dicts {name,id,version,available,source}. Columnas por posición de la cabecera
-    (sirve en español e inglés y con anchos variables)."""
+    """winget table to a list of dicts {name,id,version,available,source}. Columns by header position
+    (works with Spanish and English Windows and with variable widths)."""
     lines = [ln.split("\r")[-1] for ln in text.splitlines()]
     hdr_i = next((i for i in range(len(lines) - 1) if re.match(r"^-{10,}\s*$", lines[i + 1] or "")), None)
     if hdr_i is None:
@@ -103,6 +103,7 @@ def parse_table(text):
     starts = [m.start() for m in re.finditer(r"\S+(?: \S+)*", hdr)]
     names = [m.group(0).lower() for m in re.finditer(r"\S+(?: \S+)*", hdr)]
     keys = []
+    # header names in English and Spanish: winget prints them in the Windows display language
     for n in names:
         if n in ("name", "nombre"):
             keys.append("name")
@@ -128,7 +129,7 @@ def parse_table(text):
             b = starts[j + 1] if j + 1 < len(starts) else len(ln)
             d[k] = ln[a:b].strip()
         if not d.get("id") or " " in d["id"] and not d["id"].startswith(("ARP\\", "MSIX\\")):
-            # una línea de resumen ("14 upgrades available.") o algo que no es una fila
+            # a summary line ("14 upgrades available.", also matched in Spanish) or something that is not a row
             if re.search(r"\d+ (upgrades|actualizaciones|package|paquete)", ln, re.I):
                 break
             continue
@@ -136,7 +137,7 @@ def parse_table(text):
     return rows
 
 
-# ---------------------------------------------------------------- categorías
+# ---------------------------------------------------------------- categories
 RUNTIME_RE = re.compile(r"^(Microsoft\.(DotNet|VCRedist|EdgeWebView2Runtime|DirectX|WindowsAppRuntime|UI\.Xaml|VCLibs)|"
                         r"EclipseAdoptium\.|Oracle\.JavaRuntime|Oracle\.JDK|Microsoft\.OpenJDK|Azul\.|Amazon\.Corretto)", re.I)
 DEV_RE = re.compile(r"^(Python\.Python|OpenJS\.NodeJS|Git\.Git|GitHub\.(cli|GitHubDesktop)|Microsoft\.PowerShell|astral-sh\.|"
@@ -155,7 +156,7 @@ def _category(row):
     return "apps"
 
 
-# ---------------------------------------------------------------- iconos y editor (del programa instalado)
+# ---------------------------------------------------------------- icons and publisher (from the installed program)
 _prog_idx = None
 _prog_lock = threading.Lock()
 
@@ -220,17 +221,17 @@ def icon_for(name):
     return _icon(_match({"name": name}))
 
 
-# ---------------------------------------------------------------- buscar: programas, Tienda, componentes
+# ---------------------------------------------------------------- search: apps, Store, components
 def _pins():
     out = _winget(["pin", "list"], timeout=60) or ""
     return {r["id"]: r.get("version", "") for r in parse_table(out)}
 
 
 def scan_apps(job):
-    """Solo lectura: lo que winget puede actualizar y lo que hay instalado fuera de winget."""
+    """Read-only: what winget can update and what is installed outside winget."""
     if not _exe("winget"):
         return {"winget": False}
-    job.progress(.05, "Preguntando a winget qué hay nuevo…")
+    job.progress(.05, "Asking winget what's new…")
     pool = ThreadPoolExecutor(4)
     f_up = pool.submit(lambda: parse_table(_winget(["upgrade", "--include-unknown"], timeout=240) or ""))
     f_ls = pool.submit(lambda: parse_table(_winget(["list"], timeout=240) or ""))
@@ -238,7 +239,7 @@ def scan_apps(job):
     f_prog = pool.submit(_programs)
     ups = f_up.result()
     job.check()
-    job.progress(.45, f"{len(ups)} actualizaciones encontradas. Leyendo lo instalado…")
+    job.progress(.45, f"{len(ups)} updates found. Reading what's installed…")
     installed = f_ls.result()
     pins = f_pin.result()
     f_prog.result()
@@ -251,11 +252,11 @@ def scan_apps(job):
         p = _match(u)
         items.append({"id": u["id"], "wid": u["id"], "kind": "winget", "name": u["name"].replace("…", "").strip(),
                       "pub": (p or {}).get("publisher") or (u.get("source") == "msstore" and "Microsoft Store") or "",
-                      "from": "desconocida" if (u.get("version") or "").lower() in ("", "unknown", "desconocido") else u["version"],
+                      "from": "unknown" if (u.get("version") or "").lower() in ("", "unknown", "desconocido") else u["version"],  # "desconocido" = Spanish winget
                       "to": u["available"], "source": u.get("source") or "",
                       "cat": _category(u), "mb": None, "admin": False, "reboot": False, "notes": [],
                       "pinned": u["id"] in pins, "user": bool((p or {}).get("user")), "_p": p})
-    # fuera de winget: programas del registro (ARP) que winget no sabe actualizar
+    # outside winget: registry programs (ARP) that winget can't update
     unknown, store_ok, rt_ok, dev_ok = [], [], [], []
     for r in installed:
         rid = r.get("id", "")
@@ -273,15 +274,15 @@ def scan_apps(job):
                 rt_ok.append({"name": r["name"], "ver": r.get("version", ""), "pub": "", "id": rid})
             elif c == "dev":
                 dev_ok.append({"name": r["name"], "ver": r.get("version", ""), "id": rid})
-    # componentes: sin duplicados ni paquetes-marco de la Tienda que nadie reconoce
+    # components: no duplicates and no Store framework packages nobody recognizes
     noise = re.compile(r"UWP|Native Runtime Package|^Microsoft\.(UI\.Xaml|VCLibs|WindowsAppRuntime)", re.I)
     seen = set()
     rt_ok = [x for x in rt_ok if not noise.search(x["name"]) and not ((x["name"], x["ver"]) in seen or seen.add((x["name"], x["ver"])))]
-    # WebView2 no siempre aparece en winget
+    # WebView2 doesn't always show up in winget
     wv = _webview2()
     if wv and not any("webview2" in x["name"].lower() for x in rt_ok + [i for i in items if i["cat"] == "runtimes"]):
         rt_ok.append({"name": "WebView2 Runtime", "ver": wv, "pub": "Microsoft", "id": "Microsoft.EdgeWebView2Runtime"})
-    job.progress(.6, "Sacando los iconos de cada programa…")
+    job.progress(.6, "Getting each program's icon…")
     todo = [x for x in items + unknown if x.get("_p")]
     done = [0]
 
@@ -289,7 +290,7 @@ def scan_apps(job):
         x["icon"] = _icon(x["_p"])
         done[0] += 1
         if done[0] % 4 == 0:
-            job.progress(.6 + .38 * done[0] / max(1, len(todo)), "Sacando los iconos de cada programa…")
+            job.progress(.6 + .38 * done[0] / max(1, len(todo)), "Getting each program's icon…")
     list(ThreadPoolExecutor(6).map(ic, todo))
     for x in items + unknown:
         x.pop("_p", None)
@@ -311,10 +312,11 @@ def _webview2():
 
 
 def notes(wid):
-    """Notas de la versión que publica el fabricante en winget (si las hay)."""
+    """Release notes the publisher puts on winget (if any)."""
     out = _winget(["show", "--id", wid, "--exact"], timeout=60) or ""
     lines, take, url = [], False, ""
     for ln in out.splitlines():
+        # field names in English and Spanish (winget follows the Windows language)
         if re.match(r"^\s*(Release Notes|Notas de la versión)\s*:", ln, re.I):
             take = True
             rest = ln.split(":", 1)[1].strip()
@@ -337,7 +339,7 @@ def notes(wid):
 
 
 def pin(wid):
-    """Quedarse en la versión actual (winget pin)."""
+    """Stay on the current version (winget pin)."""
     out = _winget(["pin", "add", "--id", wid, "--exact"], timeout=60) or ""
     return {"ok": True, "out": out[-300:]}
 
@@ -367,13 +369,14 @@ $cv=Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
 
 
 def _pretty_title(t):
-    t = re.sub(r"^9[A-Z0-9]{11}-", "", t or "")  # entradas de la Tienda: "9NRZT3Q9R3DL-Microsoft.X"
+    t = re.sub(r"^9[A-Z0-9]{11}-", "", t or "")  # Store entries: "9NRZT3Q9R3DL-Microsoft.X"
     return t
 
 
 def _wu_cat(u):
     cats = " ".join(u.get("cats") or []).lower()
     t = (u.get("title") or "").lower()
+    # category and title words in English and Spanish (Windows Update answers in the system language)
     if u.get("browse") or "preview" in t or "vista previa" in t:
         return "optional"
     if "security" in cats or "seguridad" in cats or "critical" in cats or "crítica" in cats or "definition" in cats \
@@ -383,15 +386,15 @@ def _wu_cat(u):
 
 
 def scan_windows(job):
-    """Solo lectura: búsqueda real en Windows Update (tarda 20-60 s), historial, pausa, reinicio y antivirus."""
-    job.progress(.1, "Buscando en Windows Update…")
+    """Read-only: a real Windows Update search (takes 20-60 s), history, pause, restart and antivirus."""
+    job.progress(.1, "Searching Windows Update…")
     stop = threading.Event()
 
-    def tick():  # la búsqueda de Windows no da progreso: avanzamos despacio para que se vea vivo
+    def tick():  # the Windows search reports no progress: creep forward slowly so it looks alive
         p = .1
         while not stop.wait(1.0):
             p = min(.9, p + (.9 - p) * .06)
-            job.progress(p, "Buscando en Windows Update…")
+            job.progress(p, "Searching Windows Update…")
     threading.Thread(target=tick, daemon=True).start()
     try:
         r = ps_json(_WU_SCAN, timeout=300) or {}
@@ -415,9 +418,10 @@ def scan_windows(job):
     av = [a["n"] for a in (r.get("av") or []) if a.get("n")]
     third = [a for a in av if "defender" not in a.lower()]
     mode = (r.get("mpMode") or "").strip()
+    # "ejecución normal" = Defender running mode on a Spanish Windows
     defender_on = mode.lower() in ("normal", "ejecución normal") or (mode and "passive" not in mode.lower() and "not" not in mode.lower())
     prod = r.get("prod") or "Windows"
-    try:  # el registro sigue diciendo "Windows 10" en Windows 11
+    try:  # the registry still says "Windows 10" on Windows 11
         if int(str(r.get("build", "0")).split(".")[0]) >= 22000:
             prod = prod.replace("Windows 10", "Windows 11")
     except ValueError:
@@ -429,7 +433,7 @@ def scan_windows(job):
 
 
 def set_pause(weeks):
-    """Pausar Windows Update N semanas (0 = reanudar). Las mismas claves que usa Configuración. Necesita admin."""
+    """Pause Windows Update for N weeks (0 = resume). The same keys Settings uses. Needs admin."""
     if not _admin():
         return {"needAdmin": True}
     path = r"SOFTWARE\Microsoft\WindowsUpdate\UX\Settings"
@@ -452,7 +456,7 @@ def set_pause(weeks):
 
 
 def store_auto():
-    """¿La Tienda actualiza sola? (directiva AutoDownload: 2 = no, 4 o sin directiva = sí)."""
+    """Does the Store update apps on its own? (AutoDownload policy: 2 = no, 4 or no policy = yes)."""
     try:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Policies\Microsoft\WindowsStore") as k:
             v = winreg.QueryValueEx(k, "AutoDownload")[0]
@@ -475,12 +479,12 @@ def set_store_auto(on):
     return store_auto()
 
 
-# ---------------------------------------------------------------- desarrollo
+# ---------------------------------------------------------------- development
 def scan_dev(job):
-    """Solo lectura: paquetes de pip desactualizados (del Python del usuario), npm globales y versiones."""
+    """Read-only: outdated pip packages (from the user's Python), global npm packages and versions."""
     out = {"python": None, "pip": [], "node": None, "npm": [], "git": None, "tools": []}
     py = _python()
-    job.progress(.1, "Preguntando a pip…")
+    job.progress(.1, "Asking pip…")
     try:
         r = subprocess.run([py, "--version"], capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW)
         out["python"] = (r.stdout or r.stderr).strip().replace("Python ", "")
@@ -490,7 +494,7 @@ def scan_dev(job):
     except Exception as e:
         out["pipError"] = str(e)[:200]
     job.check()
-    job.progress(.6, "Preguntando a npm…")
+    job.progress(.6, "Asking npm…")
     node = _exe("node")
     if node:
         try:
@@ -501,7 +505,7 @@ def scan_dev(job):
             out["npm"] = [[n, d.get("current", ""), d.get("latest", "")] for n, d in data.items()]
         except Exception as e:
             out["npmError"] = str(e)[:200]
-    job.progress(.85, "Mirando el resto de herramientas…")
+    job.progress(.85, "Checking the other tools…")
     for name, cmd, rx in (("Git", ["git", "--version"], r"(\d+\.\d+\.\d+(?:\.windows\.\d+)?)"),
                           ("PowerShell 7", ["pwsh", "--version"], r"(\d+\.\d+\.\d+)"),
                           ("WSL", ["wsl", "--version"], r"(\d+\.\d+\.\d+(?:\.\d+)?)"),
@@ -523,7 +527,7 @@ def scan_dev(job):
     return out
 
 
-# ---------------------------------------------------------------- instalar (cambia el sistema: solo desde la interfaz)
+# ---------------------------------------------------------------- install (changes the system: only from the UI)
 _SIZE = {"KB": 1 / 1024, "MB": 1, "GB": 1024}
 
 
@@ -552,22 +556,24 @@ def _winget_upgrade(job, it, report):
             report("down", state["p"], mb=state["mb"])
             return
         low = s.lower()
+        # progress words in English and Spanish (winget follows the Windows language)
         if any(w in low for w in ("starting package install", "iniciando la instalación", "installing", "instalando")):
             state["phase"] = "inst"
             report("inst", 1, mb=state["mb"])
         job.log(s)
     code, out = _stream(cmd, on_text, job=job, timeout=3600)
     if job.cancelled:
-        return "cancel", "Cancelada"
+        return "cancel", "Cancelled"
+    # success text in English and Spanish
     if code == 0 or re.search(r"Successfully installed|Instalado correctamente|se instaló correctamente", out, re.I):
         return "done", None
     hexc = f"0x{code & 0xFFFFFFFF:08X}" if code is not None else "?"
-    msgs = {"0x8A15002B": "Ya no hay una versión nueva que instalar.", "0x8A150011": "El instalador falló.",
-            "0x8A15010C": "La actualización necesita cerrar el programa primero.",
-            "0x8A150056": "El programa está abierto: ciérralo y reinténtalo.", "0x8A150077": "Hay que reiniciar para terminar.",
-            "0x80073D02": "La app está abierta: ciérrala y reinténtalo."}
+    msgs = {"0x8A15002B": "There's no newer version to install anymore.", "0x8A150011": "The installer failed.",
+            "0x8A15010C": "The update needs the program to be closed first.",
+            "0x8A150056": "The program is open: close it and try again.", "0x8A150077": "A restart is needed to finish.",
+            "0x80073D02": "The app is open: close it and try again."}
     tail = [ln for ln in out.splitlines() if ln.strip()][-1:] or [""]
-    return "fail", msgs.get(hexc, f"El instalador devolvió {hexc}. {tail[0][:120]}")
+    return "fail", msgs.get(hexc, f"The installer returned {hexc}. {tail[0][:120]}")
 
 
 _WU_INSTALL = r"""
@@ -585,9 +591,9 @@ Write-Output ("RESULT|{0}|{1}" -f $res.ResultCode, [int]$res.RebootRequired)
 
 def _wu_install(job, it, report):
     if not _admin():
-        return "admin", "Necesita el modo administrador"
+        return "admin", "Needs admin mode"
     script = _WU_INSTALL % it["uid"].replace("'", "")
-    res = {"st": "fail", "msg": "Windows Update no respondió."}
+    res = {"st": "fail", "msg": "Windows Update didn't respond."}
 
     def on_text(s):
         if s.startswith("PHASE|"):
@@ -595,17 +601,17 @@ def _wu_install(job, it, report):
         elif s.startswith("RESULT|"):
             parts = s.split("|")
             if parts[1] == "none":
-                res.update(st="fail", msg="Ya no está disponible.")
+                res.update(st="fail", msg="It's no longer available.")
             else:
                 ok = parts[1] in ("2", "3")
-                res.update(st="done" if ok else "fail", msg=None if ok else f"Windows Update devolvió el código {parts[1]}.",
+                res.update(st="done" if ok else "fail", msg=None if ok else f"Windows Update returned code {parts[1]}.",
                            reboot=len(parts) > 2 and parts[2] == "1")
         else:
             job.log(s)
     _stream(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
             on_text, job=job, timeout=7200)
     if job.cancelled:
-        return "cancel", "Cancelada"
+        return "cancel", "Cancelled"
     return res["st"], res.get("msg"), res.get("reboot")
 
 
@@ -617,19 +623,19 @@ def _pkg_install(job, it, report):
     report("inst", 0.3)
     code, out = _stream(cmd, job.log, job=job, timeout=3600)
     if job.cancelled:
-        return "cancel", "Cancelada"
-    return ("done", None) if code == 0 else ("fail", ([ln for ln in out.splitlines() if ln.strip()] or ["Falló"])[-1][:160])
+        return "cancel", "Cancelled"
+    return ("done", None) if code == 0 else ("fail", ([ln for ln in out.splitlines() if ln.strip()] or ["Failed"])[-1][:160])
 
 
 def _defender_update(job, it, report):
     report("down", .3)
     code, out = _stream(["powershell.exe", "-NoProfile", "-Command", "Update-MpSignature -ErrorAction Stop; 'ok'"],
                         job.log, job=job, timeout=900)
-    return ("done", None) if "ok" in out else ("fail", "Defender no está activo o no pudo actualizarse.")
+    return ("done", None) if "ok" in out else ("fail", "Defender isn't active or couldn't be updated.")
 
 
 def install(job, items):
-    """Instala en cola. items: [{kind: winget|wu|pip|npm|defender, ...}]. Progreso: data.items[i] = {st, p, mb, msg}."""
+    """Installs as a queue. items: [{kind: winget|wu|pip|npm|defender, ...}]. Progress: data.items[i] = {st, p, mb, msg}."""
     states = [{"st": "queued", "p": 0, "mb": it.get("mb"), "msg": None} for it in items]
     job.data["items"] = states
     reboot = False

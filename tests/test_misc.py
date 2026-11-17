@@ -1,4 +1,4 @@
-"""Monitor, inicio, limpiador, Job Object, accesos directos y ajustes."""
+"""Watched install, startup, cleaner, Job Object, shortcuts and settings."""
 import os
 import shutil
 import subprocess
@@ -92,8 +92,8 @@ class Cleaner(unittest.TestCase):
                 r = cleaner.clean(["t"])
             self.assertEqual(r["deleted"], 1)
             self.assertFalse(os.path.exists(old))
-            self.assertTrue(os.path.exists(new))   # reciente: se respeta
-            self.assertTrue(os.path.isdir(d))      # la raiz nunca se borra
+            self.assertTrue(os.path.exists(new))   # recent: kept
+            self.assertTrue(os.path.isdir(d))      # the root is never deleted
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
@@ -141,9 +141,9 @@ class Cleaner(unittest.TestCase):
             cats = {"t": {"id": "t", "label": "t", "group": "g", "globs": [d], "grace": True, "default": True, "desc": ""}}
             with mock.patch.object(cleaner, "categories", return_value=cats):
                 cleaner.clean(["t"])
-            self.assertTrue(os.path.isdir(os.path.join(outside, "empty_inside")))  # fuera: intacto
+            self.assertTrue(os.path.isdir(os.path.join(outside, "empty_inside")))  # outside: untouched
             self.assertTrue(os.path.exists(old))
-            self.assertFalse(os.path.exists(os.path.join(d, "empty")))            # dentro: vacias fuera
+            self.assertFalse(os.path.exists(os.path.join(d, "empty")))            # inside: empty ones removed
             self.assertTrue(os.path.isdir(d))
         finally:
             subprocess.run(["cmd", "/c", "rmdir", os.path.join(d, "j")], capture_output=True)
@@ -156,7 +156,7 @@ class Cleaner(unittest.TestCase):
         with mock.patch.object(cleaner, "categories", return_value=cats):
             r = cleaner.scan(on_item=lambda it: seen.append(it["id"]))
         self.assertEqual(sorted(seen), ["a", "b", "c"])
-        self.assertEqual([i["id"] for i in r], ["a", "b", "c"])  # el resultado final mantiene el orden
+        self.assertEqual([i["id"] for i in r], ["a", "b", "c"])  # the final result keeps the order
 
     def test_categories_are_inside_known_places(self):
         for c in cleaner.categories().values():
@@ -166,7 +166,7 @@ class Cleaner(unittest.TestCase):
 
 
 class Speed(unittest.TestCase):
-    """Atajos de velocidad que deben dar exactamente lo mismo que el camino lento."""
+    """Speed shortcuts that must give exactly the same result as the slow path."""
 
     def test_folder_size_skips_junctions(self):
         from stellarhub.engine.removal import paths
@@ -193,7 +193,7 @@ class Speed(unittest.TestCase):
             os.makedirs(os.path.join(d, "dir"))
             open(os.path.join(d, "file.txt"), "w").close()
             subprocess.run(["cmd", "/c", "mklink", "/J", os.path.join(d, "broken"), gone], capture_output=True)
-            os.rmdir(gone)  # junction roto: el listado dice carpeta, isdir dice que no
+            os.rmdir(gone)  # broken junction: the listing says folder, isdir says no
             got = {name: isd for name, _, isd in scanner.Scanner._entries(d)}
             self.assertEqual(got, {n: os.path.isdir(os.path.join(d, n)) for n in os.listdir(d)})
             self.assertFalse(got["broken"])

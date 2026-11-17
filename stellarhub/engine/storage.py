@@ -1,9 +1,9 @@
-"""Storage Checker real: escaneo de una unidad o carpeta (como WinDirStat), mapa, tipos, más grandes, duplicados,
-comparación con el escaneo anterior, abrir en el Explorador y enviar a la papelera (con restauración).
+"""Real Storage Checker: scan of a drive or folder (like WinDirStat), map, types, largest, duplicates,
+comparison with the previous scan, show in Explorer and send to the Recycle Bin (with restore).
 
-El árbol completo se queda aquí (en memoria); a la interfaz solo se le mandan niveles agregados con view(id, depth)
-y los subárboles se piden al hacer zoom. Los archivos pequeños de cada carpeta se agrupan en un único bloque
-"archivos pequeños" para que el árbol aguante millones de archivos sin gastar cientos de MB.
+The full tree stays here (in memory); the UI only gets aggregated levels through view(id, depth)
+and subtrees are requested when zooming. Each folder's small files are grouped into a single
+"small files" block so the tree can hold millions of files without using hundreds of MB.
 """
 import ctypes
 import hashlib
@@ -21,13 +21,13 @@ from ctypes import wintypes
 EXPORTS = {"drives", "pick_folder", "view", "info", "types", "largest", "compare", "reveal", "trash", "restore", "can_delete"}
 JOBS = {"scan", "duplicates"}
 
-FILE_MIN = 1024 * 1024         # archivos más pequeños: se agrupan por carpeta (ahorra memoria con millones)
-BIG_KEEP = 400                 # los N archivos más grandes de todo el escaneo
+FILE_MIN = 1024 * 1024         # smaller files are grouped per folder (saves memory with millions of them)
+BIG_KEEP = 400                 # the N largest files of the whole scan
 NO_WINDOW = 0x08000000
 REPARSE = 0x400
 DATA = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "storage")
 
-# ---------------- tipos (mismas claves que la interfaz) ----------------
+# ---------------- types (same keys as the UI) ----------------
 EXT_TYPE = {}
 for t, exts in {
     "game": "vpk pak bin bank pck upk uasset ubulk forge bundle assets resource rpf arc",
@@ -55,7 +55,7 @@ def ftype(name, ext):
     return EXT_TYPE.get(ext, "cache" if not ext else "other")
 
 
-# ---------------- estructura en memoria ----------------
+# ---------------- in-memory structure ----------------
 _ids = [0]
 
 
@@ -72,8 +72,8 @@ class D:
         self.name = name
         self.parent = parent
         self.kids = []
-        self.files = []          # [id, nombre, tamaño, mtime, ext] de los archivos >= FILE_MIN
-        self.small = None        # [tamaño, cuenta, {tipo: tamaño}] de los pequeños
+        self.files = []          # [id, name, size, mtime, ext] of files >= FILE_MIN
+        self.small = None        # [size, count, {type: size}] of the small ones
         self.size = 0
         self.fc = 0
         self.dirs = 0
@@ -87,9 +87,9 @@ class Scan:
         self.target = target
         self.root = None
         self.index = {}          # id -> D
-        self.fidx = {}           # id de archivo -> (D, entrada)
-        self.big = []            # heap (tamaño, id)
-        self.exts = {}           # ext -> [tamaño, cuenta, tipo]
+        self.fidx = {}           # file id -> (D, entry)
+        self.big = []            # heap (size, id)
+        self.exts = {}           # ext -> [size, count, type]
         self.files = 0
         self.bytes = 0
         self.errors = 0
@@ -110,13 +110,13 @@ def _path(d):
     parts.reverse()
     p = parts[0]
     if p.endswith(":"):
-        p += "\\"          # "C:" + "Users" tiene que dar "C:\Users", no "C:Users"
+        p += "\\"          # "C:" + "Users" has to give "C:\Users", not "C:Users"
     for x in parts[1:]:
         p = os.path.join(p, x)
     return p
 
 
-# ---------------- unidades y carpeta ----------------
+# ---------------- drives and folder ----------------
 def drives():
     out = []
     k32 = ctypes.windll.kernel32
@@ -126,7 +126,7 @@ def drives():
             continue
         root = f"{letter}:\\"
         kind = k32.GetDriveTypeW(root)
-        if kind not in (2, 3):      # extraíble o fija
+        if kind not in (2, 3):      # removable or fixed
             continue
         free, total = ctypes.c_ulonglong(), ctypes.c_ulonglong()
         if not k32.GetDiskFreeSpaceExW(root, None, ctypes.byref(total), ctypes.byref(free)):
@@ -141,9 +141,9 @@ def drives():
 
 
 def pick_folder():
-    """Diálogo de Windows para elegir una carpeta (por encima de la app)."""
+    """Windows dialog to pick a folder (on top of the app)."""
     ps = ("Add-Type -AssemblyName System.Windows.Forms; $o=New-Object System.Windows.Forms.Form -Property @{TopMost=$true;ShowInTaskbar=$false};"
-          "$f=New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description='Elige la carpeta que quieres analizar';"
+          "$f=New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description='Choose the folder you want to scan';"
           "$f.UseDescriptionForTitle=$true; if($f.ShowDialog($o) -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; $f.SelectedPath}")
     r = subprocess.run(["powershell.exe", "-NoProfile", "-STA", "-Command", ps], capture_output=True, creationflags=NO_WINDOW)
     p = r.stdout.decode("utf-8", "replace").strip()
@@ -158,15 +158,15 @@ def _disk_of(target):
     return {"root": root, "total": 0, "free": 0, "used": 0}
 
 
-# ---------------- escaneo ----------------
+# ---------------- scan ----------------
 def scan(job, target="C:\\", threads=8):
     target = os.path.abspath(target)
     if len(target) == 2 and target[1] == ":":
         target += "\\"
     if not os.path.isdir(target):
-        raise ValueError(f"No existe la carpeta {target}")
+        raise ValueError(f"The folder {target} doesn't exist")
     with _lock:
-        _cur["scan"] = None   # suelta la memoria del análisis anterior antes de empezar otro
+        _cur["scan"] = None   # free the previous scan's memory before starting another
     s = Scan(target)
     s.disk = _disk_of(target)
     whole_drive = os.path.normcase(target) == os.path.normcase(s.disk["root"])
@@ -203,7 +203,7 @@ def scan(job, target="C:\\", threads=8):
                         attrs = getattr(st, "st_file_attributes", 0)
                         if _stat.S_ISDIR(st.st_mode):
                             if attrs & REPARSE:
-                                continue          # uniones y enlaces: no se siguen (no se cuenta dos veces)
+                                continue          # junctions and links: not followed (nothing counted twice)
                             kids.append(e.name)
                             continue
                         if attrs & REPARSE:
@@ -279,7 +279,7 @@ def scan(job, target="C:\\", threads=8):
                      files=s.files, bytes=s.bytes, rate=round(s.files / max(.1, el)), secs=round(el, 1), exact=bool(expect))
     for w in ws:
         w.join(timeout=1)
-    job.progress(.995, "Ordenando…", force=True, files=s.files, bytes=s.bytes)
+    job.progress(.995, "Sorting…", force=True, files=s.files, bytes=s.bytes)
     _finish(s)
     s.secs = round(time.monotonic() - t0, 1)
     s.when = time.time()
@@ -290,7 +290,7 @@ def scan(job, target="C:\\", threads=8):
 
 
 def _finish(s):
-    """Tamaños, cuentas y tipos de abajo arriba (sin recursión: hay árboles muy profundos)."""
+    """Sizes, counts and types from the bottom up (no recursion: some trees are very deep)."""
     order = []
     stack = [s.root]
     while stack:
@@ -321,7 +321,7 @@ def _finish(s):
 def _get():
     s = _cur["scan"]
     if s is None:
-        raise RuntimeError("Todavía no hay ningún análisis")
+        raise RuntimeError("There is no scan yet")
     return s
 
 
@@ -330,7 +330,7 @@ def _dom(cats):
 
 
 def _node(d, depth, min_bytes, max_kids):
-    """Una carpeta para la interfaz, con sus hijos hasta `depth` niveles; lo demasiado pequeño se agrupa."""
+    """A folder for the UI, with its children down to `depth` levels; anything too small is grouped."""
     out = {"id": d.id, "name": d.name, "dir": True, "size": d.size, "fc": d.fc, "dirs": d.dirs, "mtime": int(d.mtime * 1000),
            "cats": d.cats, "dom": _dom(d.cats), "err": d.err}
     if depth <= 0:
@@ -370,21 +370,21 @@ def _node(d, depth, min_bytes, max_kids):
             kids.append({"id": x[0], "name": x[1], "size": x[2], "mtime": int(x[3] * 1000), "ext": x[4], "type": ftype(x[1], x[4])})
         else:
             cats = x[2]
-            kids.append({"id": -d.id, "name": f"{x[1]} archivo{'s' if x[1] != 1 else ''} pequeño{'s' if x[1] != 1 else ''}",
+            kids.append({"id": -d.id, "name": f"{x[1]} small file{'s' if x[1] != 1 else ''}",
                          "size": x[0], "fc": x[1], "ext": "", "type": _dom(cats), "group": True, "mtime": int(d.mtime * 1000)})
     if rest > 0:
-        kids.append({"id": -(10_000_000 + d.id), "name": "Otros elementos más pequeños", "size": rest, "fc": rest_n,
+        kids.append({"id": -(10_000_000 + d.id), "name": "Other smaller items", "size": rest, "fc": rest_n,
                      "ext": "", "type": _dom(rest_cats), "group": True, "mtime": int(d.mtime * 1000)})
     out["kids"] = kids
     return out
 
 
 def view(node_id=None, depth=3, max_kids=70):
-    """El nodo con sus descendientes hasta `depth` niveles (lo que se dibuja en el mapa o en el árbol)."""
+    """The node with its descendants down to `depth` levels (what the map or the tree draws)."""
     s = _get()
     d = s.index.get(int(node_id)) if node_id else s.root
     if d is None:
-        raise KeyError("Esa carpeta ya no está en el análisis")
+        raise KeyError("That folder is no longer in the scan")
     min_bytes = max(1, int(d.size * 0.0012))
     return _node(d, int(depth), min_bytes, int(max_kids))
 
@@ -403,7 +403,7 @@ def types():
         b = by.setdefault(ty, {"type": ty, "size": 0, "count": 0, "exts": []})
         b["size"] += size
         b["count"] += n
-        b["exts"].append([ext or "(sin extensión)", size])
+        b["exts"].append([ext or "(no extension)", size])
     out = sorted(by.values(), key=lambda b: b["size"], reverse=True)
     for b in out:
         b["exts"] = sorted(b["exts"], key=lambda x: x[1], reverse=True)[:6]
@@ -422,12 +422,12 @@ def largest(n=200):
     return out
 
 
-# ---------------- duplicados ----------------
+# ---------------- duplicates ----------------
 SKIP_DUP = ("\\windows\\", "\\$recycle.bin\\", "\\system volume information\\", "\\windowsapps\\", "\\winsxs\\")
 
 
 def duplicates(job, min_mb=1):
-    """Agrupa por tamaño, luego por huella parcial (inicio + final) y al final por huella completa."""
+    """Groups by size, then by a partial hash (start + end) and finally by a full hash."""
     s = _get()
     min_b = int(float(min_mb) * 1024 * 1024)
     by_size = {}
@@ -500,13 +500,13 @@ def duplicates(job, min_mb=1):
     return {"groups": groups[:200], "wasted": sum(g["size"] * (len(g["copies"]) - 1) for g in groups)}
 
 
-# ---------------- comparar con el escaneo anterior ----------------
+# ---------------- compare with the previous scan ----------------
 def _key(target):
-    return "".join(ch if ch.isalnum() else "_" for ch in target.lower()).strip("_") or "raiz"
+    return "".join(ch if ch.isalnum() else "_" for ch in target.lower()).strip("_") or "root"
 
 
 def _save_snapshot(s):
-    """Resumen por carpeta (las que pesan) + archivos grandes, para comparar la próxima vez."""
+    """Per-folder summary (the heavy ones) + large files, to compare next time."""
     try:
         os.makedirs(DATA, exist_ok=True)
         dirs = {}
@@ -536,7 +536,7 @@ def _save_snapshot(s):
         with open(f + ".tmp", "w", encoding="utf-8") as fh:
             json.dump({"last": snap, "prev": prev, "history": hist}, fh)
         os.replace(f + ".tmp", f)
-    except Exception as e:  # comparar es un extra: nunca rompe el análisis
+    except Exception as e:  # comparing is an extra: it never breaks the scan
         print("storage snapshot:", e)
 
 
@@ -549,14 +549,14 @@ def compare():
         data = json.load(fh)
     cur, prev = data.get("last"), data.get("prev")
     hist = data.get("history", [])
-    if not prev or prev.get("v") != 2:   # instantáneas de un formato anterior no son comparables
+    if not prev or prev.get("v") != 2:   # snapshots in an older format can't be compared
         return {"prev": None, "history": hist}
     a, b = prev["dirs"], cur["dirs"]
     changes = []
     root = os.path.normcase(cur["target"].rstrip("\\"))
     for p in set(a) | set(b):
         if os.path.normcase(p.rstrip("\\")) == root:
-            continue                     # la raíz es el total: ya sale en la cabecera
+            continue                     # the root is the total: it's already in the header
         sa, sb = a.get(p, [0, 0]), b.get(p, [0, 0])
         dd = sb[0] - sa[0]
         if abs(dd) >= 64 * 1024 * 1024:
@@ -565,7 +565,7 @@ def compare():
     picked = []
     for p, dd, df in changes:
         pl = p.lower().rstrip("\\") + "\\"
-        # si ya hay una subcarpeta que explica casi todo el cambio, la carpeta madre sobra
+        # if a subfolder already explains almost all of the change, the parent folder is redundant
         if any(q.lower().startswith(pl) and abs(qd) >= abs(dd) * .8 for q, qd, _ in picked):
             continue
         picked = [x for x in picked if not (pl.startswith(x[0].lower().rstrip("\\") + "\\") and abs(dd) >= abs(x[1]) * .8)] + [[p, dd, df]]
@@ -578,7 +578,7 @@ def compare():
             "dfiles": cur["files"] - prev["files"], "changes": picked, "newbig": newbig[:12], "history": hist}
 
 
-# ---------------- acciones sobre archivos ----------------
+# ---------------- file actions ----------------
 def _protected(path):
     p = os.path.normcase(os.path.abspath(path))
     win = os.path.normcase(os.environ.get("SystemRoot", r"C:\Windows"))
@@ -589,21 +589,21 @@ def _protected(path):
     roots.append(app)
     for r in roots:
         if p == r or p.startswith(r + os.sep):
-            return "Está dentro de una carpeta que StellarHub no toca."
+            return "It's inside a folder StellarHub never touches."
     for pf in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramW6432")):
         if pf and (p == os.path.normcase(pf) or os.path.dirname(p) == os.path.normcase(pf)):
-            return "Es una carpeta de programas: desinstálalo desde Program Remover."
+            return "It's a program folder: uninstall it from Program Remover."
     if os.path.basename(p) in SYS_NAMES:
-        return "Es un archivo de Windows (memoria virtual o hibernación)."
+        return "It's a Windows file (virtual memory or hibernation)."
     drive, rest = os.path.splitdrive(p)
     if rest in ("", "\\"):
-        return "Es la raíz de una unidad."
+        return "It's the root of a drive."
     try:
         from .removal import paths as rp
         home = os.path.normcase(os.path.expanduser("~"))
         if p in (home, os.path.normcase(rp.kf("Documents") or ""), os.path.normcase(rp.kf("Desktop") or ""),
                  os.path.normcase(rp.kf("Downloads") or "")):
-            return "Es una carpeta principal de tu perfil."
+            return "It's one of the main folders of your profile."
     except Exception:
         pass
     return None
@@ -632,13 +632,13 @@ class _SHFILEOPSTRUCTW(ctypes.Structure):
 
 
 def trash(path):
-    """Envía a la papelera de Windows (se puede restaurar). Nunca dentro de las zonas protegidas."""
+    """Sends to the Windows Recycle Bin (can be restored). Never inside protected areas."""
     path = os.path.abspath(path)
     why = _protected(path)
     if why:
         return {"ok": False, "error": why}
     if not os.path.exists(path):
-        return {"ok": False, "error": "Ya no existe."}
+        return {"ok": False, "error": "It no longer exists."}
     size = 0
     try:
         size = os.path.getsize(path) if os.path.isfile(path) else 0
@@ -650,7 +650,7 @@ def trash(path):
     op.fFlags = 0x0040 | 0x0010 | 0x0004 | 0x0400  # ALLOWUNDO | NOCONFIRMATION | SILENT | NOERRORUI
     r = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
     if r != 0 or op.fAnyOperationsAborted or os.path.exists(path):
-        return {"ok": False, "error": "Windows no pudo moverlo a la papelera (¿está abierto o necesita permisos de administrador?)."}
+        return {"ok": False, "error": "Windows couldn't move it to the Recycle Bin (is it open, or does it need admin permissions?)."}
     s = _cur["scan"]
     if s is not None:
         _forget(s, path)
@@ -658,7 +658,7 @@ def trash(path):
 
 
 def _forget(s, path):
-    """Quita del análisis lo enviado a la papelera, para que las vistas no lo sigan mostrando."""
+    """Removes what was sent to the Recycle Bin from the scan, so the views stop showing it."""
     pl = os.path.normcase(path)
     for fid, (d, ent) in list(s.fidx.items()):
         if os.path.normcase(os.path.join(_path(d), ent[1])) == pl:
@@ -678,7 +678,7 @@ def _forget(s, path):
 
 
 def restore(path):
-    """Saca de la papelera lo último borrado con esa ruta original y lo devuelve a su sitio."""
+    """Takes the latest item deleted from that original path out of the Recycle Bin and puts it back."""
     path = os.path.abspath(path)
     drive = os.path.splitdrive(path)[0] or "C:"
     rb = drive + "\\$Recycle.Bin"
@@ -710,9 +710,9 @@ def restore(path):
     except OSError:
         pass
     if not best:
-        return {"ok": False, "error": "No está en la papelera. Puedes buscarlo en la Papelera de reciclaje de Windows."}
+        return {"ok": False, "error": "It's not in the Recycle Bin. You can look for it in the Windows Recycle Bin."}
     if os.path.exists(path):
-        return {"ok": False, "error": "Ya hay otro archivo con ese nombre en su sitio."}
+        return {"ok": False, "error": "There's already another file with that name in its place."}
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         os.replace(best[1], path)
@@ -721,5 +721,5 @@ def restore(path):
         except OSError:
             pass
     except OSError:
-        return {"ok": False, "error": "No se pudo restaurar desde aquí: ábrelo desde la Papelera de reciclaje de Windows."}
+        return {"ok": False, "error": "Couldn't restore it from here: open it from the Windows Recycle Bin."}
     return {"ok": True}

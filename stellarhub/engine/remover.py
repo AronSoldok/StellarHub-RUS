@@ -1,8 +1,8 @@
-"""Program Remover: el motor real (heredado de MiniRevo, en stellarhub/engine/removal) visto desde la interfaz.
+"""Program Remover: the real engine (inherited from MiniRevo, in stellarhub/engine/removal) as seen from the UI.
 
-Llamadas rápidas (EXPORTS) y tareas largas (JOBS, reciben `job`). Las tareas avisan de su avance con
-job.progress(pct, texto, **datos); los datos van en el mensaje 'job' de la interfaz.
-Nada de esto borra sin que la interfaz lo pida explícitamente (desinstalar, eliminar restos, vaciar).
+Quick calls (EXPORTS) and long tasks (JOBS, which receive `job`). Tasks report progress with
+job.progress(pct, text, **data); the data travels in the UI's 'job' message.
+Nothing here deletes anything unless the UI explicitly asks for it (uninstall, remove leftovers, empty).
 """
 import csv
 import ctypes
@@ -33,12 +33,12 @@ UI_FIELDS = ("id", "name", "version", "publisher", "location", "size", "date", "
 
 _progs = {}
 _progs_lock = threading.Lock()
-_scans = {}              # clave -> {"program": p, "items": [...]}
+_scans = {}              # key -> {"program": p, "items": [...]}
 _migrated = False
 
 
 class _Cancel:
-    """El motor de MiniRevo espera un threading.Event; aquí la cancelación vive en el job."""
+    """The removal engine expects a threading.Event; here cancellation lives in the job."""
     def __init__(self, job):
         self.job = job
 
@@ -64,11 +64,11 @@ def _get(pid):
         p = _progs.get(pid)
     if not p:
         if not _progs:
-            programs_list()  # la lista se perdió (p. ej. tras recargar): se rehace
+            programs_list()  # the list was lost (e.g. after a reload): rebuild it
             with _progs_lock:
                 p = _progs.get(pid)
     if not p:
-        raise KeyError("Programa no encontrado; actualiza la lista")
+        raise KeyError("Program not found; refresh the list")
     return p
 
 
@@ -79,9 +79,9 @@ def _progress(job, **extra):
     return cb
 
 
-# ------------------------------------------------------------ arranque y ajustes
+# ------------------------------------------------------------ startup and settings
 def _migrate():
-    """Una sola vez: lo que había guardado MiniRevo (cuarentena, historial, rastreos, cachés) pasa a StellarHub."""
+    """Once only: what MiniRevo had saved (quarantine, history, traces, caches) moves to StellarHub."""
     global _migrated
     if _migrated:
         return
@@ -104,7 +104,7 @@ def _migrate():
         with open(mark, "w", encoding="utf-8") as fh:
             fh.write(time.strftime("%Y-%m-%d %H:%M:%S"))
     except OSError as e:
-        print("remover: migración incompleta:", e)
+        print("remover: migration incomplete:", e)
 
 
 def init():
@@ -122,9 +122,9 @@ def set_settings(changes):
     return settings.save(changes or {})
 
 
-# ------------------------------------------------------------ programas
+# ------------------------------------------------------------ programs
 def programs_list(fresh=False):
-    """Win32 al momento + Tienda de la caché; los iconos que estén en caché van incluidos."""
+    """Win32 right away + Store from the cache; icons that are already cached are included."""
     _migrate()
     win = _pm.get_win32_programs()
     store = _pm.cached_store_apps() if settings.load().get("show_store", True) else []
@@ -146,12 +146,12 @@ def programs_list(fresh=False):
 
 
 def programs(fresh=False):
-    """Nombre público para la interfaz: remover.programs()."""
+    """Public name for the UI: remover.programs()."""
     return programs_list(fresh)
 
 
 def icons(ids):
-    """Iconos reales (data URI PNG) de los programas pedidos; extrae los que no estén en caché."""
+    """Real icons (PNG data URI) of the requested programs; extracts the ones not yet cached."""
     out = {}
     for pid in ids or []:
         with _progs_lock:
@@ -164,11 +164,11 @@ def icons(ids):
 
 
 def background(job):
-    """Después de pintar la lista: iconos que faltan, apps de la Tienda actualizadas y tamaños reales.
-    Todo llega a la interfaz por lotes en job.progress(..., icons=..., sizes=..., store=...)."""
+    """After the list is drawn: missing icons, refreshed Store apps and real sizes.
+    Everything reaches the UI in batches through job.progress(..., icons=..., sizes=..., store=...)."""
     if not _progs:
         programs_list()
-    # 1. iconos
+    # 1. icons
     missing = [p for p in _all() if not _icons.get_icon(p, extract=False)]
     batch = {}
     for n, p in enumerate(missing):
@@ -182,7 +182,7 @@ def background(job):
     if batch:
         job.progress(.3, "Iconos", force=True, icons=batch, sizes={}, store=None)
     threading.Thread(target=index.warm, daemon=True, name="index-warm").start()
-    # 2. Tienda
+    # 2. Store
     if settings.load().get("show_store", True):
         job.check()
         store = _pm.get_store_apps()
@@ -203,8 +203,8 @@ def background(job):
                     if ic:
                         sb[p["id"]] = ic
             if sb:
-                job.progress(.5, "Iconos de la Tienda", force=True, icons=sb, sizes={}, store=None)
-    # 3. tamaños reales en disco
+                job.progress(.5, "Store icons", force=True, icons=sb, sizes={}, store=None)
+    # 3. real sizes on disk
     from concurrent.futures import ThreadPoolExecutor, as_completed
     progs = _all()
     sizes, last, done = {}, time.time(), 0
@@ -223,11 +223,11 @@ def background(job):
                 p["size"] = s
                 sizes[p["id"]] = s
             if sizes and time.time() - last > 0.3:
-                job.progress(.5 + .5 * done / max(1, len(progs)), "Tamaños", force=True, icons={}, sizes=sizes, store=None)
+                job.progress(.5 + .5 * done / max(1, len(progs)), "Sizes", force=True, icons={}, sizes=sizes, store=None)
                 sizes, last = {}, time.time()
     _pm.save_size_cache()
     if sizes:
-        job.progress(1, "Tamaños", force=True, icons={}, sizes=sizes, store=None)
+        job.progress(1, "Sizes", force=True, icons={}, sizes=sizes, store=None)
     return True
 
 
@@ -239,7 +239,7 @@ def details(pid):
             "uninstall_string": p.get("uninstall", ""), "quiet_string": p.get("quiet", "")}
 
 
-# ------------------------------------------------------------ restos
+# ------------------------------------------------------------ leftovers
 def _scan_into(key, p, level, job, still=None, base=0.0, span=1.0, step=None):
     def prog(frac, label=""):
         job.check()
@@ -252,7 +252,7 @@ def _scan_into(key, p, level, job, still=None, base=0.0, span=1.0, step=None):
 
 
 def scan(job, pid, level="moderate"):
-    """Busca restos de un programa (sin tocar nada)."""
+    """Look for a program's leftovers (without touching anything)."""
     return _scan_into(pid, _get(pid), level, job)
 
 
@@ -262,10 +262,10 @@ def forget_scan(key):
 
 
 def remove(job, scan_key, item_ids):
-    """Elimina los restos elegidos de un escaneo. Por defecto van a la cuarentena (se pueden restaurar)."""
+    """Remove the chosen leftovers from a scan. By default they go to the quarantine (they can be restored)."""
     sc = _scans.get(scan_key)
     if not sc:
-        raise KeyError("El escaneo caducó; vuelve a escanear")
+        raise KeyError("The scan has expired; scan again")
     wanted = set(item_ids or [])
     items = [i for i in sc["items"] if i["id"] in wanted and not i.get("blocked")]
     s = settings.load()
@@ -281,14 +281,14 @@ def remove(job, scan_key, item_ids):
     return res
 
 
-# ------------------------------------------------------------ desinstalación
+# ------------------------------------------------------------ uninstall
 def _step(job, step, status, detail=""):
     job.progress(None, detail or status, force=True, step=step, status=status, detail=detail)
 
 
 def uninstall(job, pid, opts=None):
-    """Punto de restauración -> cerrar el programa -> desinstalador oficial (esperando a todos sus procesos)
-    -> escaneo de restos. Los restos NO se borran aquí: la interfaz los muestra y el usuario elige."""
+    """Restore point -> close the program -> official uninstaller (waiting for all its processes)
+    -> leftover scan. Leftovers are NOT deleted here: the UI shows them and the user chooses."""
     opts = opts or {}
     p = _get(pid)
     mode = opts.get("mode", "normal")  # normal | quiet | forced
@@ -296,13 +296,13 @@ def uninstall(job, pid, opts=None):
     out = {"program": _ui(p), "mode": mode}
     prot = p.get("protected") or {}
     if prot.get("blocked"):
-        raise PermissionError("Este componente es esencial para Windows y no se puede desinstalar")
+        raise PermissionError("This component is essential to Windows and cannot be uninstalled")
     if mode == "forced" and prot.get("no_force"):
-        raise PermissionError("Por seguridad, este programa solo se puede quitar con su desinstalador oficial")
+        raise PermissionError("For safety, this program can only be removed with its official uninstaller")
     if opts.get("restore_point", True) and p.get("source") != "store":
         _step(job, "restore", "running")
         ok, msg = system.create_restore_point(f"StellarHub: {p['name']}") if system.is_admin() else (
-            False, "Hacen falta permisos de administrador")
+            False, "Administrator permissions are needed")
         _step(job, "restore", "done" if ok else "warn", "" if ok else (msg or "")[-200:])
         out["restore_point"] = ok
     else:
@@ -315,13 +315,13 @@ def uninstall(job, pid, opts=None):
     if mode != "forced":
         _step(job, "uninstall", "running")
         r = uninstaller.uninstall(p, quiet=(mode == "quiet"), cancel=_Cancel(job),
-                                  on_tick=lambda s, n: _step(job, "uninstall", "running", f"{int(s)} s, {n} proceso(s)"))
+                                  on_tick=lambda s, n: _step(job, "uninstall", "running", f"{int(s)} s, {n} process(es)"))
         out["uninstall"] = r
         if r.get("cancelled"):
-            _step(job, "uninstall", "warn", "Cancelado")
+            _step(job, "uninstall", "warn", "Cancelled")
             return {**out, "cancelled": True}
         _step(job, "uninstall", "done" if r.get("ok") else "warn",
-              "" if r.get("ok") else ("El programa sigue registrado" if r.get("still_registered") else r.get("error", "")))
+              "" if r.get("ok") else ("The program is still registered" if r.get("still_registered") else r.get("error", "")))
         settings.log("uninstall", p["name"], {"ok": r.get("ok"), "seconds": r.get("seconds"), "mode": mode})
     else:
         _step(job, "uninstall", "skipped")
@@ -329,7 +329,7 @@ def uninstall(job, pid, opts=None):
     _step(job, "scan", "running")
     still = uninstaller.still_registered(p) if mode != "forced" else False
     res = _scan_into(pid, p, level, job, still=still, step="scan")
-    _step(job, "scan", "done", f"{len(res['items'])} elementos")
+    _step(job, "scan", "done", f"{len(res['items'])} items")
     out["scan"] = res
     out["still_registered"] = still
     return out
@@ -340,7 +340,7 @@ def batch_uninstall(job, pids, opts=None):
     level = opts.get("level", "safe")
     if opts.get("restore_point", True) and system.is_admin():
         _step(job, "restore", "running")
-        ok, msg = system.create_restore_point(f"StellarHub: {len(pids)} programas")
+        ok, msg = system.create_restore_point(f"StellarHub: {len(pids)} programs")
         _step(job, "restore", "done" if ok else "warn", "" if ok else (msg or "")[-200:])
     results = []
     for n, pid in enumerate(pids):
@@ -351,7 +351,7 @@ def batch_uninstall(job, pids, opts=None):
         entry = {"program": _ui(p)}
         try:
             if (p.get("protected") or {}).get("blocked"):
-                raise PermissionError("Componente esencial de Windows")
+                raise PermissionError("Essential Windows component")
             uninstaller.close_processes(p)
             quiet = bool(opts.get("quiet", True)) and p.get("can_quiet")
             r = uninstaller.uninstall(p, quiet=quiet, cancel=_Cancel(job))
@@ -371,14 +371,14 @@ def batch_uninstall(job, pids, opts=None):
     return {"results": results}
 
 
-# ------------------------------------------------------------ instalación vigilada
+# ------------------------------------------------------------ watched install
 def monitor_start(job, name):
-    job.progress(.1, "Tomando la foto inicial", force=True)
+    job.progress(.1, "Taking the initial snapshot", force=True)
     return monitor.start(name)
 
 
 def monitor_stop(job, mid):
-    job.progress(.1, "Comparando las fotos", force=True)
+    job.progress(.1, "Comparing the snapshots", force=True)
     r = monitor.stop(mid)
     settings.log("watch", (r or {}).get("name") if isinstance(r, dict) else str(mid), {})
     return r
@@ -409,7 +409,7 @@ def trace_scan(job, mid):
             "total_size": sum(i.get("size", 0) for i in items if not i["blocked"])}
 
 
-# ------------------------------------------------------------ cuarentena e historial
+# ------------------------------------------------------------ quarantine and history
 def quarantine_list():
     return quarantine.sessions()
 
@@ -431,7 +431,7 @@ def quarantine_empty():
     for s in quarantine.sessions():
         quarantine.delete_session(s["id"])
         n += s.get("count", 0)
-    settings.log("empty", "Cuarentena vaciada", {"items": n})
+    settings.log("empty", "Quarantine emptied", {"items": n})
     return n
 
 
@@ -444,12 +444,12 @@ def clear_history():
     return True
 
 
-# ------------------------------------------------------------ modo cazador
+# ------------------------------------------------------------ hunter mode
 _u32 = ctypes.windll.user32
 
 
 def hunter_window(job):
-    """Minimiza StellarHub, cuenta 3 s y mira qué ventana queda bajo el cursor."""
+    """Minimize StellarHub, count 3 s and see which window is under the cursor."""
     me = _u32.GetForegroundWindow()
     if me:
         _u32.ShowWindow(me, 6)  # SW_MINIMIZE
@@ -481,7 +481,7 @@ class _OFN(ctypes.Structure):
 
 
 def _file_dialog(save, title, filt, default="", ext=""):
-    """Diálogo nativo de Windows (abrir o guardar) sin depender de la ventana de pywebview."""
+    """Native Windows dialog (open or save) without depending on the pywebview window."""
     buf = ctypes.create_unicode_buffer(default, 1024)
     ofn = _OFN()
     ofn.lStructSize = ctypes.sizeof(_OFN)
@@ -497,8 +497,8 @@ def _file_dialog(save, title, filt, default="", ext=""):
 
 
 def hunter_file():
-    path = _file_dialog(False, "Elige un programa o acceso directo",
-                        "Programas y accesos (*.exe;*.lnk;*.url)\0*.exe;*.lnk;*.url\0Todos (*.*)\0*.*\0\0")
+    path = _file_dialog(False, "Choose a program or shortcut",
+                        "Programs and shortcuts (*.exe;*.lnk;*.url)\0*.exe;*.lnk;*.url\0All files (*.*)\0*.*\0\0")
     if not path:
         return None
     if not _progs:
@@ -507,7 +507,7 @@ def hunter_file():
     return {"found": bool(p), "info": {"path": hunter.resolve_target(path)}, "program": _ui(p) if p else None}
 
 
-# ------------------------------------------------------------ utilidades
+# ------------------------------------------------------------ helpers
 def open_path(path):
     if path and os.path.exists(path):
         subprocess.Popen(["explorer", "/select,", path] if os.path.isfile(path) else ["explorer", path])
@@ -539,15 +539,15 @@ def search_web(name):
 
 
 def export_programs():
-    path = _file_dialog(True, "Guardar la lista de programas", "CSV (*.csv)\0*.csv\0\0",
-                        default="programas.csv", ext="csv")
+    path = _file_dialog(True, "Save the program list", "CSV (*.csv)\0*.csv\0\0",
+                        default="programs.csv", ext="csv")
     if not path:
         return None
     if not _progs:
         programs_list()
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f, delimiter=";")
-        w.writerow(["Nombre", "Versión", "Fabricante", "Tamaño (MB)", "Instalado", "Tipo", "Carpeta"])
+        w.writerow(["Name", "Version", "Publisher", "Size (MB)", "Installed", "Type", "Folder"])
         for p in sorted(_all(), key=lambda p: p["name"].lower()):
             w.writerow([p["name"], p.get("version"), p.get("publisher"), round((p.get("size") or 0) / 1048576, 1),
                         p.get("date"), p.get("kind_label"), p.get("location")])

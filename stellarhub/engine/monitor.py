@@ -1,6 +1,7 @@
-"""Live Monitor: lo que la telemetría continua no trae. Procesos por programa (con icono real), discos con SMART,
-red (adaptadores, Wi-Fi, DNS, apps con conexiones), batería (informe de powercfg) y salud (dispositivos con error y
-eventos críticos del registro System). Todo de solo lectura salvo end_process y set_dns (la interfaz confirma antes)."""
+"""Live Monitor: what the continuous telemetry does not bring. Processes per program (with their real icon), disks
+with SMART, network (adapters, Wi-Fi, DNS, apps with connections), battery (powercfg report) and health (devices
+with errors and critical events from the System log). Everything is read-only except end_process and set_dns
+(the interface asks for confirmation first)."""
 import ctypes
 import os
 import re
@@ -32,17 +33,17 @@ def _admin():
         return False
 
 
-# ======================================================================================= procesos
-_desc_cache = {}     # exe -> descripción del archivo
-_icon_cache = {}     # exe -> data URI o None
-_static = {}         # pid -> (name, exe): no cambia mientras el proceso vive
-ICON_BUDGET = 0.6    # segundos máximos sacando iconos por llamada (el resto llega en las siguientes)
+# ======================================================================================= processes
+_desc_cache = {}     # exe -> file description
+_icon_cache = {}     # exe -> data URI or None
+_static = {}         # pid -> (name, exe): does not change while the process lives
+ICON_BUDGET = 0.6    # max seconds spent extracting icons per call (the rest arrive in the next calls)
 SYS_DIRS = (os.environ.get("SystemRoot", r"C:\Windows").lower(),)
 OWN = os.getpid()
 
 
 def _file_desc(path):
-    """FileDescription del .exe (lo que enseña el Administrador de tareas)."""
+    """FileDescription of the .exe (what Task Manager shows)."""
     if path in _desc_cache:
         return _desc_cache[path]
     desc = None
@@ -78,8 +79,8 @@ def _icon(exe):
 
 
 class _PdhArray:
-    r"""Lee contadores de instancias múltiples (\Process(*)\..., \GPU Engine(*)\...) en UNA sola consulta.
-    La consulta queda abierta entre llamadas: los contadores de velocidad se calculan contra la lectura anterior."""
+    r"""Reads multi-instance counters (\Process(*)\..., \GPU Engine(*)\...) in ONE single query.
+    The query stays open between calls: rate counters are computed against the previous reading."""
 
     class _VAL(ctypes.Structure):
         _fields_ = [("CStatus", wintypes.DWORD), ("dbl", ctypes.c_double)]
@@ -105,7 +106,7 @@ class _PdhArray:
         return self.ok and self.pdh.PdhCollectQueryData(self.q) == 0
 
     def array(self, key):
-        """Lista de (instancia, valor) del contador."""
+        """List of (instance, value) for the counter."""
         h = self.c.get(key)
         if h is None:
             return []
@@ -131,9 +132,9 @@ PDH_PATHS = {"pid": r"\Process(*)\ID Process", "cpu": r"\Process(*)\% Processor 
 
 
 def processes(known=None):
-    """Procesos agrupados por programa (como el Administrador de tareas), leídos de una vez con los contadores de
-    rendimiento de Windows: CPU en % del total, RAM privada en MB, disco en MB/s, GPU en %, red = conexiones abiertas.
-    El icono solo se manda para los programas que la interfaz aún no conoce (`known`)."""
+    """Processes grouped by program (like Task Manager), read in one go with Windows performance counters:
+    CPU in % of the total, private RAM in MB, disk in MB/s, GPU in %, network = open connections.
+    The icon is only sent for programs the interface does not know yet (`known`)."""
     global _pdh
     known = set(known or [])
     with _lock:
@@ -141,10 +142,10 @@ def processes(known=None):
             _pdh = _PdhArray(PDH_PATHS)
             time.sleep(0.25)
         if not _pdh.collect():
-            return {"list": [], "total": 0, "gpuPerProcess": False, "admin": _admin(), "error": "contadores no disponibles"}
+            return {"list": [], "total": 0, "gpuPerProcess": False, "admin": _admin(), "error": "counters not available"}
         ncpu = psutil.cpu_count() or 1
-        # OJO: los procesos homónimos (svchost, chrome...) vienen con el MISMO nombre de instancia, sin "#n".
-        # Las listas de todos los contadores van en el mismo orden: se emparejan por posición, no por nombre.
+        # NOTE: processes with the same name (svchost, chrome...) come with the SAME instance name, without "#n".
+        # The lists of all counters come in the same order: they are paired by position, not by name.
         pid_arr = _pdh.array("pid")
         inst = [(name, int(v)) for name, v in pid_arr]
         vals = {}
@@ -152,7 +153,7 @@ def processes(known=None):
             arr = _pdh.array(k)
             if len(arr) == len(pid_arr) and all(a[0] == b[0] for a, b in zip(arr, pid_arr)):
                 vals[k] = {pid: arr[i][1] for i, (_, pid) in enumerate(inst)}
-            else:  # orden distinto (raro): solo los de nombre único
+            else:  # different order (rare): only the ones with a unique name
                 uniq = {}
                 for n, pid in inst:
                     uniq[n] = None if n in uniq else pid
@@ -210,7 +211,7 @@ def processes(known=None):
                 if not g["path"]:
                     g["icon"] = None
                 elif g["path"] in _icon_cache or time.monotonic() - t_icons < ICON_BUDGET:
-                    g["icon"] = _icon(g["path"])  # si no hay tiempo, no se manda y la interfaz lo vuelve a pedir
+                    g["icon"] = _icon(g["path"])  # if there is no time left it is not sent and the interface asks again
             if OWN in g["pids"]:
                 g["own"] = True
             out.append(g)
@@ -218,7 +219,7 @@ def processes(known=None):
 
 
 def end_process(key):
-    """Finaliza todos los procesos de un programa. Se niega con los de Windows y con StellarHub."""
+    """Ends every process of a program. Refuses with Windows processes and with StellarHub itself."""
     key = str(key).lower()
     killed, denied = 0, 0
     for p in psutil.process_iter(["pid", "name", "exe"]):
@@ -243,7 +244,7 @@ def open_location(path):
     return False
 
 
-# ======================================================================================= memoria y GPU
+# ======================================================================================= memory and GPU
 def memory_info():
     class PI(ctypes.Structure):
         _fields_ = [("cb", wintypes.DWORD), ("CommitTotal", ctypes.c_size_t), ("CommitLimit", ctypes.c_size_t),
@@ -269,7 +270,7 @@ def memory_info():
 
 
 def gpu_info():
-    """Ficha de la GPU NVIDIA (si hay) con nvidia-smi."""
+    """Spec sheet of the NVIDIA GPU (if there is one) from nvidia-smi."""
     q = "name,driver_version,memory.total,power.limit,clocks.max.graphics,temperature.gpu.tlimit,pcie.link.gen.max,pcie.link.width.max"
     try:
         out = subprocess.run(["nvidia-smi", f"--query-gpu={q}", "--format=csv,noheader,nounits"], capture_output=True,
@@ -285,9 +286,9 @@ def gpu_info():
             "tlimitMargin": num(v[5]), "pcie": f"PCIe {v[6]}.0 ×{v[7]}" if num(v[6]) and num(v[7]) else None}
 
 
-# ======================================================================================= discos
+# ======================================================================================= disks
 def disks():
-    """Discos físicos (con SMART si se es administrador) y particiones con su espacio."""
+    """Physical disks (with SMART when running as administrator) and partitions with their space."""
     phys = ps_json(r"""
 Get-PhysicalDisk | ForEach-Object {
   $r = $null; try { $r = $_ | Get-StorageReliabilityCounter -ErrorAction Stop } catch {}
@@ -313,13 +314,13 @@ Get-Partition | Where-Object { $_.Type -ne 'Reserved' } | ForEach-Object { $v = 
     return {"physical": phys, "volumes": vols, "admin": _admin(), "trim": trim}
 
 
-# ======================================================================================= red
+# ======================================================================================= network
 def _netsh_wifi():
     try:
         raw = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, timeout=5,
                              creationflags=NO_WINDOW).stdout
         try:
-            out = raw.decode("utf-8")  # netsh escribe UTF-8 aunque la consola sea cp850
+            out = raw.decode("utf-8")  # netsh writes UTF-8 even when the console is cp850
         except UnicodeDecodeError:
             out = raw.decode("cp850", "replace")
     except Exception:
@@ -331,15 +332,16 @@ def _netsh_wifi():
         k, _, v = line.partition(":")
         d[k.strip().lower()] = v.strip()
     pick = lambda *ks: next((d[k] for k in ks if k in d and d[k]), None)
+    # netsh output is localized: the keys below cover English and Spanish Windows (they are parsing data, not UI)
     ssid = pick("ssid")
     if not ssid:
         return {"connected": False, "needsLocation": "ubicaci" in out.lower() or "location" in out.lower()}
-    sig = pick("señal", "signal")
+    sig = pick("signal", "se\u00f1al")
     return {"connected": True, "ssid": ssid, "signal": int(re.sub(r"\D", "", sig)) if sig else None,
-            "band": pick("banda", "band"), "channel": pick("canal", "channel"), "radio": pick("tipo de radio", "radio type"),
-            "rx": pick("velocidad de recepción (mbps)", "velocidad de recepcion (mbps)", "receive rate (mbps)"),
-            "tx": pick("velocidad de transmisión (mbps)", "velocidad de transmision (mbps)", "transmit rate (mbps)"),
-            "auth": pick("autenticación", "autenticacion", "authentication")}
+            "band": pick("band", "banda"), "channel": pick("channel", "canal"), "radio": pick("radio type", "tipo de radio"),
+            "rx": pick("receive rate (mbps)", "velocidad de recepci\u00f3n (mbps)", "velocidad de recepcion (mbps)"),
+            "tx": pick("transmit rate (mbps)", "velocidad de transmisi\u00f3n (mbps)", "velocidad de transmision (mbps)"),
+            "auth": pick("authentication", "autenticaci\u00f3n", "autenticacion")}
 
 
 def network():
@@ -377,7 +379,7 @@ Get-NetIPConfiguration | Where-Object { $_.NetAdapter.Status -eq 'Up' } | ForEac
 
 
 def public_ip():
-    """Solo se llama cuando el usuario pulsa "mostrar"."""
+    """Only called when the user clicks "show"."""
     import urllib.request
     try:
         with urllib.request.urlopen("https://api.ipify.org", timeout=5) as r:
@@ -415,7 +417,7 @@ DNS = {"cloudflare": ("1.1.1.1", "1.0.0.1"), "google": ("8.8.8.8", "8.8.4.4")}
 
 
 def set_dns(alias, mode):
-    """Cambia el DNS IPv4 del adaptador: 'auto' (el del router, DHCP), 'cloudflare' o 'google'. Pide administrador."""
+    """Changes the adapter's IPv4 DNS: 'auto' (the router's, DHCP), 'cloudflare' or 'google'. Needs administrator."""
     if not _admin():
         return {"needAdmin": True}
     alias = str(alias)
@@ -426,21 +428,21 @@ def set_dns(alias, mode):
         cmds = [["netsh", "interface", "ipv4", "set", "dnsservers", f"name={alias}", "source=static", f"address={a}", "validate=no"],
                 ["netsh", "interface", "ipv4", "add", "dnsservers", f"name={alias}", f"address={b}", "index=2", "validate=no"]]
     else:
-        return {"ok": False, "error": "modo desconocido"}
+        return {"ok": False, "error": "unknown mode"}
     for c in cmds:
         r = subprocess.run(c, capture_output=True, timeout=15, creationflags=NO_WINDOW)
         if r.returncode != 0:
-            return {"ok": False, "error": r.stdout.decode("cp850", "replace").strip() or "netsh falló"}
+            return {"ok": False, "error": r.stdout.decode("cp850", "replace").strip() or "netsh failed"}
     subprocess.run(["ipconfig", "/flushdns"], capture_output=True, timeout=10, creationflags=NO_WINDOW)
     return {"ok": True}
 
 
-# ======================================================================================= batería
+# ======================================================================================= battery
 _bat = {"t": 0, "data": None}
 
 
 def battery_report():
-    """Informe de powercfg: capacidades, ciclos y uso de las últimas 24 h (nivel y si estaba enchufado)."""
+    """powercfg report: capacities, cycles and usage over the last 24 h (charge level and whether it was plugged in)."""
     if _bat["data"] and time.time() - _bat["t"] < 120:
         return _bat["data"]
     if psutil.sensors_battery() is None:
@@ -484,35 +486,36 @@ def battery_report():
     return data
 
 
-# ======================================================================================= salud
-CM_CODES = {1: "No está bien configurado", 3: "El driver está dañado o falta memoria", 10: "No se pudo iniciar", 12: "Faltan recursos libres",
-            14: "Hace falta reiniciar", 18: "Hay que reinstalar el driver", 19: "Configuración del registro dañada",
-            22: "Deshabilitado", 24: "No está presente o no funciona bien", 28: "No tiene driver instalado", 31: "Windows no pudo cargar el driver",
-            43: "Windows lo detuvo porque informó de un problema", 45: "Desconectado", 52: "La firma del driver no es válida"}
+# ======================================================================================= health
+CM_CODES = {1: "Not configured correctly", 3: "The driver is damaged or the system is low on memory", 10: "Could not start",
+            12: "Not enough free resources", 14: "Needs a restart", 18: "The driver needs to be reinstalled",
+            19: "Registry configuration is damaged", 22: "Disabled", 24: "Not present or not working properly",
+            28: "No driver installed", 31: "Windows could not load the driver",
+            43: "Windows stopped it because it reported a problem", 45: "Disconnected", 52: "The driver signature is not valid"}
 EVENT_HELP = {
-    ("Microsoft-Windows-Kernel-Power", 41): "El equipo se apagó sin cerrarse bien: corte de luz, batería agotada o botón de encendido mantenido.",
-    ("EventLog", 6008): "Apagado inesperado registrado al volver a arrancar.",
-    ("Microsoft-Windows-WER-SystemErrorReporting", 1001): "Hubo un pantallazo azul. El código indica qué lo causó.",
-    ("Display", 4101): "El driver de la pantalla dejó de responder y se recuperó. Si se repite, actualízalo.",
-    ("Microsoft-Windows-WHEA-Logger", 17): "Error de hardware corregido (PCI Express). Solo preocupa si aparece muchas veces.",
-    ("Microsoft-Windows-WHEA-Logger", 19): "Error de hardware corregido en el procesador.",
-    ("Microsoft-Windows-WHEA-Logger", 47): "Error de memoria corregido.",
-    ("disk", 7): "El disco tiene un bloque defectuoso. Conviene revisar su salud.",
-    ("disk", 153): "Una operación del disco tuvo que reintentarse.",
-    ("Ntfs", 55): "La estructura del sistema de archivos está dañada: conviene ejecutar chkdsk.",
-    ("Service Control Manager", 7000): "Un servicio no pudo arrancar.",
-    ("Service Control Manager", 7001): "Un servicio no arrancó porque depende de otro que falló.",
-    ("Service Control Manager", 7023): "Un servicio se detuvo con un error.",
-    ("Service Control Manager", 7031): "Un servicio se cerró de forma inesperada y Windows lo reinició.",
-    ("Service Control Manager", 7034): "Un servicio se cerró de forma inesperada.",
-    ("Microsoft-Windows-DistributedCOM", 10016): "Aviso de permisos internos de Windows. Es habitual y no afecta al uso.",
-    ("Microsoft-Windows-DistributedCOM", 10010): "Un componente de Windows tardó en responder. Normalmente no tiene efecto.",
-    ("volmgr", 161): "No se pudo crear el volcado de memoria al fallar el sistema.",
-    ("Microsoft-Windows-Kernel-Boot", 29): "Windows no pudo arrancar en el primer intento.",
-    ("Microsoft-Windows-WindowsUpdateClient", 20): "Una actualización de Windows no se pudo instalar.",
-    ("Microsoft-Windows-Time-Service", 129): "No se pudo sincronizar la hora con Internet.",
-    ("Netwtw10", 5002): "El Wi-Fi se desconectó un momento.",
-    ("rtwlane", 5002): "El Wi-Fi se desconectó un momento.",
+    ("Microsoft-Windows-Kernel-Power", 41): "The PC turned off without shutting down properly: a power cut, a drained battery or a held power button.",
+    ("EventLog", 6008): "Unexpected shutdown recorded at the next startup.",
+    ("Microsoft-Windows-WER-SystemErrorReporting", 1001): "There was a blue screen. The code tells what caused it.",
+    ("Display", 4101): "The display driver stopped responding and recovered. If it keeps happening, update it.",
+    ("Microsoft-Windows-WHEA-Logger", 17): "Corrected hardware error (PCI Express). Only a concern if it shows up often.",
+    ("Microsoft-Windows-WHEA-Logger", 19): "Corrected hardware error in the processor.",
+    ("Microsoft-Windows-WHEA-Logger", 47): "Corrected memory error.",
+    ("disk", 7): "The disk has a bad block. It is worth checking its health.",
+    ("disk", 153): "A disk operation had to be retried.",
+    ("Ntfs", 55): "The file system structure is damaged: running chkdsk is recommended.",
+    ("Service Control Manager", 7000): "A service could not start.",
+    ("Service Control Manager", 7001): "A service did not start because it depends on another one that failed.",
+    ("Service Control Manager", 7023): "A service stopped with an error.",
+    ("Service Control Manager", 7031): "A service closed unexpectedly and Windows restarted it.",
+    ("Service Control Manager", 7034): "A service closed unexpectedly.",
+    ("Microsoft-Windows-DistributedCOM", 10016): "Internal Windows permissions notice. It is common and does not affect use.",
+    ("Microsoft-Windows-DistributedCOM", 10010): "A Windows component was slow to respond. Usually harmless.",
+    ("volmgr", 161): "The memory dump could not be created when the system failed.",
+    ("Microsoft-Windows-Kernel-Boot", 29): "Windows could not start on the first attempt.",
+    ("Microsoft-Windows-WindowsUpdateClient", 20): "A Windows update could not be installed.",
+    ("Microsoft-Windows-Time-Service", 129): "The clock could not be synced with the internet.",
+    ("Netwtw10", 5002): "Wi-Fi dropped for a moment.",
+    ("rtwlane", 5002): "Wi-Fi dropped for a moment.",
 }
 
 
@@ -529,7 +532,7 @@ $fast = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manage
     if isinstance(errs, dict):
         errs = [errs]
     for e in errs:
-        e["why"] = CM_CODES.get(e.get("code"), f"Código de error {e.get('code')}")
+        e["why"] = CM_CODES.get(e.get("code"), f"Error code {e.get('code')}")
     evs = r.get("events") or []
     if isinstance(evs, dict):
         evs = [evs]

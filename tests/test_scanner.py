@@ -1,4 +1,4 @@
-"""Identidad y coincidencias del escaner (sin tocar el sistema)."""
+"""Scanner identity and matching (without touching the system)."""
 import os
 import shutil
 import tempfile
@@ -14,7 +14,7 @@ class Names(unittest.TestCase):
         self.assertEqual(strip_version("Ollama version 0.40.14"), "Ollama")
         self.assertEqual(strip_version("Microsoft 365 Apps for enterprise - en-us"), "Microsoft 365 Apps for enterprise")
         self.assertEqual(strip_version("Notepad++ (64-bit x64)"), "Notepad++")
-        self.assertEqual(strip_version("FabFilter Pro-Q 4"), "FabFilter Pro-Q 4")  # el 4 es la generacion
+        self.assertEqual(strip_version("FabFilter Pro-Q 4"), "FabFilter Pro-Q 4")  # the 4 is the generation
         self.assertEqual(strip_version("Stremio versión 5.0.26"), "Stremio")
 
     def test_product_without_vendor(self):
@@ -26,8 +26,8 @@ class Names(unittest.TestCase):
         a = {"id": "a", "name": "FabFilter Pro-C 2", "publisher": "FabFilter"}
         b = {"id": "b", "name": "FabFilter Pro-C 3", "publisher": "FabFilter"}
         ident = Identity(a, [a, b])
-        self.assertIsNone(ident.match("Pro-C", in_vendor=True))     # compartido con Pro-C 3
-        self.assertIsNotNone(ident.match("Pro-C 2", in_vendor=True))  # propio
+        self.assertIsNone(ident.match("Pro-C", in_vendor=True))     # shared with Pro-C 3
+        self.assertIsNotNone(ident.match("Pro-C 2", in_vendor=True))  # its own
 
     def test_short_generic_names_penalized(self):
         ident = Identity({"id": "a", "name": "Notepad++ (64-bit x64)", "publisher": "Notepad++ Team"})
@@ -53,7 +53,7 @@ class Locations(unittest.TestCase):
         ident = Identity({"id": "a", "name": "Foo App", "location": loc})
         self.assertTrue(ident.refs_location(f'"{loc}\\foo.exe" --tray'))
         self.assertTrue(ident.refs_location(loc))
-        self.assertFalse(ident.refs_location(loc + "Bar\\x.exe"))  # FooBar no es Foo
+        self.assertFalse(ident.refs_location(loc + "Bar\\x.exe"))  # FooBar is not Foo
 
     def test_nested_program_references_go_to_the_deepest(self):
         steam = os.path.join(self.tmp, "Steam")
@@ -63,7 +63,7 @@ class Locations(unittest.TestCase):
         g = {"id": "g", "name": "Some Game", "location": game}
         ident = Identity(s, [s, g])
         self.assertTrue(ident.refs_location(os.path.join(steam, "steam.exe")))
-        self.assertFalse(ident.refs_location(os.path.join(game, "game.exe")))  # es del juego, no de Steam
+        self.assertFalse(ident.refs_location(os.path.join(game, "game.exe")))  # it belongs to the game, not to Steam
 
     def test_vendor_install_location_is_narrowed(self):
         epic = os.path.join(self.tmp, "Epic Games")

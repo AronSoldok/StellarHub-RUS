@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es" data-theme="deep">
+<html lang="en" data-theme="deep">
 <head>
 <meta charset="utf-8">
 <title>StellarHub widget</title>
@@ -7,7 +7,7 @@
 <style>
   html,body{background:var(--void)}
   body{font-size:12.5px;cursor:default;overflow:hidden}
-  /* sin borde propio: el filo y las esquinas los dibuja Windows (evita el doble marco) */
+  /* no border of its own: Windows draws the edge and corners (avoids a double frame) */
   .w{position:fixed;inset:0;padding:10px 12px 12px;display:flex;flex-direction:column;
      background:radial-gradient(300px 140px at 100% 0%, color-mix(in oklab,var(--accent2) 10%,transparent), transparent 70%),
                 radial-gradient(240px 120px at 0% 100%, color-mix(in oklab,var(--accent) 8%,transparent), transparent 70%),var(--void)}
@@ -20,7 +20,7 @@
   .hd button:hover{background:var(--raise2);color:var(--ink)}
   .hd button svg{width:14px;height:14px}
   #rows{flex:1;min-height:0;display:grid;gap:6px}
-  /* cuadrícula y fila: casillas con nombre, valor grande y mini gráfica */
+  /* grid and row: cells with a name, a big value and a mini chart */
   .L-grid #rows{grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr}
   .L-row #rows{grid-auto-flow:column;grid-auto-columns:1fr}
   .c{position:relative;border-radius:10px;background:var(--raise);padding:7px 10px 0;display:grid;grid-template-columns:1fr auto;grid-template-rows:auto 1fr;column-gap:8px;overflow:hidden;
@@ -34,12 +34,12 @@
   .L-row .c{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}
   .L-row .c .v{text-align:left;margin-top:5px}
   .c.hot .v{color:var(--warn)}
-  /* lista */
+  /* list */
   .L-list #rows{grid-auto-rows:30px;gap:2px}
   .L-list .c{background:none;padding:0 4px;grid-template-columns:18px 1fr auto 60px;grid-template-rows:1fr;align-items:center;column-gap:8px}
   .L-list .c .n{display:contents}
   .L-list .c canvas{grid-column:auto;height:18px}
-  /* versión pequeña: barra fina, solo icono y número; los botones aparecen al pasar el ratón */
+  /* small version: a thin bar, only icon and number; the buttons appear on hover */
   .M-mini{padding:0 6px 0 12px;flex-direction:row;align-items:center;gap:10px}
   .M-mini .hd{order:2;margin:0;height:auto;gap:2px}
   .M-mini .hd .logo,.M-mini .hd>span{display:none}
@@ -51,7 +51,7 @@
   .M-mini .c .n svg{width:14px;height:14px;color:var(--accent2)}
   .M-mini .c .v{font:500 13px/1 var(--display);text-align:left;min-width:4.6em;white-space:nowrap}
   .M-mini .c .v small{font-size:10.5px}
-  /* hover de la versión pequeña: sin crecer, el número sube y aparece qué es */
+  /* small version hover: without growing, the number slides up and its name appears */
   .M-mini .c{position:relative;padding:0 8px 0 6px;height:26px;border-radius:8px;
      transition:background-color calc(180ms*var(--f))}
   .M-mini .c::before{content:"";position:absolute;inset:0;border-radius:8px;background:var(--raise2);opacity:0;transform:scale(.85);
@@ -75,9 +75,9 @@
   <div class="hd pywebview-drag-region">
     <svg class="logo" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.6"/></svg>
     <span>StellarHub</span><span class="sp pywebview-drag-region"></span>
-    <button id="sizeBtn" title="Versión pequeña"><svg class="i" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l6-6M10 14l-6 6"/></svg></button>
-    <button id="openMain" title="Abrir StellarHub"><svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
-    <button id="close" title="Cerrar el widget"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <button id="sizeBtn" title="Small version"><svg class="i" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l6-6M10 14l-6 6"/></svg></button>
+    <button id="openMain" title="Open StellarHub"><svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
+    <button id="close" title="Close the widget"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
   </div>
   <div id="rows" class="pywebview-drag-region"></div>
 </div>

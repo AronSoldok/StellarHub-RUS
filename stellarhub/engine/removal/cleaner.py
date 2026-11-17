@@ -1,6 +1,6 @@
-"""Limpiador de archivos basura. Lista cerrada de ubicaciones: nunca borra fuera de ellas.
+"""Junk file cleaner. A closed list of locations: it never deletes outside them.
 
-Solo vacia el CONTENIDO de las carpetas; nunca la carpeta en si. Los archivos en uso se saltan.
+It only empties the CONTENTS of the folders, never the folder itself. Files in use are skipped.
 """
 import ctypes
 import glob
@@ -11,10 +11,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import paths, system
 
-RECENT_GRACE = 3600  # no tocar temporales modificados en la ultima hora (instaladores en curso)
-WALK_WORKERS = 4     # hilos por categoria al recorrer carpetas
-CAT_WORKERS = 3      # categorias medidas a la vez
-DELETE_WORKERS = 6   # hilos al borrar
+RECENT_GRACE = 3600  # don't touch temp files modified in the last hour (installers still running)
+WALK_WORKERS = 4     # threads per category when walking folders
+CAT_WORKERS = 3      # categories measured at the same time
+DELETE_WORKERS = 6   # threads when deleting
 
 
 def _k(name, *rest):
@@ -26,7 +26,7 @@ def _browser(label, user_data, proc, extra=()):
     subs = ["Cache", "Code Cache", "GPUCache", "DawnCache", "DawnGraphiteCache", "DawnWebGPUCache",
             "GrShaderCache", "ShaderCache", os.path.join("Service Worker", "CacheStorage"),
             os.path.join("Service Worker", "ScriptCache")] + list(extra)
-    return {"label": label, "group": "Navegadores", "process": proc,
+    return {"label": label, "group": "Browsers", "process": proc,
             "globs": [os.path.join(user_data, prof, s) for prof in ("Default", "Profile *", "Guest Profile",
                                                                    "System Profile") for s in subs] +
                      [os.path.join(user_data, s) for s in ("ShaderCache", "GrShaderCache", "GraphiteDawnCache")]}
@@ -36,51 +36,51 @@ def categories():
     local, roam, win = paths.kf("LocalAppData") or "", paths.kf("RoamingAppData") or "", paths.kf("Windows") or ""
     pd = paths.kf("ProgramData") or ""
     c = {
-        "user_temp": {"label": "Temporales del usuario", "group": "Windows", "globs": [paths.kf("Temp")],
+        "user_temp": {"label": "User temporary files", "group": "Windows", "globs": [paths.kf("Temp")],
                       "grace": True, "default": True,
-                      "desc": "Archivos que los programas dejan en %TEMP%. Se respetan los de la última hora."},
-        "win_temp": {"label": "Temporales de Windows", "group": "Windows", "globs": [os.path.join(win, "Temp")],
+                      "desc": "Files programs leave in %TEMP%. Files from the last hour are kept."},
+        "win_temp": {"label": "Windows temporary files", "group": "Windows", "globs": [os.path.join(win, "Temp")],
                      "grace": True, "default": True, "admin": True},
-        "thumbs": {"label": "Caché de miniaturas", "group": "Windows", "default": True,
+        "thumbs": {"label": "Thumbnail cache", "group": "Windows", "default": True,
                    "files": [os.path.join(local, "Microsoft", "Windows", "Explorer", "thumbcache_*.db"),
                              os.path.join(local, "Microsoft", "Windows", "Explorer", "iconcache_*.db")],
-                   "desc": "Windows las vuelve a crear al abrir las carpetas."},
-        "dumps": {"label": "Volcados de errores e informes", "group": "Windows", "default": True,
+                   "desc": "Windows rebuilds them when you open folders."},
+        "dumps": {"label": "Crash dumps and error reports", "group": "Windows", "default": True,
                   "globs": [os.path.join(local, "CrashDumps"), os.path.join(win, "Minidump"),
                             os.path.join(pd, "Microsoft", "Windows", "WER", "ReportArchive"),
                             os.path.join(pd, "Microsoft", "Windows", "WER", "ReportQueue"),
                             os.path.join(local, "Microsoft", "Windows", "WER", "ReportArchive"),
                             os.path.join(local, "Microsoft", "Windows", "WER", "ReportQueue")],
                   "files": [os.path.join(win, "MEMORY.DMP")]},
-        "wu_cache": {"label": "Descargas de Windows Update", "group": "Windows", "default": False, "admin": True,
+        "wu_cache": {"label": "Windows Update downloads", "group": "Windows", "default": False, "admin": True,
                      "globs": [os.path.join(win, "SoftwareDistribution", "Download")],
-                     "desc": "Actualizaciones ya instaladas. Desmarcado por defecto."},
-        "do_cache": {"label": "Optimización de distribución", "group": "Windows", "default": False, "admin": True,
+                     "desc": "Updates that are already installed. Unchecked by default."},
+        "do_cache": {"label": "Delivery Optimization", "group": "Windows", "default": False, "admin": True,
                      "globs": [os.path.join(win, "ServiceProfiles", "NetworkService", "AppData", "Local",
                                             "Microsoft", "Windows", "DeliveryOptimization", "Cache")]},
         "chrome": _browser("Google Chrome", os.path.join(local, "Google", "Chrome", "User Data"), "chrome.exe"),
         "edge": _browser("Microsoft Edge", os.path.join(local, "Microsoft", "Edge", "User Data"), "msedge.exe"),
         "brave": _browser("Brave", os.path.join(local, "BraveSoftware", "Brave-Browser", "User Data"), "brave.exe"),
-        "opera": {"label": "Opera", "group": "Navegadores", "process": "opera.exe",
+        "opera": {"label": "Opera", "group": "Browsers", "process": "opera.exe",
                   "globs": [os.path.join(local, "Opera Software", "Opera Stable", "Cache"),
                             os.path.join(local, "Opera Software", "Opera GX Stable", "Cache")]},
-        "firefox": {"label": "Firefox", "group": "Navegadores", "process": "firefox.exe",
+        "firefox": {"label": "Firefox", "group": "Browsers", "process": "firefox.exe",
                     "globs": [os.path.join(local, "Mozilla", "Firefox", "Profiles", "*", "cache2"),
                               os.path.join(local, "Mozilla", "Firefox", "Profiles", "*", "startupCache")]},
-        "discord": {"label": "Discord", "group": "Aplicaciones", "process": "discord.exe",
+        "discord": {"label": "Discord", "group": "Apps", "process": "discord.exe",
                     "globs": [os.path.join(roam, "discord", s) for s in ("Cache", "Code Cache", "GPUCache")]},
-        "spotify": {"label": "Spotify", "group": "Aplicaciones", "process": "spotify.exe",
+        "spotify": {"label": "Spotify", "group": "Apps", "process": "spotify.exe",
                     "globs": [os.path.join(local, "Spotify", "Data"), os.path.join(local, "Spotify", "Browser", "Cache")]},
-        "steam_web": {"label": "Steam (navegador interno)", "group": "Aplicaciones", "process": "steamwebhelper.exe",
+        "steam_web": {"label": "Steam (built-in browser)", "group": "Apps", "process": "steamwebhelper.exe",
                       "globs": [os.path.join(local, "Steam", "htmlcache")]},
-        "nvidia": {"label": "Caché de sombreadores NVIDIA/DirectX", "group": "Aplicaciones", "default": False,
+        "nvidia": {"label": "NVIDIA/DirectX shader cache", "group": "Apps", "default": False,
                    "globs": [os.path.join(local, "NVIDIA", "DXCache"), os.path.join(local, "NVIDIA", "GLCache"),
                              os.path.join(local, "D3DSCache")],
-                   "desc": "Los juegos la regeneran; tras limpiar, la primera partida puede tardar más en cargar."},
-        "recycle": {"label": "Papelera de reciclaje", "group": "Windows", "default": True, "recycle": True},
+                   "desc": "Games rebuild it; after cleaning, the first session may take longer to load."},
+        "recycle": {"label": "Recycle Bin", "group": "Windows", "default": True, "recycle": True},
     }
     for k, v in c.items():
-        v.setdefault("default", v.get("group") != "Aplicaciones" or k in ("discord", "steam_web"))
+        v.setdefault("default", v.get("group") != "Apps" or k in ("discord", "steam_web"))
         v.setdefault("desc", "")
         v["id"] = k
     return c
@@ -98,9 +98,9 @@ def _expand(cat):
 
 
 def _list_dir(cur, grace, now, collect):
-    """Una carpeta: devuelve (subcarpetas, archivos, bytes, [(ruta, tamano)] si collect).
+    """One folder: return (subfolders, files, bytes, [(path, size)] if collect).
 
-    En Windows DirEntry.stat() sale del listado (FindNextFile): sin llamadas extra por archivo.
+    On Windows DirEntry.stat() comes from the listing (FindNextFile): no extra call per file.
     """
     subdirs, files, size, found = [], 0, 0, []
     try:
@@ -127,10 +127,10 @@ def _list_dir(cur, grace, now, collect):
 
 
 def _walk(dirs, grace, collect=False, workers=WALK_WORKERS):
-    """Recorre varias carpetas con varios hilos (scandir suelta el GIL mientras espera al disco).
+    """Walk several folders with several threads (scandir releases the GIL while waiting for the disk).
 
-    Medido en este PC, 508.000 temporales: 1 hilo 10-22 s, 4 hilos 4,9 s, 8 o mas hilos, peor.
-    Devuelve (archivos, bytes, [(ruta, tamano)] si collect).
+    Measured on a real PC, 508,000 temp files: 1 thread 10-22 s, 4 threads 4.9 s, 8 or more threads, worse.
+    Return (files, bytes, [(path, size)] if collect).
     """
     now = time.time()
     work = list(dirs)
@@ -173,10 +173,10 @@ def _walk(dirs, grace, collect=False, workers=WALK_WORKERS):
 
 
 def _remove_empty_dirs(root):
-    """Borra las subcarpetas vacias (de la mas profunda a la menos), nunca la raiz.
+    """Delete empty subfolders (deepest first), never the root.
 
-    No usa os.walk: en Windows os.walk ENTRA en los junctions y borraria carpetas vacias de fuera de
-    la categoria. Aqui un enlace o junction ni se recorre ni se borra.
+    It does not use os.walk: on Windows os.walk DOES enter junctions and would delete empty folders outside
+    the category. Here a link or junction is neither walked nor deleted.
     """
     def visit(d):
         try:
@@ -188,10 +188,10 @@ def _remove_empty_dirs(root):
                 attrs = e.stat(follow_symlinks=False).st_file_attributes
             except OSError:
                 continue
-            if attrs & 0x10 and not attrs & 0x400:   # carpeta de verdad, no enlace
+            if attrs & 0x10 and not attrs & 0x400:   # a real folder, not a link
                 visit(e.path)
                 try:
-                    os.rmdir(e.path)   # solo funciona si quedo vacia
+                    os.rmdir(e.path)   # only works if it ended up empty
                 except OSError:
                     pass
     visit(root)
@@ -233,7 +233,7 @@ def _measure(c):
 
 
 def scan(progress=None, on_item=None):
-    """Mide todas las categorias a la vez; on_item(resultado) se llama en cuanto termina cada una."""
+    """Measure every category at once; on_item(result) is called as soon as each one finishes."""
     cats = categories()
     admin = system.is_admin()
     procs = {p["name"].lower() for p in system.list_processes()}
@@ -277,7 +277,7 @@ def _delete_chunk(chunk):
 
 
 def _delete_many(found):
-    """Borra los archivos con varios hilos (os.remove suelta el GIL). Devuelve (bytes, borrados, saltados)."""
+    """Delete the files with several threads (os.remove releases the GIL). Return (bytes, deleted, skipped)."""
     if len(found) < 200:
         return _delete_chunk(found)
     n = DELETE_WORKERS
@@ -308,7 +308,7 @@ def clean(ids, progress=None):
             freed += f
             deleted += dl
             skipped += sk
-            _remove_empty_dirs(d)  # carpetas vacias (nunca la raiz de la categoria ni a traves de enlaces)
+            _remove_empty_dirs(d)  # empty folders (never the category root, never through links)
         for f in files:
             try:
                 s = os.path.getsize(f)

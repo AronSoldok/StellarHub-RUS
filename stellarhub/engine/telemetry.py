@@ -1,10 +1,10 @@
-"""Telemetría en vivo del equipo, de verdad. Un hilo mide cada `rate` segundos y entrega un dict a `push`.
+"""Real live telemetry for the PC. A thread measures every `rate` seconds and hands a dict to `push`.
 
-Fuentes: psutil (CPU por hilo, RAM, disco, red, batería), contadores de rendimiento de Windows (frecuencia real
-de la CPU), nvidia-smi (GPU NVIDIA: uso, temperatura, consumo, reloj, VRAM), WMI (batería en vatios, temperatura
-ACPI si Windows la da), netsh (señal Wi-Fi) y una conexión TCP corta para la latencia.
-Lo que Windows no da sin drivers especiales (temperatura real de la CPU en muchos portátiles, ventiladores) se
-envía como None: la interfaz muestra "—" en vez de inventarlo.
+Sources: psutil (CPU per thread, RAM, disk, network, battery), Windows performance counters (real CPU
+frequency), nvidia-smi (NVIDIA GPU: usage, temperature, power, clock, VRAM), WMI (battery watts, ACPI
+temperature if Windows provides it), netsh (Wi-Fi signal) and a short TCP connection for latency.
+Anything Windows does not provide without special drivers (real CPU temperature on many laptops, fans) is
+sent as None: the UI shows "—" instead of making it up.
 """
 import ctypes
 import re
@@ -20,7 +20,7 @@ NO_WINDOW = 0x08000000
 GB = 1024 ** 3
 
 
-# ---------- contador de rendimiento: % de rendimiento del procesador (frecuencia real) ----------
+# ---------- performance counter: % processor performance (real frequency) ----------
 class _Pdh:
     def __init__(self, path):
         self.ok = False
@@ -72,8 +72,8 @@ class Sampler:
     def __init__(self, push):
         self.push = push
         self.rate = 1.0
-        self.active = True          # ventana visible o widget abierto
-        self.gpu_wanted = True      # nvidia-smi despierta la GPU dedicada: solo cuando hace falta
+        self.active = True          # window visible or widget open
+        self.gpu_wanted = True      # nvidia-smi wakes up the dedicated GPU: only when needed
         self._stop = threading.Event()
         self._gpu = {}
         self._nv = None
@@ -82,10 +82,10 @@ class Sampler:
         self._base_mhz = self._base_clock()
         self._last_io = None
 
-    # ---------- arranque y control ----------
+    # ---------- startup and control ----------
     def start(self):
         if getattr(self, "_started", False):
-            return  # 'loaded' se dispara en cada recarga de la página: un solo muestreador
+            return  # 'loaded' fires on every page reload: a single sampler
         self._started = True
         psutil.cpu_percent(None)
         psutil.cpu_percent(None, percpu=True)
@@ -98,14 +98,14 @@ class Sampler:
 
     def set_rate(self, seconds):
         self.rate = max(0.25, min(5.0, float(seconds)))
-        self._kill_nv()  # se reabre con el nuevo intervalo
+        self._kill_nv()  # reopened with the new interval
 
     def set_active(self, active, gpu=True):
         self.active, self.gpu_wanted = bool(active), bool(gpu)
         if not (active and gpu):
             self._kill_nv()
 
-    # ---------- bucle principal ----------
+    # ---------- main loop ----------
     def _loop(self):
         while not self._stop.is_set():
             t0 = time.monotonic()
@@ -113,7 +113,7 @@ class Sampler:
                 try:
                     self.push(self.sample())
                 except Exception as e:
-                    print("telemetría:", e)
+                    print("telemetry:", e)
             wait = self.rate if self.active else 2.0
             self._stop.wait(max(0.05, wait - (time.monotonic() - t0)))
 
@@ -165,7 +165,7 @@ class Sampler:
             "uptime": int(time.time() - psutil.boot_time()), "ts": time.time(),
         }
 
-    # ---------- GPU NVIDIA (nvidia-smi en bucle) ----------
+    # ---------- NVIDIA GPU (nvidia-smi in loop mode) ----------
     def _ensure_nv(self):
         if self._nv and self._nv.poll() is None:
             return
@@ -201,7 +201,7 @@ class Sampler:
                 pass
         self._nv = None
 
-    # ---------- datos lentos: cada pocos segundos ----------
+    # ---------- slow data: every few seconds ----------
     def _slow_loop(self):
         n = 0
         while not self._stop.is_set():
@@ -225,9 +225,9 @@ class Sampler:
             self._slow["ping"] = None
 
     def _wmi(self, ns, query):
-        """Consulta WMI dentro del proceso (pythonnet + System.Management): sin abrir PowerShell."""
-        # OJO: nunca list()/len() sobre la colección: si WMI deniega el acceso, la excepción .NET salta dentro
-        # de una ranura de pythonnet y tumba el proceso entero. Recorriendo el enumerador a mano es capturable.
+        """Queries WMI in-process (pythonnet + System.Management): without opening PowerShell."""
+        # CAREFUL: never list()/len() on the collection: if WMI denies access, the .NET exception fires inside
+        # a pythonnet slot and takes down the whole process. Walking the enumerator by hand makes it catchable.
         out = []
         try:
             import clr  # noqa: F401
@@ -265,7 +265,7 @@ class Sampler:
 
     def _cpu_temp(self):
         if not ctypes.windll.shell32.IsUserAnAdmin():
-            self._slow["cpuTemp"] = None  # Windows solo la da a administradores
+            self._slow["cpuTemp"] = None  # Windows only provides it to administrators
             return
         zs = self._wmi(r"root\WMI", "SELECT CurrentTemperature FROM MSAcpi_ThermalZoneTemperature")
         temps = []
@@ -283,7 +283,7 @@ class Sampler:
             raw = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, timeout=4,
                                  creationflags=NO_WINDOW).stdout
             try:
-                out = raw.decode("utf-8")  # netsh escribe UTF-8 en Windows 11
+                out = raw.decode("utf-8")  # netsh writes UTF-8 on Windows 11
             except UnicodeDecodeError:
                 out = raw.decode("cp850", "replace")
             m = re.search(r"(?:Se.al|Signal)\s*:\s*(\d+)\s*%", out)

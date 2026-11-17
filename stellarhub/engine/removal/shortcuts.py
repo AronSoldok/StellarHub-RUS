@@ -1,4 +1,4 @@
-"""Lector minimo de accesos directos .lnk (formato MS-SHLLINK) y .url, sin COM."""
+"""Minimal reader for .lnk (MS-SHLLINK format) and .url shortcuts, without COM."""
 import configparser
 import os
 import struct
@@ -19,7 +19,7 @@ def _cstr(data, off, wide=False):
 
 
 def read_lnk(path):
-    """Devuelve dict {target, args, workdir, icon, msi} (claves vacias si no hay)."""
+    """Return dict {target, args, workdir, icon, msi} (empty values when missing)."""
     out = {"target": "", "args": "", "workdir": "", "icon": "", "msi": False}
     try:
         with open(path, "rb") as f:
@@ -59,7 +59,7 @@ def read_lnk(path):
                 off += size
                 if key:
                     out[key] = raw.decode("utf-16-le" if wide else "mbcs", "replace").split("\0", 1)[0]
-        # bloques extra: EnvironmentVariableDataBlock (destino con %variables%)
+        # extra blocks: EnvironmentVariableDataBlock (target with %variables%)
         while off + 8 <= len(data):
             bsize, sig = struct.unpack_from("<II", data, off)
             if bsize < 8:
@@ -74,7 +74,7 @@ def read_lnk(path):
     except (struct.error, IndexError):
         pass
     if not out["target"] and out["icon"]:
-        out["target"] = out["icon"].split(",")[0]  # ultimo recurso: el icono suele ser el .exe
+        out["target"] = out["icon"].split(",")[0]  # last resort: the icon is usually the .exe
         out["from_icon"] = True
     out.pop("rel", None)
     for k in ("target", "workdir", "icon"):

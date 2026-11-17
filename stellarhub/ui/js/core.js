@@ -1,5 +1,5 @@
-/* StellarHub · núcleo: utilidades, motor de animación, iconos, datos del equipo y registro de módulos.
-   Todo cuelga de window.SH. Ver docs/CONTRATO_UI.md para cómo se escriben módulos y vistas de inicio. */
+/* StellarHub · core: utilities, animation engine, icons, PC data and module registry.
+   Everything hangs off window.SH. See docs/UI_CONTRACT.md for how modules and Home views are written. */
 'use strict';
 (() => {
 const $ = (s, r = document) => r.querySelector(s);
@@ -7,11 +7,11 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const ROOT = document.documentElement;
 const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
 
-/* ---------- estado y ajustes ---------- */
+/* ---------- state and settings ---------- */
 const DEFAULTS = {
   theme: 'deep', accent: '#FF7A66', accent2: '#9ED6FF', zoom: 'auto', intensity: reduceMQ.matches ? 'min' : 'max',
   stars: true, camera: true, parallax: true, homeVariant: 'bento', adminHints: true, trayOnClose: true,
-  startWithWindows: false, autoUpdate: true, language: 'es', density: 'comfortable', sounds: false,
+  startWithWindows: false, autoUpdate: true, language: 'en', density: 'comfortable', sounds: false,
   widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetOnStart: false, widgetLayout: 'grid',
   starCount: 400, starSpeed: 1.5, starBright: 1.2, widgetMode: 'full', widgetWasOpen: false, alwaysAdmin: false, twinkle: true, shooting: true, nebula: 1, animSpeed: 1, panelAlpha: 1, corners: 'mid',
   countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', lastView: 'home',
@@ -21,12 +21,12 @@ const FACT = { max: 1, normal: .72, min: .3 };
 const ORBIT = { max: 1, normal: .55, min: 0 };
 const motion = () => FACT[state.settings.intensity] ?? 1;
 
-/* eventos simples entre partes de la interfaz */
+/* simple events between parts of the UI */
 const bus = {};
 const on = (ev, fn) => { (bus[ev] ||= new Set()).add(fn); return () => bus[ev].delete(fn); };
 const emit = (ev, data) => (bus[ev] || []).forEach(fn => { try { fn(data); } catch (e) { console.error(e); } });
 
-/* puente con Python (window.pywebview.api); fuera de la app usa localStorage */
+/* bridge to Python (window.pywebview.api); outside the app it falls back to localStorage */
 const api = () => (window.pywebview && window.pywebview.api) || null;
 const apiReady = new Promise(res => {
   if (api()) return res(api());
@@ -38,19 +38,19 @@ async function call(name, ...args) {
   if (!a || typeof a[name] !== 'function') return undefined;
   try { return await a[name](...args); } catch (e) { console.error(name, e); return undefined; }
 }
-/* errores de la interfaz -> registro de la app */
+/* UI errors -> app log */
 const reportErr = m => { try { if (window.pywebview && window.pywebview.api && window.pywebview.api.log_js_error) window.pywebview.api.log_js_error(String(m)); } catch {} };
 addEventListener('error', e => reportErr(`${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
-addEventListener('unhandledrejection', e => reportErr(`promesa: ${e.reason && (e.reason.stack || e.reason.message) || e.reason}`));
+addEventListener('unhandledrejection', e => reportErr(`promise: ${e.reason && (e.reason.stack || e.reason.message) || e.reason}`));
 const _cerr = console.error.bind(console); console.error = (...a) => { _cerr(...a); reportErr(a.map(x => x && x.stack || x).join(' ')); };
 
-/* motor real (stellarhub/engine/<mod>.py). Fuera de la app devuelven undefined: el módulo usa su modo de ejemplo.
-   SH.engine('drivers', 'list') -> datos (lanza Error si el motor falla)
-   SH.job('drivers', 'search', [args], { onProgress(msg), onLog(lines) }) -> promesa con el resultado; .cancel() */
+/* real engine (stellarhub/engine/<mod>.py). Outside the app these return undefined: the module uses its sample mode.
+   SH.engine('drivers', 'list') -> data (throws Error if the engine fails)
+   SH.job('drivers', 'search', [args], { onProgress(msg), onLog(lines) }) -> promise with the result; .cancel() */
 async function engine(mod, fn, ...args) {
   const r = await call('engine', mod, fn, args);
   if (r === undefined) return undefined;
-  if (!r.ok) throw new Error(r.error || 'el motor falló');
+  if (!r.ok) throw new Error(r.error || 'the engine failed');
   return r.data;
 }
 const jobWaiters = new Map();
@@ -60,8 +60,8 @@ on('job', m => {
   if (m.log && w.o.onLog) { try { w.o.onLog(m.log); } catch (e) { console.error(e); } }
   if (m.kind === 'end') {
     jobWaiters.delete(m.id);
-    if (m.state === 'done') w.res(m.result); else if (m.state === 'cancelled') w.rej(Object.assign(new Error('cancelado'), { cancelled: true }));
-    else w.rej(new Error((m.result && m.result.error) || 'la tarea falló'));
+    if (m.state === 'done') w.res(m.result); else if (m.state === 'cancelled') w.rej(Object.assign(new Error('cancelled'), { cancelled: true }));
+    else w.rej(new Error((m.result && m.result.error) || 'the task failed'));
   }
 });
 function job(mod, fn, args = [], o = {}) {
@@ -89,7 +89,7 @@ function setSetting(key, val) {
   emit('setting', { key, val });
 }
 
-/* ---------- muelles ---------- */
+/* ---------- springs ---------- */
 class Spring {
   constructor(v = 0, k = 170, c = 24) { this.v = v; this.t = v; this.vel = 0; this.k = k; this.c = c; }
   set(v) { this.v = this.t = v; this.vel = 0; return this; }
@@ -110,15 +110,15 @@ function springEase(k = 180, c = 19) {
 }
 const EASE = { out: 'cubic-bezier(.16,1,.3,1)', io: 'cubic-bezier(.62,0,.18,1)', spring: springEase(), soft: springEase(120, 17), snappy: springEase(300, 26) };
 
-/* WAAPI con la intensidad aplicada. Cancela lo que el elemento estuviera animando (interrumpible). */
+/* WAAPI with the motion intensity applied. Cancels whatever the element was animating (interruptible). */
 function anim(el, kf, o = {}) {
   if (!el) return null;
-  /* solo se interrumpen animaciones hechas con anim(); las transiciones CSS siguen a lo suyo */
+  /* only animations made with anim() are interrupted; CSS transitions carry on */
   if (!o.keep) el.getAnimations().forEach(a => { if (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) return; try { a.commitStyles(); } catch {} a.cancel(); });
   const d = Math.max(1, (o.d ?? 400) * motion());
   return el.animate(kf, { duration: d, delay: (o.delay || 0) * motion(), easing: o.e || EASE.out, fill: o.fill || 'both' });
 }
-/* entrada escalonada de todo lo marcado con [data-asm] dentro de un contenedor */
+/* staggered entrance of everything marked [data-asm] inside a container */
 function assemble(root, base = 0, step = 40, sel = '[data-asm]') {
   $$(sel, root).forEach((el, i) => anim(el, [
     { opacity: 0, transform: 'translate3d(0,16px,0) scale(.96)', filter: 'blur(8px)' },
@@ -126,14 +126,14 @@ function assemble(root, base = 0, step = 40, sel = '[data-asm]') {
   ], { d: 520, delay: base + Math.min(i, 14) * step, e: EASE.spring }));
 }
 
-/* bucle único de animación por frame */
+/* single per-frame animation loop */
 const tickers = new Set(); let last = performance.now();
 function loop(t) { const dt = Math.min(.05, (t - last) / 1000); last = t; for (const fn of tickers) { try { fn(dt, t); } catch (e) { console.error(e); tickers.delete(fn); } } requestAnimationFrame(loop); }
 requestAnimationFrame(loop);
 
-/* ---------- formato ---------- */
-const fmt1 = v => (+v).toLocaleString('es', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const fmtInt = v => Math.round(+v).toLocaleString('es');
+/* ---------- formatting ---------- */
+const fmt1 = v => (+v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtInt = v => Math.round(+v).toLocaleString('en-US');
 function fmtBytes(b) { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? fmt1(b) : Math.round(b)) + ' ' + u[i]; }
 function countUp(el, to, d = 900, dec = 0) {
   if (state.settings.countUp === false) { el.textContent = dec ? fmt1(to) : fmtInt(to); el.dataset.v = to; return; }
@@ -142,7 +142,7 @@ function countUp(el, to, d = 900, dec = 0) {
     el.textContent = dec ? fmt1(v) : fmtInt(v); if (k < 1) requestAnimationFrame(f); else el.dataset.v = to; };
   requestAnimationFrame(f);
 }
-/* ajusta el tamaño de letra para que el texto quepa en una línea */
+/* shrinks the font size until the text fits on one line */
 function fitText(el, max, min = 14) {
   if (!el || !el.parentElement) return;
   el.style.whiteSpace = 'nowrap'; let s = max; el.style.fontSize = s + 'px';
@@ -151,7 +151,7 @@ function fitText(el, max, min = 14) {
 }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-/* ---------- iconos (trazo 24×24) ---------- */
+/* ---------- icons (24×24 stroke) ---------- */
 const P = {
   home: '<circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="9.5" ry="4" transform="rotate(-22 12 12)"/>',
   monitor: '<path d="M3 12h3.5l2.5-6 4 12 2.5-6H21"/>',
@@ -211,55 +211,55 @@ const P = {
 const ic = (n, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[n] || P.dots}</svg>`;
 const icons = { add(o) { Object.assign(P, o); }, has: n => n in P };
 
-/* ---------- el equipo (datos reales de este PC; en la versión final vendrán de Python) ---------- */
+/* ---------- the PC (sample data; inside the app it is replaced by the real data from Python) ---------- */
 const PC = {
-  model: 'ASUS TUF Gaming F16', code: 'FX608JPR', type: 'laptop', typeName: 'Portátil', maker: 'ASUSTeK',
+  model: 'ASUS TUF Gaming F16', code: 'FX608JPR', type: 'laptop', typeName: 'Laptop', maker: 'ASUSTeK',
   os: 'Windows 11 Pro 25H2', build: '26200', bios: 'FX608JPR.312',
   facts: { drivers: 303, programs: 116, freeC: 361 },
   components: [
-    { id: 'cpu', name: 'Procesador', title: 'Intel Core i7-14650HX', rows: [['Núcleos', '16 (8 de rendimiento y 8 eficientes)'], ['Hilos', '24'], ['Frecuencia máxima', '5,2 GHz'], ['Caché', '30 MB']] },
-    { id: 'gpu', name: 'Gráficos', title: 'NVIDIA GeForce RTX 5070 Laptop', rows: [['Memoria', '8 GB GDDR7'], ['Integrada', 'Intel UHD Graphics'], ['Driver', '32.0.16.1742']] },
-    { id: 'ram', name: 'Memoria', title: '16 GB DDR5', rows: [['Velocidad', '5600 MT/s'], ['Fabricante', 'Samsung'], ['Módulos', '1 de 16 GB, 1 ranura libre']] },
-    { id: 'ssd', name: 'Almacenamiento', title: 'WD PC SN5000S 1 TB', rows: [['Tipo', 'SSD NVMe'], ['Usado', '592 GB'], ['Libre', '361 GB']], bar: .62 },
-    { id: 'display', name: 'Pantallas', title: '16 pulgadas, 2560 × 1600', rows: [['Frecuencia', '165 Hz'], ['Externa', '1920 × 1080, 144 Hz']] },
-    { id: 'battery', name: 'Batería', title: '90 Wh, salud al 97 %', rows: [['Capacidad actual', '87,2 Wh'], ['Estado', 'En buen estado']], bar: .97 },
-    { id: 'wifi', name: 'Red', title: 'Wi-Fi 6E', rows: [['Adaptador', 'Realtek 8852CE'], ['Enlace', '1,2 Gb/s']] },
-    { id: 'audio', name: 'Audio', title: 'Realtek High Definition Audio', rows: [['Otros', 'NVIDIA HD Audio, audio USB']] },
-    { id: 'sys', name: 'Sistema', title: 'Windows 11 Pro 25H2', rows: [['Compilación', '26200'], ['BIOS', 'FX608JPR.312']] },
+    { id: 'cpu', name: 'Processor', title: 'Intel Core i7-14650HX', rows: [['Cores', '16 (8 performance, 8 efficient)'], ['Threads', '24'], ['Max frequency', '5.2 GHz'], ['Cache', '30 MB']] },
+    { id: 'gpu', name: 'Graphics', title: 'NVIDIA GeForce RTX 5070 Laptop', rows: [['Memory', '8 GB GDDR7'], ['Integrated', 'Intel UHD Graphics'], ['Driver', '32.0.16.1742']] },
+    { id: 'ram', name: 'Memory', title: '16 GB DDR5', rows: [['Speed', '5600 MT/s'], ['Manufacturer', 'Samsung'], ['Modules', '1 × 16 GB, 1 free slot']] },
+    { id: 'ssd', name: 'Storage', title: 'WD PC SN5000S 1 TB', rows: [['Type', 'NVMe SSD'], ['Used', '592 GB'], ['Free', '361 GB']], bar: .62 },
+    { id: 'display', name: 'Displays', title: '16 inch, 2560 × 1600', rows: [['Refresh rate', '165 Hz'], ['External', '1920 × 1080, 144 Hz']] },
+    { id: 'battery', name: 'Battery', title: '90 Wh, 97% health', rows: [['Current capacity', '87.2 Wh'], ['Status', 'Good']], bar: .97 },
+    { id: 'wifi', name: 'Network', title: 'Wi-Fi 6E', rows: [['Adapter', 'Realtek 8852CE'], ['Link', '1.2 Gb/s']] },
+    { id: 'audio', name: 'Audio', title: 'Realtek High Definition Audio', rows: [['Others', 'NVIDIA HD Audio, USB audio']] },
+    { id: 'sys', name: 'System', title: 'Windows 11 Pro 25H2', rows: [['Build', '26200'], ['BIOS', 'FX608JPR.312']] },
   ],
 };
 
-/* ---------- módulos: lista maestra (el dock, la paleta y las vistas salen de aquí) ---------- */
+/* ---------- modules: master list (the dock, the palette and the views come from here) ---------- */
 const MODS = [
-  { id: 'home', name: 'Inicio', icon: 'home' },
-  { id: 'monitor', name: 'Live Monitor', icon: 'monitor', desc: 'Tu equipo en tiempo real: uso, temperaturas, red, batería y salud.',
-    tabs: [['overview', 'Resumen'], ['cpu', 'Procesador'], ['gpu', 'Gráficos'], ['memory', 'Memoria'], ['disks', 'Discos'], ['network', 'Red'], ['battery', 'Batería'], ['processes', 'Procesos'], ['health', 'Salud']] },
-  { id: 'drivers', name: 'Driver Updater', icon: 'drivers', desc: 'Tus drivers, las versiones nuevas de Windows Update y copias de seguridad.',
-    tabs: [['updates', 'Actualizaciones'], ['all', 'Todos los drivers'], ['problems', 'Problemas'], ['backup', 'Copia de seguridad'], ['history', 'Historial']] },
-  { id: 'remover', name: 'Program Remover', icon: 'remover', desc: 'Desinstala programas y borra todo lo que dejan atrás, con cuarentena para deshacer.',
-    tabs: [['programs', 'Programas'], ['batch', 'Por lotes'], ['watch', 'Instalación vigilada'], ['quarantine', 'Cuarentena'], ['history', 'Historial']] },
-  { id: 'updater', name: 'Program Updater', icon: 'updater', desc: 'Programas, Windows, Tienda y componentes al día, en una sola cola.',
-    tabs: [['overview', 'Resumen'], ['apps', 'Programas'], ['windows', 'Windows'], ['store', 'Tienda'], ['runtimes', 'Componentes'], ['dev', 'Desarrollo'], ['schedule', 'Programación']] },
-  { id: 'storage', name: 'Storage Checker', icon: 'storage', desc: 'Qué ocupa cada carpeta de tus discos, en un mapa que puedes recorrer.',
-    tabs: [['map', 'Mapa'], ['tree', 'Carpetas'], ['types', 'Tipos de archivo'], ['largest', 'Más grandes'], ['duplicates', 'Duplicados'], ['compare', 'Comparar']] },
-  { id: 'optimizer', name: 'Super Optimizer', icon: 'optimizer', desc: 'Limpia, repara y acelera Windows. Todo con punto de restauración y deshacer.',
-    tabs: [['overview', 'Resumen'], ['clean', 'Limpieza'], ['startup', 'Arranque'], ['services', 'Servicios'], ['registry', 'Registro'], ['repair', 'Reparación'], ['performance', 'Rendimiento']] },
-  { id: 'tester', name: 'Device Tester', icon: 'tester', real: true, desc: 'Prueba teclado, pantalla, altavoces, micrófono, cámara y ratón.',
-    tabs: [['keyboard', 'Teclado'], ['screen', 'Pantalla'], ['speakers', 'Altavoces'], ['mic', 'Micrófono'], ['camera', 'Cámara'], ['mouse', 'Ratón']] },
-  { id: 'autopilot', name: 'Autopilot', icon: 'autopilot', real: true, desc: 'Mantenimiento automático: tú pones las reglas, StellarHub las cumple.',
-    tabs: [['routines', 'Rutinas'], ['calendar', 'Calendario'], ['notify', 'Avisos'], ['log', 'Registro']] },
+  { id: 'home', name: 'Home', icon: 'home' },
+  { id: 'monitor', name: 'Live Monitor', icon: 'monitor', desc: 'Your PC in real time: usage, temperatures, network, battery and health.',
+    tabs: [['overview', 'Overview'], ['cpu', 'Processor'], ['gpu', 'Graphics'], ['memory', 'Memory'], ['disks', 'Disks'], ['network', 'Network'], ['battery', 'Battery'], ['processes', 'Processes'], ['health', 'Health']] },
+  { id: 'drivers', name: 'Driver Updater', icon: 'drivers', desc: 'Your drivers, new versions from Windows Update and backups.',
+    tabs: [['updates', 'Updates'], ['all', 'All drivers'], ['problems', 'Problems'], ['backup', 'Backup'], ['history', 'History']] },
+  { id: 'remover', name: 'Program Remover', icon: 'remover', desc: 'Uninstall programs and clear everything they leave behind, with a quarantine to undo.',
+    tabs: [['programs', 'Programs'], ['batch', 'Batch'], ['watch', 'Watched install'], ['quarantine', 'Quarantine'], ['history', 'History']] },
+  { id: 'updater', name: 'Program Updater', icon: 'updater', desc: 'Programs, Windows, Store and components up to date, in a single queue.',
+    tabs: [['overview', 'Overview'], ['apps', 'Programs'], ['windows', 'Windows'], ['store', 'Store'], ['runtimes', 'Components'], ['dev', 'Development'], ['schedule', 'Schedule']] },
+  { id: 'storage', name: 'Storage Checker', icon: 'storage', desc: 'What every folder on your drives takes up, on a map you can explore.',
+    tabs: [['map', 'Map'], ['tree', 'Folders'], ['types', 'File types'], ['largest', 'Largest'], ['duplicates', 'Duplicates'], ['compare', 'Compare']] },
+  { id: 'optimizer', name: 'Super Optimizer', icon: 'optimizer', desc: 'Clean, repair and speed up Windows. Always with a restore point and undo.',
+    tabs: [['overview', 'Overview'], ['clean', 'Cleanup'], ['startup', 'Startup'], ['services', 'Services'], ['registry', 'Registry'], ['repair', 'Repair'], ['performance', 'Performance']] },
+  { id: 'tester', name: 'Device Tester', icon: 'tester', real: true, desc: 'Test your keyboard, screen, speakers, microphone, camera and mouse.',
+    tabs: [['keyboard', 'Keyboard'], ['screen', 'Screen'], ['speakers', 'Speakers'], ['mic', 'Microphone'], ['camera', 'Camera'], ['mouse', 'Mouse']] },
+  { id: 'autopilot', name: 'Autopilot', icon: 'autopilot', real: true, desc: 'Automatic maintenance: you set the rules, StellarHub follows them.',
+    tabs: [['routines', 'Routines'], ['calendar', 'Calendar'], ['notify', 'Notifications'], ['log', 'Log']] },
 ];
 const modById = id => MODS.find(m => m.id === id);
 
-/* registro de módulos y vistas de inicio (los rellenan los archivos de js/modules y js/home) */
+/* registry of modules and Home views (filled in by the files in js/modules and js/home) */
 const registry = { modules: {}, variants: {}, actions: [] };
 function module(def) { registry.modules[def.id] = def; emit('module:registered', def); }
 function homeVariant(def) { registry.variants[def.id] = def; emit('variant:registered', def); }
 const actions = { add(list) { registry.actions.push(...list); }, all: () => registry.actions };
 
-/* ---------- actividad y pendientes (los alimentan los módulos; Inicio los muestra) ----------
-   SH.logActivity('Brave actualizado', { sub: 'a la versión 1.85', ic: 'updater', go: 'updater', tab: 'apps' })
-   SH.setPending('drivers', 4)   // claves: drivers, apps, junk (en GB) */
+/* ---------- activity and pending items (modules feed them; Home shows them) ----------
+   SH.logActivity('Brave updated', { sub: 'to version 1.85', ic: 'updater', go: 'updater', tab: 'apps' })
+   SH.setPending('drivers', 4)   // keys: drivers, apps, junk (in GB) */
 function logActivity(t, o = {}) {
   const list = (state.settings.activity || []).slice(0, 39);
   list.unshift({ t, sub: o.sub || '', ic: o.ic || 'check', go: o.go || '', tab: o.tab || '', at: Date.now() });
@@ -270,7 +270,7 @@ function setPending(key, n) {
   state.settings.pending = undefined; setSetting('pending', p); emit('pending', p);
 }
 
-/* ---------- desvanecido automático en zonas con scroll ---------- */
+/* ---------- automatic fade on scrollable areas ---------- */
 const sfSet = new Set();
 function sfUpdate(el) {
   const max = el.scrollHeight - el.clientHeight;

@@ -1,4 +1,4 @@
-"""Ajustes e historial (JSON en ProgramData\\MiniRevo)."""
+"""Settings and history (JSON in the remover data folder)."""
 import json
 import os
 import threading
@@ -16,7 +16,7 @@ DEFAULTS = {
     "quiet_default": False,
     "show_store": True,
     "animations": True,
-    "exclusions": [],           # rutas que nunca se tocan
+    "exclusions": [],           # paths that are never touched
 }
 _lock = threading.Lock()
 
@@ -45,7 +45,7 @@ def save(changes):
         return cur
 
 
-# ---------------------------------------------------------------- historial
+# ---------------------------------------------------------------- history
 def log(action, title, detail=None):
     rec = {"time": time.time(), "action": action, "title": title, "detail": detail or {}}
     with _lock:

@@ -1,8 +1,8 @@
-"""Motor del Super Optimizer: limpieza, arranque, servicios, registro, reparación y rendimiento. De verdad.
+"""Super Optimizer engine: cleanup, startup, services, registry, repair and performance. For real.
 
-Reglas: lo que cambia el sistema guarda antes una copia para deshacer (estado de servicios, .reg, ajustes previos);
-lo que exige administrador lo comprueba y devuelve {"needAdmin": True} en vez de fallar a medias; nunca se tocan
-servicios fuera de una lista cerrada ni claves del registro que no estén rotas de verdad.
+Rules: anything that changes the system saves a copy first so it can be undone (service states, .reg, previous
+settings); anything that needs administrator rights checks for them and returns {"needAdmin": True} instead of
+failing halfway; services outside a closed list and registry keys that are not really broken are never touched.
 """
 import codecs
 import ctypes
@@ -45,9 +45,9 @@ def _short(p, n=64):
     return p if len(p) <= n else p[:18] + "…" + p[-(n - 19):]
 
 
-# =============================================================== limpieza
+# =============================================================== cleanup
 def clean_scan(job):
-    """Mide de verdad cada categoría del limpiador (sin borrar nada)."""
+    """Measures every cleaner category for real (without deleting anything)."""
     cats = cleaner.categories()
     out = []
 
@@ -56,11 +56,11 @@ def clean_scan(job):
         dirs, files = ([], []) if c.get("recycle") else cleaner._expand(c)
         pths = [_short(d) for d in dirs[:4]] + [_short(f) for f in files[:2]]
         if c.get("recycle"):
-            pths = ["Todas las unidades"]
+            pths = ["All drives"]
         out.append({"id": it["id"], "g": it["group"], "label": it["label"], "size": it["size"], "files": it["count"],
                     "def": bool(c.get("default")), "admin": bool(c.get("admin")), "needs_admin": it["needs_admin"],
                     "busy": it["process"] if it["busy"] else "", "desc": it["desc"] or _DESC.get(it["id"], ""),
-                    "paths": pths or ["(no existe en este equipo)"]})
+                    "paths": pths or ["(not present on this PC)"]})
         job.progress(len(out) / len(cats), it["label"], done=len(out))
 
     cleaner.scan(on_item=on_item)
@@ -70,22 +70,22 @@ def clean_scan(job):
 
 
 _DESC = {
-    "win_temp": "Restos de instalaciones y tareas del sistema.",
-    "dumps": "Copias de memoria de programas que se cerraron mal. Solo sirven para depurar.",
-    "do_cache": "Trozos de actualizaciones que tu PC comparte con otros equipos.",
-    "recycle": "Lo que borraste. Después de vaciarla no se puede recuperar.",
-    "chrome": "Caché de páginas, código y GPU. No toca contraseñas, historial ni pestañas.",
-    "edge": "Caché de páginas, código y GPU. No toca contraseñas, historial ni pestañas.",
-    "brave": "Caché de páginas, código y GPU. No toca contraseñas, historial ni pestañas.",
-    "opera": "Caché de páginas.", "firefox": "Caché de páginas y de arranque.",
-    "discord": "Imágenes y vídeos ya vistos.",
-    "spotify": "Canciones en caché que no están descargadas para escuchar sin conexión.",
-    "steam_web": "Caché de la tienda y la comunidad.",
+    "win_temp": "Leftovers from installations and system tasks.",
+    "dumps": "Memory copies of programs that crashed. Only useful for debugging.",
+    "do_cache": "Pieces of updates your PC shares with other computers.",
+    "recycle": "Things you deleted. Once emptied, they can't be recovered.",
+    "chrome": "Page, code and GPU cache. Doesn't touch passwords, history or tabs.",
+    "edge": "Page, code and GPU cache. Doesn't touch passwords, history or tabs.",
+    "brave": "Page, code and GPU cache. Doesn't touch passwords, history or tabs.",
+    "opera": "Page cache.", "firefox": "Page and startup cache.",
+    "discord": "Images and videos you've already seen.",
+    "spotify": "Cached songs that aren't downloaded for offline listening.",
+    "steam_web": "Store and community cache.",
 }
 
 
 def clean(job, ids):
-    """Limpia las categorías elegidas, una a una, avisando de lo liberado. Los archivos en uso se saltan."""
+    """Cleans the chosen categories one by one, reporting what was freed. Files in use are skipped."""
     cats = cleaner.categories()
     admin = _admin()
     total = {"freed": 0, "deleted": 0, "skipped": 0, "per": {}, "skippedCats": []}
@@ -96,7 +96,7 @@ def clean(job, ids):
         if c.get("admin") and not admin:
             total["skippedCats"].append(cid)
             continue
-        job.progress(n / max(1, len(ids)), f"Limpiando {c['label'].lower()}…", id=cid, freed=total["freed"])
+        job.progress(n / max(1, len(ids)), f"Cleaning {c['label'].lower()}…", id=cid, freed=total["freed"])
         r = cleaner.clean([cid])
         total["per"][cid] = r["freed"]
         for k in ("freed", "deleted", "skipped"):
@@ -105,13 +105,13 @@ def clean(job, ids):
     return total
 
 
-# =============================================================== arranque
+# =============================================================== startup
 _PF_TASK = r"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\SystemAppData"
 _IMPACT_CACHE = {}
 
 
 def _packaged_startup():
-    """Apps de la Tienda con tarea de inicio (lo que el Administrador de tareas lista además del Run y la carpeta)."""
+    """Store apps with a startup task (what Task Manager lists besides Run and the Startup folder)."""
     pk = ps_json("Get-AppxPackage -PackageTypeFilter Main | Select-Object Name, PackageFamilyName, PackageFullName, InstallLocation, "
                  "@{n='Pub';e={$_.PublisherDisplayName}}", timeout=60, as_list=True)
     names = {}
@@ -150,13 +150,13 @@ def _packaged_startup():
                 default_on = (st.get("Enabled") or "false").lower() == "true"
                 pfn = p.get("PackageFamilyName")
                 state = registry.get_value(winreg.HKEY_CURRENT_USER, f"{_PF_TASK}\\{pfn}\\{tid}", "State")
-                # 0 desactivada, 1 desactivada por el usuario, 2 activada, 3 desactivada por directiva, 4 activada por directiva
+                # 0 disabled, 1 disabled by the user, 2 enabled, 3 disabled by policy, 4 enabled by policy
                 on = state in (2, 4) if state is not None else default_on
                 dn = names.get(pfn) or st.get("DisplayName") or p.get("Name")
                 if dn and (dn.startswith("ms-resource:") or dn == p.get("Name")):
                     dn = (_resource(p, dn) if dn.startswith("ms-resource:") else None) or _manifest_name(p, root) or p.get("Name").split(".")[-1]
                 out.append({"id": f"pkg|{pfn}|{tid}", "name": dn, "pub": p.get("Pub") or pubname, "on": on,
-                            "origin": "tienda", "path": f"Tarea de inicio de la app ({tid})", "target": loc,
+                            "origin": "store", "path": f"App startup task ({tid})", "target": loc,
                             "locked": state in (3, 4)})
     with ThreadPoolExecutor(max_workers=8) as ex:
         list(ex.map(one, pk))
@@ -164,7 +164,7 @@ def _packaged_startup():
 
 
 def _resource(p, ref):
-    """Resuelve un 'ms-resource:' de una app de la Tienda a su texto (como hace el Explorador)."""
+    """Resolves a Store app 'ms-resource:' to its text (like File Explorer does)."""
     name = p.get("Name") or ""
     res = ref[len("ms-resource:"):]
     if not res.startswith("//"):
@@ -188,7 +188,7 @@ def _manifest_name(p, root):
 
 
 def _impacts():
-    """Impacto medido por Windows (lo mismo que usa el Administrador de tareas). Solo legible como administrador."""
+    """Impact measured by Windows (the same one Task Manager uses). Only readable as administrator."""
     if _IMPACT_CACHE.get("t", 0) > time.time() - 600:
         return _IMPACT_CACHE["d"]
     data = {}
@@ -212,7 +212,7 @@ def _impacts():
                 disk = float(vals.get("DiskUsage") or 0)  # bytes
             except ValueError:
                 continue
-            lvl = "alto" if cpu > 1000 or disk > 3e6 else "medio" if cpu > 300 or disk > 3e5 else "bajo"
+            lvl = "high" if cpu > 1000 or disk > 3e6 else "medium" if cpu > 300 or disk > 3e5 else "low"
             data[os.path.basename(name)] = lvl
     _IMPACT_CACHE.update(t=time.time(), d=data)
     return data
@@ -224,15 +224,15 @@ _REVIEW = ("wscript.exe", "cscript.exe", "powershell.exe", "pwsh.exe", "cmd.exe"
 
 
 def startup_list(job):
-    """Lo mismo que el Administrador de tareas > Aplicaciones de arranque: registro (Run), carpeta Inicio y apps de la Tienda."""
-    job.progress(.1, "Registro y carpeta Inicio")
+    """The same as Task Manager > Startup apps: registry (Run), Startup folder and Store apps."""
+    job.progress(.1, "Registry and Startup folder")
     base = [e for e in startup.list_entries() if e["type"] in ("run", "folder")]
-    job.progress(.4, "Apps de la Tienda")
+    job.progress(.4, "Store apps")
     try:
         pk = _packaged_startup()
     except Exception:
         pk = []
-    job.progress(.85, "Impacto al arrancar")
+    job.progress(.85, "Startup impact")
     imp = _impacts()
     measured = bool(imp)
     groups = {}
@@ -245,34 +245,34 @@ def startup_list(job):
         e = es[0]
         on = any(x["enabled"] for x in es)
         exe_name = os.path.basename(e.get("exe") or "") or e["name"]
-        level = ("ninguno" if not on else imp.get(exe_name.lower(), "sin medir" if not measured else "bajo"))
+        level = ("none" if not on else imp.get(exe_name.lower(), "unmeasured" if not measured else "low"))
         hk = "HKLM" if any(x["id"].startswith("run|HKLM") or x["id"].startswith("folder|HKLM") for x in es) else "HKCU"
         it = {"id": "grp|" + key, "ids": [x["id"] for x in es], "name": exe_name, "pub": e.get("company") or "",
-              "on": on, "impact": level, "origin": "carpeta" if e["type"] == "folder" else "registro",
+              "on": on, "impact": level, "origin": "folder" if e["type"] == "folder" else "registry",
               "path": (f"{e['where']}: {e['name']}" if len(es) == 1 else f"{e['where']}"),
               "target": e.get("exe") or "", "hklm": hk == "HKLM", "missing": any(x.get("missing") for x in es),
               "children": [x["command"] for x in es] if len(es) > 1 or e["type"] == "folder" else [],
               "count": len(es) if len(es) > 1 else 0}
         if exe_name.lower() in _REVIEW:
             it["review"] = True
-            it["note"] = "Ejecuta un script al iniciar sesión. Revisa qué es antes de tocarlo: puede ser tuyo."
+            it["note"] = "Runs a script when you sign in. Check what it is before touching it: it may be yours."
         if any(r in (exe_name + " " + it["pub"]).lower() for r in _REC) and on:
             it["rec"] = True
         if exe_name.lower() == "securityhealthsystray.exe":
-            it["note"] = "El icono de Seguridad de Windows en la bandeja. Conviene dejarlo."
+            it["note"] = "The Windows Security icon in the system tray. Best left on."
         items.append(it)
     for p in pk:
         p["ids"] = [p["id"]]
-        p["impact"] = "ninguno" if not p["on"] else imp.get((p["name"] or "").lower() + ".exe", "sin medir" if not measured else "bajo")
+        p["impact"] = "none" if not p["on"] else imp.get((p["name"] or "").lower() + ".exe", "unmeasured" if not measured else "low")
         if p["on"] and any(r in (p["name"] + " " + p["pub"]).lower() for r in _REC):
             p["rec"] = True
         items.append(p)
-    job.progress(1, "Listo")
+    job.progress(1, "Done")
     return {"items": items, "measured": measured, "admin": _admin()}
 
 
 def startup_set(ids, enabled):
-    """Habilita o deshabilita como el Administrador de tareas (reversible). ids: los de la entrada (puede ser un grupo)."""
+    """Enables or disables like Task Manager does (reversible). ids: those of the entry (it can be a group)."""
     done = []
     for i in ids:
         if i.startswith("pkg|"):
@@ -288,8 +288,8 @@ def startup_set(ids, enabled):
 
 
 def boot_info():
-    """Tiempo de BIOS del último arranque (lo mismo que enseña el Administrador de tareas) y los últimos arranques
-    medidos por Windows (eso último necesita administrador)."""
+    """BIOS time of the last boot (the same Task Manager shows) and the latest boots measured by Windows
+    (the latter needs administrator rights)."""
     bios = registry.get_value(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Power", "FwPOSTTime")
     boots = []
     if _admin():
@@ -317,23 +317,23 @@ def open_startup_page():
     return True
 
 
-# =============================================================== servicios
-# Lista cerrada: solo estos se pueden cambiar desde StellarHub. Nada crítico del sistema.
+# =============================================================== services
+# Closed list: only these can be changed from StellarHub. Nothing critical to the system.
 SERVICES = [
-    {"id": "DiagTrack", "svc": ["DiagTrack"], "name": "Telemetría de Windows", "desc": "Envía datos de uso y diagnóstico a Microsoft.", "bal": "disabled", "max": "disabled"},
-    {"id": "dmwappushservice", "svc": ["dmwappushservice"], "name": "Mensajes de telemetría (WAP Push)", "desc": "Ayuda a la telemetría a recibir mensajes.", "bal": "disabled", "max": "disabled"},
-    {"id": "Fax", "svc": ["Fax"], "name": "Fax", "desc": "Enviar y recibir faxes.", "bal": "disabled", "max": "disabled"},
-    {"id": "RetailDemo", "svc": ["RetailDemo"], "name": "Modo demostración de tienda", "desc": "Solo lo usan los PC de exposición.", "bal": "disabled", "max": "disabled"},
-    {"id": "MapsBroker", "svc": ["MapsBroker"], "name": "Mapas descargados", "desc": "Actualiza los mapas sin conexión de la app Mapas.", "bal": "manual", "max": "disabled"},
-    {"id": "RemoteRegistry", "svc": ["RemoteRegistry"], "name": "Registro remoto", "desc": "Permite cambiar el registro desde otro equipo.", "bal": "disabled", "max": "disabled"},
-    {"id": "WerSvc", "svc": ["WerSvc"], "name": "Informe de errores", "desc": "Envía a Microsoft los informes cuando algo falla.", "bal": None, "max": "disabled"},
-    {"id": "Spooler", "svc": ["Spooler"], "name": "Cola de impresión", "desc": "Necesaria para imprimir.", "bal": "manual", "max": "disabled", "printers": True},
-    {"id": "SysMain", "svc": ["SysMain"], "name": "SysMain (precarga de apps)", "desc": "Carga en memoria las apps que más usas. En un SSD rápido apenas se nota.", "bal": None, "max": "manual"},
-    {"id": "WSearch", "svc": ["WSearch"], "name": "Indexado de búsqueda", "desc": "Prepara el índice para buscar archivos al instante.", "bal": None, "max": "manual", "warn": "Buscar archivos desde Inicio será más lento."},
-    {"id": "Xbox", "svc": ["XblAuthManager", "XblGameSave", "XboxNetApiSvc", "XboxGipSvc"], "name": "Servicios de Xbox", "desc": "Inicio de sesión, partidas guardadas y red de Xbox Live.", "bal": None, "max": "manual", "warn": "Si juegas con Game Pass o la app de Xbox, déjalos."},
-    {"id": "lfsvc", "svc": ["lfsvc"], "name": "Geolocalización", "desc": "Da tu ubicación a las apps que la piden.", "bal": None, "max": "disabled", "warn": "Las apps que usan tu ubicación dejarán de saberla."},
-    {"id": "PhoneSvc", "svc": ["PhoneSvc"], "name": "Servicio de telefonía", "desc": "Llamadas desde el PC a través del móvil.", "bal": None, "max": "manual"},
-    {"id": "WbioSrvc", "svc": ["WbioSrvc"], "name": "Biometría", "desc": "Huella y reconocimiento facial de Windows Hello.", "bal": None, "max": None, "warn": "Si usas huella o cara para entrar, no lo toques."},
+    {"id": "DiagTrack", "svc": ["DiagTrack"], "name": "Windows telemetry", "desc": "Sends usage and diagnostic data to Microsoft.", "bal": "disabled", "max": "disabled"},
+    {"id": "dmwappushservice", "svc": ["dmwappushservice"], "name": "Telemetry messages (WAP Push)", "desc": "Helps telemetry receive messages.", "bal": "disabled", "max": "disabled"},
+    {"id": "Fax", "svc": ["Fax"], "name": "Fax", "desc": "Send and receive faxes.", "bal": "disabled", "max": "disabled"},
+    {"id": "RetailDemo", "svc": ["RetailDemo"], "name": "Retail demo mode", "desc": "Only used by display PCs in stores.", "bal": "disabled", "max": "disabled"},
+    {"id": "MapsBroker", "svc": ["MapsBroker"], "name": "Downloaded maps", "desc": "Updates offline maps for the Maps app.", "bal": "manual", "max": "disabled"},
+    {"id": "RemoteRegistry", "svc": ["RemoteRegistry"], "name": "Remote registry", "desc": "Lets another computer change this PC's registry.", "bal": "disabled", "max": "disabled"},
+    {"id": "WerSvc", "svc": ["WerSvc"], "name": "Error reporting", "desc": "Sends reports to Microsoft when something fails.", "bal": None, "max": "disabled"},
+    {"id": "Spooler", "svc": ["Spooler"], "name": "Print spooler", "desc": "Needed to print.", "bal": "manual", "max": "disabled", "printers": True},
+    {"id": "SysMain", "svc": ["SysMain"], "name": "SysMain (app preloading)", "desc": "Loads the apps you use most into memory. On a fast SSD it's barely noticeable.", "bal": None, "max": "manual"},
+    {"id": "WSearch", "svc": ["WSearch"], "name": "Search indexing", "desc": "Builds the index that makes file search instant.", "bal": None, "max": "manual", "warn": "Searching for files from Start will be slower."},
+    {"id": "Xbox", "svc": ["XblAuthManager", "XblGameSave", "XboxNetApiSvc", "XboxGipSvc"], "name": "Xbox services", "desc": "Xbox Live sign-in, saved games and networking.", "bal": None, "max": "manual", "warn": "If you play with Game Pass or the Xbox app, leave them on."},
+    {"id": "lfsvc", "svc": ["lfsvc"], "name": "Geolocation", "desc": "Gives your location to apps that ask for it.", "bal": None, "max": "disabled", "warn": "Apps that use your location will no longer know it."},
+    {"id": "PhoneSvc", "svc": ["PhoneSvc"], "name": "Phone service", "desc": "Calls from the PC through your phone.", "bal": None, "max": "manual"},
+    {"id": "WbioSrvc", "svc": ["WbioSrvc"], "name": "Biometrics", "desc": "Windows Hello fingerprint and face recognition.", "bal": None, "max": None, "warn": "If you sign in with your fingerprint or face, don't touch it."},
 ]
 _START = {"Auto": "auto", "Automatic": "auto", "Manual": "manual", "Disabled": "disabled", "Boot": "auto", "System": "auto"}
 _START_PS = {"auto": "Automatic", "manual": "Manual", "disabled": "Disabled"}
@@ -365,16 +365,16 @@ def services_list():
         if e.get("printers"):
             if printers:
                 it["bal"] = None
-                it["warn"] = f"Tienes impresoras instaladas ({', '.join(printers[:2])}): déjalo como está."
+                it["warn"] = f"You have printers installed ({', '.join(printers[:2])}): leave it as it is."
             else:
-                it["desc"] += " Tu PC no tiene impresoras instaladas."
-                it["warn"] = "Si algún día imprimes, vuelve a activarlo."
+                it["desc"] += " Your PC has no printers installed."
+                it["warn"] = "If you ever need to print, turn it back on."
         out.append(it)
     return {"items": out, "admin": _admin()}
 
 
 def services_apply(changes):
-    """changes: {id_del_catálogo: 'auto'|'manual'|'disabled'}. Guarda el estado anterior y devuelve su id para deshacer."""
+    """changes: {catalog_id: 'auto'|'manual'|'disabled'}. Saves the previous state and returns its id for undo."""
     if not _admin():
         return _need_admin()
     cat = {e["id"]: e for e in SERVICES}
@@ -415,14 +415,14 @@ def services_undo(bid):
     return {"ok": True, "restored": len(prev)}
 
 
-# =============================================================== registro
+# =============================================================== registry
 def _exists(p):
     p = os.path.expandvars((p or "").strip().strip('"'))
     return bool(p) and os.path.exists(p)
 
 
 def _abs_missing(cmd):
-    """El ejecutable de un comando si es una ruta absoluta que ya no existe; si no, None."""
+    """The executable of a command if it is an absolute path that no longer exists; otherwise None."""
     from .removal.safety import image_path
     exe = image_path(cmd or "")
     if not exe or not os.path.isabs(exe):
@@ -433,15 +433,15 @@ def _abs_missing(cmd):
 
 
 def registry_scan(job):
-    """Busca entradas rotas de verdad (apuntan a archivos que ya no existen). No cambia nada."""
+    """Looks for genuinely broken entries (pointing to files that no longer exist). Changes nothing."""
     groups = {}
 
     def add(g, ref, why):
         groups.setdefault(g, []).append({"id": ref.to_str(), "k": ref.display(), "why": why})
 
     HK = winreg.HKEY_LOCAL_MACHINE
-    # 1. desinstaladores rotos
-    job.progress(.05, "Desinstaladores")
+    # 1. broken uninstallers
+    job.progress(.05, "Uninstallers")
     for hive, root, view in (("HKLM", HK, V64), ("HKLM", HK, V32), ("HKCU", winreg.HKEY_CURRENT_USER, 0)):
         base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
         for sub in registry.subkeys(root, base, view):
@@ -453,9 +453,9 @@ def registry_scan(job):
             miss = _abs_missing(str(us))
             loc = registry.get_value(root, p, "InstallLocation", view)
             if miss and not (loc and _exists(str(loc))):
-                add("Desinstaladores rotos", RegRef(hive, p, view), f"«{name}»: el desinstalador {miss} ya no existe.")
+                add("Broken uninstallers", RegRef(hive, p, view), f"\"{name}\": the uninstaller {miss} no longer exists.")
     # 2. App Paths
-    job.progress(.25, "Rutas de programa")
+    job.progress(.25, "App paths")
     for hive, root, view in (("HKLM", HK, V64), ("HKLM", HK, V32), ("HKCU", winreg.HKEY_CURRENT_USER, 0)):
         base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
         for sub in registry.subkeys(root, base, view):
@@ -465,24 +465,24 @@ def registry_scan(job):
                 continue
             target = os.path.expandvars(str(d).strip().strip('"'))
             if os.path.isabs(target) and not os.path.exists(target):
-                add("Rutas de programa rotas", RegRef(hive, p, view), f"Apunta a {target}, que ya no existe.")
-    # 3. inicio que apunta a nada
-    job.progress(.45, "Inicio")
+                add("Broken app paths", RegRef(hive, p, view), f"Points to {target}, which no longer exists.")
+    # 3. startup entries that point to nothing
+    job.progress(.45, "Startup")
     for hive, root, view in (("HKCU", winreg.HKEY_CURRENT_USER, 0), ("HKLM", HK, V64), ("HKLM", HK, V32)):
         base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
         for name, data, _ in registry.values(root, base, view):
             miss = _abs_missing(str(data))
             if miss:
-                add("Inicio que apunta a nada", RegRef(hive, base, view, name), f"Arranca {miss}, que no existe.")
-    # 4. archivos compartidos inexistentes
-    job.progress(.6, "Archivos compartidos")
+                add("Startup entries pointing nowhere", RegRef(hive, base, view, name), f"Starts {miss}, which doesn't exist.")
+    # 4. shared files that no longer exist
+    job.progress(.6, "Shared files")
     for view in (V64, V32):
         base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\SharedDLLs"
         for name, data, _ in registry.values(HK, base, view):
             if os.path.isabs(name) and not os.path.exists(name):
-                add("Archivos compartidos inexistentes", RegRef("HKLM", base, view, name), "El archivo ya no existe.")
-    # 5. tipos de archivo huérfanos (solo los del usuario)
-    job.progress(.75, "Tipos de archivo")
+                add("Missing shared files", RegRef("HKLM", base, view, name), "The file no longer exists.")
+    # 5. orphaned file types (the user's only)
+    job.progress(.75, "File types")
     cu, cls = winreg.HKEY_CURRENT_USER, r"Software\Classes"
     for sub in registry.subkeys(cu, cls):
         if not sub.startswith("."):
@@ -493,16 +493,16 @@ def registry_scan(job):
         in_cu = registry.key_exists(RegRef("HKCU", f"{cls}\\{prog}"))
         in_lm = registry.key_exists(RegRef("HKLM", f"SOFTWARE\\Classes\\{prog}"))
         if not in_cu and not in_lm and not registry.subkeys(cu, f"{cls}\\{sub}"):
-            add("Tipos de archivo huérfanos", RegRef("HKCU", f"{cls}\\{sub}"), f"Dice que lo abre «{prog}», que ya no existe.")
+            add("Orphaned file types", RegRef("HKCU", f"{cls}\\{sub}"), f"Says it opens with \"{prog}\", which no longer exists.")
     for sub in registry.subkeys(cu, cls):
         if sub.startswith(".") or sub.startswith("{"):
             continue
         cmd = registry.get_value(cu, f"{cls}\\{sub}\\shell\\open\\command", "")
         miss = _abs_missing(str(cmd)) if cmd else None
         if miss:
-            add("Tipos de archivo huérfanos", RegRef("HKCU", f"{cls}\\{sub}"), f"Clase de un programa que ya no está ({miss}).")
-    # 6. menú contextual roto
-    job.progress(.88, "Menú contextual")
+            add("Orphaned file types", RegRef("HKCU", f"{cls}\\{sub}"), f"Class of a program that is gone ({miss}).")
+    # 6. broken context menu entries
+    job.progress(.88, "Context menu")
     for scope in ("*", "Directory", r"Directory\Background", "Folder"):
         for hive, root, base in (("HKLM", HK, r"SOFTWARE\Classes"), ("HKCU", cu, r"Software\Classes")):
             hp = f"{base}\\{scope}\\shellex\\ContextMenuHandlers"
@@ -519,15 +519,15 @@ def registry_scan(job):
                     continue
                 path = os.path.expandvars(str(dll).strip('"'))
                 if os.path.isabs(path) and not os.path.exists(path):
-                    add("Menú contextual roto", RegRef(hive, f"{hp}\\{h}"), f"Añade «{h}» al clic derecho, pero {os.path.basename(path)} ya no existe.")
-    job.progress(1, "Listo")
-    order = ["Desinstaladores rotos", "Rutas de programa rotas", "Tipos de archivo huérfanos", "Inicio que apunta a nada",
-             "Archivos compartidos inexistentes", "Menú contextual roto"]
+                    add("Broken context menu entries", RegRef(hive, f"{hp}\\{h}"), f"Adds \"{h}\" to the right-click menu, but {os.path.basename(path)} no longer exists.")
+    job.progress(1, "Done")
+    order = ["Broken uninstallers", "Broken app paths", "Orphaned file types", "Startup entries pointing nowhere",
+             "Missing shared files", "Broken context menu entries"]
     return [{"g": g, "items": groups[g]} for g in order if g in groups]
 
 
 def registry_fix(job, ids):
-    """Exporta cada clave a .reg y luego borra la entrada rota. Devuelve la carpeta de la copia (para deshacer)."""
+    """Exports each key to .reg and then deletes the broken entry. Returns the backup folder (for undo)."""
     refs = [RegRef.from_str(i) for i in ids]
     if any(r.hive == "HKLM" for r in refs) and not _admin():
         return _need_admin()
@@ -553,7 +553,7 @@ def registry_fix(job, ids):
             failed.append(f"{ref.display()}: {e}")
     with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, ensure_ascii=False)
-    job.progress(1, "Listo")
+    job.progress(1, "Done")
     return {"fixed": fixed, "failed": failed, "backup": bid, "folder": folder}
 
 
@@ -570,9 +570,9 @@ def registry_undo(bid):
     return {"ok": ok == len(man), "restored": ok, "folder": folder}
 
 
-# =============================================================== reparación
+# =============================================================== repair
 def _stream(job, cmd, pct_re=r"(\d{1,3}(?:[.,]\d)?)\s*%", weight=(0.0, 1.0)):
-    """Ejecuta mostrando cada línea al momento (también las que se reescriben con \\r, como el % de SFC y DISM)."""
+    """Runs a command showing every line as it comes (also the ones rewritten with \\r, like the SFC and DISM %)."""
     job.log("> " + (cmd if isinstance(cmd, str) else " ".join(cmd)))
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                          creationflags=NO_WINDOW, shell=isinstance(cmd, str))
@@ -602,7 +602,7 @@ def _stream(job, cmd, pct_re=r"(\d{1,3}(?:[.,]\d)?)\s*%", weight=(0.0, 1.0)):
                 except ValueError:
                     pass
                 if re.fullmatch(r"[\[\]=\s\d.,%]+", line):
-                    continue  # barras de progreso de DISM: solo actualizan el %
+                    continue  # DISM progress bars: they only update the %
             job.log(line)
         if job.cancelled:
             p.kill()
@@ -614,15 +614,15 @@ def _stream(job, cmd, pct_re=r"(\d{1,3}(?:[.,]\d)?)\s*%", weight=(0.0, 1.0)):
 
 def _restart_explorer(job):
     subprocess.run(["taskkill", "/f", "/im", "explorer.exe"], capture_output=True, creationflags=NO_WINDOW)
-    job.log("Explorador cerrado.")
-    for _ in range(12):  # Windows lo vuelve a abrir solo (AutoRestartShell)
+    job.log("File Explorer closed.")
+    for _ in range(12):  # Windows reopens it by itself (AutoRestartShell)
         time.sleep(.5)
         if any(p["name"].lower() == "explorer.exe" for p in rsys.list_processes()):
-            job.log("Explorador abierto de nuevo.")
+            job.log("File Explorer is open again.")
             return
-    # si no volvió: se abre con un token sin elevar (abrirlo desde un proceso admin lo dejaría elevado)
+    # if it didn't come back: open it with a non-elevated token (opening it from an admin process would leave it elevated)
     subprocess.Popen(["runas", "/trustlevel:0x20000", "explorer.exe"], creationflags=NO_WINDOW)
-    job.log("Explorador abierto de nuevo.")
+    job.log("File Explorer is open again.")
 
 
 REPAIR_ADMIN = {"sfc", "dism", "chkdsk", "wu", "net"}
@@ -641,20 +641,20 @@ def repair(job, rid):
     elif rid == "wu":
         svcs = ["wuauserv", "cryptSvc", "bits", "msiserver"]
         for i, s in enumerate(svcs):
-            job.progress(.05 + i * .08, f"Deteniendo {s}")
+            job.progress(.05 + i * .08, f"Stopping {s}")
             _stream(job, ["net", "stop", s, "/y"], weight=(0, 0))
         stamp = time.strftime("%Y%m%d%H%M%S")
         for i, d in enumerate([os.path.join(win, "SoftwareDistribution"), os.path.join(win, "System32", "catroot2")]):
-            job.progress(.45 + i * .12, f"Renombrando {os.path.basename(d)}")
+            job.progress(.45 + i * .12, f"Renaming {os.path.basename(d)}")
             try:
                 os.rename(d, f"{d}.old-{stamp}")
                 job.log(f"{d} → {os.path.basename(d)}.old-{stamp}")
             except OSError as e:
-                job.log(f"No se pudo renombrar {d}: {e}")
+                job.log(f"Couldn't rename {d}: {e}")
         for i, s in enumerate(reversed(svcs)):
-            job.progress(.75 + i * .06, f"Arrancando {s}")
+            job.progress(.75 + i * .06, f"Starting {s}")
             _stream(job, ["net", "start", s], weight=(0, 0))
-        job.log("Windows Update está listo para volver a buscar.")
+        job.log("Windows Update is ready to search again.")
         code = 0
     elif rid == "net":
         job.progress(.1, "DNS")
@@ -663,11 +663,11 @@ def repair(job, rid):
         _stream(job, ["netsh", "winsock", "reset"], weight=(0, 0))
         job.progress(.7, "TCP/IP")
         _stream(job, ["netsh", "int", "ip", "reset"], weight=(0, 0))
-        job.log("Hecho. Reinicia el PC para terminar.")
+        job.log("Done. Restart the PC to finish.")
         code = 0
     elif rid == "icons":
         local = os.environ.get("LOCALAPPDATA", "")
-        job.progress(.1, "Cerrando el Explorador")
+        job.progress(.1, "Closing File Explorer")
         subprocess.run(["taskkill", "/f", "/im", "explorer.exe"], capture_output=True, creationflags=NO_WINDOW)
         time.sleep(.6)
         n = 0
@@ -679,8 +679,8 @@ def repair(job, rid):
                     n += 1
                 except OSError:
                     pass
-        job.log(f"{n} archivos de caché de iconos borrados.")
-        job.progress(.55, "Caché de fuentes")
+        job.log(f"{n} icon cache files deleted.")
+        job.progress(.55, "Font cache")
         if _admin():
             _stream(job, ["net", "stop", "FontCache", "/y"], weight=(0, 0))
             fc = os.path.join(win, "ServiceProfiles", "LocalService", "AppData", "Local", "FontCache")
@@ -691,31 +691,31 @@ def repair(job, rid):
                     pass
             _stream(job, ["net", "start", "FontCache"], weight=(0, 0))
         else:
-            job.log("La caché de fuentes necesita el modo administrador: se salta.")
+            job.log("The font cache needs administrator mode: skipped.")
         subprocess.run(["ie4uinit.exe", "-show"], capture_output=True, creationflags=NO_WINDOW)
-        job.progress(.85, "Abriendo el Explorador")
+        job.progress(.85, "Opening File Explorer")
         _restart_explorer(job)
         code = 0
     elif rid == "explorer":
-        job.progress(.3, "Reiniciando el Explorador")
+        job.progress(.3, "Restarting File Explorer")
         _restart_explorer(job)
         code = 0
     else:
         raise ValueError(rid)
-    job.progress(1, "Listo")
+    job.progress(1, "Done")
     return {"code": code}
 
 
-def restore_point(job, desc="StellarHub, antes de optimizar"):
+def restore_point(job, desc="StellarHub, before optimizing"):
     if not _admin():
         return _need_admin()
-    job.progress(.1, "Creando el punto de restauración…")
+    job.progress(.1, "Creating the restore point…")
     ok, out = rsys.create_restore_point(desc)
-    job.progress(1, "Listo")
+    job.progress(1, "Done")
     return {"ok": ok, "msg": out[-300:]}
 
 
-# =============================================================== rendimiento
+# =============================================================== performance
 _OVERLAY = {"961cc777-2547-4f9d-8174-7d86181b8a7a": "efficiency", "00000000-0000-0000-0000-000000000000": "balanced",
             "ded574b5-45a0-4f42-8737-46345c09c238": "best", "3af9b8d9-7c97-431d-ad78-34a8bfea439f": "efficiency"}
 _OVERLAY_GUID = {"efficiency": "961cc777-2547-4f9d-8174-7d86181b8a7a", "balanced": "00000000-0000-0000-0000-000000000000",
@@ -796,12 +796,12 @@ def _apply_visual(mode):
         _fields_ = [("cbSize", ctypes.c_uint), ("iMinAnimate", ctypes.c_int)]
     ai = ANIMATIONINFO(ctypes.sizeof(ANIMATIONINFO), 1 if on else 0)
     spi(0x0049, ai.cbSize, ctypes.byref(ai), 3)  # SPI_SETANIMATION
-    for code in (0x1043, 0x1025, 0x1003, 0x1017, 0x1005, 0x1007, 0x101B):  # áreas, sombras, menús, tooltips, combos, listas, cursor
+    for code in (0x1043, 0x1025, 0x1003, 0x1017, 0x1005, 0x1007, 0x101B):  # client areas, shadows, menus, tooltips, combo boxes, lists, cursor
         spi(code, 0, ctypes.c_void_p(1 if on else 0), 3)
 
 
 def perf_set(key, value):
-    """Cambia un ajuste de rendimiento en el mismo sitio donde lo guarda Windows. Devuelve el estado leído de nuevo."""
+    """Changes a performance setting in the same place Windows stores it. Returns the state read back again."""
     prev = perf_read()
     if key in ("ac", "dc"):
         if value not in _OVERLAY_GUID:
@@ -810,7 +810,7 @@ def perf_set(key, value):
         if key == current_src:
             r = ctypes.windll.powrprof.PowerSetActiveOverlayScheme(ctypes.byref(_guid(_OVERLAY_GUID[value])))
             if r != 0:
-                raise OSError(f"Windows no aceptó el modo (código {r})")
+                raise OSError(f"Windows didn't accept the mode (code {r})")
         else:
             if not _admin():
                 return _need_admin()

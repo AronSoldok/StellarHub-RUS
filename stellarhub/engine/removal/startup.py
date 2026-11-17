@@ -1,7 +1,7 @@
-"""Gestor de inicio: Run, carpeta Inicio, tareas al iniciar sesion y servicios automaticos.
+"""Startup manager: Run keys, Startup folder, logon tasks and automatic services.
 
-Desactivar usa el mismo mecanismo que el Administrador de tareas (StartupApproved), asi que es
-reversible y Windows lo entiende. Quitar del todo pasa por la cuarentena.
+Disabling uses the same mechanism as Task Manager (StartupApproved), so it is
+reversible and Windows understands it. Removing completely goes through the quarantine.
 """
 import ctypes
 import os
@@ -17,7 +17,7 @@ _SA = r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved"
 
 
 def file_company(path):
-    """CompanyName de la informacion de version del ejecutable."""
+    """CompanyName from the executable's version information."""
     try:
         ver = ctypes.windll.version
         size = ver.GetFileVersionInfoSizeW(path, None)
@@ -41,7 +41,7 @@ def file_company(path):
 def _approved(hive, sub, name):
     data = registry.get_value(registry.HIVES[hive], f"{_SA}\\{sub}", name)
     if isinstance(data, bytes) and data:
-        return data[0] % 2 == 0  # 02/06 activado, 03/07 desactivado
+        return data[0] % 2 == 0  # 02/06 enabled, 03/07 disabled
     return True
 
 
@@ -57,18 +57,18 @@ def _set_approved(hive, sub, name, enabled):
 
 def list_entries():
     out = []
-    # claves Run
+    # Run keys
     for hive, view, sa in (("HKCU", 0, "Run"), ("HKLM", V64, "Run"), ("HKLM", V32, "Run32")):
         base = r"Software\Microsoft\Windows\CurrentVersion\Run"
         for name, data, _ in registry.values(registry.HIVES[hive], base, view):
             exe = safety.image_path(str(data))
             out.append({"id": f"run|{hive}|{view}|{name}", "type": "run", "name": name, "command": str(data),
                         "exe": exe, "enabled": _approved(hive, sa, name),
-                        "where": "Registro (usuario)" if hive == "HKCU" else
-                                 f"Registro (todos los usuarios{', 32 bits' if view == V32 else ''})"})
-    # carpetas Inicio
-    for folder, hive, label in ((paths.kf("Startup"), "HKCU", "Carpeta Inicio (usuario)"),
-                                (paths.kf("CommonStartup"), "HKLM", "Carpeta Inicio (todos)")):
+                        "where": "Registry (current user)" if hive == "HKCU" else
+                                 f"Registry (all users{', 32-bit' if view == V32 else ''})"})
+    # Startup folders
+    for folder, hive, label in ((paths.kf("Startup"), "HKCU", "Startup folder (current user)"),
+                                (paths.kf("CommonStartup"), "HKLM", "Startup folder (all users)")):
         if not folder or not os.path.isdir(folder):
             continue
         for f in os.listdir(folder):
@@ -78,14 +78,14 @@ def list_entries():
             tgt = shortcuts.read_shortcut(full).get("target") or full
             out.append({"id": f"folder|{hive}|{full}", "type": "folder", "name": os.path.splitext(f)[0],
                         "command": tgt, "exe": tgt, "enabled": _approved(hive, "StartupFolder", f), "where": label})
-    # tareas al iniciar sesion / arrancar
+    # tasks at logon / boot
     for t in index.tasks():
         if not (t["logon"] or t["boot"]) or t["path"].lower().startswith("\\microsoft\\"):
             continue
         cmd = t["commands"][0] if t["commands"] else ("", "")
         out.append({"id": f"task|{t['path']}", "type": "task", "name": t["name"], "command": f"{cmd[0]} {cmd[1]}".strip(),
-                    "exe": cmd[0], "enabled": t["enabled"], "where": "Tarea programada"})
-    # servicios automaticos de terceros
+                    "exe": cmd[0], "enabled": t["enabled"], "where": "Scheduled task"})
+    # third-party automatic services
     win = paths.kf("Windows")
     for s in index.services():
         if s["start"] != 2 or not isinstance(s["type"], int) or not s["type"] & 0x30:
@@ -93,7 +93,7 @@ def list_entries():
         if win and paths.is_within(s["exe"], win):
             continue
         out.append({"id": f"service|{s['name']}", "type": "service", "name": s["display"], "command": s["image"],
-                    "exe": s["exe"], "enabled": True, "where": "Servicio automático",
+                    "exe": s["exe"], "enabled": True, "where": "Automatic service",
                     "locked": safety.service_rule(s["name"]) is not None})
     def finish(e):
         e["company"] = file_company(e["exe"]) if e.get("exe") and os.path.isfile(e["exe"]) else ""
@@ -127,7 +127,7 @@ def set_enabled(entry_id, enabled):
 
 
 def removal_item(entry_id):
-    """Elemento para la cuarentena que quita la entrada del todo."""
+    """Quarantine item that removes the entry completely."""
     kind, rest = entry_id.split("|", 1)
     if kind == "run":
         hive, view, name = rest.split("|", 2)
@@ -137,5 +137,5 @@ def removal_item(entry_id):
         _, full = rest.split("|", 1)
         return {"kind": "file", "target": full, "display": full}
     if kind == "task":
-        return {"kind": "task", "target": rest, "display": f"Tarea: {rest}"}
-    raise ValueError("Los servicios solo se pueden desactivar desde aquí")
+        return {"kind": "task", "target": rest, "display": f"Task: {rest}"}
+    raise ValueError("Services can only be disabled from here")

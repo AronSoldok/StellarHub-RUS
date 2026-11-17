@@ -1,6 +1,6 @@
-"""Marco propio de la ventana: sin barra de título de Windows, pero con mover, redimensionar, maximizar y
-"snap" nativos. Se usan los bucles de Windows (WM_NCLBUTTONDOWN con HTCAPTION / HTLEFT...) para que mover y
-redimensionar sean igual de fluidos que en una ventana normal."""
+"""Custom window frame: no Windows title bar, but with native move, resize, maximize and snap.
+Windows' own loops are used (WM_NCLBUTTONDOWN with HTCAPTION / HTLEFT...) so moving and resizing
+are as smooth as in a normal window."""
 import ctypes
 from ctypes import wintypes
 
@@ -12,7 +12,7 @@ WM_NCLBUTTONDOWN = 0x00A1
 HT = {"move": 2, "w": 10, "e": 11, "n": 12, "nw": 13, "ne": 14, "s": 15, "sw": 16, "se": 17}
 DWMWA_WINDOW_CORNER_PREFERENCE, DWMWA_BORDER_COLOR = 33, 34
 ROUND, NO_ROUND = 2, 1
-BORDER = 0x00382A1E  # #1E2A38 en BGR: un filo sutil alrededor de la ventana
+BORDER = 0x00382A1E  # #1E2A38 in BGR: a subtle edge around the window
 BORDER_NONE = 0xFFFFFFFE
 
 
@@ -28,11 +28,11 @@ class Chrome:
     def __init__(self, window, on_state=None):
         self.window = window
         self.max = False
-        self.normal = None  # (x, y, w, h) antes de maximizar
+        self.normal = None  # (x, y, w, h) before maximizing
         self.on_state = on_state or (lambda maxed: None)
         self._guard = False
 
-    # ---------- utilidades ----------
+    # ---------- utilities ----------
     @property
     def form(self):
         return self.window.native
@@ -49,7 +49,7 @@ class Chrome:
         from System.Windows.Forms import Screen
         return Screen.FromHandle(self.form.Handle).WorkingArea
 
-    # ---------- al mostrarse ----------
+    # ---------- when shown ----------
     def setup(self, start_max=True):
         if getattr(self, "_done", False):
             return
@@ -65,8 +65,8 @@ class Chrome:
         self._ui(go)
 
     def _on_resize(self, sender, args):
-        """El snap de Windows (arrastrar arriba, Win+↑) maximiza "de verdad" y taparía la barra de tareas:
-        se convierte en nuestro maximizado, que respeta el área de trabajo."""
+        """Windows snap (drag to the top, Win+↑) does a "real" maximize that would cover the taskbar:
+        it is turned into our own maximize, which respects the work area."""
         from System.Windows.Forms import FormWindowState
         if self._guard:
             return
@@ -114,11 +114,11 @@ class Chrome:
         _dwm(self.hwnd, DWMWA_BORDER_COLOR, BORDER)
         self.on_state(False)
 
-    # ---------- acciones que llama la interfaz ----------
+    # ---------- actions called by the UI ----------
     @staticmethod
     def _button_down():
-        """El bucle de mover/redimensionar de Windows solo debe empezar si el botón sigue pulsado;
-        si ya se soltó, la ventana se quedaría pegada al cursor."""
+        """Windows' move/resize loop must only start while the button is still down;
+        if it was already released, the window would stick to the cursor."""
         return bool(user32.GetAsyncKeyState(0x01) & 0x8000)
 
     def drag(self):

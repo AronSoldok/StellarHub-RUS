@@ -1,7 +1,7 @@
-"""Instalacion vigilada: foto del sistema antes y despues; la diferencia es el rastro del programa.
+"""Watched install: a snapshot of the system before and after; the difference is the program's trace.
 
-Revo usa un driver del kernel; aqui se comparan dos instantaneas. Ve todo lo que queda creado al
-terminar la instalacion (que es lo que hay que borrar despues).
+Revo uses a kernel driver; here two snapshots are compared. It sees everything that remains created when
+the installation finishes (which is what has to be removed later).
 """
 import json
 import os
@@ -42,7 +42,7 @@ def _snap_root(r, depth):
                             attrs = e.stat(follow_symlinks=False).st_file_attributes
                         except OSError:
                             continue
-                        # carpeta de verdad (no enlace ni junction); el atributo sale del listado
+                        # a real folder (not a link or junction); the attribute comes from the listing
                         if attrs & 0x10 and not attrs & 0x400:
                             stack.append((e.path, lvl + 1))
         except OSError:
@@ -111,14 +111,14 @@ def start(name):
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "before.json"), "w", encoding="utf-8") as f:
         json.dump(snap, f)
-    meta = {"id": mid, "name": name or "Instalación vigilada", "started": time.time(), "status": "running"}
+    meta = {"id": mid, "name": name or "Watched install", "started": time.time(), "status": "running"}
     with open(os.path.join(d, "meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False)
     return meta
 
 
 def _topmost(paths_set):
-    """Quita las rutas que estan dentro de otra ruta del conjunto."""
+    """Drop the paths that are inside another path of the set."""
     out = []
     for p in sorted(paths_set, key=len):
         if not any(p.startswith(q + "\\") for q in out):
@@ -158,7 +158,7 @@ def stop(mid):
         else:
             items.append({"kind": "regvalue", "target": v, "display": ref.display()})
     for t in new_tasks:
-        items.append({"kind": "task", "target": t, "display": f"Tarea: {t}"})
+        items.append({"kind": "task", "target": t, "display": f"Task: {t}"})
     uninstall_keys = [k for k in new_keys if "\\currentversion\\uninstall\\" in k.lower()]
     meta = _read_meta(mid)
     meta.update(status="done", stopped=time.time(), count=len(items), uninstall_keys=uninstall_keys)
@@ -188,7 +188,7 @@ def _topmost_keys(keys):
 
 
 def _real_case(p):
-    """Devuelve la ruta con sus mayusculas reales."""
+    """Return the path with its real capitalization."""
     drive, rest = os.path.splitdrive(p)
     cur = drive.upper() + "\\"
     for part in [x for x in rest.split("\\") if x]:
@@ -231,7 +231,7 @@ def delete(mid):
 
 
 def trace_items(mid, programs=()):
-    """Elementos del rastro que aun existen, con las mismas reglas de seguridad que el escaner."""
+    """Trace items that still exist, with the same safety rules as the scanner."""
     with open(os.path.join(_mdir(), mid, "trace.json"), encoding="utf-8") as f:
         items = json.load(f)["items"]
     ctx = safety.Context(target=None, programs=programs)
@@ -253,15 +253,15 @@ def trace_items(mid, programs=()):
             blocked = safety.service_rule(it["target"])
         if not exists:
             continue
-        out.append({**it, "id": f"t{n}", "score": 100, "reasons": ["Creado durante la instalación vigilada"],
+        out.append({**it, "id": f"t{n}", "score": 100, "reasons": ["Created during the watched install"],
                     "blocked": blocked, "personal": personal, "size": size, "level": "safe",
                     "selected": not blocked and not personal,
-                    "group": "Bloqueado por seguridad" if blocked else ("Datos personales" if personal else
+                    "group": "Blocked for safety" if blocked else ("Personal data" if personal else
                                                                         _group(k))})
     return out
 
 
 def _group(kind):
-    return {"folder": "Archivos y carpetas", "file": "Archivos y carpetas", "regkey": "Registro",
-            "regvalue": "Registro", "service": "Servicios y tareas", "task": "Servicios y tareas",
-            "fwrule": "Servicios y tareas"}.get(kind, "Otros")
+    return {"folder": "Files and folders", "file": "Files and folders", "regkey": "Registry",
+            "regvalue": "Registry", "service": "Services and tasks", "task": "Services and tasks",
+            "fwrule": "Services and tasks"}.get(kind, "Other")

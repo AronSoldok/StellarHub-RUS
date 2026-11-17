@@ -1,4 +1,4 @@
-"""Modo cazador: de una ventana, un .exe o un acceso directo al programa instalado."""
+"""Hunter mode: from a window, an .exe or a shortcut to the installed program."""
 import ctypes
 import os
 from ctypes import wintypes
@@ -28,7 +28,7 @@ def window_at_cursor():
 
 
 def resolve_target(path):
-    """Si es un acceso directo, devuelve su destino."""
+    """If it is a shortcut, return its target."""
     if path and path.lower().endswith((".lnk", ".url")):
         t = shortcuts.read_shortcut(path).get("target")
         return t or path
@@ -36,7 +36,7 @@ def resolve_target(path):
 
 
 def find_program(path, programs):
-    """Programa al que pertenece un archivo: la carpeta de instalacion mas especifica que lo contiene."""
+    """Program a file belongs to: the most specific install folder that contains it."""
     path = resolve_target(path)
     if not path:
         return None
@@ -47,7 +47,7 @@ def find_program(path, programs):
                 best, best_len = p, len(norm_path(cand))
     if best:
         return best
-    # sin carpeta registrada: por la carpeta del desinstalador o del icono, o por el nombre del .exe
+    # no registered folder: match by the uninstaller's or icon's folder, or by the .exe name
     d = norm_path(os.path.dirname(path))
     for p in programs:
         for f in (p.get("icon", "").split(",")[0], p.get("uninstall", "")):

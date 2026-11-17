@@ -1,4 +1,4 @@
-"""Reglas de seguridad: solo preguntan si algo se puede borrar, nunca borran."""
+"""Safety rules: they only answer whether something can be deleted, they never delete."""
 import os
 import unittest
 
@@ -106,8 +106,8 @@ class RegRules(unittest.TestCase):
             self.assertTrue(self.ok(hive, path, view, value), f"{hive}\\{path} {value}")
 
     def test_kernel_driver_and_boot_services_blocked(self):
-        self.assertIn("Driver", safety.service_rule("x", {"type": 1, "start": 3, "image": r"C:\foo\x.sys"}))
-        self.assertIn("arranque", safety.service_rule("x", {"type": 16, "start": 1, "image": r"C:\foo\x.exe"}))
+        self.assertIn("driver", safety.service_rule("x", {"type": 1, "start": 3, "image": r"C:\foo\x.sys"}))
+        self.assertIn("boot", safety.service_rule("x", {"type": 16, "start": 1, "image": r"C:\foo\x.exe"}))
         self.assertIn("Windows", safety.service_rule("x", {"type": 32, "start": 3,
                                                            "image": r"%SystemRoot%\System32\svchost.exe -k x"}))
         self.assertIsNone(safety.service_rule("x", {"type": 16, "start": 2, "image": r'"C:\Program Files\Foo\svc.exe"'}))

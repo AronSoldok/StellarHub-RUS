@@ -1,5 +1,5 @@
 import os
 import tempfile
 
-# Las pruebas nunca escriben en C:\ProgramData\StellarHub: usan su propia carpeta de datos.
+# The tests never write to C:\ProgramData\StellarHub: they use their own data folder.
 os.environ.setdefault("STELLARHUB_DATA", os.path.join(tempfile.gettempdir(), "stellarhub_testdata"))

@@ -1,7 +1,7 @@
-"""Reglas duras de seguridad. Nada se borra sin pasar por aqui.
+"""Hard safety rules. Nothing is deleted without going through here.
 
-Principio: ante la duda, se bloquea. Un resto que se queda es una molestia;
-algo del sistema que se borra es un PC roto.
+Principle: when in doubt, block. A leftover that stays behind is an annoyance;
+a system file that gets deleted is a broken PC.
 """
 import os
 import re
@@ -10,14 +10,14 @@ import winreg
 from . import paths, registry
 from .paths import is_within, kf, norm_path
 
-# ================================================================ rutas
+# ================================================================ paths
 
 def _j(base, *parts):
     return os.path.join(base, *parts) if base else None
 
 
 def protected_exact():
-    """Carpetas que no se pueden borrar (ni ellas ni ninguna carpeta que las contenga)."""
+    """Folders that cannot be deleted (neither them nor any folder containing them)."""
     k = paths.known_folders()
     pf, pf86 = k.get("ProgramFiles"), k.get("ProgramFilesX86")
     cf, cf86 = k.get("ProgramFilesCommon"), k.get("ProgramFilesCommonX86")
@@ -31,20 +31,20 @@ def protected_exact():
         k.get("Startup"), k.get("CommonStartup"), k.get("Temp"), k.get("UserProgramFiles"),
         _j(prof, "AppData"), _j(local, "Programs"), _j(local, "Temp"), _j(prof, ".."),
         _j(local, "Microsoft", "WinGet", "Packages"),
-        # carpetas compartidas de plugins de audio
+        # shared audio plugin folders
         _j(cf, "VST3"), _j(cf, "VST2"), _j(cf, "VST"), _j(cf, "CLAP"), _j(cf, "Avid"),
         _j(cf, "Avid", "Audio"), _j(cf, "Avid", "Audio", "Plug-Ins"), _j(pf, "VSTPlugins"),
         _j(pf, "Steinberg"), _j(pf, "Steinberg", "VSTPlugins"), _j(pf, "Common Files", "Steinberg"),
         _j(pf86, "VSTPlugins"), _j(pf86, "Steinberg", "VSTPlugins"), _j(cf86, "VST3"),
     ]
-    # raices de todas las unidades
+    # roots of every drive
     for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
         out.append(f"{letter}:\\")
     return {norm_path(p) for p in out if p}
 
 
 def forbidden_trees():
-    """Arboles en los que no se toca NADA (salvo excepciones)."""
+    """Trees where NOTHING is touched (except for the exceptions)."""
     k = paths.known_folders()
     win, pf, pf86 = k.get("Windows"), k.get("ProgramFiles"), k.get("ProgramFilesX86")
     cf, cf86, pd = k.get("ProgramFilesCommon"), k.get("ProgramFilesCommonX86"), k.get("ProgramData")
@@ -69,7 +69,7 @@ def forbidden_trees():
 
 
 def forbidden_exceptions():
-    """Subarboles permitidos DENTRO de un arbol prohibido."""
+    """Subtrees allowed INSIDE a forbidden tree."""
     k = paths.known_folders()
     local = k.get("LocalAppData")
     out = [k.get("Programs"), k.get("CommonPrograms"), k.get("Startup"), k.get("CommonStartup"),
@@ -97,7 +97,7 @@ def read_shared_dlls():
 
 
 class Context:
-    """Todo lo que hace falta para decidir si algo se puede borrar al limpiar un programa."""
+    """Everything needed to decide whether something can be deleted when cleaning up a program."""
 
     def __init__(self, target=None, programs=(), extra_protected=(), shared_dlls=None):
         self.protected = protected_exact() | paths.self_paths() | {norm_path(p) for p in extra_protected}
@@ -108,7 +108,7 @@ class Context:
         self.target = target
         tloc = norm_path(target.get("location")) if target else ""
         self.target_loc = tloc if tloc and tloc not in self.protected else ""
-        self.others = []  # (ruta, nombre)
+        self.others = []  # (path, name)
         for p in programs:
             if target is not None and p.get("id") == target.get("id"):
                 continue
@@ -116,45 +116,45 @@ class Context:
             if loc and loc not in self.protected and os.path.isabs(loc):
                 self.others.append((loc, p.get("name", "?")))
 
-    # -------------------------------------------------------------- archivos
+    # -------------------------------------------------------------- files
     def check_path(self, path):
-        """Devuelve (motivo_de_bloqueo | None, es_personal)."""
+        """Return (block_reason | None, is_personal)."""
         n = norm_path(path)
         if not n or not os.path.isabs(n) or len(n) <= 3:
-            return "Raíz de unidad o ruta no válida", False
+            return "Drive root or invalid path", False
         for p in self.protected:
             if is_within(p, n):
-                return ("Carpeta protegida del sistema" if p == n else
-                        "Contiene una carpeta protegida del sistema"), False
+                return ("Protected system folder" if p == n else
+                        "Contains a protected system folder"), False
         for f in self.forbidden:
             if is_within(n, f) and not any(is_within(n, e) for e in self.exceptions):
-                return "Zona protegida de Windows", False
+                return "Protected Windows area", False
             if is_within(f, n):
-                return "Contiene una zona protegida de Windows", False
+                return "Contains a protected Windows area", False
         for loc, name in self.others:
-            # A) borrar esto se llevaria por delante a otro programa instalado: siempre bloqueado
+            # A) deleting this would take another installed program with it: always blocked
             if is_within(loc, n):
-                return f"Contiene «{name}», que sigue instalado", False
-            # B) esta dentro de otro programa
+                return f"Contains “{name}”, which is still installed", False
+            # B) it is inside another program
             if is_within(n, loc):
-                # Dentro de otro programa: solo vale si es la carpeta del programa objetivo anidada (p. ej. un juego en Steam)
+                # Inside another program: only allowed if it is the target program's nested folder (e.g. a game inside Steam)
                 if not (self.target_loc and is_within(self.target_loc, loc) and is_within(n, self.target_loc)):
-                    return f"Pertenece a «{name}», que sigue instalado", False
+                    return f"Belongs to “{name}”, which is still installed", False
         for dll, count in self.shared_dlls.items():
             if count > 1 and is_within(dll, n):
-                return "Contiene archivos compartidos con otros programas (SharedDLLs)", False
+                return "Contains files shared with other programs (SharedDLLs)", False
         personal = any(is_within(n, r) for r in self.personal)
         desk = kf("Desktop")
         if desk and is_within(n, desk) and os.path.isdir(path):
             personal = True
         return None, personal
 
-    # -------------------------------------------------------------- registro
+    # -------------------------------------------------------------- registry
     def check_reg(self, ref):
         return reg_rule(ref)
 
 
-# ================================================================ registro
+# ================================================================ registry
 _SW_BLOCK = {"microsoft", "classes", "policies", "wow6432node", "clients", "registeredapplications",
              "odbc", "intel", "nvidia corporation", "realtek", "amd", "ati technologies", "khronos",
              "wow6432node", "partner", "regex"}
@@ -169,7 +169,7 @@ _CV = r"software\\(?:wow6432node\\)?microsoft\\windows\\currentversion"
 
 
 def _canon(ref):
-    """Ruta canonica en minusculas: 'hkcu\\software\\x' (HKU\\SID se trata como HKCU)."""
+    """Canonical lowercase path: 'hkcu\\software\\x' (HKU\\SID is treated as HKCU)."""
     hive, path = ref.hive.upper(), ref.path.lower().strip("\\")
     if hive == "HKU":
         parts = path.split("\\", 1)
@@ -180,13 +180,13 @@ def _canon(ref):
 
 
 def reg_rule(ref):
-    """Motivo de bloqueo o None si la clave/valor es eliminable."""
+    """Block reason, or None if the key/value can be removed."""
     hive, p = _canon(ref)
     parts = p.split("\\") if p else []
     is_val = ref.value is not None
     if len(parts) < 2 and not is_val:
-        return "Clave raíz del registro"
-    # valores que se pueden quitar uno a uno
+        return "Registry root key"
+    # values that can be removed one by one
     if is_val:
         if re.fullmatch(_CV + r"\\(run|runonce|runonceex)", p):
             return None
@@ -203,8 +203,8 @@ def reg_rule(ref):
             return None
         if p.startswith("software\\") and len(parts) >= 3 and parts[1] not in _SW_BLOCK:
             return None
-        return "Valor en zona protegida del registro"
-    # claves
+        return "Value in a protected registry area"
+    # keys
     if re.fullmatch(_CV + r"\\uninstall\\[^\\]+", p) or re.fullmatch(_CV + r"\\app paths\\[^\\]+", p):
         return None
     if re.fullmatch(_CV + r"\\installer\\userdata\\[^\\]+\\products\\[0-9a-f]{32}", p):
@@ -224,21 +224,21 @@ def reg_rule(ref):
         if len(rest) == 1 and head and not head.startswith(".") and head not in _CLASSES_BLOCK \
                 and not head.startswith("windows.") and not head.startswith("microsoft."):
             return None
-        return "Zona protegida del registro (Classes)"
+        return "Protected registry area (Classes)"
     if p.startswith("software\\"):
         sub = parts[1] if parts[1] != "wow6432node" else (parts[2] if len(parts) > 2 else "")
         depth = len(parts) - (1 if parts[1] == "wow6432node" else 0)
         if not sub or sub in _SW_BLOCK:
-            return "Zona protegida del registro"
+            return "Protected registry area"
         if sub == "appdatalow":
             return None if len(parts) >= 4 and parts[2] == "software" and parts[3] not in _SW_BLOCK else \
-                "Zona protegida del registro"
+                "Protected registry area"
         if depth >= 2:
             return None
-    return "Zona protegida del registro"
+    return "Protected registry area"
 
 
-# ================================================================ servicios
+# ================================================================ services
 _CRITICAL_SVC = {"wuauserv", "bits", "cryptsvc", "eventlog", "rpcss", "lsm", "winmgmt", "windefend",
                  "mpssvc", "bfe", "dhcp", "dnscache", "netlogon", "schedule", "plugplay", "power",
                  "audiosrv", "audioendpointbuilder", "msiserver", "trustedinstaller", "wscsvc", "sense"}
@@ -259,18 +259,18 @@ def service_info(name):
 def service_rule(name, info=None):
     info = info or service_info(name)
     if name.lower() in _CRITICAL_SVC:
-        return "Servicio esencial de Windows"
+        return "Essential Windows service"
     typ, start = info.get("type"), info.get("start")
     if typ is None and start is None:
-        return None  # ya no existe: la clave es un resto
+        return None  # no longer exists: the key is a leftover
     if isinstance(typ, int) and typ & 0x0F:
-        return "Driver del sistema: solo lo puede quitar su desinstalador oficial"
+        return "System driver: only its official uninstaller can remove it"
     if isinstance(start, int) and start <= 1:
-        return "Se carga al arrancar Windows: borrarlo podría impedir el arranque"
+        return "Loads when Windows starts: deleting it could stop Windows from booting"
     img = norm_path(_image_path(info.get("image", "")))
     win = norm_path(kf("Windows"))
     if img and win and is_within(img, win):
-        return "Servicio alojado en Windows"
+        return "Service hosted in Windows"
     return None
 
 
@@ -287,36 +287,36 @@ def _image_path(cmd):
 image_path = _image_path
 
 
-# ================================================================ programas
+# ================================================================ programs
 _PROTECTED_PROGRAMS = [
-    ("security", "Antivirus / seguridad",
+    ("security", "Antivirus / security",
      r"kaspersky|avast|\bavg\b|norton|mcafee|\beset\b|bitdefender|malwarebytes|sophos|trend ?micro|panda dome|"
      r"avira|webroot|f-secure|comodo|zonealarm|windows defender|microsoft defender|360 total security|gdata|g data"),
-    ("runtime", "Componente compartido (otros programas dependen de él)",
+    ("runtime", "Shared component (other programs depend on it)",
      r"visual c\+\+|\.net (runtime|framework|desktop runtime)|desktop runtime|asp\.net|directx|webview2|"
      r"microsoft windows desktop runtime|vcredist|redistributable|java\(tm\)|java \d+|openjdk|python launcher|"
      r"microsoft gameinput|windows sdk|windows software development kit|universal crt|msvc|xna framework|"
      r"physx|vulkan runtime|openal|microsoft update health|windows pc health|application compatibility"),
-    ("driver", "Driver o software de hardware",
+    ("driver", "Driver or hardware software",
      r"driver|controlador|chipset|nvidia|realtek|intel\(r\)|intel .*(management|serial|graphics|wireless|"
      r"bluetooth|rapid)|amd (chipset|software|radeon)|radeon|thunderbolt|bluetooth|touchpad|synaptics|elan |"
      r"dolby|asio|framework service|armoury|aura (service|lighting)|rog live|asus .*service|logitech g hub|"
      r"razer synapse|icue|wintun|tap-windows|npcap|winpcap|usb|vbcable|vb-audio|virtual audio"),
-    ("network", "Red / VPN (instala drivers de red)", r"\bvpn\b|wireguard|openvpn|zerotier|tailscale|hamachi"),
-    ("windows", "Componente de Windows",
+    ("network", "Network / VPN (installs network drivers)", r"\bvpn\b|wireguard|openvpn|zerotier|tailscale|hamachi"),
+    ("windows", "Windows component",
      r"^microsoft edge|^microsoft onedrive|^windows |^microsoft windows|^update for|^security update|"
      r"^microsoft 365|^microsoft office|^office 16|click-to-run|^copilot$|^microsoft teams"),
 ]
 
 
 def classify_program(p):
-    """Devuelve dict con categoria protegida o None."""
+    """Return a dict with the protected category, or None."""
     text = f"{p.get('name', '')} | {p.get('publisher', '')}".lower()
     for cat, label, rx in _PROTECTED_PROGRAMS:
         if re.search(rx, text):
             return {"category": cat, "label": label, "no_force": True,
                     "scan_level_max": "safe" if cat in ("security", "windows", "runtime") else "moderate"}
     if "microsoft" in (p.get("publisher") or "").lower():
-        return {"category": "microsoft", "label": "Software de Microsoft", "no_force": False,
+        return {"category": "microsoft", "label": "Microsoft software", "no_force": False,
                 "scan_level_max": "moderate"}
     return None

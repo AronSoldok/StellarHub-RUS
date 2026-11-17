@@ -1,4 +1,4 @@
-"""Rutas del sistema, carpetas de datos de la app y utilidades de rutas."""
+"""System paths, app data folders and path helpers."""
 import ctypes
 import os
 import re
@@ -7,8 +7,8 @@ import uuid
 from ctypes import wintypes
 from functools import lru_cache
 
-# ---------------------------------------------------------------- datos de la app
-# Siempre en ProgramData: la Python de la Microsoft Store virtualiza lo que se crea en AppData.
+# ---------------------------------------------------------------- app data
+# Always in ProgramData: the Microsoft Store Python virtualizes whatever is created in AppData.
 DATA_DIR = (os.environ.get("STELLARHUB_DATA") or os.environ.get("MINIREVO_DATA")
             or os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "remover"))
 
@@ -20,10 +20,10 @@ def data_path(*parts, make=True):
     return p
 
 
-APP_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # carpeta de StellarHub: nunca se toca
+APP_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # the StellarHub folder: never touched
 
 
-# ---------------------------------------------------------------- carpetas conocidas
+# ---------------------------------------------------------------- known folders
 class _GUID(ctypes.Structure):
     _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD), ("Data3", wintypes.WORD),
                 ("Data4", ctypes.c_ubyte * 8)]
@@ -97,9 +97,9 @@ def kf(name):
     return known_folders().get(name)
 
 
-# ---------------------------------------------------------------- utilidades
+# ---------------------------------------------------------------- helpers
 def norm_path(p):
-    """Ruta normalizada para comparar (minusculas, sin barra final, variables expandidas)."""
+    """Normalized path for comparisons (lowercase, no trailing slash, variables expanded)."""
     if not p:
         return ""
     return _norm_path(p if isinstance(p, str) else str(p))
@@ -115,7 +115,7 @@ def _norm_path(p):
 
 
 def is_within(child, parent):
-    """True si child es parent o esta dentro de parent."""
+    """True if child is parent or is inside parent."""
     c, p = norm_path(child), norm_path(parent)
     if not c or not p:
         return False
@@ -139,9 +139,9 @@ def norm_name(s):
 
 
 def folder_size(path, limit_files=None):
-    """Tamano en bytes sin seguir enlaces. Devuelve (bytes, archivos).
+    """Size in bytes without following links. Return (bytes, files).
 
-    Los atributos y el tamano salen del propio listado (FindNextFile): ninguna llamada extra por archivo.
+    Attributes and sizes come from the listing itself (FindNextFile): no extra call per file.
     """
     total = files = 0
     stack = [path]
@@ -152,7 +152,7 @@ def folder_size(path, limit_files=None):
                 for e in it:
                     try:
                         st = e.stat(follow_symlinks=False)
-                        if st.st_file_attributes & _REPARSE:   # enlace, junction o similar: no se sigue
+                        if st.st_file_attributes & _REPARSE:   # link, junction or similar: not followed
                             continue
                         if st.st_file_attributes & _DIRECTORY:
                             stack.append(e.path)
@@ -182,7 +182,7 @@ def path_size(path):
 
 @lru_cache(maxsize=1)
 def running_packaged():
-    """True si este Python corre como app empaquetada (Python de la Microsoft Store)."""
+    """True if this Python runs as a packaged app (Microsoft Store Python)."""
     try:
         n = ctypes.c_uint32(0)
         rc = ctypes.windll.kernel32.GetCurrentPackageFullName(ctypes.byref(n), None)
@@ -192,7 +192,7 @@ def running_packaged():
 
 
 def self_paths():
-    """Rutas que MiniRevo jamas puede tocar (su propio codigo, sus datos, su Python)."""
+    """Paths the remover must never touch (its own code, its data, its Python)."""
     out = {norm_path(APP_DIR), norm_path(DATA_DIR), norm_path(os.path.dirname(sys.executable))}
     if getattr(sys, "frozen", False):
         out.add(norm_path(os.path.dirname(sys.executable)))

@@ -3,7 +3,7 @@
 #v-optimizer .ri.ok{color:var(--ok)} #v-optimizer .ri.skip{color:var(--warn)}
 #v-optimizer .ri svg{width:17px;height:17px}
 
-/* ---------- resumen ---------- */
+/* ---------- overview ---------- */
 #v-optimizer .ov{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:16px;height:100%;min-height:0}
 #v-optimizer .ov-l{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 22px}
 #v-optimizer .ring-wrap{position:relative;width:min(240px,32vh);aspect-ratio:1}
@@ -69,7 +69,7 @@ html[data-int=min] #v-optimizer .ring.scanning .sweep{animation:none}
 #v-optimizer .result span{display:block;font-size:12px;color:var(--mute);margin-top:8px}
 #v-optimizer .res-log .row{padding:8px 10px}
 
-/* ---------- limpieza: grupos en columnas equilibradas, sin huecos ---------- */
+/* ---------- cleanup: groups in balanced columns, no gaps ---------- */
 #v-optimizer .cl{display:flex;flex-direction:column;height:100%;gap:14px;min-height:0}
 #v-optimizer .cl-top{display:flex;align-items:center;gap:24px;flex-wrap:wrap;flex:none}
 #v-optimizer .cl-tot span{display:block;font-size:12px}
@@ -107,7 +107,7 @@ html[data-int=min] #v-optimizer .ring.scanning .sweep{animation:none}
 #v-optimizer .cl-it.clean .rt,#v-optimizer .cl-it.clean .check{opacity:.5}
 #v-optimizer .cl-it.clean .cl-size{color:var(--ok)}
 
-/* ---------- arranque: resumen + gráfico arriba, tabla como el Administrador de tareas abajo ---------- */
+/* ---------- startup: summary + chart on top, Task Manager-style table below ---------- */
 #v-optimizer .st{display:grid;grid-template-rows:auto minmax(0,1fr);gap:14px;height:100%}
 #v-optimizer .st-top{display:grid;grid-template-columns:minmax(300px,1fr) 2fr;gap:14px}
 #v-optimizer .st-sum{display:flex;flex-direction:column}
@@ -160,16 +160,16 @@ html[data-int=min] #v-optimizer .ring.scanning .sweep{animation:none}
 #v-optimizer .st-r .chip{height:22px;font-size:11.5px}
 #v-optimizer .st-imp{display:flex;align-items:center;gap:8px;font-size:12.5px}
 #v-optimizer .st-imp i{width:8px;height:8px;border-radius:50%;background:var(--faint)}
-#v-optimizer .st-imp.i-alto i{background:var(--accent)} #v-optimizer .st-imp.i-alto{color:var(--accent)}
-#v-optimizer .st-imp.i-medio i{background:var(--warn)}
-#v-optimizer .st-imp.i-bajo i{background:var(--ok)}
-#v-optimizer .st-imp.i-ninguno{color:var(--faint)}
+#v-optimizer .st-imp.i-high i{background:var(--accent)} #v-optimizer .st-imp.i-high{color:var(--accent)}
+#v-optimizer .st-imp.i-medium i{background:var(--warn)}
+#v-optimizer .st-imp.i-low i{background:var(--ok)}
+#v-optimizer .st-imp.i-none{color:var(--faint)}
 #v-optimizer .st-det-in{padding:0 12px 12px 54px;font-size:12px}
 #v-optimizer .st-det-in p{color:var(--ink);margin-bottom:6px}
 #v-optimizer .st-path.sub{padding-left:20px}
 #v-optimizer .st-loc{margin-top:6px}
 
-/* ---------- servicios: perfil a la izquierda, lista a la derecha ---------- */
+/* ---------- services: profile on the left, list on the right ---------- */
 #v-optimizer .sv{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:14px;height:100%}
 #v-optimizer .sv-l{display:flex;flex-direction:column;min-height:0}
 #v-optimizer .sv-profs{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px}
@@ -206,7 +206,7 @@ html[data-int=min] #v-optimizer .ring.scanning .sweep{animation:none}
 #v-optimizer .sv-st s{color:var(--faint);font-size:11.5px}
 #v-optimizer .sv-it.chg .sv-st>span{color:var(--accent)}
 
-/* ---------- registro: aviso + grupos en columnas equilibradas ---------- */
+/* ---------- registry: notice + groups in balanced columns ---------- */
 #v-optimizer .rg{display:flex;flex-direction:column;gap:14px}
 #v-optimizer .rg-note{display:flex;align-items:center;gap:16px}
 #v-optimizer .rg-note>svg{width:22px;height:22px;color:var(--accent2);flex:none}
@@ -225,7 +225,7 @@ html[data-int=min] #v-optimizer .ring.scanning .sweep{animation:none}
 #v-optimizer .rg-it .rt span{white-space:normal}
 #v-optimizer .rg-ok svg{width:34px;height:34px;color:var(--ok);margin-bottom:10px}
 
-/* ---------- reparación: lista de herramientas + consola ---------- */
+/* ---------- repair: tool list + console ---------- */
 #v-optimizer .rp{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:14px;height:100%}
 #v-optimizer .rp-l{display:flex;flex-direction:column;min-height:0;padding:14px 8px 8px}
 #v-optimizer .rp-l>h4{padding:0 10px}
@@ -263,7 +263,7 @@ html[data-int=min] #v-optimizer .ring.scanning .sweep{animation:none}
 #v-optimizer .ln{white-space:pre-wrap}
 #v-optimizer .ln.ok{color:var(--ok)} #v-optimizer .ln.warn{color:var(--warn)}
 
-/* ---------- rendimiento: una tarjeta por ajuste de Windows, todas de la misma altura ---------- */
+/* ---------- performance: one card per Windows setting, all the same height ---------- */
 #v-optimizer .pf-wrap{display:flex;flex-direction:column;gap:14px}
 #v-optimizer .pf-note{display:flex;align-items:center;gap:14px;padding:12px 18px}
 #v-optimizer .pf-note>svg{width:20px;height:20px;color:var(--accent2);flex:none}
@@ -322,7 +322,7 @@ html[data-int=min] #v-optimizer .ring.scanning .sweep{animation:none}
 #v-optimizer .pf-plan.on .pf-pd{background:var(--ok)}
 #v-optimizer .pf-plan .chip{height:20px;font-size:11px}
 #v-optimizer .pf-pn{font-size:11.5px;margin-top:4px;line-height:1.4}
-/* ventanas bajas: el gráfico de arranque se compacta para dejar sitio a la tabla */
+/* short windows: the startup chart shrinks to make room for the table */
 @media (max-height:780px){
   #v-optimizer .st-cw{grid-template-columns:1fr;gap:6px}
   #v-optimizer .st-hd{flex-direction:row;align-items:flex-end;gap:28px}
@@ -336,7 +336,7 @@ html[data-int=min] #v-optimizer .ring.scanning .sweep{animation:none}
   #v-optimizer .st-note{display:none}
 }
 
-/* ---- motor real: carga, sin datos, progreso indeterminado, errores ---- */
+/* ---- real engine: loading, no data, indeterminate progress, errors ---- */
 #v-optimizer .opt-load{display:flex;flex-direction:column;align-items:center;gap:6px;padding:46px 10px 10px;text-align:center}
 #v-optimizer .opt-load b{font-weight:500;font-size:14px;margin-top:10px}
 #v-optimizer .opt-spin{width:34px;height:34px;border-radius:50%;border:3px solid var(--raise3);border-top-color:var(--accent2);animation:optSpin calc(900ms*var(--f) + 300ms) linear infinite}

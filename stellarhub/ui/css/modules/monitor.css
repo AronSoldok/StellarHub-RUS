@@ -1,4 +1,4 @@
-/* StellarHub · Live Monitor (todo bajo #v-monitor) */
+/* StellarHub · Live Monitor (everything under #v-monitor) */
 #v-monitor .pan>h4{min-height:22px}
 #v-monitor .goto{display:inline-flex;align-items:center;gap:4px;color:var(--mute);font-weight:500;border-radius:7px;padding:1px 4px 1px 0;transition:color calc(160ms*var(--f))}
 #v-monitor .goto svg{width:14px;height:14px;opacity:0;transform:translateX(-4px);transition:opacity calc(160ms*var(--f)),transform calc(220ms*var(--f)) cubic-bezier(.2,.9,.3,1.3)}
@@ -9,7 +9,7 @@
 #v-monitor .muted{font-size:12.5px}
 #v-monitor .mnote{font-size:12px;color:var(--mute);margin-top:12px;line-height:1.5;padding:10px 12px;border-radius:12px;background:var(--raise);border:1px solid var(--line)}
 
-/* ---------- resumen ---------- */
+/* ---------- overview ---------- */
 #v-monitor .tab[data-tab=overview]{overflow:auto}
 #v-monitor .ov{height:100%;min-height:470px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));grid-template-rows:minmax(240px,1.3fr) minmax(200px,1fr);gap:14px}
 #v-monitor .ov .pan{display:flex;flex-direction:column;overflow:hidden}
@@ -38,7 +38,7 @@
 #v-monitor .pair b{font:500 19px var(--display);color:var(--ink);letter-spacing:-.02em}
 #v-monitor .pair.big2 b{font-size:24px}
 
-/* listas de "lo que más usa" */
+/* "top users" lists */
 #v-monitor .tops{display:flex;flex-direction:column;gap:2px;margin-top:8px}
 #v-monitor .tp{display:grid;grid-template-columns:26px 1fr auto;grid-template-rows:auto 3px;column-gap:10px;row-gap:5px;align-items:center;padding:6px 4px;border-radius:9px}
 #v-monitor .tp .mono{grid-row:span 2}
@@ -48,7 +48,7 @@
 #v-monitor .tp .bar>span{transition:transform calc(600ms*var(--f)) cubic-bezier(.16,1,.3,1)}
 #v-monitor .mono{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;font:600 11.5px var(--text);color:var(--mute);background:var(--raise2);border:1px solid var(--line);flex:none}
 
-/* ---------- rejillas de pestañas ---------- */
+/* ---------- tab grids ---------- */
 #v-monitor .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-content:start}
 #v-monitor .grid>.wide{grid-column:span 2}
 #v-monitor .g-cpu>:nth-child(5){grid-column:1/-1}
@@ -77,7 +77,7 @@
 #v-monitor .chwrap.sm{height:84px}
 #v-monitor .axis{display:flex;justify-content:space-between;font-size:11px;color:var(--faint);margin-top:6px}
 
-/* bloques de datos */
+/* data blocks */
 #v-monitor .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}
 #v-monitor .stats.s3{grid-template-columns:repeat(3,minmax(0,1fr))}
 #v-monitor .stats.s4{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -94,7 +94,7 @@
 #v-monitor .spec .iconbtn{width:26px;height:26px}
 #v-monitor .spec .iconbtn svg{width:15px;height:15px}
 
-/* núcleos */
+/* cores */
 #v-monitor .cores{display:flex;gap:22px}
 #v-monitor .cg{display:flex;flex-direction:column;gap:8px;min-width:0}
 #v-monitor .cg:first-child{flex:2} #v-monitor .cg:last-child{flex:1}
@@ -108,14 +108,14 @@
 #v-monitor .core.e .th b{background:linear-gradient(0deg,var(--accent),color-mix(in oklab,var(--accent) 50%,var(--accent2)))}
 #v-monitor .core span{font-size:11px;color:var(--faint)}
 
-/* gráficos */
+/* graphics */
 #v-monitor .gpuhero{display:flex;align-items:center;gap:24px}
 #v-monitor .gpuhero .stats{flex:1}
 #v-monitor .vram{margin-top:16px;display:grid;grid-template-columns:1fr auto;gap:0 12px;font-size:12.5px;color:var(--mute)}
 #v-monitor .vram b{color:var(--ink);font-weight:500}
 #v-monitor .vram .bar{grid-column:1/-1}
 
-/* memoria */
+/* memory */
 #v-monitor .stack{position:relative;height:12px;border-radius:7px;background:var(--raise3);overflow:hidden;margin-top:6px}
 #v-monitor .stack span{position:absolute;inset:0;transform-origin:0 50%;transform:scaleX(0);will-change:transform}
 #v-monitor .stack .s1{background:var(--accent);border-radius:7px 0 0 7px}
@@ -132,7 +132,7 @@
 @keyframes mon-glow{from{box-shadow:0 0 0 0 transparent}to{box-shadow:0 0 18px -4px color-mix(in oklab,var(--accent2) 60%,transparent)}}
 html[data-int=min] #v-monitor .slot.on .stick{animation:none}
 
-/* discos */
+/* disks */
 #v-monitor .health-big{display:flex;align-items:center;gap:14px;margin:4px 0 14px}
 #v-monitor svg.ring{width:54px;height:54px;transform:rotate(-90deg);flex:none}
 #v-monitor .health-big b{display:block;font:500 20px var(--display);letter-spacing:-.02em}
@@ -144,7 +144,7 @@ html[data-int=min] #v-monitor .slot.on .stick{animation:none}
 #v-monitor .pl em{font-style:normal;margin-left:auto;color:var(--mute);font-size:12px}
 #v-monitor .part .bar>span,#v-monitor .vram .bar>span,#v-monitor .gstats .bar>span,#v-monitor .p-ram .bar>span{transition:none;transform:scaleX(0)}
 
-/* red */
+/* network */
 #v-monitor .wifi{display:flex;align-items:center;gap:14px;margin-bottom:12px}
 #v-monitor .wifi b{display:block;font-weight:500}
 #v-monitor .wifi span{font-size:12px;color:var(--mute)}
@@ -155,7 +155,7 @@ html[data-int=min] #v-monitor .slot.on .stick{animation:none}
 #v-monitor .mini{display:flex;gap:18px;font-size:12px;color:var(--mute);margin-top:10px}
 #v-monitor .mini b{color:var(--ink);font-weight:500}
 
-/* batería */
+/* battery */
 #v-monitor .batrow{display:flex;align-items:center;gap:22px;margin-bottom:16px}
 #v-monitor .batt{position:relative;display:flex;align-items:center;flex:none}
 #v-monitor .batt .body{width:116px;height:54px;border-radius:12px;border:2px solid var(--line2);padding:5px;position:relative;overflow:hidden}
@@ -165,7 +165,7 @@ html[data-int=min] #v-monitor .slot.on .stick{animation:none}
 @keyframes mon-pulse{from{opacity:.55;transform:scale(.92)}to{opacity:1;transform:scale(1.06)}}
 html[data-int=min] #v-monitor .batt .bolt{animation:none}
 
-/* procesos */
+/* processes */
 #v-monitor .procs{height:100%;display:flex;flex-direction:column;gap:12px;min-height:0}
 #v-monitor .ptools{display:flex;align-items:center;gap:16px;flex:none}
 #v-monitor .ptools .field{width:300px}
@@ -194,7 +194,7 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .pa .iconbtn[data-pact=end]:hover{color:var(--bad);background:color-mix(in oklab,var(--bad) 14%,transparent)}
 #v-monitor .pa .iconbtn[disabled]{opacity:.3;pointer-events:none}
 
-/* diálogo de confirmación */
+/* confirmation dialog */
 #v-monitor .mdlg{position:absolute;inset:0;z-index:50;visibility:hidden;display:grid;place-items:center}
 #v-monitor .mdlg.on{visibility:visible}
 #v-monitor .mdlg .scrim{position:absolute;inset:0;background:rgba(3,5,11,.55)}
@@ -204,7 +204,7 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .mdlg p{color:var(--mute);font-size:13px;margin-bottom:18px}
 #v-monitor .mdlg .row-btns{justify-content:flex-end}
 
-/* salud */
+/* health */
 #v-monitor .allok{display:flex;align-items:center;gap:22px}
 #v-monitor .okt{flex:1;min-width:0}
 #v-monitor .okt h3{font:500 22px var(--display);letter-spacing:-.02em;margin-bottom:6px}
@@ -239,7 +239,7 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .dotc.bad{background:var(--bad);box-shadow:0 0 0 4px color-mix(in oklab,var(--bad) 18%,transparent)}
 #v-monitor .dotc.warn{background:var(--warn);box-shadow:0 0 0 4px color-mix(in oklab,var(--warn) 18%,transparent)}
 
-/* ajustes tras ver capturas */
+/* adjustments after reviewing screenshots */
 #v-monitor .subnav .bd[hidden]{display:none}
 #v-monitor .ov .big{font-size:34px}
 #v-monitor .ov .tops{margin-top:6px;gap:0}
@@ -251,10 +251,10 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .g-bat .chwrap.tall{height:190px}
 #v-monitor .g-mem>:nth-child(3) .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
 
-/* ---------- distribución: cada pestaña ocupa justo el alto disponible ----------
-   Rejilla de 3 columnas y 2 filas que se estira hasta el dock; las gráficas crecen con su panel y lo que
-   no cabe hace scroll dentro del cuerpo del panel (sin fondo propio: core.js le pone el desvanecido).
-   Si la ventana es muy baja, los mínimos hacen que la pestaña entera tenga scroll en vez de aplastarse. */
+/* ---------- layout: each tab takes exactly the available height ----------
+   A 3-column, 2-row grid that stretches down to the dock; charts grow with their panel and whatever does
+   not fit scrolls inside the panel body (with no background of its own: core.js adds the fade).
+   If the window is very short, the minimums make the whole tab scroll instead of squashing it. */
 #v-monitor .grid{height:100%;grid-template-rows:minmax(250px,1.3fr) minmax(200px,1fr);align-content:stretch}
 #v-monitor .grid>.pan{display:flex;flex-direction:column;overflow:hidden}
 #v-monitor .grid>.pan>h4{flex:none}
@@ -265,7 +265,7 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .pbody>.mnote{margin-top:auto;padding-top:10px}
 #v-monitor .pbody>.mnote:not(:first-child){margin-top:12px}
 
-/* procesador: uso + estado arriba; núcleos, lo que más usa y ficha abajo */
+/* processor: usage + status on top; cores, top users and spec sheet below */
 #v-monitor .g-cpu>:nth-child(3){grid-column:auto}
 #v-monitor .g-cpu>:nth-child(5){grid-column:auto}
 #v-monitor .g-cpu>:nth-child(5) .spec{grid-template-columns:auto 1fr;column-gap:16px}
@@ -279,7 +279,7 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .core:not(.e){grid-template-rows:minmax(0,1fr) auto;row-gap:6px}
 #v-monitor .core .th{height:auto;min-height:26px;flex:1}
 
-/* gráficos: medidor y datos a la izquierda, gráfica a la derecha */
+/* graphics: gauge and data on the left, chart on the right */
 #v-monitor .g-gpu>:nth-child(1){grid-row:auto}
 #v-monitor .g-gpu>:nth-child(4){grid-column:auto}
 #v-monitor .gsplit{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:26px}
@@ -292,16 +292,16 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .gpuhero .stats.s4{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px}
 #v-monitor .g-gpu .vram{margin-top:14px}
 
-/* memoria y discos: la gráfica llena el panel grande */
+/* memory and disks: the chart fills the large panel */
 #v-monitor .g-mem .stats,#v-monitor .g-disk .stats{align-content:space-around}
 #v-monitor .g-mem>:nth-child(3) .pbody{justify-content:center}
 
-/* batería: dos paneles arriba, la gráfica de 24 h abajo */
+/* battery: two panels on top, the 24 h chart below */
 #v-monitor .g-bat{grid-template-rows:minmax(230px,1fr) minmax(190px,1fr)}
 #v-monitor .g-bat>:nth-child(1) .pbody{justify-content:space-around}
 #v-monitor .g-bat .batrow{margin-bottom:0}
 
-/* salud: resumen arriba a todo lo ancho y tres columnas debajo */
+/* health: full-width summary on top and three columns below */
 #v-monitor .g-health{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto minmax(220px,1fr)}
 #v-monitor .g-health>.allok{grid-column:1/-1}
 #v-monitor .g-health>.pan:nth-child(4){grid-column:auto}
@@ -312,7 +312,7 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .g-health .row .rt span{white-space:normal}
 #v-monitor .g-health .events{gap:2px}
 
-/* casillas de iniciales siempre centradas */
+/* initials tiles always centered */
 #v-monitor .mono{line-height:1;padding:0}
 @media (max-width:1180px){
   #v-monitor .grid{height:auto;grid-template-rows:none;grid-auto-rows:minmax(220px,auto)}
@@ -333,16 +333,16 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .pbody h4{font-size:12.5px;font-weight:500;color:var(--mute);display:flex;align-items:center;gap:8px;margin:4px 0 10px}
 #v-monitor .pbody .row .rt span{white-space:normal}
 
-/* ---------- datos reales ---------- */
-/* icono real del programa dentro de su casilla */
+/* ---------- real data ---------- */
+/* real program icon inside its tile */
 #v-monitor .mono.img{background:none;border-color:transparent;padding:0}
 #v-monitor .mono.img img{width:100%;height:100%;object-fit:contain;display:block}
 #v-monitor .ov .tp .mono.img img{width:20px;height:20px;margin:auto}
-/* un dato que Windows no da */
+/* a value Windows does not provide */
 #v-monitor .na{color:var(--faint);cursor:help}
-/* salud con avisos */
+/* health with warnings */
 #v-monitor .allok .warnmark{width:64px;height:64px;flex:none;border-radius:50%;display:grid;place-items:center;color:var(--warn);background:color-mix(in oklab,var(--warn) 12%,transparent);border:1.5px solid color-mix(in oklab,var(--warn) 45%,transparent)}
 #v-monitor .allok .warnmark svg{width:28px;height:28px}
 #v-monitor .allok.warn h3{color:var(--warn)}
-/* tabla de procesos: las filas fuera de la vista no se pintan (scroll fluido con 150+ programas) */
+/* process table: rows out of view are not painted (smooth scrolling with 150+ programs) */
 #v-monitor .pr{content-visibility:auto;contain-intrinsic-size:auto 46px}

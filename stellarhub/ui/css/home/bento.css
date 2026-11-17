@@ -1,4 +1,4 @@
-/* StellarHub · vista de Inicio "Mosaico" */
+/* StellarHub · "Mosaic" Home view */
 .hv-bento{position:absolute;inset:0 0 4px 0;display:grid;gap:10px;container-type:size;
   grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:1fr 1fr .82fr .82fr;
   grid-template-areas:"gpu gpu cpu cpu" "gpu gpu cpu cpu" "ram ssd dsp dsp" "bat wif aud sys"}
@@ -9,7 +9,7 @@
   transition:border-color calc(200ms*var(--f)),background-color calc(200ms*var(--f))}
 .hv-bento .a-ram .tilt,.hv-bento .a-ssd .tilt,.hv-bento .a-bat .tilt,.hv-bento .a-wif .tilt,.hv-bento .a-aud .tilt,.hv-bento .a-sys .tilt{padding:11px 13px 12px}
 
-/* tratamientos: cada mosaico pesa distinto */
+/* treatments: each tile has a different weight */
 .hv-bento .k-hero .tilt{border-color:color-mix(in oklab,var(--accent2) 26%,transparent);
   background:radial-gradient(120% 95% at 72% 22%,color-mix(in oklab,var(--accent2) 15%,transparent),transparent 62%),var(--raise)}
 .hv-bento .k-chip .tilt{border-color:color-mix(in oklab,var(--accent) 30%,transparent);
@@ -21,23 +21,23 @@
 .hv-bento .k-chip.hot .tilt{border-color:color-mix(in oklab,var(--accent) 60%,transparent)}
 .hv-bento .bt:focus-visible .tilt{outline:2px solid var(--accent2);outline-offset:2px}
 
-/* brillo que sigue al cursor */
+/* glow that follows the cursor */
 .hv-bento .glow{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity calc(220ms*var(--f));
   background:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),color-mix(in oklab,var(--accent2) 15%,transparent),transparent 62%)}
 .hv-bento .k-chip .glow{background:radial-gradient(240px circle at var(--mx,50%) var(--my,50%),color-mix(in oklab,var(--accent) 16%,transparent),transparent 62%)}
 .hv-bento .bt.hot .glow{opacity:1}
 
-/* mosaicos anchos y bajos: ilustración a la izquierda, texto a la derecha */
+/* wide, short tiles: illustration on the left, text on the right */
 .hv-bento .a-dsp .tilt{flex-direction:row;align-items:center;gap:14px}
 .hv-bento .a-dsp .art{flex:0 0 46%;height:100%;padding:0}
 .hv-bento .a-dsp .meta{flex:1}
 
-/* mosaicos pequeños: la ilustración arriba, más grande, y el texto abajo */
+/* small tiles: illustration on top, bigger, and text below */
 .hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .tilt{justify-content:flex-end}
 .hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .art{position:absolute;right:14px;top:14px;left:auto;width:48%;height:min(40px,calc(100% - 96px));min-height:22px;padding:0;justify-content:flex-end}
 .hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .art svg{width:auto;max-width:100%}
 
-/* contenido */
+/* content */
 .hv-bento .art{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;transform:translateZ(26px);padding:4px 0 8px}
 .hv-bento .art svg{width:100%;height:100%;display:block;overflow:visible}
 .hv-bento .meta{transform:translateZ(12px);min-width:0}
@@ -57,7 +57,7 @@
 .hv-bento .bar>span{transition:none;transform:scaleX(0)}
 .hv-bento .a-cpu .nums{margin-bottom:0}
 
-/* ilustraciones */
+/* illustrations */
 .hv-bento svg text{font:400 11px var(--text);fill:var(--mute)}
 .hv-bento svg text.sm{font-size:8.5px}
 .hv-bento .art-gpu .body{fill:var(--raise2);stroke:var(--accent2);stroke-opacity:.45;stroke-width:1.2}
@@ -124,7 +124,7 @@
 .hv-bento .bt.hot .art-sys .l1{transform:translateY(-7px);fill-opacity:.22}
 .hv-bento .bt.hot .art-sys .l3{transform:translateY(7px)}
 
-/* escenario estrecho o bajo */
+/* narrow or short stage */
 @container (max-width:640px){
   .hv-bento .a-gpu .meta .t{font-size:14px}
   .hv-bento .a-cpu .meta .t{font-size:13px}
@@ -141,10 +141,10 @@
 
 html[data-int=min] .hv-bento *{animation:none!important}
 
-/* ---------- todos los mosaicos con el mismo fondo (antes Red, Audio y Pantallas se veían "apagados") ---------- */
+/* ---------- every tile with the same background (Network, Audio and Displays used to look "switched off") ---------- */
 .hv-bento .k-deep .tilt,.hv-bento .k-open .tilt{background:var(--raise);box-shadow:none}
-/* el escenario nunca lleva el desvanecido de las zonas con scroll */
+/* the stage never gets the scroll-area fade */
 #stage,#stage .vwrap,.hv-bento{-webkit-mask-image:none!important;mask-image:none!important}
-/* rejilla dinámica: la monta bento.js según los componentes que tenga el equipo */
+/* dynamic grid: bento.js builds it from the components this PC has */
 .hv-bento{grid-template-areas:none}
 .hv-bento .na{color:var(--faint)}

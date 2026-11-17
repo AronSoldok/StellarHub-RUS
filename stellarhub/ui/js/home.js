@@ -1,5 +1,5 @@
-/* StellarHub · Inicio. Cabecera a todo lo ancho y tres columnas: estado en vivo, componentes (Mosaico o 3D) y
-   lo pendiente. Se dibuja al arrancar, con los datos reales del equipo (SH.PC) ya cargados. */
+/* StellarHub · Home. A full-width header and three columns: live status, components (Mosaic or 3D) and
+   what is pending. It renders at startup, once the real PC data (SH.PC) is loaded. */
 'use strict';
 (() => {
 const { $, $$, state, Spring, EASE, anim, tickers, ic, PC, registry, motion, esc } = SH;
@@ -8,17 +8,17 @@ const chev = ic('chev');
 const T = SH.tele;
 const dash = '—';
 const VITALS = [
-  { id: 'cpu', ic: 'cpu', n: 'Procesador', val: v => [T.fmt('cpu'), '%'], frac: v => (v.cpu ?? 0) / 100, hot: v => (v.cpuTemp ?? 0) > 90, comp: 'cpu' },
-  { id: 'gpu', ic: 'gpu', n: 'Gráficos', val: v => [T.fmt('gpu'), '%'], frac: v => (v.gpu ?? 0) / 100, hot: v => (v.gpuTemp ?? 0) > 85, comp: 'gpu', need: 'gpu' },
-  { id: 'gtemp', ic: 'temp', n: 'Temperatura GPU', val: v => [T.fmt('gpuTemp'), '°C'], frac: v => ((v.gpuTemp ?? 25) - 25) / 75, hot: v => (v.gpuTemp ?? 0) > 85, comp: 'gpu', need: 'gpu' },
-  { id: 'ram', ic: 'ram', n: 'Memoria', val: v => [T.fmt('ram', SH.fmt1), `de ${Math.round(v.ramTotal || 0)} GB`], frac: v => (v.ram ?? 0) / (v.ramTotal || 1), hot: v => (v.ram ?? 0) / (v.ramTotal || 1) > .92, comp: 'ram' },
-  { id: 'vram', ic: 'layers', n: 'Memoria de vídeo', val: v => [T.fmt('vram', SH.fmt1), `de ${v.vramTotal || '–'} GB`], frac: v => (v.vram ?? 0) / (v.vramTotal || 8), hot: () => false, comp: 'gpu', need: 'gpu' },
-  { id: 'disk', ic: 'ssd', n: 'Disco C:', val: v => [T.fmt('diskUsed'), `de ${v.diskTotal || '–'} GB`], frac: v => (v.diskUsed ?? 0) / (v.diskTotal || 1), hot: v => (v.diskUsed ?? 0) / (v.diskTotal || 1) > .92, comp: 'ssd' },
-  { id: 'net', ic: 'wifi', n: 'Red', val: v => [T.fmt('down', SH.fmt1), 'Mb/s de bajada'], frac: v => Math.min(1, (v.down ?? 0) / 200), hot: () => false, comp: 'wifi' },
-  { id: 'bat', ic: 'battery', n: 'Batería', val: v => [T.fmt('battery'), v.charging ? '% cargando' : '%'], frac: v => (v.battery ?? 0) / 100, hot: v => v.battery !== null && v.battery < 15 && !v.charging, comp: 'battery', need: 'battery' },
+  { id: 'cpu', ic: 'cpu', n: 'Processor', val: v => [T.fmt('cpu'), '%'], frac: v => (v.cpu ?? 0) / 100, hot: v => (v.cpuTemp ?? 0) > 90, comp: 'cpu' },
+  { id: 'gpu', ic: 'gpu', n: 'Graphics', val: v => [T.fmt('gpu'), '%'], frac: v => (v.gpu ?? 0) / 100, hot: v => (v.gpuTemp ?? 0) > 85, comp: 'gpu', need: 'gpu' },
+  { id: 'gtemp', ic: 'temp', n: 'GPU temperature', val: v => [T.fmt('gpuTemp'), '°C'], frac: v => ((v.gpuTemp ?? 25) - 25) / 75, hot: v => (v.gpuTemp ?? 0) > 85, comp: 'gpu', need: 'gpu' },
+  { id: 'ram', ic: 'ram', n: 'Memory', val: v => [T.fmt('ram', SH.fmt1), `of ${Math.round(v.ramTotal || 0)} GB`], frac: v => (v.ram ?? 0) / (v.ramTotal || 1), hot: v => (v.ram ?? 0) / (v.ramTotal || 1) > .92, comp: 'ram' },
+  { id: 'vram', ic: 'layers', n: 'Video memory', val: v => [T.fmt('vram', SH.fmt1), `of ${v.vramTotal || '–'} GB`], frac: v => (v.vram ?? 0) / (v.vramTotal || 8), hot: () => false, comp: 'gpu', need: 'gpu' },
+  { id: 'disk', ic: 'ssd', n: 'Drive C:', val: v => [T.fmt('diskUsed'), `of ${v.diskTotal || '–'} GB`], frac: v => (v.diskUsed ?? 0) / (v.diskTotal || 1), hot: v => (v.diskUsed ?? 0) / (v.diskTotal || 1) > .92, comp: 'ssd' },
+  { id: 'net', ic: 'wifi', n: 'Network', val: v => [T.fmt('down', SH.fmt1), 'Mb/s down'], frac: v => Math.min(1, (v.down ?? 0) / 200), hot: () => false, comp: 'wifi' },
+  { id: 'bat', ic: 'battery', n: 'Battery', val: v => [T.fmt('battery'), v.charging ? '% charging' : '%'], frac: v => (v.battery ?? 0) / 100, hot: v => v.battery !== null && v.battery < 15 && !v.charging, comp: 'battery', need: 'battery' },
 ];
 const VARIANT_IC = { bento: 'grid', model3d: 'cube' };
-const ago = ts => { const s = (Date.now() - ts) / 1000; if (s < 90) return 'ahora'; if (s < 3600) return `hace ${Math.round(s / 60)} min`; if (s < 86400) return `hace ${Math.round(s / 3600)} h`; const d = Math.round(s / 86400); return d === 1 ? 'ayer' : `hace ${d} días`; };
+const ago = ts => { const s = (Date.now() - ts) / 1000; if (s < 90) return 'just now'; if (s < 3600) return `${Math.round(s / 60)} min ago`; if (s < 86400) return `${Math.round(s / 3600)} h ago`; const d = Math.round(s / 86400); return d === 1 ? 'yesterday' : `${d} days ago`; };
 
 let rows = [], built = false;
 function render() {
@@ -26,42 +26,42 @@ function render() {
   const vit = VITALS.filter(x => (x.need !== 'gpu' || hasGpu) && (x.need !== 'battery' || hasBat));
   home.innerHTML = `<div class="home-grid">
   <header class="h-head" data-intro>
-    <div class="h-id"><div class="model" id="hModel">${esc(PC.model)}</div><div class="sub">${esc(PC.typeName)}${PC.code ? `, modelo ${esc(PC.code)}` : ''}. ${esc(PC.os)}.</div></div>
+    <div class="h-id"><div class="model" id="hModel">${esc(PC.model)}</div><div class="sub">${esc(PC.typeName)}${PC.code ? `, model ${esc(PC.code)}` : ''}. ${esc(PC.os)}.</div></div>
     <div class="facts">
       <div><b data-count="${PC.facts.drivers ?? ''}">${PC.facts.drivers == null ? dash : 0}</b><span>drivers</span></div>
-      <div><b data-count="${PC.facts.programs ?? ''}">${PC.facts.programs == null ? dash : 0}</b><span>programas</span></div>
-      <div><b data-count="${PC.facts.freeC ?? ''}">0</b><span>GB libres en C:</span></div>
+      <div><b data-count="${PC.facts.programs ?? ''}">${PC.facts.programs == null ? dash : 0}</b><span>programs</span></div>
+      <div><b data-count="${PC.facts.freeC ?? ''}">0</b><span>GB free on C:</span></div>
     </div>
-    <div class="h-quick"><button class="btn sec wbtn" data-widget-btn title="Widget siempre visible"><span class="wdot"></span><span class="lbl">Widget</span></button></div>
+    <div class="h-quick"><button class="btn sec wbtn" data-widget-btn title="Always-on-top widget"><span class="wdot"></span><span class="lbl">Widget</span></button></div>
   </header>
 
   <aside class="h-col">
-    <div class="pan vitals" data-intro><h4>Ahora mismo <em>${T.simulated ? 'datos de ejemplo' : 'en vivo'}</em></h4>
+    <div class="pan vitals" data-intro><h4>Right now <em>${T.simulated ? 'sample data' : 'live'}</em></h4>
       <div class="vit-list">${vit.map(x => `<button class="vit" data-comp="${x.comp}" data-vit="${x.id}"><span class="vi">${ic(x.ic)}</span><span class="vn">${x.n}</span><span class="vv">${dash}</span><span class="bar"><span></span></span></button>`).join('')}</div>
     </div>
   </aside>
 
   <section class="h-center">
-    <div class="stage-head" data-intro><h4>Componentes</h4><span class="chip">${PC.components.length}</span><div class="vtoggle" id="vswitch"></div></div>
+    <div class="stage-head" data-intro><h4>Components</h4><span class="chip">${PC.components.length}</span><div class="vtoggle" id="vswitch"></div></div>
     <div class="stage" id="stage" data-nofade></div>
   </section>
 
   <aside class="h-col">
-    <div class="pan pending" data-intro><h4>Por revisar</h4><div id="pendList"></div></div>
+    <div class="pan pending" data-intro><h4>To review</h4><div id="pendList"></div></div>
     <div class="pan healthp" data-intro>
       <div class="hh">
         <svg class="g" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="none" style="stroke:var(--raise2)" stroke-width="4"/><circle id="healthArc" cx="20" cy="20" r="16" fill="none" style="stroke:var(--accent2)" stroke-width="4" stroke-linecap="round" stroke-dasharray="100.5" stroke-dashoffset="100.5"/></svg>
-        <div><b id="hTitle">Revisando el sistema…</b><span id="hSub">Un momento</span></div>
+        <div><b id="hTitle">Checking the system…</b><span id="hSub">One moment</span></div>
       </div>
       <div class="hs">
-        <div>Temperaturas<b id="hTemp">${dash}</b></div>
-        <div>Encendido<b id="hUp">${dash}</b></div>
+        <div>Temperatures<b id="hTemp">${dash}</b></div>
+        <div>Uptime<b id="hUp">${dash}</b></div>
         <div>Antivirus<b id="hAv">${dash}</b></div>
-        <div>Punto de restauración<b id="hRp">${dash}</b></div>
+        <div>Restore point<b id="hRp">${dash}</b></div>
       </div>
     </div>
     <div class="pan nextp" data-intro>
-      <div class="nx-head"><div class="seg" id="nxSeg"><span class="ind"></span><button data-v="next" class="on">Próximamente</button><button data-v="recent">Hace poco</button></div></div>
+      <div class="nx-head"><div class="seg" id="nxSeg"><span class="ind"></span><button data-v="next" class="on">Coming up</button><button data-v="recent">Recently</button></div></div>
       <div class="nx-pages"><div class="nx-page on" data-p="next" id="nxNext"></div><div class="nx-page" data-p="recent" id="nxRecent"></div></div>
     </div>
   </aside>
@@ -72,19 +72,19 @@ function render() {
   built = true;
 }
 
-/* nombre del modelo siempre en una línea */
+/* the model name always on one line */
 const fit = () => { const el = $('#hModel'); if (!el) return; el.style.fontSize = '34px'; const room = innerWidth * .34; let s = 34; while (el.scrollWidth > room && s > 20) { s--; el.style.fontSize = s + 'px'; } };
 addEventListener('resize', fit);
 
-/* ---------- estado en vivo ---------- */
-const fmtUp = s => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h >= 48 ? `${Math.floor(h / 24)} días ${h % 24} h` : h ? `${h} h ${m} min` : `${m} min`; };
+/* ---------- live status ---------- */
+const fmtUp = s => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h >= 48 ? `${Math.floor(h / 24)} days ${h % 24} h` : h ? `${h} h ${m} min` : `${m} min`; };
 function readVitals() {
   if (!built) return; const v = T.v;
   rows.forEach(r => { r.s.t = Math.max(0, Math.min(1, r.x.frac(v) || 0)); const [a, b] = r.x.val(v); r.vv.innerHTML = a === dash ? dash : `${a}<small>${b}</small>`; r.el.classList.toggle('hot', !!r.x.hot(v)); });
   if (T.has('uptime')) $('#hUp').textContent = fmtUp(v.uptime);
   const temps = [T.has('cpuTemp') ? `CPU ${Math.round(v.cpuTemp)} °C` : null, T.has('gpuTemp') ? `GPU ${Math.round(v.gpuTemp)} °C` : null].filter(Boolean);
   const hot = (v.cpuTemp ?? 0) > 90 || (v.gpuTemp ?? 0) > 85;
-  $('#hTemp').textContent = temps.length ? `${hot ? 'altas' : 'normales'}, ${temps[0]}` : dash;
+  $('#hTemp').textContent = temps.length ? `${hot ? 'high' : 'normal'}, ${temps[0]}` : dash;
 }
 SH.tele.on(() => { if (state.view === 'home') readVitals(); });
 tickers.add(dt => {
@@ -96,50 +96,50 @@ home.addEventListener('click', e => {
   const p = e.target.closest('[data-go]'); if (p) SH.go(p.dataset.go, { tab: p.dataset.tab });
 });
 
-/* ---------- por revisar: lo publican los módulos al revisar (SH.setPending) ---------- */
+/* ---------- to review: modules publish these when they check (SH.setPending) ---------- */
 const PEND = [
-  { k: 'drivers', go: 'drivers', tab: 'updates', one: 'driver con actualización', many: 'drivers con actualización', none: 'Drivers al día', unk: 'Buscar drivers nuevos' },
-  { k: 'apps', go: 'updater', tab: 'overview', one: 'programa por actualizar', many: 'programas por actualizar', none: 'Programas al día', unk: 'Buscar actualizaciones', alt: true },
-  { k: 'junk', go: 'optimizer', tab: 'clean', unit: 'GB', one: 'que se pueden liberar', many: 'que se pueden liberar', none: 'Nada importante que limpiar', unk: 'Analizar qué se puede limpiar' },
+  { k: 'drivers', go: 'drivers', tab: 'updates', one: 'driver update available', many: 'driver updates available', none: 'Drivers up to date', unk: 'Check for new drivers' },
+  { k: 'apps', go: 'updater', tab: 'overview', one: 'program to update', many: 'programs to update', none: 'Programs up to date', unk: 'Check for updates', alt: true },
+  { k: 'junk', go: 'optimizer', tab: 'clean', unit: 'GB', one: 'that can be freed', many: 'that can be freed', none: 'Nothing important to clean', unk: 'Scan what can be cleaned' },
 ];
 function renderPending() {
   const box = $('#pendList'); if (!box) return; const p = state.settings.pending || {};
   box.innerHTML = PEND.map(x => {
     const e = p[x.k]; const n = e ? e.n : null;
-    if (n == null) return `<button class="pend unk" data-go="${x.go}" data-tab="${x.tab}"><b>${ic('search')}</b><span>${x.unk}<small>sin revisar todavía</small></span>${chev}</button>`;
+    if (n == null) return `<button class="pend unk" data-go="${x.go}" data-tab="${x.tab}"><b>${ic('search')}</b><span>${x.unk}<small>not checked yet</small></span>${chev}</button>`;
     if (!n) return `<button class="pend ok" data-go="${x.go}" data-tab="${x.tab}"><b>${ic('check')}</b><span>${x.none}<small>${ago(e.at)}</small></span>${chev}</button>`;
-    const num = x.unit ? `${SH.fmt1(n).replace(',0', '')}<small> ${x.unit}</small>` : n;
-    return `<button class="pend${x.alt ? ' alt' : ''}" data-go="${x.go}" data-tab="${x.tab}"><b>${num}</b><span>${n === 1 ? x.one : x.many}<small>revisado ${ago(e.at)}</small></span>${chev}</button>`;
+    const num = x.unit ? `${SH.fmt1(n).replace('.0', '')}<small> ${x.unit}</small>` : n;
+    return `<button class="pend${x.alt ? ' alt' : ''}" data-go="${x.go}" data-tab="${x.tab}"><b>${num}</b><span>${n === 1 ? x.one : x.many}<small>checked ${ago(e.at)}</small></span>${chev}</button>`;
   }).join('');
 }
 SH.on('pending', () => { renderPending(); if (state.view === 'home') $$('#pendList .pend').forEach((el, i) => anim(el, [{ opacity: .4 }, { opacity: 1 }], { d: 400, delay: i * 40, keep: true })); });
 
-/* ---------- salud real ---------- */
+/* ---------- real health ---------- */
 async function loadHealth() {
   let h; try { h = await SH.engine('system', 'health'); } catch { h = null; }
-  if (!h) { $('#hTitle').textContent = 'Salud del sistema'; $('#hSub').textContent = 'Solo se revisa dentro de la app'; return; }
-  const errs = h.deviceErrors || 0; const av = (h.antivirus || []).find(a => !/defender/i.test(a)) || (h.defender ? 'Defender activo' : (h.antivirus || [])[0]);
+  if (!h) { $('#hTitle').textContent = 'System health'; $('#hSub').textContent = 'Only checked inside the app'; return; }
+  const errs = h.deviceErrors || 0; const av = (h.antivirus || []).find(a => !/defender/i.test(a)) || (h.defender ? 'Defender on' : (h.antivirus || [])[0]);
   const ok = errs === 0 && (av || h.defender);
-  $('#hTitle').textContent = ok ? 'Salud del sistema: buena' : `Salud del sistema: ${errs ? 'revisar' : 'sin antivirus'}`;
-  $('#hSub').textContent = errs ? `${errs} dispositivo${errs > 1 ? 's' : ''} con error` : 'Sin errores de dispositivos';
+  $('#hTitle').textContent = ok ? 'System health: good' : `System health: ${errs ? 'needs a look' : 'no antivirus'}`;
+  $('#hSub').textContent = errs ? `${errs} device${errs > 1 ? 's' : ''} with errors` : 'No device errors';
   $('#hSub').title = (h.errorNames || []).join('\n');
-  $('#hAv').textContent = av || 'Ninguno activo';
-  $('#hRp').textContent = h.restore ? ago(Date.parse(h.restore)) : (h.restoreAccess ? 'ninguno' : 'requiere administrador');
+  $('#hAv').textContent = av || 'None active';
+  $('#hRp').textContent = h.restore ? ago(Date.parse(h.restore)) : (h.restoreAccess ? 'none' : 'needs administrator');
   const pct = ok ? .92 : errs ? .62 : .4; anim($('#healthArc'), [{ strokeDashoffset: 100.5 }, { strokeDashoffset: 100.5 * (1 - pct) }], { d: 1200 });
   $('#healthArc').style.stroke = ok ? 'var(--accent2)' : 'var(--warn)';
 }
 
-/* ---------- próximamente (rutinas de Autopilot) y hace poco (actividad real) ---------- */
+/* ---------- coming up (Autopilot routines) and recently (real activity) ---------- */
 function renderNext() {
   const box = $('#nxNext'); if (!box) return;
   const rs = (state.settings.autopilotRoutines || []).filter(r => r.enabled !== false && !r.paused).slice(0, 3);
-  box.innerHTML = rs.length ? rs.map(r => `<button class="nx" data-go="autopilot" data-tab="calendar"><span class="ni">${ic('autopilot')}</span><span class="nt"><b>${esc(r.name || 'Rutina')}</b><span>${esc(r.summary || 'Rutina de Autopilot')}</span></span></button>`).join('')
-    : `<div class="nx-empty"><span>No hay rutinas todavía.</span><button class="btn sm sec" data-go="autopilot" data-tab="routines">${ic('plus')}Crear una</button></div>`;
+  box.innerHTML = rs.length ? rs.map(r => `<button class="nx" data-go="autopilot" data-tab="calendar"><span class="ni">${ic('autopilot')}</span><span class="nt"><b>${esc(r.name || 'Routine')}</b><span>${esc(r.summary || 'Autopilot routine')}</span></span></button>`).join('')
+    : `<div class="nx-empty"><span>No routines yet.</span><button class="btn sm sec" data-go="autopilot" data-tab="routines">${ic('plus')}Create one</button></div>`;
 }
 function renderRecent() {
   const box = $('#nxRecent'); if (!box) return; const a = (state.settings.activity || []).slice(0, 3);
   box.innerHTML = a.length ? a.map(x => `<button class="nx"${x.go ? ` data-go="${x.go}" data-tab="${x.tab || ''}"` : ''}><span class="ni">${ic(x.ic || 'check')}</span><span class="nt"><b>${esc(x.t)}</b><span>${esc(x.sub || '')}</span></span><span class="nw">${ago(x.at)}</span></button>`).join('')
-    : '<div class="nx-empty"><span>Aquí aparecerá lo que hagas con StellarHub.</span></div>';
+    : '<div class="nx-empty"><span>What you do with StellarHub will show up here.</span></div>';
 }
 SH.on('setting', ({ key }) => { if (key === 'activity') renderRecent(); if (key === 'autopilotRoutines') renderNext(); });
 function bindNx() {
@@ -159,7 +159,7 @@ function bindNx() {
   });
 }
 
-/* ---------- vistas del escenario (Mosaico / 3D) ---------- */
+/* ---------- stage views (Mosaic / 3D) ---------- */
 let current = null, currentWrap = null;
 const variantList = () => Object.values(registry.variants);
 function renderSwitch() {
@@ -180,14 +180,14 @@ function mountVariant(id, intro) {
     anim(wrap, [{ opacity: 0, transform: 'scale(1.05)', filter: 'blur(14px)' }, { opacity: 1, transform: 'scale(1)', filter: 'blur(0px)' }], { d: 520, delay: 100, e: EASE.out });
   }
   const ctx = { PC, tele: SH.tele, openComponent: (cid, el) => SH.openComponent(cid, el), motion, stage, intro: !!intro || !!old };
-  try { def.mount(wrap, ctx); } catch (e) { console.error(e); wrap.innerHTML = `<div class="empty"><b>Esta vista falló</b>${esc(e.message)}</div>`; }
+  try { def.mount(wrap, ctx); } catch (e) { console.error(e); wrap.innerHTML = `<div class="empty"><b>This view failed</b>${esc(e.message)}</div>`; }
   $$('#vswitch button').forEach(x => x.classList.toggle('on', x.dataset.v === def.id)); const sg = $('#vswitch .seg'); if (sg) SH.placeSeg(sg);
 }
 SH.on('setting', ({ key, val }) => { if (key === 'homeVariant') mountVariant(val); });
 SH.on('variant:registered', () => { renderSwitch(); if (!current && built) mountVariant(state.settings.homeVariant, true); });
 addEventListener('resize', () => { if (current && current.resize) try { current.resize(); } catch (e) { console.error(e); } });
 
-/* ---------- entrada ---------- */
+/* ---------- entrance ---------- */
 function intro(back) {
   const base = back ? 140 : 0;
   $$('[data-intro]', home).forEach((el, i) => anim(el, [{ opacity: 0, transform: 'translate3d(0,14px,0)', filter: 'blur(8px)' }, { opacity: 1, transform: 'translate3d(0,0,0)', filter: 'blur(0px)' }], { d: 620, delay: base + (back ? 0 : 420) + i * 60, e: EASE.spring }));

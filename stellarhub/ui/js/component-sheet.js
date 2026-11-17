@@ -1,5 +1,5 @@
-/* StellarHub · ficha emergente de un componente, con datos reales (SH.PC + telemetría + motor).
-   Crece desde la pieza pulsada (FLIP) y vuelve a ella al cerrar. SH.openComponent(id, origenOpcional) */
+/* StellarHub · component pop-up card, with real data (SH.PC + telemetry + engine).
+   It grows out of the clicked tile (FLIP) and shrinks back into it on close. SH.openComponent(id, optionalOrigin) */
 'use strict';
 (() => {
 const { $, $$, anim, EASE, ic, esc, fmt1, fmtInt, tickers, state } = SH;
@@ -8,35 +8,35 @@ const f = (k, fn = x => Math.round(x), suf = '') => T.has(k) ? fn(T.v[k]) + suf 
 const comp = id => SH.PC.components.find(x => x.id === id) || { name: id, title: '', rows: [] };
 const upt = s => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h >= 48 ? `${Math.floor(h / 24)} d ${h % 24} h` : `${h} h ${m} min`; };
 const CFG = {
-  cpu: { big: () => [f('cpu'), '% de uso'], chart: { key: 'cpu', max: 100, label: 'Uso en el último minuto' },
-    stats: () => [['Frecuencia', f('cpuFreq', fmt1, ' GHz')], ['Temperatura', T.has('cpuTemp') ? f('cpuTemp', undefined, ' °C') : (state.admin ? 'no disponible' : 'solo en modo admin')],
-      ['Procesos', f('procs', fmtInt)], ['Hilos ocupados', (v().threads || []).filter(t => t > .5).length + ' de ' + (v().threads || []).length]],
-    actions: [['Ver en Live Monitor', 'monitor', 'cpu', 'monitor'], ['Qué lo está usando', 'monitor', 'processes', 'list']] },
-  gpu: { big: () => [f('gpu'), '% de uso'], chart: { key: 'gpu', max: 100, label: 'Uso en el último minuto' },
-    stats: () => [['Temperatura', f('gpuTemp', undefined, ' °C')], ['Consumo', f('gpuPower', undefined, ' W')], ['Memoria de vídeo', T.has('vram') ? `${fmt1(v().vram)} de ${v().vramTotal || '–'} GB` : dash], ['Reloj', f('gpuClock', fmt1, ' GHz')]],
-    actions: [['Buscar un driver nuevo', 'drivers', 'updates', 'drivers'], ['Ver en Live Monitor', 'monitor', 'gpu', 'monitor']] },
-  ram: { big: () => [f('ram', fmt1), `de ${Math.round(v().ramTotal || 0)} GB en uso`], chart: { key: 'ram', max: () => v().ramTotal || 16, label: 'Uso en el último minuto' },
-    stats: () => [['En uso', T.has('ram') ? Math.round(v().ram / (v().ramTotal || 1) * 100) + ' %' : dash], ['Comprometida', f('ramCommit', fmt1, ' GB')], ['En caché', f('ramCache', fmt1, ' GB')],
-      ['Ranuras', comp('ram').slots ? `${comp('ram').modules} de ${comp('ram').slots} ocupadas` : dash]],
-    actions: [['Qué usa la memoria', 'monitor', 'processes', 'list'], ['Ver en Live Monitor', 'monitor', 'memory', 'monitor']] },
-  ssd: { big: () => [T.has('diskTotal') ? Math.round(v().diskTotal - v().diskUsed) : dash, `GB libres de ${v().diskTotal || '–'} en C:`], chart: { key: 'diskRead', label: 'Lectura en el último minuto (MB/s)' },
-    stats: () => [['Ocupado', T.has('diskUsed') ? Math.round(v().diskUsed / v().diskTotal * 100) + ' %' : dash], ['Lectura', f('diskRead', fmtInt, ' MB/s')], ['Escritura', f('diskWrite', fmtInt, ' MB/s')], ['Actividad', T.has('diskRead') ? (v().diskRead + v().diskWrite > 50 ? 'alta' : 'baja') : dash]],
-    actions: [['Ver qué ocupa', 'storage', 'map', 'storage'], ['Liberar espacio', 'optimizer', 'clean', 'broom']] },
-  display: { wide: true, actions: [['Probar la pantalla', 'tester', 'screen', 'display'], ['Ver gráficos', 'monitor', 'gpu', 'monitor']] },
-  battery: { big: () => [f('battery'), v().charging ? '% y cargando' : '% de carga'],
-    stats: () => [['Salud', f('batteryHealth', undefined, ' %')], ['Consumo', T.has('batteryPower') ? (v().batteryPower > 0 ? '+' : '') + fmt1(v().batteryPower) + ' W' : dash],
-      ['Queda', T.has('batterySecs') ? upt(v().batterySecs) : (v().charging ? 'enchufado' : dash)], ['Estado', v().charging ? 'Enchufado' : 'Con batería']],
-    meter: () => ({ label: 'Capacidad que conserva', v: (v().batteryHealth || 0) / 100 }),
-    actions: [['Ver la batería', 'monitor', 'battery', 'battery']] },
-  wifi: { big: () => [f('down', fmt1), 'Mb/s de bajada'], chart: { key: 'down', label: 'Bajada en el último minuto' },
-    stats: () => [['Subida', f('up', fmt1, ' Mb/s')], ['Latencia', f('ping', undefined, ' ms')], ['Señal Wi-Fi', f('wifiSignal', undefined, ' %')], ['Enlace', (comp('wifi').rows.find(r => r[0] === 'Enlace') || [, dash])[1]]],
-    actions: [['Ver la red', 'monitor', 'network', 'monitor']] },
-  audio: { big: () => [String(1 + ((comp('audio').rows[0] || [, ''])[1].split(',').filter(x => x.trim() && x.trim() !== '–').length)), 'dispositivos de audio'],
+  cpu: { big: () => [f('cpu'), '% usage'], chart: { key: 'cpu', max: 100, label: 'Usage over the last minute' },
+    stats: () => [['Frequency', f('cpuFreq', fmt1, ' GHz')], ['Temperature', T.has('cpuTemp') ? f('cpuTemp', undefined, ' °C') : (state.admin ? 'not available' : 'admin mode only')],
+      ['Processes', f('procs', fmtInt)], ['Busy threads', (v().threads || []).filter(t => t > .5).length + ' of ' + (v().threads || []).length]],
+    actions: [['View in Live Monitor', 'monitor', 'cpu', 'monitor'], ['What is using it', 'monitor', 'processes', 'list']] },
+  gpu: { big: () => [f('gpu'), '% usage'], chart: { key: 'gpu', max: 100, label: 'Usage over the last minute' },
+    stats: () => [['Temperature', f('gpuTemp', undefined, ' °C')], ['Power draw', f('gpuPower', undefined, ' W')], ['Video memory', T.has('vram') ? `${fmt1(v().vram)} of ${v().vramTotal || '–'} GB` : dash], ['Clock', f('gpuClock', fmt1, ' GHz')]],
+    actions: [['Check for a new driver', 'drivers', 'updates', 'drivers'], ['View in Live Monitor', 'monitor', 'gpu', 'monitor']] },
+  ram: { big: () => [f('ram', fmt1), `of ${Math.round(v().ramTotal || 0)} GB in use`], chart: { key: 'ram', max: () => v().ramTotal || 16, label: 'Usage over the last minute' },
+    stats: () => [['In use', T.has('ram') ? Math.round(v().ram / (v().ramTotal || 1) * 100) + '%' : dash], ['Committed', f('ramCommit', fmt1, ' GB')], ['Cached', f('ramCache', fmt1, ' GB')],
+      ['Slots', comp('ram').slots ? `${comp('ram').modules} of ${comp('ram').slots} used` : dash]],
+    actions: [['What is using the memory', 'monitor', 'processes', 'list'], ['View in Live Monitor', 'monitor', 'memory', 'monitor']] },
+  ssd: { big: () => [T.has('diskTotal') ? Math.round(v().diskTotal - v().diskUsed) : dash, `GB free of ${v().diskTotal || '–'} on C:`], chart: { key: 'diskRead', label: 'Reads over the last minute (MB/s)' },
+    stats: () => [['Used', T.has('diskUsed') ? Math.round(v().diskUsed / v().diskTotal * 100) + '%' : dash], ['Read', f('diskRead', fmtInt, ' MB/s')], ['Write', f('diskWrite', fmtInt, ' MB/s')], ['Activity', T.has('diskRead') ? (v().diskRead + v().diskWrite > 50 ? 'high' : 'low') : dash]],
+    actions: [['See what takes up space', 'storage', 'map', 'storage'], ['Free up space', 'optimizer', 'clean', 'broom']] },
+  display: { wide: true, actions: [['Test the screen', 'tester', 'screen', 'display'], ['View graphics', 'monitor', 'gpu', 'monitor']] },
+  battery: { big: () => [f('battery'), v().charging ? '% and charging' : '% charge'],
+    stats: () => [['Health', f('batteryHealth', undefined, '%')], ['Power', T.has('batteryPower') ? (v().batteryPower > 0 ? '+' : '') + fmt1(v().batteryPower) + ' W' : dash],
+      ['Time left', T.has('batterySecs') ? upt(v().batterySecs) : (v().charging ? 'plugged in' : dash)], ['Status', v().charging ? 'Plugged in' : 'On battery']],
+    meter: () => ({ label: 'Capacity it keeps', v: (v().batteryHealth || 0) / 100 }),
+    actions: [['View the battery', 'monitor', 'battery', 'battery']] },
+  wifi: { big: () => [f('down', fmt1), 'Mb/s down'], chart: { key: 'down', label: 'Download over the last minute' },
+    stats: () => [['Upload', f('up', fmt1, ' Mb/s')], ['Latency', f('ping', undefined, ' ms')], ['Wi-Fi signal', f('wifiSignal', undefined, '%')], ['Link', (comp('wifi').rows.find(r => r[0] === 'Link') || [, dash])[1]]],
+    actions: [['View the network', 'monitor', 'network', 'monitor']] },
+  audio: { big: () => [String(1 + ((comp('audio').rows[0] || [, ''])[1].split(',').filter(x => x.trim() && x.trim() !== '–').length)), 'audio devices'],
     list: () => [comp('audio').title, ...((comp('audio').rows[0] || [, ''])[1].split(',').map(s => s.trim()).filter(s => s && s !== '–'))].map(n => ['speaker', n, '']),
-    actions: [['Probar altavoces', 'tester', 'speakers', 'speaker'], ['Probar el micrófono', 'tester', 'mic', 'mic']] },
+    actions: [['Test the speakers', 'tester', 'speakers', 'speaker'], ['Test the microphone', 'tester', 'mic', 'mic']] },
   sys: { big: () => [(SH.PC.os || '').replace(/^Windows \d+ \w+ ?/, '') || SH.PC.os, SH.PC.os],
-    stats: () => [['Compilación', (comp('sys').rows.find(r => r[0] === 'Compilación') || [, dash])[1]], ['BIOS', SH.PC.bios || dash], ['Encendido', T.has('uptime') ? upt(v().uptime) : dash], ['Tipo', SH.PC.typeName || dash]],
-    actions: [['Buscar actualizaciones', 'updater', 'windows', 'windows'], ['Reparar Windows', 'optimizer', 'repair', 'wrench']] },
+    stats: () => [['Build', (comp('sys').rows.find(r => r[0] === 'Build') || [, dash])[1]], ['BIOS', SH.PC.bios || dash], ['Uptime', T.has('uptime') ? upt(v().uptime) : dash], ['Type', SH.PC.typeName || dash]],
+    actions: [['Check for updates', 'updater', 'windows', 'windows'], ['Repair Windows', 'optimizer', 'repair', 'wrench']] },
 };
 const ICON = { sys: 'windows', wifi: 'wifi', ssd: 'ssd' };
 
@@ -46,21 +46,21 @@ const sheet = $('.cs', root), scrim = $('.cs-scrim', root);
 let open = null, origin = null, chart = null, lastTick = performance.now(), thumbTimer = null;
 let lastPointer = null; addEventListener('pointerdown', e => { lastPointer = e.target; }, true);
 
-/* ---------- pantallas: dibujo de cada una con lo que muestra ahora ---------- */
+/* ---------- displays: a drawing of each one showing what it displays right now ---------- */
 async function displaysHTML() {
   const mons = (comp('display').monitors || []);
   let disp = []; try { disp = await SH.engine('system', 'displays') || []; } catch { disp = []; }
   if (!disp.length) disp = mons.map((m, i) => ({ w: i ? 1920 : 2560, h: i ? 1080 : 1600, hz: 0, primary: !i }));
-  /* emparejar: la interna suele ser la de 16:10 o la no principal; si no se sabe, por orden */
+  /* matching: the internal one is usually the 16:10 or the non-primary one; otherwise, by order */
   const internalIdx = disp.findIndex(d => Math.abs(d.w / d.h - 1.6) < .02);
   const named = disp.map((d, i) => { const m = (i === internalIdx ? mons.find(x => x.internal) : mons.filter(x => !x.internal)[i > internalIdx && internalIdx >= 0 ? i - 1 : i]) || mons[i] || {}; return { ...d, ...m, idx: i }; });
   const maxW = Math.max(...named.map(d => d.w));
   return `<div class="cs-screens">${named.map(d => {
-    const scale = .55 + .45 * d.w / maxW; const name = [d.vendor, d.name || d.code].filter(Boolean).join(' ') || (d.internal ? 'Pantalla del portátil' : 'Monitor');
+    const scale = .55 + .45 * d.w / maxW; const name = [d.vendor, d.name || d.code].filter(Boolean).join(' ') || (d.internal ? 'Laptop screen' : 'Monitor');
     return `<figure class="cs-scr${d.internal ? ' internal' : ''}" style="--s:${scale};--ar:${d.w}/${d.h}" data-idx="${d.idx}">
-      <div class="frame"><img alt="" data-thumb="${d.idx}"><span class="live">en vivo</span></div>${d.internal ? '<div class="base"></div>' : '<div class="stand"></div>'}
-      <figcaption><b>${esc(d.internal ? 'Pantalla del portátil' : 'Monitor externo')}</b><span>${esc(name)}${d.inches ? `, ${d.inches}"` : ''}</span>
-      <span>${d.w} × ${d.h}${d.hz ? `, ${d.hz} Hz` : ''}${d.primary ? ', principal' : ''}</span></figcaption></figure>`;
+      <div class="frame"><img alt="" data-thumb="${d.idx}"><span class="live">live</span></div>${d.internal ? '<div class="base"></div>' : '<div class="stand"></div>'}
+      <figcaption><b>${esc(d.internal ? 'Laptop screen' : 'External monitor')}</b><span>${esc(name)}${d.inches ? `, ${d.inches}"` : ''}</span>
+      <span>${d.w} × ${d.h}${d.hz ? `, ${d.hz} Hz` : ''}${d.primary ? ', primary' : ''}</span></figcaption></figure>`;
   }).join('')}</div>`;
 }
 async function refreshThumbs() {
@@ -81,10 +81,10 @@ async function html(id) {
         ${k.meter ? `<div class="cs-meter"><div><span>${k.meter().label}</span><b>${T.has('batteryHealth') ? Math.round(k.meter().v * 100) + ' %' : dash}</b></div><div class="bar ok"><span style="transform:scaleX(0)"></span></div></div>` : ''}
         ${k.list ? `<div class="cs-list">${k.list().map(([i, a, b]) => `<div><span class="ri">${ic(i)}</span><span><b>${esc(a)}</b>${b ? `<small>${esc(b)}</small>` : ''}</span></div>`).join('')}</div>` : ''}`;
   return `<header class="cs-h"><span class="cs-ic">${ic(ICON[id] || id)}</span><div class="cs-t"><span>${esc(c.name)}</span><h2>${esc(c.title)}</h2></div>
-      <button class="iconbtn cs-x" aria-label="Cerrar">${ic('x')}</button></header>
+      <button class="iconbtn cs-x" aria-label="Close">${ic('x')}</button></header>
     <div class="cs-b${k.wide ? ' wide' : ''}">
       <div class="cs-l">${left}</div>
-      <div class="cs-r"><h4>Ficha</h4><dl>${rows.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl>
+      <div class="cs-r"><h4>Specs</h4><dl>${rows.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl>
         <div class="cs-acts">${(k.actions || []).map(([t, m, tab, i], n) => `<button class="btn ${n ? 'sec' : 'pri'}" data-m="${m}" data-tab="${tab}">${ic(i)}${esc(t)}</button>`).join('')}</div></div>
     </div>`;
 }

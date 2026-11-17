@@ -28,7 +28,7 @@
 #v-remover .pr .c.sz{color:var(--ink)}
 #v-remover .pr .tagp{font-size:11px;color:var(--faint);margin-left:6px}
 
-/* detalle */
+/* detail */
 #v-remover .rv-detail{display:flex;flex-direction:column;min-height:0;overflow:auto;padding:18px}
 #v-remover .rd-top{display:flex;gap:14px;align-items:center}
 #v-remover .rd-top h3{font:500 18px/1.25 var(--display);letter-spacing:-.015em}
@@ -50,7 +50,7 @@
 #v-remover .rs-top .bar{grid-column:1 / -1;height:5px}
 #v-remover .rs-top .bar>span{transition:transform calc(900ms*var(--f)) cubic-bezier(.16,1,.3,1)}
 
-/* flujo de desinstalación */
+/* uninstall flow */
 #v-remover .rv-flow{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;border-radius:var(--r-l);background:color-mix(in oklab,var(--deep) 97%,transparent);border:1px solid var(--line2);
   box-shadow:0 40px 100px -40px rgba(0,0,0,.9);overflow:hidden}
 #v-remover .rf-head{display:flex;align-items:center;gap:14px;padding:18px 20px 14px}
@@ -124,7 +124,7 @@
 #v-remover .fin-stats b{display:block;font:500 24px var(--display);letter-spacing:-.02em}
 #v-remover .fin-stats span{font-size:12px;color:var(--mute)}
 
-/* lotes */
+/* batch */
 #v-remover .rq{display:flex;flex-direction:column;min-height:0;padding:16px}
 #v-remover .rq .list{flex:1;min-height:0;overflow:auto;margin:6px -6px 12px;display:flex;flex-direction:column;gap:4px}
 #v-remover .qi{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:12px;align-items:center;padding:8px;border-radius:12px;position:relative;overflow:hidden}
@@ -134,7 +134,7 @@
 #v-remover .rq .opts{margin-bottom:12px}
 #v-remover .rq .empty{padding:30px 10px}
 
-/* instalación vigilada */
+/* watched install */
 #v-remover .wv{display:flex;flex-direction:column;gap:14px}
 #v-remover .wv-hero{display:grid;grid-template-columns:150px minmax(0,1fr);gap:26px;align-items:center;padding:22px 24px}
 #v-remover .wv-eye{width:150px;height:150px;position:relative;display:grid;place-items:center}
@@ -158,7 +158,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .wv-live span{font-size:12px;color:var(--mute)}
 #v-remover .wv-cols{display:grid;grid-template-columns:minmax(0,1.4fr) 110px 110px 90px auto;gap:14px;align-items:center}
 
-/* cuarentena */
+/* quarantine */
 #v-remover .qz-hero{display:flex;align-items:center;gap:30px;padding:18px 22px;flex-wrap:wrap}
 #v-remover .qz-hero .n b{display:block;font:500 28px var(--display);letter-spacing:-.03em}
 #v-remover .qz-hero .n span{font-size:12px;color:var(--mute)}
@@ -183,7 +183,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .qit .p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-remover .qit .s{color:var(--mute);text-align:right}
 
-/* historial */
+/* history */
 #v-remover .hv{position:relative;padding-left:26px}
 #v-remover .hv::before{content:"";position:absolute;left:9px;top:8px;bottom:8px;width:2px;background:var(--line)}
 #v-remover .he{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border-radius:12px;margin-bottom:4px;transition:background-color calc(150ms*var(--f))}
@@ -193,7 +193,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .he span{display:block;font-size:12px;color:var(--mute)}
 #v-remover .he .d{font-size:12px;color:var(--faint);text-align:right}
 
-/* modo cazador */
+/* hunter mode */
 #v-remover .hunt{position:absolute;inset:0;z-index:25;border-radius:var(--r-l);background:color-mix(in oklab,var(--void) 82%,transparent);cursor:none;overflow:hidden}
 #v-remover .hunt .tip2{position:absolute;left:50%;top:26px;transform:translateX(-50%);text-align:center;cursor:default}
 #v-remover .hunt .tip2 h3{font:500 20px var(--display);letter-spacing:-.02em}
@@ -213,7 +213,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
   #v-remover .qs-h{grid-template-columns:22px 34px minmax(0,1fr) 110px auto}
   #v-remover .qs-h>:nth-child(5){display:none}
 }
-/* ajustes tras revisar capturas */
+/* tweaks after reviewing screenshots */
 #v-remover .subnav .bd[hidden]{display:none}
 #v-remover .pr .nm .pi{display:grid;font-size:12px;color:#fff;white-space:normal}
 #v-remover .pr .nm .tagp{display:inline}
@@ -225,14 +225,14 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .mod>.mhead,#v-remover .mod>.subnav{transition:opacity calc(200ms*var(--f))}
 #v-remover .mod:has(>.rv-flow)>.mhead,#v-remover .mod:has(>.rv-flow)>.subnav{opacity:0}
 
-/* ---------- distribución: buscador y filtros dentro del panel; todo llega hasta el dock ---------- */
+/* ---------- layout: search and filters inside the panel; everything reaches down to the dock ---------- */
 #v-remover .rv-left.rv-listwrap{padding:12px 6px 4px}
 #v-remover .rv-tools{padding:0 8px 12px;margin:0 0 4px;border-bottom:1px solid var(--line);flex:none}
 #v-remover .rv-tools .seg button{height:30px}
 #v-remover .rv-listwrap>.tbl-head{flex:none}
 #v-remover .rv-detail{padding:0;overflow:hidden}
 #v-remover .rv-dscroll{flex:1;min-height:0;overflow:auto;padding:18px;display:flex;flex-direction:column}
-/* instalación vigilada */
+/* watched install */
 #v-remover .wv{height:100%;min-height:0}
 #v-remover .wv-hero{grid-template-columns:150px minmax(0,1fr) minmax(220px,300px);flex:none}
 #v-remover .wv-steps{list-style:none;counter-reset:st;display:flex;flex-direction:column;gap:12px;padding-left:22px;border-left:1px solid var(--line)}
@@ -243,7 +243,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .wv-listp>h4,#v-remover .wv-listp>.tbl-head{flex:none}
 #v-remover .wv-scroll{flex:1;min-height:0;overflow:auto}
 @media (max-width:1250px){#v-remover .wv-hero{grid-template-columns:120px minmax(0,1fr)}#v-remover .wv-steps{display:none}}
-/* cuarentena */
+/* quarantine */
 #v-remover .tab[data-tab=quarantine]>.du-wrap{height:100%;min-height:0}
 #v-remover .qz-grid{flex:1 1 auto;min-height:220px;display:grid;grid-template-columns:minmax(0,1fr) clamp(280px,24vw,360px);gap:14px}
 #v-remover .qz-main,#v-remover .qz-side{display:flex;flex-direction:column;min-height:0;padding:16px 10px 8px}
@@ -260,7 +260,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .qt b{font-weight:500;font-size:12.5px}
 #v-remover .qt .bar{grid-column:2/span 2;height:3px}
 #v-remover .qz-note{margin:auto 6px 4px;padding-top:14px;font-size:12px;color:var(--faint);line-height:1.5}
-/* historial */
+/* history */
 #v-remover .hv-grid{height:100%;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(280px,24vw,360px);gap:14px}
 #v-remover .hv-main,#v-remover .hv-side{display:flex;flex-direction:column;min-height:0}
 #v-remover .hv-main>h4{flex:none}
@@ -274,7 +274,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .hv-legend i{width:10px;height:10px;border-radius:50%;flex:none}
 @media (max-width:1180px){#v-remover .qz-grid,#v-remover .hv-grid{grid-template-columns:1fr}}
 
-/* ---------- motor real: iconos reales, restos protegidos y listas largas fluidas ---------- */
+/* ---------- real engine: real icons, protected leftovers and smooth long lists ---------- */
 #v-remover .pi.img{background:var(--raise2);border:1px solid var(--line);padding:5px;overflow:hidden}
 #v-remover .pi.img.lg{padding:9px}
 #v-remover .pi.img img{width:100%;height:100%;object-fit:contain;display:block;image-rendering:auto;border-radius:3px}

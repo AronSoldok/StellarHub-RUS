@@ -1,1 +1,1 @@
-"""Motor del Program Remover (y de la limpieza y el inicio): logica sin interfaz, heredada de MiniRevo."""
+"""Program Remover engine (also used for cleanup and startup): UI-free logic, inherited from MiniRevo."""

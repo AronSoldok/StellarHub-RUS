@@ -1,7 +1,6 @@
-"""Escaner de restos con puntuacion de confianza (0-100).
+"""Leftover scanner with a confidence score (0-100).
 
-Cada candidato acumula evidencias; todo pasa despues por safety.Context, que puede bloquearlo.
-Ver minirevo_docs/DISENO.md para la tabla de puntuaciones y las reglas.
+Each candidate collects evidence; everything then goes through safety.Context, which can block it.
 """
 import functools
 import os
@@ -64,7 +63,7 @@ def publisher_tokens(pub):
 
 
 def name_tokens(p):
-    """Tokens de nombre de un programa: {token: (puntos, motivo)}. Copia nueva: quien llama puede cambiarla."""
+    """Name tokens of a program: {token: (points, reason)}. A fresh copy: the caller may change it."""
     return dict(_name_tokens(p.get("name", ""), p.get("publisher") or ""))
 
 
@@ -79,28 +78,28 @@ def _name_tokens(name, publisher):
 
     name = p.get("name", "")
     stripped = strip_version(name)
-    add(norm_name(name), 85, "nombre completo")
-    add(norm_name(stripped), 82, "nombre sin versión")
-    add(norm_name(re.sub(r"\s+\d+$", "", stripped)), 72, "nombre sin número de versión")
-    # nombre sin el fabricante: "Xfer Records Serum 2" -> "Serum 2"
+    add(norm_name(name), 85, "full name")
+    add(norm_name(stripped), 82, "name without version")
+    add(norm_name(re.sub(r"\s+\d+$", "", stripped)), 72, "name without version number")
+    # name without the vendor: "Xfer Records Serum 2" -> "Serum 2"
     pub_words = [w for w in re.split(r"[\s,]+", _PUB_SUFFIX.sub("", p.get("publisher") or "")) if w]
     for i in range(len(pub_words), 0, -1):
         prefix = " ".join(pub_words[:i])
         if prefix and stripped.lower().startswith(prefix.lower() + " "):
             prod = stripped[len(prefix):].strip()
-            add(norm_name(prod), 76, "nombre del producto")
-            add(norm_name(re.sub(r"\s+\d+$", "", prod)), 68, "nombre del producto sin número")
+            add(norm_name(prod), 76, "product name")
+            add(norm_name(re.sub(r"\s+\d+$", "", prod)), 68, "product name without number")
             break
     return tokens
 
 
 class Identity:
-    """Todo lo que identifica a un programa: nombres, fabricante, carpetas, ejecutables."""
+    """Everything that identifies a program: names, vendor, folders, executables."""
 
     def __init__(self, p, all_programs=()):
         self.p = p
         name = p.get("name", "")
-        self.tokens = name_tokens(p)  # token -> (puntos, motivo)
+        self.tokens = name_tokens(p)  # token -> (points, reason)
 
         def add(tok, pts, why):
             if len(tok) >= 3 and (tok not in self.tokens or self.tokens[tok][0] < pts):
@@ -109,13 +108,13 @@ class Identity:
         full = norm_name(name)
         self.vendor = publisher_tokens(p.get("publisher"))
         if p.get("source") == "store":
-            add(norm_name(p.get("package_name", "")), 90, "paquete de la Tienda")
+            add(norm_name(p.get("package_name", "")), 90, "Store package")
             fam = p.get("family", "")
             if fam:
-                add(norm_name(fam), 95, "familia del paquete")
-        # ejecutables principales
-        self.locations = []        # normalizadas (para comparar)
-        self.location_paths = []   # tal cual (para mostrar y borrar)
+                add(norm_name(fam), 95, "package family")
+        # main executables
+        self.locations = []        # normalized (for comparisons)
+        self.location_paths = []   # as is (for display and deletion)
         loc = p.get("location")
         if loc and os.path.isabs(loc) and norm_path(loc) not in safety.protected_exact():
             self.locations.append(norm_path(loc))
@@ -129,11 +128,11 @@ class Identity:
                         t = norm_name(f[:-4])
                         if len(t) >= 4:
                             self.exes.add(f.lower())
-                            add(t, 70, "nombre del ejecutable")
+                            add(t, 70, "executable name")
             except OSError:
                 pass
-        # tokens que tambien identifican a OTROS programas instalados -> no valen
-        # (FabFilter Pro-C 2 y Pro-C 3 comparten "pro-c": ninguno de los dos puede reclamarlo)
+        # tokens that also identify OTHER installed programs -> not usable
+        # (FabFilter Pro-C 2 and Pro-C 3 share "pro-c": neither of them can claim it)
         self.shared = {}
         mine = set(self.tokens)
         self.foreign_locs = []
@@ -144,11 +143,11 @@ class Identity:
                 if t in mine:
                     self.shared[t] = o.get("name", "")
             ol = norm_path(o.get("location"))
-            # carpetas de otros programas iguales o anidadas dentro de la nuestra (Wallpaper Engine en Steam)
+            # other programs' folders equal to or nested inside ours (Wallpaper Engine inside Steam)
             if ol and ol not in safety.protected_exact() and any(is_within(ol, l) for l in self.locations):
                 self.foreign_locs.append(ol)
-        # InstallLocation que en realidad es la carpeta del FABRICANTE (Epic Games\ con juegos dentro):
-        # se reduce a las subcarpetas que coinciden con el producto (Epic Games\Launcher)
+        # an InstallLocation that is really the VENDOR folder (Epic Games\ with games inside):
+        # narrowed down to the subfolders matching the product (Epic Games\Launcher)
         self.vendor_location = ""
         if self.locations and self.is_vendor(os.path.basename(self.locations[0])):
             self.vendor_location = self.location_paths[0]
@@ -162,20 +161,20 @@ class Identity:
             self.locations = [norm_path(x) for x in narrowed]
             self.exes = set()
         if any(fl in self.locations for fl in self.foreign_locs):
-            # carpeta compartida con otra entrada: sus .exe no identifican a este programa
+            # folder shared with another entry: its .exe files don't identify this program
             for exe in self.exes:
                 t = norm_name(exe[:-4])
-                if self.tokens.get(t, (0, ""))[1] == "nombre del ejecutable":
+                if self.tokens.get(t, (0, ""))[1] == "executable name":
                     del self.tokens[t]
             self.exes = set()
         for t in list(self.tokens):
             if t in self.shared and t != full:
                 del self.tokens[t]
-            elif t in self.shared:  # el nombre completo identico en dos entradas: muy debil
-                self.tokens[t] = (60, self.tokens[t][1] + ", compartido con «" + self.shared[t] + "»")
+            elif t in self.shared:  # the identical full name in two entries: very weak
+                self.tokens[t] = (60, self.tokens[t][1] + ", shared with “" + self.shared[t] + "”")
 
     def match(self, entry_name, in_vendor=False):
-        """(puntos, motivo) si el nombre coincide, si no None."""
+        """(points, reason) if the name matches, otherwise None."""
         stem = entry_name
         low = stem.lower()
         for ext in _BUNDLE_EXT + (".lnk", ".url", ".exe", ".dll", ".ini", ".log", ".json", ".xml", ".dat", ".cfg"):
@@ -189,13 +188,13 @@ class Identity:
         if not hit:
             hit2 = self.tokens.get(norm_name(strip_version(stem)))
             if hit2:
-                hit = (hit2[0] - 4, hit2[1] + " (otra versión)")
+                hit = (hit2[0] - 4, hit2[1] + " (another version)")
         if not hit:
             return None
         pts, why = hit
         if (len(n) < 5 or n in COMMON) and not in_vendor:
             pts -= 30
-            why += ", nombre corto o genérico"
+            why += ", short or generic name"
         if in_vendor:
             pts = min(pts + 10, 95)
         return pts, why
@@ -205,7 +204,7 @@ class Identity:
         return bool(n) and (n in self.vendor or any(len(v) >= 5 and n == v for v in self.vendor))
 
     def refs_location(self, text):
-        """True si el texto apunta a NUESTRA carpeta (y no a la de otro programa anidado o igual)."""
+        """True if the text points to OUR folder (and not to that of another nested or identical program)."""
         if not text or not self.locations:
             return False
         t = os.path.expandvars(str(text)).lower().replace("/", "\\")
@@ -215,7 +214,7 @@ class Identity:
 
 
 def _is_game_library(d):
-    """Carpeta con juegos dentro (Steam, Epic, GOG...): nunca se preselecciona."""
+    """Folder with games inside (Steam, Epic, GOG...): never preselected."""
     for marker in ("steamapps", "SteamLibrary", ".egstore", "GOG Games"):
         if os.path.exists(os.path.join(d, marker)):
             return True
@@ -257,7 +256,7 @@ class Scanner:
         self.still_installed = still_installed if still_installed is not None else self._still_installed()
         self.vendor_dirs = set()
 
-    # ---------------------------------------------------------- utilidades
+    # ---------------------------------------------------------- helpers
     def _still_installed(self):
         if self.p.get("source") == "store":
             return False
@@ -281,7 +280,7 @@ class Scanner:
         self.items[key] = {"kind": kind, "target": target, "score": score, "reasons": [reason],
                            "display": display or target, "group": group, **(extra or {})}
 
-    # ---------------------------------------------------------- archivos
+    # ---------------------------------------------------------- files
     def _listdir(self, d):
         try:
             return os.listdir(d)
@@ -290,10 +289,10 @@ class Scanner:
 
     @staticmethod
     def _entries(d):
-        """(nombre, ruta, es_carpeta) sin una llamada extra por entrada: el tipo viene del propio listado.
+        """(name, path, is_folder) without an extra call per entry: the type comes from the listing itself.
 
-        Enlaces y junctions se comprueban con isdir (siguen el enlace, igual que antes), porque un
-        junction roto figura como carpeta en el listado pero isdir dice que no.
+        Links and junctions are checked with isdir (it follows the link, as before), because a
+        broken junction shows up as a folder in the listing but isdir says it is not one.
         """
         out = []
         try:
@@ -319,7 +318,7 @@ class Scanner:
             if m and bonus and m[0] >= 70:
                 m = (min(m[0] + bonus, 95), m[1])
             if m:
-                self.add("folder" if is_dir else "file", full, m[0], f"Nombre coincide ({m[1]}){label}")
+                self.add("folder" if is_dir else "file", full, m[0], f"Name matches ({m[1]}){label}")
             elif is_dir and vendor_depth and self.id.is_vendor(e):
                 self.vendor_dirs.add(full)
                 for e2 in self._listdir(full):
@@ -327,81 +326,81 @@ class Scanner:
                     if m2:
                         f2 = os.path.join(full, e2)
                         self.add("folder" if os.path.isdir(f2) else "file", f2, m2[0],
-                                 f"Dentro de la carpeta del fabricante ({m2[1]}){label}")
+                                 f"Inside the vendor's folder ({m2[1]}){label}")
 
     def scan_files(self):
         k = paths.known_folders()
         pf, pf86, cf, cf86 = k.get("ProgramFiles"), k.get("ProgramFilesX86"), k.get("ProgramFilesCommon"), \
             k.get("ProgramFilesCommonX86")
         local, roam = k.get("LocalAppData"), k.get("RoamingAppData")
-        # carpeta de instalacion
+        # install folder
         for loc in self.id.location_paths:
             if os.path.exists(loc):
                 if self.id.vendor_location:
-                    self.add("folder", loc, 90, "Carpeta del producto dentro de la carpeta de instalación del fabricante",
+                    self.add("folder", loc, 90, "Product folder inside the vendor's install folder",
                              extra={"is_location": True})
                 elif self.p.get("location_inferred"):
-                    self.add("folder", loc, 80, "Carpeta deducida del icono o del desinstalador",
+                    self.add("folder", loc, 80, "Folder deduced from the icon or the uninstaller",
                              extra={"is_location": True})
                 else:
-                    self.add("folder", loc, 100, "Carpeta de instalación del programa", extra={"is_location": True})
+                    self.add("folder", loc, 100, "The program's install folder", extra={"is_location": True})
         if self.id.vendor_location:
             self.vendor_dirs.add(self.id.vendor_location)
-        # archivos del desinstalador fuera de la carpeta (Inno: unins000.exe + .dat)
+        # uninstaller files outside the folder (Inno: unins000.exe + .dat)
         u = progmod.exe_from_command(self.p.get("uninstall"))
         if u and os.path.isfile(u) and not any(is_within(u, l) for l in self.id.locations) and \
                 self.p.get("kind") == "inno":
             for f in (u, u[:-4] + ".dat", u[:-4] + ".msg"):
                 if os.path.isfile(f):
-                    self.add("file", f, 95, "Desinstalador del programa")
+                    self.add("file", f, 95, "The program's uninstaller")
         roots = [pf, pf86, cf, cf86, k.get("ProgramData"), local, roam, k.get("LocalAppDataLow"),
                  os.path.join(local, "Programs") if local else None, k.get("UserProgramFiles")]
         for r in roots:
             self.scan_dir(r)
-        # plugins de audio
+        # audio plugins
         for r in [os.path.join(cf, "VST3") if cf else None, os.path.join(cf, "VST2") if cf else None,
                   os.path.join(cf, "VST") if cf else None, os.path.join(cf, "CLAP") if cf else None,
                   os.path.join(cf, "Avid", "Audio", "Plug-Ins") if cf else None,
                   os.path.join(pf, "VSTPlugins") if pf else None, os.path.join(pf, "Steinberg", "VSTPlugins") if pf else None,
                   os.path.join(pf86, "VSTPlugins") if pf86 else None, os.path.join(pf86, "Steinberg", "VSTPlugins") if pf86 else None,
                   os.path.join(cf86, "VST3") if cf86 else None]:
-            self.scan_dir(r, label=" · plugin de audio", bonus=10)
-        # temporales
-        self.scan_dir(k.get("Temp"), vendor_depth=False, label=" · temporal")
-        # datos personales (nunca preseleccionados)
+            self.scan_dir(r, label=" · audio plugin", bonus=10)
+        # temp files
+        self.scan_dir(k.get("Temp"), vendor_depth=False, label=" · temp file")
+        # personal data (never preselected)
         for r in (k.get("Documents"), k.get("SavedGames")):
-            self.scan_dir(r, label=" · datos del usuario")
-        # carpetas de WinGet
+            self.scan_dir(r, label=" · user data")
+        # WinGet folders
         if local:
             wg = os.path.join(local, "Microsoft", "WinGet", "Packages")
             kn = norm_name(self.p.get("keyname", "").split("_")[0])
             for e in self._listdir(wg):
                 if kn and norm_name(e.split("_")[0]) == kn:
-                    self.add("folder", os.path.join(wg, e), 95, "Paquete de WinGet del programa")
-        # Tienda: datos de la app
+                    self.add("folder", os.path.join(wg, e), 95, "The program's WinGet package")
+        # Store: app data
         if self.p.get("source") == "store" and self.p.get("family") and local:
             d = os.path.join(local, "Packages", self.p["family"])
             if os.path.isdir(d):
-                self.add("folder", d, 95, "Datos de la app de la Tienda", extra={"store_data": True})
+                self.add("folder", d, 95, "Store app data", extra={"store_data": True})
 
     def scan_shortcuts(self):
         k = paths.known_folders()
         roots = [k.get("Programs"), k.get("CommonPrograms")]
         for r in roots:
-            self.scan_dir(r, label=" · menú Inicio")
+            self.scan_dir(r, label=" · Start menu")
         for f, info in index.shortcut_files():
             tgt = info.get("target", "")
             if self.id.refs_location(tgt) or self.id.refs_location(info.get("workdir")):
-                self.add("file", f, 95, "Acceso directo que apunta al programa", group="Accesos directos")
+                self.add("file", f, 95, "Shortcut pointing to the program", group="Shortcuts")
             elif tgt and os.path.isabs(tgt) and not os.path.exists(tgt) and not tgt.lower().startswith(
                     ("http", "steam:", "com.epicgames")) and self.id.match(os.path.basename(f)):
-                self.add("file", f, 90, "Acceso directo roto con el nombre del programa", group="Accesos directos")
+                self.add("file", f, 90, "Broken shortcut with the program's name", group="Shortcuts")
             else:
                 m = self.id.match(os.path.basename(f))
                 if m:
-                    self.add("file", f, m[0], f"Acceso directo con el nombre del programa ({m[1]})",
-                             group="Accesos directos")
-        # carpetas del menu Inicio que quedan vacias tras quitar sus accesos
+                    self.add("file", f, m[0], f"Shortcut with the program's name ({m[1]})",
+                             group="Shortcuts")
+        # Start menu folders left empty after removing their shortcuts
         for r in roots:
             for e in self._listdir(r):
                 d = os.path.join(r, e) if r else None
@@ -409,11 +408,11 @@ class Scanner:
                     inner = [os.path.join(dp, f) for dp, _, fn in os.walk(d) for f in fn
                              if f.lower() != "desktop.ini"]
                     if inner and all(f"file:{x.lower()}" in self.items for x in inner):
-                        self.add("folder", d, 92, "Carpeta del menú Inicio solo con accesos del programa",
-                                 group="Accesos directos")
+                        self.add("folder", d, 92, "Start menu folder with only the program's shortcuts",
+                                 group="Shortcuts")
 
-    # ---------------------------------------------------------- registro
-    def _reg_add(self, ref, score, reason, group="Registro"):
+    # ---------------------------------------------------------- registry
+    def _reg_add(self, ref, score, reason, group="Registry"):
         self.add("regvalue" if ref.value is not None else "regkey", ref.to_str(), score, reason,
                  display=ref.display(), group=group)
 
@@ -424,7 +423,7 @@ class Scanner:
             for sub in registry.subkeys(registry.HIVES[hive], base, view):
                 m = self.id.match(sub)
                 if m:
-                    self._reg_add(RegRef(hive, f"{base}\\{sub}", view), m[0], f"Clave con el nombre del programa ({m[1]})")
+                    self._reg_add(RegRef(hive, f"{base}\\{sub}", view), m[0], f"Key with the program's name ({m[1]})")
                 elif self.id.is_vendor(sub):
                     vend = f"{base}\\{sub}"
                     children = registry.subkeys(registry.HIVES[hive], vend, view)
@@ -434,30 +433,30 @@ class Scanner:
                         if m2:
                             hits += 1
                             self._reg_add(RegRef(hive, f"{vend}\\{s2}", view), m2[0],
-                                          f"Clave del producto dentro del fabricante ({m2[1]})")
+                                          f"Product key inside the vendor's key ({m2[1]})")
                     if children and hits == len(children) and not registry.values(registry.HIVES[hive], vend, view):
-                        self._reg_add(RegRef(hive, vend, view), 60, "Clave del fabricante que quedaría vacía")
+                        self._reg_add(RegRef(hive, vend, view), 60, "Vendor key that would be left empty")
 
     def scan_registry_refs(self):
         p = self.p
-        # entrada de desinstalacion
+        # uninstall entry
         if p.get("key"):
             ref = RegRef.from_str(p["key"])
             if registry.key_exists(ref):
-                self.add("regkey", ref.to_str(), 100, "Entrada de desinstalación del programa",
-                         display=ref.display(), group="Registro", extra={"is_uninstall_key": True})
+                self.add("regkey", ref.to_str(), 100, "The program's uninstall entry",
+                         display=ref.display(), group="Registry", extra={"is_uninstall_key": True})
         others = {o.get("id") for o in self.all if o.get("id") != p.get("id")}
         for hive, view, kn, path, vals in index.uninstall_entries():
             if f"{hive}|{view}|{kn}" in others or f"{hive}|{view}|{kn}" == p.get("id"):
                 continue
             if any(self.id.refs_location(vals.get(x)) for x in ("InstallLocation", "UninstallString", "DisplayIcon")):
-                self._reg_add(RegRef(hive, path, view), 90, "Entrada de desinstalación oculta que apunta al programa")
+                self._reg_add(RegRef(hive, path, view), 90, "Hidden uninstall entry pointing to the program")
         # App Paths
         for hive, view, path, sub, default, extra_path in index.app_paths():
             if self.id.refs_location(default) or self.id.refs_location(extra_path):
-                self._reg_add(RegRef(hive, path, view), 95, "Registro de la ruta del ejecutable (App Paths)")
+                self._reg_add(RegRef(hive, path, view), 95, "Executable path registration (App Paths)")
             elif sub.lower() in self.id.exes:
-                self._reg_add(RegRef(hive, path, view), 75, "App Paths con el nombre del ejecutable")
+                self._reg_add(RegRef(hive, path, view), 75, "App Paths entry with the executable's name")
         # Run / RunOnce + StartupApproved
         approved = index.startup_approved()
         for hive, base, view, name, data in index.run_values():
@@ -467,54 +466,54 @@ class Scanner:
                 m = self.id.match(name)
                 score = m[0] if m else 0
             if score >= LEVELS["advanced"]:
-                self._reg_add(RegRef(hive, base, view, name), min(score, 95), "Se inicia con Windows", group="Inicio")
+                self._reg_add(RegRef(hive, base, view, name), min(score, 95), "Starts with Windows", group="Startup")
                 for shive, sbase, sname, _ in approved.get(name.lower(), []):
                     if shive == hive:
-                        self._reg_add(RegRef(shive, sbase, 0, sname), min(score, 90), "Estado de inicio del programa",
-                                      group="Inicio")
-        # servicios
+                        self._reg_add(RegRef(shive, sbase, 0, sname), min(score, 90), "The program's startup state",
+                                      group="Startup")
+        # services
         for s in index.services():
             score = 0
             if self.id.refs_location(s["exe"]) or self.id.refs_location(s["image"]):
-                score, why = 95, "Servicio que ejecuta un archivo del programa"
+                score, why = 95, "Service that runs one of the program's files"
             else:
                 m = self.id.match(s["name"]) or self.id.match(s["display"])
                 win = kf("Windows")
                 if m and m[0] >= 80 and not (win and is_within(s["exe"], win)):
-                    score, why = min(m[0], 85), f"Servicio con el nombre del programa ({m[1]})"
+                    score, why = min(m[0], 85), f"Service with the program's name ({m[1]})"
             if score:
-                self.add("service", s["name"], score, why, display=f"Servicio: {s['display']} ({s['name']})",
-                         group="Servicios y tareas", extra={"service": s})
-        # tareas programadas
+                self.add("service", s["name"], score, why, display=f"Service: {s['display']} ({s['name']})",
+                         group="Services and tasks", extra={"service": s})
+        # scheduled tasks
         for t in index.tasks():
             if t["path"].lower().startswith("\\microsoft\\"):
                 continue
             if any(self.id.refs_location(c) or self.id.refs_location(a) for c, a in t["commands"]):
-                score, why = 95, "Tarea programada que ejecuta el programa"
+                score, why = 95, "Scheduled task that runs the program"
             else:
                 m = self.id.match(t["name"].split("_{")[0].split("-S-1-5")[0])
                 if not m:
                     continue
-                score, why = min(m[0], 85), f"Tarea con el nombre del programa ({m[1]})"
-            self.add("task", t["path"], score, why, display=f"Tarea: {t['path']}", group="Servicios y tareas")
-        # SharedDLLs con contador 1 dentro de la carpeta
+                score, why = min(m[0], 85), f"Task with the program's name ({m[1]})"
+            self.add("task", t["path"], score, why, display=f"Task: {t['path']}", group="Services and tasks")
+        # SharedDLLs with a count of 1 inside the folder
         for view, base, name, data in index.shared_dlls():
             if self.id.refs_location(name) and str(data) in ("0", "1"):
-                self._reg_add(RegRef("HKLM", base, view, name), 92, "Contador de archivo compartido (solo lo usa este programa)")
-        # reglas del firewall
+                self._reg_add(RegRef("HKLM", base, view, name), 92, "Shared file counter (only this program uses it)")
+        # firewall rules
         for name, data in index.firewall_rules():
             m = re.search(r"\|App=([^|]+)", str(data))
             if m and self.id.refs_location(m.group(1)):
                 nm = re.search(r"\|Name=([^|]+)", str(data))
-                self.add("fwrule", name, 95, "Regla del firewall para el programa",
-                         display=f"Firewall: {nm.group(1) if nm else name}", group="Servicios y tareas",
+                self.add("fwrule", name, 95, "Firewall rule for the program",
+                         display=f"Firewall: {nm.group(1) if nm else name}", group="Services and tasks",
                          extra={"fw_data": str(data)})
-        # entradas del PATH
+        # PATH entries
         for scope, entry in index.env_paths():
             if self.id.refs_location(entry):
-                self.add("envpath", f"{scope}|{entry}", 95, "Entrada del PATH dentro de la carpeta del programa",
-                         display=f"PATH ({'usuario' if scope == 'user' else 'sistema'}): {entry}", group="Registro")
-        # registro de Windows Installer
+                self.add("envpath", f"{scope}|{entry}", 95, "PATH entry inside the program's folder",
+                         display=f"PATH ({'user' if scope == 'user' else 'system'}): {entry}", group="Registry")
+        # Windows Installer registration
         code = p.get("msi_code")
         if code and not progmod.msi_installed(code):
             packed = progmod.pack_guid(code)
@@ -524,10 +523,10 @@ class Scanner:
                             RegRef("HKCU", rf"Software\Microsoft\Installer\Products\{packed}"),
                             RegRef("HKLM", rf"SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\{packed}", V64)):
                     if registry.key_exists(ref):
-                        self._reg_add(ref, 95, "Registro de Windows Installer de un producto ya desinstalado")
+                        self._reg_add(ref, 95, "Windows Installer registration of a product that is already uninstalled")
 
     def scan_classes(self):
-        """ProgIDs, CLSIDs y asociaciones que apuntan al programa (nivel moderado o superior)."""
+        """ProgIDs, CLSIDs and associations pointing to the program (moderate level or higher)."""
         if not self.id.locations:
             return
         cl = index.classes()
@@ -535,31 +534,31 @@ class Scanner:
         for hive, base, sub, cmd, icon in cl["progids"]:
             if self.id.refs_location(cmd) or self.id.refs_location(icon):
                 progids.add(sub.lower())
-                self._reg_add(RegRef(hive, f"{base}\\{sub}"), 90, "Tipo de archivo registrado por el programa")
+                self._reg_add(RegRef(hive, f"{base}\\{sub}"), 90, "File type registered by the program")
         for hive, exe in cl["apps"]:
             if exe in self.id.exes:
                 base = r"SOFTWARE\Classes" if hive == "HKLM" else r"Software\Classes"
                 self._reg_add(RegRef(hive, rf"{base}\Applications\{exe}"), 85,
-                              "Registro de la aplicación para «Abrir con»")
+                              "App registration for “Open with”")
         for hive, cp, server in cl["clsids"]:
             if self.id.refs_location(server):
-                self._reg_add(RegRef(hive, cp), 92, "Componente COM del programa")
+                self._reg_add(RegRef(hive, cp), 92, "The program's COM component")
         for hive, base, ext, name in cl["openwith"]:
             if name.lower() in progids:
                 self._reg_add(RegRef(hive, rf"{base}\{ext}\OpenWithProgids", 0, name), 90,
-                              f"Asociación de archivos {ext}")
+                              f"{ext} file association")
 
     # ---------------------------------------------------------- final
     def finish(self):
         out = []
         min_score = LEVELS[self.level]
-        # carpeta del fabricante que quedaria vacia
+        # vendor folder that would be left empty
         for vd in self.vendor_dirs:
             inner = self._listdir(vd)
             if inner and all(any(k.endswith(os.path.join(vd, e).lower()) for k in self.items) for e in inner):
-                self.add("folder", vd, 60, "Carpeta del fabricante que quedaría vacía")
+                self.add("folder", vd, 60, "Vendor folder that would be left empty")
         items = list(self.items.values())
-        # quitar lo que ya esta contenido en otro elemento con igual o mayor confianza
+        # drop what is already contained in another item with equal or higher confidence
         paths_sel = sorted([i for i in items if i["kind"] == "folder"], key=lambda i: len(i["target"]))
         regs_sel = sorted([i for i in items if i["kind"] == "regkey"], key=lambda i: len(i["target"]))
         for it in items:
@@ -588,10 +587,10 @@ class Scanner:
                 if not os.path.lexists(it["target"]):
                     continue
                 if paths.is_reparse_point(it["target"]):
-                    it["reasons"].append("Es un enlace: solo se quitará el enlace, no su contenido")
+                    it["reasons"].append("It is a link: only the link will be removed, not its contents")
                 if not blocked and it["kind"] == "folder" and _is_game_library(it["target"]):
                     personal = True
-                    it["reasons"].append("Contiene una biblioteca de juegos")
+                    it["reasons"].append("Contains a game library")
                 it["size"] = paths.path_size(it["target"]) if not blocked else 0
             elif it["kind"] in ("regkey", "regvalue"):
                 blocked = safety.reg_rule(RegRef.from_str(it["target"]))
@@ -599,17 +598,17 @@ class Scanner:
                 blocked = safety.service_rule(it["target"], {k: it["service"][k] for k in ("type", "start", "image")})
                 it.pop("service", None)
             elif it["kind"] == "task" and it["target"].lower().startswith("\\microsoft\\"):
-                blocked = "Tarea de Microsoft"
+                blocked = "Microsoft task"
             installed_part = self.still_installed and (it.get("is_location") or it.get("is_uninstall_key"))
             if installed_part:
-                it["reasons"].append("El programa sigue instalado: márcalo solo si sabes que está roto")
+                it["reasons"].append("The program is still installed: check this only if you know it is broken")
             if personal:
-                it["reasons"].append("Contiene datos tuyos (proyectos, presets, partidas…)")
+                it["reasons"].append("Contains your data (projects, presets, saves…)")
             it.update({
                 "id": f"i{n}", "blocked": blocked, "personal": personal,
                 "level": next(l for l in LEVEL_ORDER if it["score"] >= LEVELS[l]),
                 "selected": not blocked and not personal and not installed_part and it["score"] >= PRESELECT,
-                "group": "Bloqueado por seguridad" if blocked else ("Datos personales" if personal else
+                "group": "Blocked for safety" if blocked else ("Personal data" if personal else
                                                                     it.get("group") or _group(it["kind"])),
             })
             n += 1
@@ -619,29 +618,29 @@ class Scanner:
 
     def run(self):
         t0 = time.perf_counter()
-        steps = [("Carpetas y archivos", self.scan_files), ("Accesos directos", self.scan_shortcuts),
-                 ("Registro por nombre", self.scan_registry_names),
-                 ("Servicios, tareas, inicio y firewall", self.scan_registry_refs)]
+        steps = [("Files and folders", self.scan_files), ("Shortcuts", self.scan_shortcuts),
+                 ("Registry by name", self.scan_registry_names),
+                 ("Services, tasks, startup and firewall", self.scan_registry_refs)]
         if self.level != "safe":
-            steps.append(("Tipos de archivo y componentes COM", self.scan_classes))
+            steps.append(("File types and COM components", self.scan_classes))
         for i, (label, fn) in enumerate(steps):
             self.progress(i / len(steps), label)
             try:
                 fn()
-            except Exception as e:  # un paso que falla no tumba el escaneo
+            except Exception as e:  # a failing step does not bring down the whole scan
                 self.progress(i / len(steps), f"{label}: error {e}")
-        self.progress(0.97, "Aplicando reglas de seguridad")
+        self.progress(0.97, "Applying safety rules")
         items = self.finish()
-        self.progress(1.0, "Listo")
+        self.progress(1.0, "Done")
         return {"items": items, "level": self.level, "elapsed": round(time.perf_counter() - t0, 2),
                 "still_installed": self.still_installed,
                 "total_size": sum(i.get("size", 0) for i in items if not i["blocked"])}
 
 
 def _group(kind):
-    return {"folder": "Archivos y carpetas", "file": "Archivos y carpetas", "regkey": "Registro",
-            "regvalue": "Registro", "service": "Servicios y tareas", "task": "Servicios y tareas",
-            "fwrule": "Servicios y tareas", "envpath": "Registro"}.get(kind, "Otros")
+    return {"folder": "Files and folders", "file": "Files and folders", "regkey": "Registry",
+            "regvalue": "Registry", "service": "Services and tasks", "task": "Services and tasks",
+            "fwrule": "Services and tasks", "envpath": "Registry"}.get(kind, "Other")
 
 
 def scan(program, all_programs, level="moderate", still_installed=None, progress=None):

@@ -1,7 +1,7 @@
-"""Indice del sistema: se construye una vez y lo comparten todos los escaneos.
+"""System index: built once and shared by every scan.
 
-Leer Classes/CLSID, tareas y servicios cuesta segundos; buscar en el indice, microsegundos.
-Se invalida cuando MiniRevo cambia algo (borrar, restaurar, desinstalar).
+Reading Classes/CLSID, tasks and services takes seconds; looking things up in the index, microseconds.
+It is invalidated whenever the remover changes something (delete, restore, uninstall).
 """
 import os
 import threading
@@ -15,13 +15,13 @@ from .registry import V32, V64
 _lock = threading.RLock()
 _data = {}
 _built_at = {}
-_building = {}   # nombre -> Lock: dos hilos que piden la misma seccion no la construyen dos veces
-_gen = 0         # sube con cada invalidacion: un resultado construido antes no se guarda
-TTL = 600  # segundos
+_building = {}   # name -> Lock: two threads asking for the same section do not build it twice
+_gen = 0         # bumped on every invalidation: a result built before it is not stored
+TTL = 600  # seconds
 
 
 def invalidate(*names):
-    """Sin argumentos, todo el indice; con nombres, solo esas secciones."""
+    """Without arguments, the whole index; with names, only those sections."""
     global _gen
     with _lock:
         _gen += 1
@@ -52,7 +52,7 @@ def _get(name, builder):
         return val
 
 
-# ---------------------------------------------------------------- secciones
+# ---------------------------------------------------------------- sections
 def services():
     return _get("services", system.list_services)
 
@@ -144,7 +144,7 @@ def env_paths():
 
 
 def classes():
-    """ProgIDs con su comando/icono, servidores COM y OpenWithProgids."""
+    """ProgIDs with their command/icon, COM servers and OpenWithProgids."""
     def b():
         progids, clsids, openwith, apps = [], [], [], set()
         for hive, base in (("HKLM", r"SOFTWARE\Classes"), ("HKCU", r"Software\Classes")):
@@ -196,7 +196,7 @@ def shortcut_files():
 
 
 def warm(include_classes=True, progress=None):
-    """Construye todo el indice a la vez (las tareas esperan a un proceso externo; el resto lee el registro)."""
+    """Build the whole index at once (tasks wait for an external process; the rest reads the registry)."""
     steps = [tasks, classes if include_classes else None, services, shortcut_files, uninstall_entries,
              run_values, startup_approved, app_paths, shared_dlls, firewall_rules, env_paths]
     steps = [s for s in steps if s]

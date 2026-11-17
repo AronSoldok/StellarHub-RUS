@@ -1,5 +1,5 @@
-"""Información real del equipo: modelo, tipo, componentes, pantallas y cifras de Inicio.
-pc_info() responde al momento con lo guardado de la última vez y refresca en segundo plano."""
+"""Real PC information: model, type, components, displays and the Home figures.
+pc_info() answers instantly with what was saved last time and refreshes in the background."""
 import ctypes
 import json
 import os
@@ -16,7 +16,7 @@ EXPORTS = {"pc_info", "pc_info_fresh", "displays", "screen_thumb", "counts", "he
 
 
 def health():
-    """Resumen real para Inicio: antivirus, dispositivos con error y último punto de restauración."""
+    """Real summary for Home: antivirus, devices with errors and the latest restore point."""
     r = ps_json(r"""
 $mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
 $err = @(Get-CimInstance Win32_PnPEntity -Filter 'ConfigManagerErrorCode<>0' -ErrorAction SilentlyContinue | Where-Object { $_.ConfigManagerErrorCode -ne 22 })
@@ -33,16 +33,17 @@ $av = @(Get-CimInstance -Namespace root\SecurityCenter2 AntiVirusProduct -ErrorA
 }""", timeout=40) or {}
     return r
 
+CACHE_VERSION = 2  # bump when labels or fields change, so an old cache is not shown
 _CACHE = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "pcinfo.json")
 _lock = threading.Lock()
 _mem = None
 
 CHASSIS = {  # Win32_SystemEnclosure.ChassisTypes
-    3: ("desktop", "PC de sobremesa"), 4: ("desktop", "PC de sobremesa"), 5: ("desktop", "PC de sobremesa"),
-    6: ("desktop", "Mini torre"), 7: ("desktop", "Torre"), 8: ("laptop", "Portátil"), 9: ("laptop", "Portátil"),
-    10: ("laptop", "Portátil"), 11: ("laptop", "Portátil de mano"), 13: ("aio", "Todo en uno"), 14: ("laptop", "Portátil"),
-    15: ("desktop", "PC compacto"), 16: ("desktop", "PC compacto"), 30: ("tablet", "Tablet"), 31: ("laptop", "Convertible"),
-    32: ("laptop", "Desmontable"), 34: ("desktop", "PC empotrado"), 35: ("desktop", "Mini PC"), 36: ("desktop", "Stick PC"),
+    3: ("desktop", "Desktop"), 4: ("desktop", "Desktop"), 5: ("desktop", "Desktop"),
+    6: ("desktop", "Mini tower"), 7: ("desktop", "Tower"), 8: ("laptop", "Laptop"), 9: ("laptop", "Laptop"),
+    10: ("laptop", "Laptop"), 11: ("laptop", "Handheld"), 13: ("aio", "All-in-one"), 14: ("laptop", "Laptop"),
+    15: ("desktop", "Compact PC"), 16: ("desktop", "Compact PC"), 30: ("tablet", "Tablet"), 31: ("laptop", "Convertible"),
+    32: ("laptop", "Detachable"), 34: ("desktop", "Embedded PC"), 35: ("desktop", "Mini PC"), 36: ("desktop", "Stick PC"),
 }
 PNP_VENDORS = {
     "AUO": "AU Optronics", "BOE": "BOE", "CMN": "Chimei Innolux", "SDC": "Samsung Display", "LGD": "LG Display",
@@ -92,7 +93,7 @@ def _clean(s):
 
 
 def _gpu_vram(name):
-    # AdapterRAM se queda en 4 GB por ser de 32 bits: para NVIDIA se pregunta a nvidia-smi
+    # AdapterRAM tops out at 4 GB because it is 32-bit: for NVIDIA, nvidia-smi is asked instead
     if "nvidia" in name.lower():
         try:
             import subprocess
@@ -139,7 +140,7 @@ def counts():
 
 
 def displays():
-    """Pantallas conectadas con su posición real (para capturas) y frecuencia."""
+    """Connected displays with their real position (for screenshots) and refresh rate."""
     user32 = ctypes.windll.user32
     out = []
 
@@ -174,7 +175,7 @@ def displays():
 
 
 def screen_thumb(index=0, width=480):
-    """Miniatura JPEG (data URL) de lo que se ve ahora en esa pantalla."""
+    """JPEG thumbnail (data URL) of what that display is showing right now."""
     import base64
     import io
     from PIL import ImageGrab
@@ -196,9 +197,9 @@ def _build():
     family = (r.get("family") or "").strip()
     ch = (r.get("chassis") or [0])[0] if r.get("chassis") else 0
     ptype, pname = CHASSIS.get(ch, ("laptop" if r.get("pcType") == 2 else "desktop",
-                                    "Portátil" if r.get("pcType") == 2 else "PC de sobremesa"))
+                                    "Laptop" if r.get("pcType") == 2 else "Desktop"))
     if _virtual(maker, model):
-        ptype, pname = "virtual", "Máquina virtual"
+        ptype, pname = "virtual", "Virtual machine"
     nice = family if family and family.lower() not in ("to be filled by o.e.m.", "default string", "") else model
     BRANDS = {"asustek": "ASUS", "hewlett-packard": "HP", "hp": "HP", "lenovo": "Lenovo", "dell": "Dell", "acer": "Acer",
               "micro-star": "MSI", "msi": "MSI", "gigabyte": "Gigabyte", "samsung": "Samsung", "microsoft": "Microsoft",
@@ -225,7 +226,7 @@ def _build():
     nets = r.get("nets") or []
     net = nets[0] if nets else {}
     audio = r.get("audio") or []
-    # pantallas: nombre comercial a partir de WMI + tamaño en pulgadas
+    # displays: commercial name from WMI + size in inches
     sizes = {s["inst"]: s for s in (r.get("monSizes") or [])}
     conn = {c["inst"]: c.get("tech") for c in (r.get("monConn") or [])}
     mons = []
@@ -233,47 +234,47 @@ def _build():
         sz = sizes.get(m["inst"]) or {}
         diag = round(((sz.get("w") or 0) ** 2 + (sz.get("h") or 0) ** 2) ** .5 / 2.54) if sz.get("w") else None
         vendor = PNP_VENDORS.get((m.get("maker") or "").upper(), m.get("maker") or "")
-        internal = conn.get(m["inst"]) in (11, 0x80000000, -2147483648)  # interna (eDP/LVDS)
+        internal = conn.get(m["inst"]) in (11, 0x80000000, -2147483648)  # internal (eDP/LVDS)
         label = (m.get("name") or "").strip()
         mons.append({"vendor": vendor, "name": label, "code": m.get("code"), "inches": diag, "internal": internal})
     batt = psutil.sensors_battery()
     comps = []
-    comps.append({"id": "cpu", "name": "Procesador", "title": _clean(cpu.get("name", "")),
-                  "rows": [["Núcleos", str(cpu.get("cores", "–"))], ["Hilos", str(cpu.get("threads", "–"))],
-                           ["Frecuencia base", f"{(cpu.get('maxMhz') or 0) / 1000:.1f} GHz".replace(".", ",")],
-                           ["Caché L3", f"{round((cpu.get('l3') or 0) / 1024)} MB"]]})
+    comps.append({"id": "cpu", "name": "Processor", "title": _clean(cpu.get("name", "")),
+                  "rows": [["Cores", str(cpu.get("cores", "–"))], ["Threads", str(cpu.get("threads", "–"))],
+                           ["Base clock", f"{(cpu.get('maxMhz') or 0) / 1000:.1f} GHz"],
+                           ["L3 cache", f"{round((cpu.get('l3') or 0) / 1024)} MB"]]})
     if dgpu:
         vr = _gpu_vram(dgpu["name"])
-        comps.append({"id": "gpu", "name": "Gráficos", "title": _clean(dgpu["name"]),
-                      "rows": ([["Memoria", f"{vr} GB"]] if vr else []) + ([["Integrada", _clean(igpu["name"])]] if igpu else []) +
+        comps.append({"id": "gpu", "name": "Graphics", "title": _clean(dgpu["name"]),
+                      "rows": ([["Memory", f"{vr} GB"]] if vr else []) + ([["Integrated", _clean(igpu["name"])]] if igpu else []) +
                               [["Driver", dgpu.get("driver") or "–"]], "vram": vr})
-    comps.append({"id": "ram", "name": "Memoria", "title": f"{round(ram_total / GB)} GB {ram_type}".strip(),
-                  "rows": [["Velocidad", f"{ram_speed} MT/s" if ram_speed else "–"],
-                           ["Fabricante", (rams[0].get("maker") or "–").strip() if rams else "–"],
-                           ["Módulos", f"{len(rams)} de {slots} ranuras" + (", hay libres" if slots > len(rams) else "")]],
+    comps.append({"id": "ram", "name": "Memory", "title": f"{round(ram_total / GB)} GB {ram_type}".strip(),
+                  "rows": [["Speed", f"{ram_speed} MT/s" if ram_speed else "–"],
+                           ["Manufacturer", (rams[0].get("maker") or "–").strip() if rams else "–"],
+                           ["Modules", f"{len(rams)} of {slots} slots" + (", free slots available" if slots > len(rams) else "")]],
                   "slots": slots, "modules": len(rams)})
-    comps.append({"id": "ssd", "name": "Almacenamiento", "title": f"{sysd.get('name', 'Disco')} {round((sysd.get('size') or 0) / 1e12, 1):g} TB".replace(".", ","),
-                  "rows": [["Tipo", f"{sysd.get('media', '')} {sysd.get('bus', '')}".strip() or "–"],
-                           ["Usado en C:", f"{round(du.used / GB)} GB"], ["Libre en C:", f"{round(du.free / GB)} GB"],
-                           ["Discos", str(len(disks))]], "bar": round(du.used / du.total, 3)})
+    comps.append({"id": "ssd", "name": "Storage", "title": f"{sysd.get('name', 'Disk')} {round((sysd.get('size') or 0) / 1e12, 1):g} TB",
+                  "rows": [["Type", f"{sysd.get('media', '')} {sysd.get('bus', '')}".strip() or "–"],
+                           ["Used on C:", f"{round(du.used / GB)} GB"], ["Free on C:", f"{round(du.free / GB)} GB"],
+                           ["Disks", str(len(disks))]], "bar": round(du.used / du.total, 3)})
     if mons:
         main = next((m for m in mons if m["internal"]), mons[0])
-        comps.append({"id": "display", "name": "Pantallas", "title": f"{len(mons)} pantalla{'s' if len(mons) > 1 else ''}",
-                      "rows": [[("Interna" if m["internal"] else "Externa"), " ".join(x for x in (m["vendor"], m["name"] or m["code"], f'{m["inches"]}"' if m["inches"] else "") if x)] for m in mons],
+        comps.append({"id": "display", "name": "Displays", "title": f"{len(mons)} display{'s' if len(mons) > 1 else ''}",
+                      "rows": [[("Internal" if m["internal"] else "External"), " ".join(x for x in (m["vendor"], m["name"] or m["code"], f'{m["inches"]}"' if m["inches"] else "") if x)] for m in mons],
                       "monitors": mons})
     if batt is not None:
-        comps.append({"id": "battery", "name": "Batería", "title": f"{round(batt.percent)} %" + (" y cargando" if batt.power_plugged else ""),
-                      "rows": [["Estado", "Enchufado" if batt.power_plugged else "Con batería"]]})
+        comps.append({"id": "battery", "name": "Battery", "title": f"{round(batt.percent)}%" + (", charging" if batt.power_plugged else ""),
+                      "rows": [["Status", "Plugged in" if batt.power_plugged else "On battery"]]})
     if net:
-        comps.append({"id": "wifi", "name": "Red", "title": net.get("name", "Red"), "rows": [["Enlace", net.get("speed", "–")], ["Tipo", net.get("media", "–")]]})
+        comps.append({"id": "wifi", "name": "Network", "title": net.get("name", "Network"), "rows": [["Link", net.get("speed", "–")], ["Type", net.get("media", "–")]]})
     if audio:
-        comps.append({"id": "audio", "name": "Audio", "title": audio[0], "rows": [["Otros", ", ".join(audio[1:3]) or "–"]]})
-    comps.append({"id": "sys", "name": "Sistema", "title": os_full,
-                  "rows": [["Compilación", f"{r.get('build', '')}.{r.get('ubr', '')}".strip(".")], ["BIOS", r.get("bios") or "–"],
-                           ["Placa base", r.get("board") or "–"]]})
-    return {"model": nice or model or "Este equipo", "code": code, "type": ptype, "typeName": pname, "maker": maker,
+        comps.append({"id": "audio", "name": "Audio", "title": audio[0], "rows": [["Others", ", ".join(audio[1:3]) or "–"]]})
+    comps.append({"id": "sys", "name": "System", "title": os_full,
+                  "rows": [["Build", f"{r.get('build', '')}.{r.get('ubr', '')}".strip(".")], ["BIOS", r.get("bios") or "–"],
+                           ["Motherboard", r.get("board") or "–"]]})
+    return {"model": nice or model or "This PC", "code": code, "type": ptype, "typeName": pname, "maker": maker,
             "os": os_full, "build": str(r.get("build", "")), "bios": r.get("bios", ""), "components": comps,
-            "facts": {"drivers": None, "programs": _programs_count(), "freeC": round(du.free / GB)}, "ts": time.time()}
+            "facts": {"drivers": None, "programs": _programs_count(), "freeC": round(du.free / GB)}, "ts": time.time(), "v": CACHE_VERSION}
 
 
 def _save(info):
@@ -299,13 +300,16 @@ def pc_info_fresh():
 
 
 def pc_info():
-    """Lo guardado (al instante) y se refresca en segundo plano; la primera vez espera a medirlo."""
+    """What was saved (instantly), refreshed in the background; the first time it waits for the measurement."""
     global _mem
     if _mem:
         return _mem
     try:
         with open(_CACHE, encoding="utf-8") as fh:
-            _mem = json.load(fh)
+            cached = json.load(fh)
+        if cached.get("v") != CACHE_VERSION:
+            return pc_info_fresh()
+        _mem = cached
         threading.Thread(target=pc_info_fresh, daemon=True).start()
         return _mem
     except (OSError, ValueError):

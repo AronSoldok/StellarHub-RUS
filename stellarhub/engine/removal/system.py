@@ -1,4 +1,4 @@
-"""Consultas al sistema: tareas programadas, servicios, procesos, reinicio pendiente."""
+"""System queries: scheduled tasks, services, processes, pending reboot."""
 import ctypes
 import json
 import os
@@ -21,13 +21,13 @@ def is_admin():
 
 
 def run(args, timeout=120, **kw):
-    """subprocess sin ventana; devuelve (codigo, salida)."""
+    """subprocess without a window; return (code, output)."""
     try:
         r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace",
                            creationflags=NOWIN, timeout=timeout, **kw)
         return r.returncode, (r.stdout or "") + (r.stderr or "")
     except subprocess.TimeoutExpired:
-        return -1, "Tiempo de espera agotado"
+        return -1, "Timed out"
     except OSError as e:
         return -1, str(e)
 
@@ -37,7 +37,7 @@ def powershell(cmd, timeout=120):
                 "[Console]::OutputEncoding=[Text.Encoding]::UTF8; " + cmd], timeout=timeout)
 
 
-# ---------------------------------------------------------------- tareas programadas
+# ---------------------------------------------------------------- scheduled tasks
 _NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 
 
@@ -63,10 +63,10 @@ _TASK_SPLIT = re.compile(r"<!-- (.*?) -->")
 
 
 def _tasks_schtasks(include_microsoft=False):
-    """Todas las tareas en un solo XML con schtasks: ~0,2 s frente a ~2 s de Get-ScheduledTask.
+    """Every task in a single XML with schtasks: ~0.2 s versus ~2 s for Get-ScheduledTask.
 
-    La consola se pone en UTF-8 (chcp 65001) para que los nombres con tildes salgan bien.
-    Devuelve None si no se pudo leer (se usa entonces PowerShell).
+    The console is switched to UTF-8 (chcp 65001) so names with accents come out right.
+    Return None if it could not be read (PowerShell is used instead).
     """
     try:
         r = subprocess.run("cmd /d /c chcp 65001 >nul & schtasks /query /xml ONE", capture_output=True,
@@ -148,7 +148,7 @@ def set_task_enabled(path, enabled):
     return run(["schtasks", "/Change", "/TN", path, "/ENABLE" if enabled else "/DISABLE"])
 
 
-# ---------------------------------------------------------------- servicios
+# ---------------------------------------------------------------- services
 def list_services():
     hk = winreg.HKEY_LOCAL_MACHINE
     base = r"SYSTEM\CurrentControlSet\Services"
@@ -173,7 +173,7 @@ def delete_service(name):
     return run(["sc", "delete", name], timeout=60)
 
 
-# ---------------------------------------------------------------- procesos
+# ---------------------------------------------------------------- processes
 class PROCESSENTRY32W(ctypes.Structure):
     _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ProcessID", wintypes.DWORD),
                 ("th32DefaultHeapID", ctypes.c_size_t), ("th32ModuleID", wintypes.DWORD),
@@ -219,7 +219,7 @@ def list_processes():
 
 
 def processes_in(folders):
-    """Procesos cuyo .exe esta dentro de alguna de las carpetas (nunca de Windows ni MiniRevo)."""
+    """Processes whose .exe is inside one of the folders (never Windows or the remover itself)."""
     win = paths.kf("Windows")
     me = os.getpid()
     out = []
@@ -245,7 +245,7 @@ def kill(pid):
         _k32.CloseHandle(h)
 
 
-# ---------------------------------------------------------------- varios
+# ---------------------------------------------------------------- misc
 def pending_reboot():
     hk = winreg.HKEY_LOCAL_MACHINE
     if registry.get_value(hk, r"SYSTEM\CurrentControlSet\Control\Session Manager", "PendingFileRenameOperations"):
@@ -269,7 +269,7 @@ def broadcast_env_change():
 
 
 def delete_on_reboot(path):
-    """Programa el borrado de un archivo/carpeta vacia al reiniciar (requiere admin)."""
+    """Schedule a file/empty folder for deletion at reboot (needs admin)."""
     try:
         return bool(_k32.MoveFileExW(str(path), None, 0x4))  # MOVEFILE_DELAY_UNTIL_REBOOT
     except Exception:
@@ -277,7 +277,7 @@ def delete_on_reboot(path):
 
 
 def create_restore_point(description):
-    """Crea un punto de restauracion saltandose el limite de 1 cada 24 h (y lo deja como estaba)."""
+    """Create a restore point bypassing the one-per-24-hours limit (and put the limit back as it was)."""
     key = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
     hk = winreg.HKEY_LOCAL_MACHINE
     old = registry.get_value(hk, key, "SystemRestorePointCreationFrequency")

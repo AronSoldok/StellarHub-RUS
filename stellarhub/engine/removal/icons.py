@@ -1,6 +1,6 @@
-"""Iconos de programas como PNG (data URI), con cache en disco.
+"""Program icons as PNG (data URI), with an on-disk cache.
 
-En frio la extraccion tarda ~200 ms por programa (antivirus + disco); en caliente < 1 ms.
+Cold extraction takes ~200 ms per program (antivirus + disk); warm, < 1 ms.
 """
 import base64
 import ctypes
@@ -21,7 +21,7 @@ def _dotnet():
     global _net
     if _net is None:
         try:
-            import clr  # pythonnet (lo trae pywebview)
+            import clr  # pythonnet (ships with pywebview)
             clr.AddReference("System.Drawing")
             from System import IntPtr
             from System.Drawing import Icon
@@ -74,7 +74,7 @@ def parse_icon_spec(spec):
 
 
 def _candidates(p):
-    """Posibles fuentes de icono, en orden de preferencia."""
+    """Possible icon sources, in order of preference."""
     if p.get("source") == "store":
         if p.get("icon"):
             yield p["icon"], None
@@ -110,10 +110,10 @@ def _safe_size(f):
 
 
 def get_icon(p, extract=True):
-    """data URI PNG del icono, o None.
+    """PNG data URI of the icon, or None.
 
-    extract=False: solo mira la cache del disco (microsegundos) y devuelve None si el primer candidato
-    aun no esta extraido; asi el resultado es el mismo que dara luego la extraccion completa.
+    extract=False: only looks at the disk cache (microseconds) and returns None if the first candidate
+    has not been extracted yet, so the result matches what the full extraction will return later.
     """
     for path, idx in _candidates(p):
         if not path or not os.path.isfile(path):
@@ -132,14 +132,14 @@ def get_icon(p, extract=True):
         if data:
             return "data:image/png;base64," + base64.b64encode(data).decode()
         if data is not None:
-            continue  # cache negativa: este candidato no tiene icono
+            continue  # negative cache: this candidate has no icon
         if not extract:
             return None
         os.makedirs(os.path.dirname(cache), exist_ok=True)
-        if idx is None:  # PNG directo (Tienda)
+        if idx is None:  # plain PNG (Store)
             with open(path, "rb") as f:
                 data = f.read()
-        else:  # .exe, .dll o .ico
+        else:  # .exe, .dll or .ico
             data = _hicon_png(path, idx or 0)
         try:
             with open(cache, "wb") as f:

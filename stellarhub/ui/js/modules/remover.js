@@ -1,5 +1,5 @@
-/* StellarHub · Program Remover. Interfaz con datos simulados con la forma de la API real: lista de programas,
-   desinstalación normal/silenciosa/forzada, escáner de restos con confianza, cuarentena, lotes, instalación vigilada, cazador. */
+/* StellarHub · Program Remover. UI with sample data shaped like the real API: program list,
+   normal/silent/forced uninstall, leftover scanner with confidence, quarantine, batch, watched install, hunter. */
 'use strict';
 (() => {
 const { $, $$, anim, EASE, Spring, tickers, ic, esc, fmt1 } = SH;
@@ -15,7 +15,7 @@ SH.icons.add({
   sortaz: '<path d="m6 9 6-6 6 6"/>',
 });
 
-/* ---------- datos simulados (forma de la API real) ---------- */
+/* ---------- sample data (shaped like the real API) ---------- */
 let seed = 11; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 const RAW = `FL Studio 2025|Image-Line|2840|w|25.1.3.5570
 iZotope Ozone 12|iZotope|1930|w|12.0.1
@@ -76,7 +76,7 @@ Obsidian|Dynalist Inc.|380|w|1.10.3
 WinRAR 7.10|win.rar GmbH|9|w|7.10.0
 Everything 1.4|voidtools|3|w|1.4.1.1026
 PowerToys|Microsoft Corporation|520|w|0.96.0
-Microsoft 365 Apps para empresas|Microsoft Corporation|3400|w|16.0.19328.20000
+Microsoft 365 Apps for enterprise|Microsoft Corporation|3400|w|16.0.19328.20000
 Microsoft OneDrive|Microsoft Corporation|310|p|25.205.1019.0001
 Microsoft Teams|Microsoft Corporation|280|s|25290.205.4069
 Zoom Workplace|Zoom Communications, Inc.|310|w|6.6.5
@@ -84,7 +84,7 @@ WhatsApp|WhatsApp Inc.|240|s|2.2546.4.0
 Telegram Desktop|Telegram FZ-LLC|120|w|6.2.4
 Adobe Acrobat Reader|Adobe Inc.|760|w|25.001.20756
 NVIDIA App|NVIDIA Corporation|410|w|11.0.5.266
-Controlador de gráficos NVIDIA 617.42|NVIDIA Corporation|1350|p|617.42
+NVIDIA Graphics Driver 617.42|NVIDIA Corporation|1350|p|617.42
 NVIDIA PhysX|NVIDIA Corporation|410|w|9.23.1019
 Intel Driver & Support Assistant|Intel|120|w|25.4.32.8
 Armoury Crate|ASUSTeK Computer Inc.|690|w|6.3.6.0
@@ -101,16 +101,16 @@ Microsoft Windows Desktop Runtime 6.0.36 (x64)|Microsoft Corporation|84|p|6.0.36
 Microsoft Edge WebView2 Runtime|Microsoft Corporation|610|p|143.0.3650.28
 Java 8 Update 451|Oracle Corporation|150|w|8.0.4510.9
 Microsoft Update Health Tools|Microsoft Corporation|1|p|5.72.0.0
-Comprobación de estado del PC Windows|Microsoft Corporation|12|w|3.9.2406
+Windows PC Health Check|Microsoft Corporation|12|w|3.9.2406
 Microsoft GameInput|Microsoft Corporation|6|p|10.1.26100.5074
 Xbox|Microsoft Corporation|160|s|2511.1001.10.0
 Xbox Game Bar|Microsoft Corporation|120|s|7.325.11061.0
-Terminal Windows|Microsoft Corporation|90|s|1.23.12811.0
+Windows Terminal|Microsoft Corporation|90|s|1.23.12811.0
 Microsoft Clipchamp|Microsoft Corp.|120|s|4.4.10520.0
 Microsoft To Do|Microsoft Corporation|60|s|2.148.3611.0
 Microsoft Solitaire Collection|Xbox Game Studios|110|s|4.24.10100.0
-Noticias de Microsoft|Microsoft Corporation|30|s|4.55.62231.0
-El tiempo de MSN|Microsoft Corporation|40|s|4.53.52331.0
+Microsoft News|Microsoft Corporation|30|s|4.55.62231.0
+MSN Weather|Microsoft Corporation|40|s|4.53.52331.0
 Copilot|Microsoft Corporation|80|s|1.25112.81.0
 Bitwarden|Bitwarden Inc.|210|w|2025.10.1
 KeePassXC|KeePassXC Team|70|w|2.7.10
@@ -145,20 +145,20 @@ const PROGRAMS = RAW.split('\n').map((l, i) => {
     id: 'p' + i, name, pub, mb: +mb, kind: k, ver, date: dt, h, ini, arch: /x86|32/.test(name) ? 32 : 64,
     silent: k !== 's' && rnd() > .25, store: k === 's', prot: k === 'p',
     loc: k === 's' ? `C:\\Program Files\\WindowsApps\\${name.replace(/\s+/g, '')}_${ver}_x64` : `C:\\Program Files\\${pub.split(/[ ,]/)[0]}\\${name.replace(/ \d.*$/, '')}`,
-    cmd: k === 's' ? 'Quitar el paquete de la Tienda' : rnd() > .5 ? `MsiExec.exe /X{${(1e7 + Math.floor(rnd() * 9e7)).toString(16).toUpperCase()}-...}` : `"C:\\Program Files\\${pub.split(/[ ,]/)[0]}\\unins000.exe"`,
+    cmd: k === 's' ? 'Remove the Store package' : rnd() > .5 ? `MsiExec.exe /X{${(1e7 + Math.floor(rnd() * 9e7)).toString(16).toUpperCase()}-...}` : `"C:\\Program Files\\${pub.split(/[ ,]/)[0]}\\unins000.exe"`,
     audio: AUDIO.test(pub),
   };
 });
 const totalGB = () => PROGRAMS.reduce((a, p) => a + p.mb, 0) / 1024;
-const MON = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
-const fmtDate = d => d ? `${d.getDate()} ${MON[d.getMonth()]} ${d.getFullYear()}` : '—';
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const fmtDate = d => d ? `${MON[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}` : '—';
 const fmtMB = mb => !mb ? '—' : mb >= 1024 ? `${fmt1(mb / 1024)} GB` : `${Math.max(1, Math.round(mb))} MB`;
 const NOW = () => (REAL() ? new Date() : TODAY);
 const daysSince = d => d ? Math.round((NOW() - d) / 864e5) : Infinity;
 
 const TYPES = {
-  folder: ['Carpetas', 'folder'], shortcut: ['Accesos directos', 'link'], plugin: ['Plugins de audio', 'audio'], reg: ['Registro', 'reg'], task: ['Tareas programadas', 'clock'],
-  service: ['Servicios', 'gear'], firewall: ['Reglas del firewall', 'shield'], assoc: ['Tipos de archivo', 'file'], path: ['Variable PATH', 'code'], personal: ['Tus datos', 'user'],
+  folder: ['Folders', 'folder'], shortcut: ['Shortcuts', 'link'], plugin: ['Audio plugins', 'audio'], reg: ['Registry', 'reg'], task: ['Scheduled tasks', 'clock'],
+  service: ['Services', 'gear'], firewall: ['Firewall rules', 'shield'], assoc: ['File types', 'file'], path: ['PATH variable', 'code'], personal: ['Your data', 'user'],
 };
 function leftoversFor(p) {
   const s = p.name.replace(/ \d[\d.]*$/, '').replace(/\s+\(.*\)$/, ''); const pubS = p.pub.split(/[ ,]/)[0];
@@ -166,49 +166,49 @@ function leftoversFor(p) {
   const L = [];
   const add = (type, path, conf, why, mb = 0, personal = false) => L.push({ id: 'l' + L.length + '_' + p.id, type, path, conf, why, mb, personal, prog: p.name });
   if (p.store) {
-    add('folder', `C:\\Users\\usuario\\AppData\\Local\\Packages\\${s.replace(/\s+/g, '')}_8wekyb3d8bbwe`, 95, 'Datos del paquete de la Tienda; Windows no los borra al quitarlo', 40 + rnd() * 200);
-    add('reg', `HKCU\\Software\\Classes\\Local Settings\\...\\${s.replace(/\s+/g, '')}`, 84, 'Configuración del paquete con su mismo identificador');
+    add('folder', `C:\\Users\\user\\AppData\\Local\\Packages\\${s.replace(/\s+/g, '')}_8wekyb3d8bbwe`, 95, 'Store package data; Windows does not delete it when removing the app', 40 + rnd() * 200);
+    add('reg', `HKCU\\Software\\Classes\\Local Settings\\...\\${s.replace(/\s+/g, '')}`, 84, 'Package settings with the same identifier');
     return L;
   }
-  add('folder', p.loc, 97, 'Carpeta de instalación; ya no queda ningún ejecutable dentro', p.mb * (.02 + rnd() * .06));
-  add('folder', `C:\\Users\\usuario\\AppData\\Roaming\\${s}`, 91, 'Solo este programa escribía aquí y tiene su mismo nombre', 5 + rnd() * 120);
-  add('folder', `C:\\Users\\usuario\\AppData\\Local\\${s}\\Cache`, 93, 'Caché del programa; se puede borrar sin perder nada', 20 + rnd() * 400);
-  add('shortcut', `Menú Inicio\\Programas\\${s}.lnk`, 99, 'El acceso directo apunta a un archivo que ya no existe');
-  if (rnd() > .4) add('shortcut', `Escritorio\\${s}.lnk`, 99, 'Apunta al ejecutable borrado');
-  add('reg', `HKCU\\Software\\${pubS}\\${s}`, 89, 'Clave con el nombre del editor y del programa');
-  add('reg', `HKLM\\SOFTWARE\\WOW6432Node\\${pubS}`, samePub ? 42 : 76, samePub ? `Otro programa de ${p.pub} instalado podría usar esta clave` : 'Clave del editor; no queda ningún otro programa suyo');
-  add('reg', `HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${s.split(' ')[0].toLowerCase()}.exe`, 96, 'Ruta registrada a un ejecutable que ya no existe');
-  if (rnd() > .35) add('task', `\\${pubS}\\${s} Update`, 94, 'Tarea de actualización que lanza un archivo borrado');
-  if (rnd() > .6) add('service', `${s.replace(/\s+/g, '')}Service`, 87, 'Servicio sin ejecutable; arranca en manual, no lo usa Windows');
-  if (rnd() > .45) add('firewall', `Regla de entrada: ${s.split(' ')[0].toLowerCase()}.exe`, 92, 'La regla permite un programa que ya no está');
+  add('folder', p.loc, 97, 'Install folder; no executables are left inside', p.mb * (.02 + rnd() * .06));
+  add('folder', `C:\\Users\\user\\AppData\\Roaming\\${s}`, 91, 'Only this program wrote here and it has the same name', 5 + rnd() * 120);
+  add('folder', `C:\\Users\\user\\AppData\\Local\\${s}\\Cache`, 93, 'Program cache; safe to delete without losing anything', 20 + rnd() * 400);
+  add('shortcut', `Start Menu\\Programs\\${s}.lnk`, 99, 'The shortcut points to a file that no longer exists');
+  if (rnd() > .4) add('shortcut', `Desktop\\${s}.lnk`, 99, 'Points to the deleted executable');
+  add('reg', `HKCU\\Software\\${pubS}\\${s}`, 89, 'Key with the publisher and program name');
+  add('reg', `HKLM\\SOFTWARE\\WOW6432Node\\${pubS}`, samePub ? 42 : 76, samePub ? `Another installed ${p.pub} program might use this key` : 'Publisher key; none of its other programs are left');
+  add('reg', `HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${s.split(' ')[0].toLowerCase()}.exe`, 96, 'Registered path to an executable that no longer exists');
+  if (rnd() > .35) add('task', `\\${pubS}\\${s} Update`, 94, 'Update task that launches a deleted file');
+  if (rnd() > .6) add('service', `${s.replace(/\s+/g, '')}Service`, 87, 'Service without an executable; manual start, not used by Windows');
+  if (rnd() > .45) add('firewall', `Inbound rule: ${s.split(' ')[0].toLowerCase()}.exe`, 92, 'The rule allows a program that is no longer there');
   if (p.audio) {
-    add('plugin', `C:\\Program Files\\Common Files\\VST3\\${s}.vst3`, 86, 'Plugin de este programa; ningún otro instalado lo usa', 30 + rnd() * 90);
-    add('plugin', `C:\\Program Files\\Common Files\\CLAP\\${s}.clap`, 84, 'Versión CLAP del mismo plugin', 10 + rnd() * 40);
-    add('personal', `C:\\Users\\usuario\\Documents\\${pubS}`, 25, 'Tus proyectos y presets. Se muestran, pero nunca se marcan solos', 300 + rnd() * 900, true);
+    add('plugin', `C:\\Program Files\\Common Files\\VST3\\${s}.vst3`, 86, 'Plugin from this program; no other installed program uses it', 30 + rnd() * 90);
+    add('plugin', `C:\\Program Files\\Common Files\\CLAP\\${s}.clap`, 84, 'CLAP version of the same plugin', 10 + rnd() * 40);
+    add('personal', `C:\\Users\\user\\Documents\\${pubS}`, 25, 'Your projects and presets. They are listed but never selected automatically', 300 + rnd() * 900, true);
   }
-  if (/FL Studio/.test(p.name)) add('assoc', 'Archivos .flp (proyecto de FL Studio)', 81, 'El tipo de archivo abre un programa que ya no existe');
-  if (/Python|Node|Git|MSYS|Docker/.test(p.name)) add('path', `PATH: ${p.loc}\\bin`, 88, 'Entrada del PATH que apunta a una carpeta borrada');
+  if (/FL Studio/.test(p.name)) add('assoc', '.flp files (FL Studio project)', 81, 'The file type opens a program that no longer exists');
+  if (/Python|Node|Git|MSYS|Docker/.test(p.name)) add('path', `PATH: ${p.loc}\\bin`, 88, 'PATH entry that points to a deleted folder');
   return L;
 }
 const sessions = [
-  { id: 'q1', prog: 'CCleaner Browser', pub: 'Piriform Software Ltd', h: 120, ini: 'CB', date: new Date(TODAY - 5 * 864e5), mode: 'Silenciosa', items: leftoversFor({ name: 'CCleaner Browser', pub: 'Piriform', loc: 'C:\\Program Files\\CCleaner Browser', mb: 600 }).filter(l => !l.personal) },
-  { id: 'q2', prog: 'Opera GX', pub: 'Opera Software', h: 350, ini: 'OG', date: new Date(TODAY - 11 * 864e5), mode: 'Normal', items: leftoversFor({ name: 'Opera GX', pub: 'Opera', loc: 'C:\\Users\\usuario\\AppData\\Local\\Programs\\Opera GX', mb: 1400 }).filter(l => !l.personal) },
+  { id: 'q1', prog: 'CCleaner Browser', pub: 'Piriform Software Ltd', h: 120, ini: 'CB', date: new Date(TODAY - 5 * 864e5), mode: 'Silent', items: leftoversFor({ name: 'CCleaner Browser', pub: 'Piriform', loc: 'C:\\Program Files\\CCleaner Browser', mb: 600 }).filter(l => !l.personal) },
+  { id: 'q2', prog: 'Opera GX', pub: 'Opera Software', h: 350, ini: 'OG', date: new Date(TODAY - 11 * 864e5), mode: 'Normal', items: leftoversFor({ name: 'Opera GX', pub: 'Opera', loc: 'C:\\Users\\user\\AppData\\Local\\Programs\\Opera GX', mb: 1400 }).filter(l => !l.personal) },
 ];
 const history = [
-  { type: 'uninstall', title: 'CCleaner Browser desinstalado', sub: 'Modo silencioso, 9 restos a la cuarentena', date: sessions[0].date },
-  { type: 'restore', title: 'Restaurado un acceso directo de Opera GX', sub: 'Desde la cuarentena', date: new Date(TODAY - 10 * 864e5) },
-  { type: 'uninstall', title: 'Opera GX desinstalado', sub: 'Modo normal, 10 restos a la cuarentena', date: sessions[1].date },
-  { type: 'watch', title: 'Instalación vigilada: bx_console SSL 4000', sub: '312 archivos y 41 claves registradas', date: new Date(TODAY - 19 * 864e5) },
+  { type: 'uninstall', title: 'CCleaner Browser uninstalled', sub: 'Silent mode, 9 leftovers to the quarantine', date: sessions[0].date },
+  { type: 'restore', title: 'Restored an Opera GX shortcut', sub: 'From the quarantine', date: new Date(TODAY - 10 * 864e5) },
+  { type: 'uninstall', title: 'Opera GX uninstalled', sub: 'Normal mode, 10 leftovers to the quarantine', date: sessions[1].date },
+  { type: 'watch', title: 'Watched install: bx_console SSL 4000', sub: '312 files and 41 keys recorded', date: new Date(TODAY - 19 * 864e5) },
 ];
 const traces = [
   { id: 't1', name: 'bx_console SSL 4000', date: new Date(TODAY - 19 * 864e5), files: 312, keys: 41, mb: 186 },
-  { id: 't2', name: 'Driver de la tableta Wacom', date: new Date(TODAY - 33 * 864e5), files: 87, keys: 119, mb: 64 },
+  { id: 't2', name: 'Wacom tablet driver', date: new Date(TODAY - 33 * 864e5), files: 87, keys: 119, mb: 64 },
 ];
 let qDays = 14;
 
-/* ================= motor real =================
-   Dentro de la app (pywebview) todo sale de stellarhub/engine/remover.py. En el navegador se queda el modo de
-   ejemplo de arriba para poder diseñar. Los ids de la interfaz son cortos (r0, r1…); el del motor va en p.eid. */
+/* ================= real engine =================
+   Inside the app (pywebview) everything comes from stellarhub/engine/remover.py. In the browser the sample
+   mode above stays so the UI can be designed. UI ids are short (r0, r1…); the engine's id goes in p.eid. */
 const REAL = () => !!(window.pywebview && window.pywebview.api);
 const hueOf = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 const iniOf = name => { const w = name.replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean); if (!w.length) return '?'; return (w.length > 1 && !/^\d/.test(w[1]) ? w[0][0] + w[1][0] : w[0].slice(0, 2)).toUpperCase(); };
@@ -239,7 +239,7 @@ function ensureReal(force) {
   realPromise.catch(() => { realPromise = null; });
   return realPromise;
 }
-/* después de pintar: iconos que faltan, apps de la Tienda y tamaños reales, por lotes */
+/* after drawing: missing icons, Store apps and real sizes, in batches */
 function startBackground() {
   if (bgJob) bgJob.cancel();
   bgJob = SH.job('remover', 'background', [], { onProgress: m => {
@@ -262,7 +262,7 @@ function applySizes(map) {
     $$(`.pr[data-p="${p.id}"] .sz`).forEach(el => { el.textContent = fmtMB(p.mb); });
   }
 }
-/* resto del motor -> forma de la interfaz */
+/* engine leftover -> UI shape */
 function typeOf(it) {
   if (it.personal) return 'personal';
   const t = (it.target || '').toLowerCase();
@@ -274,10 +274,10 @@ function typeOf(it) {
 }
 const mapItem = (key, progName) => it => ({
   id: key + '#' + it.id, eid: it.id, key, type: typeOf(it), path: it.display || it.target, conf: Math.round(it.score || 0),
-  why: (it.blocked ? `Bloqueado por seguridad: ${it.blocked}. ` : '') + (it.reasons || []).join('. '), mb: (it.size || 0) / 1048576,
+  why: (it.blocked ? `Blocked for safety: ${it.blocked}. ` : '') + (it.reasons || []).join('. '), mb: (it.size || 0) / 1048576,
   personal: !!it.personal, blocked: !!it.blocked, selected: !!it.selected, prog: progName,
 });
-const jobErr = e => (e && e.message) || 'Algo falló';
+const jobErr = e => (e && e.message) || 'Something went wrong';
 const API = {
   async list() { await wait(80); return PROGRAMS; },
   async restorePoint() { await wait(1300); return true; },
@@ -287,26 +287,26 @@ const API = {
   async remove(progs, items, mode) {
     await wait(700);
     progs.forEach(p => { const i = PROGRAMS.indexOf(p); if (i >= 0) PROGRAMS.splice(i, 1); });
-    const s = { id: 'q' + Date.now(), prog: progs.length === 1 ? progs[0].name : `${progs.length} programas por lotes`, pub: progs.length === 1 ? progs[0].pub : progs.map(p => p.name).join(', '), h: progs[0].h, ini: progs.length === 1 ? progs[0].ini : String(progs.length), date: new Date(TODAY), mode, items, progs };
+    const s = { id: 'q' + Date.now(), prog: progs.length === 1 ? progs[0].name : `${progs.length} programs in a batch`, pub: progs.length === 1 ? progs[0].pub : progs.map(p => p.name).join(', '), h: progs[0].h, ini: progs.length === 1 ? progs[0].ini : String(progs.length), date: new Date(TODAY), mode, items, progs };
     sessions.unshift(s);
-    history.unshift({ type: 'uninstall', title: `${s.prog} ${progs.length === 1 ? 'desinstalado' : 'desinstalados'}`, sub: `Modo ${mode.toLowerCase()}, ${items.length} restos a la cuarentena`, date: new Date(TODAY) });
+    history.unshift({ type: 'uninstall', title: `${s.prog} uninstalled`, sub: `${mode} mode, ${items.length} leftovers to the quarantine`, date: new Date(TODAY) });
     return s;
   },
   async restore(session, item) {
     if (REAL()) {
       const r = await SH.job('remover', 'quarantine_restore', [session.id, item ? [item.idx] : null]);
-      if (r && r.failed) SH.toast(`No se pudo devolver ${r.failed} ${r.failed === 1 ? 'elemento' : 'elementos'}: ${(r.errors || [])[0] || ''}`, { ms: 6000 });
-      if (r && r.needs_reboot) SH.toast('Algún servicio o regla vuelve del todo al reiniciar.', { ms: 5000 });
-      SH.logActivity(item ? 'Restaurado un elemento de la cuarentena' : `${session.prog}: devuelto a su sitio`, { ic: 'restore', go: 'remover', tab: 'quarantine' });
+      if (r && r.failed) SH.toast(`Could not restore ${r.failed} ${r.failed === 1 ? 'item' : 'items'}: ${(r.errors || [])[0] || ''}`, { ms: 6000 });
+      if (r && r.needs_reboot) SH.toast('Some services or rules are fully restored after a restart.', { ms: 5000 });
+      SH.logActivity(item ? 'Restored an item from the quarantine' : `${session.prog}: put back in place`, { ic: 'restore', go: 'remover', tab: 'quarantine' });
       ensureReal(true).then(refresh).catch(() => {});
     } else await wait(350);
-    if (item) { session.items = session.items.filter(x => x !== item); history.unshift({ type: 'restore', title: `Restaurado: ${item.path.split('\\').pop()}`, sub: `De ${session.prog}`, date: new Date(TODAY) }); }
-    else { history.unshift({ type: 'restore', title: `${session.prog}: todo restaurado`, sub: `${session.items.length} elementos devueltos a su sitio`, date: new Date(TODAY) }); session.items = []; if (session.progs) session.progs.forEach(p => PROGRAMS.push(p)); }
+    if (item) { session.items = session.items.filter(x => x !== item); history.unshift({ type: 'restore', title: `Restored: ${item.path.split('\\').pop()}`, sub: `From ${session.prog}`, date: new Date(TODAY) }); }
+    else { history.unshift({ type: 'restore', title: `${session.prog}: everything restored`, sub: `${session.items.length} items put back in place`, date: new Date(TODAY) }); session.items = []; if (session.progs) session.progs.forEach(p => PROGRAMS.push(p)); }
     if (!session.items.length) sessions.splice(sessions.indexOf(session), 1);
   },
 };
 
-/* ---------- utilidades ---------- */
+/* ---------- helpers ---------- */
 const pi = (p, lg) => p.icon
   ? `<span class="pi img${lg ? ' lg' : ''}" data-pi="${p.id}"><img src="${p.icon}" alt="" loading="lazy" decoding="async"></span>`
   : `<span class="pi${lg ? ' lg' : ''}" data-pi="${p.id}" style="--h:${p.h}">${esc(p.ini)}</span>`;
@@ -334,15 +334,15 @@ const refreshers = new Set(); const refresh = () => refreshers.forEach(fn => { t
 let ctxRef = null;
 const sectionEl = () => $('#v-remover .mod');
 
-/* ================= flujo de desinstalación ================= */
-const STEPS = ['Modo', 'Preparar', 'Desinstalar', 'Restos', 'Revisar', 'Listo'];
+/* ================= uninstall flow ================= */
+const STEPS = ['Mode', 'Prepare', 'Uninstall', 'Leftovers', 'Review', 'Done'];
 function openFlow(progs, opts = {}) {
   const mod = sectionEl(); if (!mod || $('.rv-flow', mod)) return;
   const one = progs.length === 1 ? progs[0] : null;
   const prot = progs.some(p => p.prot);
   const f = document.createElement('div'); f.className = 'rv-flow';
-  f.innerHTML = `<div class="rf-head">${one ? pi(one, true) : `<span class="pi lg" style="--h:200">${progs.length}</span>`}<div><h3>${one ? `Desinstalar ${esc(one.name)}` : `Restos de ${progs.length} programas`}</h3><div class="who">${one ? `${esc(one.pub)}, ${fmtMB(one.mb)}` : esc(progs.map(p => p.name).join(', '))}</div></div>
-      <button class="iconbtn x" data-x aria-label="Cerrar">${ic('x')}</button></div>
+  f.innerHTML = `<div class="rf-head">${one ? pi(one, true) : `<span class="pi lg" style="--h:200">${progs.length}</span>`}<div><h3>${one ? `Uninstall ${esc(one.name)}` : `Leftovers from ${progs.length} programs`}</h3><div class="who">${one ? `${esc(one.pub)}, ${fmtMB(one.mb)}` : esc(progs.map(p => p.name).join(', '))}</div></div>
+      <button class="iconbtn x" data-x aria-label="Close">${ic('x')}</button></div>
     <div class="rf-steps"><div class="ln"><span></span></div>${STEPS.map((s, i) => `<div class="rf-st" data-i="${i}"><i>${i + 1}</i>${s}</div>`).join('')}</div>
     <div class="rf-body"></div><div class="rf-foot"><span class="t"></span></div>`;
   mod.appendChild(f);
@@ -350,7 +350,7 @@ function openFlow(progs, opts = {}) {
   const body = $('.rf-body', f), foot = $('.rf-foot', f), lineSp = new Spring(0, 120, 18);
   const tk = dt => { lineSp.step(dt); $('.ln span', f).style.transform = `scaleX(${lineSp.v.toFixed(4)})`; }; tickers.add(tk);
   let step = -1, mode = opts.mode || (one && one.silent ? 'silent' : 'normal'), level = 'moderate', items = opts.items || [], sel = new Set(), closed = false, busy = false;
-  const MODE_NAME = { normal: 'Normal', silent: 'Silenciosa', forced: 'Forzada' };
+  const MODE_NAME = { normal: 'Normal', silent: 'Silent', forced: 'Forced' };
   function setStep(i) {
     const dir = i >= step ? 1 : -1; step = i; lineSp.t = i / (STEPS.length - 1);
     $$('.rf-st', f).forEach((s, k) => { s.classList.toggle('on', k === i); s.classList.toggle('done', k < i); $('i', s).innerHTML = k < i ? ic('check') : k + 1; });
@@ -359,154 +359,154 @@ function openFlow(progs, opts = {}) {
   }
   function setFoot(html) { foot.innerHTML = html; stagger([...foot.children], 0, 40); }
   function close() {
-    if (busy) { SH.toast('Espera a que termine este paso.'); return; }
+    if (busy) { SH.toast('Wait for this step to finish.'); return; }
     closed = true; tickers.delete(tk);
     anim(f, [{ opacity: 1, transform: 'none', filter: 'blur(0px)' }, { opacity: 0, transform: 'translate3d(0,16px,0) scale(.98)', filter: 'blur(8px)' }], { d: 240, e: EASE.io }).finished.then(() => f.remove()).catch(() => f.remove());
   }
   f.addEventListener('click', e => { if (e.target.closest('[data-x]')) close(); });
-  /* 1. modo */
+  /* 1. mode */
   function stepMode() {
     const dir = setStep(0);
     const can = { silent: progs.every(p => p.silent || p.store), forced: !prot };
     swap(body, `<div class="mcards">
-        <button class="mcard${mode === 'normal' ? ' on' : ''}" data-m="normal"><span class="mi">${ic('play')}</span><b>Normal</b><span>Abre el desinstalador oficial, con sus ventanas, como si lo hicieras desde Windows.</span></button>
-        <button class="mcard${mode === 'silent' ? ' on' : ''}" data-m="silent"${can.silent ? '' : ' disabled'}><span class="mi">${ic('silent')}</span><b>Silenciosa</b><span>${can.silent ? 'Sin ventanas ni preguntas. Este instalador lo permite.' : 'Este instalador no admite el modo silencioso.'}</span></button>
-        <button class="mcard${mode === 'forced' ? ' on' : ''}" data-m="forced"${can.forced ? '' : ' disabled'}><span class="mi">${ic('force')}</span><b>Forzada</b><span>${can.forced ? 'Para programas con el desinstalador roto: se borra todo con el escáner.' : 'No disponible para componentes protegidos.'}</span></button></div>
-      <div class="lvl"><div class="lbl">Profundidad de la búsqueda de restos</div>${segHTML([['safe', 'Segura'], ['moderate', 'Moderada'], ['advanced', 'Avanzada']], level)}<div class="hint" id="lvlHint">Busca en carpetas, accesos directos, registro, tareas, servicios y firewall. La recomendada.</div></div>
-      ${prot ? `<div class="pan" style="margin-top:18px;max-width:900px;font-size:12.5px;color:var(--mute)">${ic('shield')} <b style="color:var(--ink);font-weight:500">Componente protegido.</b> Otros programas pueden necesitarlo. La búsqueda de restos se limita a lo que es seguro.</div>` : ''}`, dir, () => {
+        <button class="mcard${mode === 'normal' ? ' on' : ''}" data-m="normal"><span class="mi">${ic('play')}</span><b>Normal</b><span>Opens the official uninstaller, with its windows, as if you ran it from Windows.</span></button>
+        <button class="mcard${mode === 'silent' ? ' on' : ''}" data-m="silent"${can.silent ? '' : ' disabled'}><span class="mi">${ic('silent')}</span><b>Silent</b><span>${can.silent ? 'No windows or questions. This installer supports it.' : 'This installer does not support silent mode.'}</span></button>
+        <button class="mcard${mode === 'forced' ? ' on' : ''}" data-m="forced"${can.forced ? '' : ' disabled'}><span class="mi">${ic('force')}</span><b>Forced</b><span>${can.forced ? 'For programs with a broken uninstaller: the scanner removes everything.' : 'Not available for protected components.'}</span></button></div>
+      <div class="lvl"><div class="lbl">Leftover search depth</div>${segHTML([['safe', 'Safe'], ['moderate', 'Moderate'], ['advanced', 'Advanced']], level)}<div class="hint" id="lvlHint">Searches folders, shortcuts, registry, tasks, services and firewall. Recommended.</div></div>
+      ${prot ? `<div class="pan" style="margin-top:18px;max-width:900px;font-size:12.5px;color:var(--mute)">${ic('shield')} <b style="color:var(--ink);font-weight:500">Protected component.</b> Other programs may need it. The leftover search is limited to what is safe.</div>` : ''}`, dir, () => {
       $$('.mcard', body).forEach((c, i) => anim(c, [{ opacity: 0, transform: 'translate3d(0,14px,0) scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 460, delay: 60 + i * 60, e: EASE.spring }));
-      const sg = $('.seg', body); wireSeg(sg, v => { level = v; $('#lvlHint', body).textContent = { safe: 'Solo lo que seguro es del programa: su carpeta, accesos directos y claves con su nombre.', moderate: 'Busca en carpetas, accesos directos, registro, tareas, servicios y firewall. La recomendada.', advanced: 'Además mira tipos de archivo, componentes COM, PATH y el registro del instalador. Revisa más a fondo.' }[v]; });
+      const sg = $('.seg', body); wireSeg(sg, v => { level = v; $('#lvlHint', body).textContent = { safe: 'Only what surely belongs to the program: its folder, shortcuts and keys with its name.', moderate: 'Searches folders, shortcuts, registry, tasks, services and firewall. Recommended.', advanced: 'Also checks file types, COM components, PATH and the installer registry. A deeper review.' }[v]; });
     });
     body.onclick = e => { const c = e.target.closest('.mcard'); if (!c || c.disabled) return; mode = c.dataset.m; $$('.mcard', body).forEach(x => x.classList.toggle('on', x === c)); anim($('.mi', c), [{ transform: 'scale(.7) rotate(-12deg)' }, { transform: 'none' }], { d: 420, e: EASE.spring }); };
-    setFoot(`<span class="t">${one && one.silent ? 'Este programa admite <b>desinstalación silenciosa</b>.' : 'Antes de tocar nada se crea un punto de restauración.'}</span><button class="btn ghost" data-x>Cancelar</button><button class="btn pri lg" id="rfGo">Empezar</button>`);
+    setFoot(`<span class="t">${one && one.silent ? 'This program supports <b>silent uninstall</b>.' : 'A restore point is created before anything is touched.'}</span><button class="btn ghost" data-x>Cancel</button><button class="btn pri lg" id="rfGo">Start</button>`);
     let armed = 0;
     $('#rfGo', f).onclick = e => {
-      if (mode === 'forced' && !SH.requireAdmin('para la desinstalación forzada: borra archivos del sistema.')) return;
-      if (REAL() && mode === 'forced' && !armed) {  /* lo irreversible pide una segunda pulsación */
-        const b = e.currentTarget; armed = setTimeout(() => { armed = 0; b.textContent = 'Empezar'; }, 4000);
-        b.innerHTML = `${ic('alert')}Pulsa otra vez: sin desinstalador oficial`; anim(b, [{ transform: 'scale(.95)' }, { transform: 'none' }], { d: 300, e: EASE.spring }); return;
+      if (mode === 'forced' && !SH.requireAdmin('for forced uninstall: it deletes system files.')) return;
+      if (REAL() && mode === 'forced' && !armed) {  /* the irreversible needs a second click */
+        const b = e.currentTarget; armed = setTimeout(() => { armed = 0; b.textContent = 'Start'; }, 4000);
+        b.innerHTML = `${ic('alert')}Click again: no official uninstaller`; anim(b, [{ transform: 'scale(.95)' }, { transform: 'none' }], { d: 300, e: EASE.spring }); return;
       }
       clearTimeout(armed);
       REAL() && one ? realRun() : stepPrep();
     };
   }
-  /* ---------- camino real: una sola tarea del motor y la interfaz sigue sus pasos ---------- */
-  const SCAN_STEPS = ['Carpetas y archivos', 'Accesos directos', 'Registro por nombre', 'Servicios, tareas, inicio y firewall', 'Tipos de archivo y componentes COM'];
+  /* ---------- real path: a single engine task, and the UI follows its steps ---------- */
+  const SCAN_STEPS = ['Files and folders', 'Shortcuts', 'Registry by name', 'Services, tasks, startup and firewall', 'File types and COM components'];
   async function realRun() {
     busy = true; let dir = setStep(1);
-    swap(body, `<div class="checks">${ckRow('rp', 'restore', 'Punto de restauración', 'Por si quieres volver atrás')}${ckRow('close', 'x', `Cerrar ${one.name}`, 'Si está abierto, se cierra con cuidado')}${ckRow('inst', 'eye', 'Desinstalador oficial', one.store ? 'Se quita el paquete de la Tienda' : 'Se lanza y se espera a todos sus procesos')}</div>`, dir, () => stagger($$('.ck', body), 40, 60));
-    setFoot('<span class="t">Preparando. Esto tarda unos segundos.</span><button class="btn ghost" id="rfCancel">Cancelar</button>');
+    swap(body, `<div class="checks">${ckRow('rp', 'restore', 'Restore point', 'In case you want to go back')}${ckRow('close', 'x', `Close ${one.name}`, 'If it is open, it is closed gently')}${ckRow('inst', 'eye', 'Official uninstaller', one.store ? 'The Store package is removed' : 'It runs and all its processes are awaited')}</div>`, dir, () => stagger($$('.ck', body), 40, 60));
+    setFoot('<span class="t">Preparing. This takes a few seconds.</span><button class="btn ghost" id="rfCancel">Cancel</button>');
     let uninShown = false, scanShown = false, lastLabel = '', arcT = .08;
     const sp = new Spring(0, 60, 14); const t2 = dt => { sp.t = arcT; sp.step(dt); const a = $('#rfArc', body); if (a) a.style.strokeDashoffset = (326.7 * (1 - sp.v)).toFixed(2); };
     const STAT = { done: 'ok', warn: 'ok', skipped: 'ok', running: 'run' };
     const job = SH.job('remover', 'uninstall', [one.eid, { mode: mode === 'silent' ? 'quiet' : mode, level, restore_point: true }], { onProgress: m => {
       if (closed) return; const d = m.data || {};
-      if (d.step === 'restore') { setCk('rp', STAT[d.status], { done: 'Creado', warn: 'No se pudo', skipped: 'No hace falta', running: '' }[d.status]); if (d.status === 'warn' && d.detail) $(`.ck[data-c="rp"] .s`, body).textContent = d.detail; }
-      if (d.step === 'close') setCk('close', STAT[d.status], d.status === 'done' ? (d.detail ? `Cerrado: ${d.detail}` : 'No estaba abierto') : '');
+      if (d.step === 'restore') { setCk('rp', STAT[d.status], { done: 'Created', warn: 'Failed', skipped: 'Not needed', running: '' }[d.status]); if (d.status === 'warn' && d.detail) $(`.ck[data-c="rp"] .s`, body).textContent = d.detail; }
+      if (d.step === 'close') setCk('close', STAT[d.status], d.status === 'done' ? (d.detail ? `Closed: ${d.detail}` : 'Was not open') : '');
       if (d.step === 'uninstall') {
-        if (d.status === 'skipped') setCk('inst', 'ok', 'Modo forzado');
+        if (d.status === 'skipped') setCk('inst', 'ok', 'Forced mode');
         else if (!uninShown) {
           uninShown = true; setCk('inst', 'run'); dir = setStep(2); tickers.add(t2);
           swap(body, `<div class="unin"><div class="orb"><svg class="p" viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" style="stroke:var(--raise2)" stroke-width="6"/><circle id="rfArc" cx="60" cy="60" r="52" fill="none" style="stroke:var(--accent)" stroke-width="6" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/></svg>${pi(one, true)}</div>
-            <div><h3 id="rfUt">${mode === 'silent' ? 'Desinstalando en silencio' : 'Esperando al desinstalador'}</h3><p id="rfUp">${mode === 'silent' ? 'Sin ventanas. No hace falta que hagas nada.' : 'Sigue los pasos en la ventana del desinstalador. StellarHub espera a todos sus procesos, no solo al primero.'}</p><p class="faint" id="rfUd"></p></div></div>`, dir);
-          setFoot(`<span class="t">Modo <b>${MODE_NAME[mode].toLowerCase()}</b>.</span><button class="btn ghost" id="rfCancel">Dejar de esperar</button>`); wireCancel();
+            <div><h3 id="rfUt">${mode === 'silent' ? 'Uninstalling silently' : 'Waiting for the uninstaller'}</h3><p id="rfUp">${mode === 'silent' ? 'No windows. You do not need to do anything.' : 'Follow the steps in the uninstaller window. StellarHub waits for all its processes, not just the first one.'}</p><p class="faint" id="rfUd"></p></div></div>`, dir);
+          setFoot(`<span class="t"><b>${MODE_NAME[mode]}</b> mode.</span><button class="btn ghost" id="rfCancel">Stop waiting</button>`); wireCancel();
         }
         if (d.status === 'running') { arcT = Math.min(.9, arcT + .04); const u = $('#rfUd', body); if (u && d.detail) u.textContent = d.detail; }
-        if (d.status === 'done' || d.status === 'warn') { arcT = 1; const h = $('#rfUt', body); if (h) h.textContent = d.status === 'done' ? 'Desinstalador terminado' : 'El desinstalador terminó con avisos'; const u = $('#rfUp', body); if (u) u.textContent = d.detail || 'Ahora buscamos lo que dejó atrás.'; }
+        if (d.status === 'done' || d.status === 'warn') { arcT = 1; const h = $('#rfUt', body); if (h) h.textContent = d.status === 'done' ? 'Uninstaller finished' : 'The uninstaller finished with warnings'; const u = $('#rfUp', body); if (u) u.textContent = d.detail || 'Now we look for what it left behind.'; }
       }
       if (d.step === 'scan') {
         if (!scanShown) {
           scanShown = true; tickers.delete(t2); dir = setStep(3);
           const rows = level === 'safe' ? SCAN_STEPS.slice(0, 4) : SCAN_STEPS;
-          swap(body, `<div class="scan-grid">${rows.map((t, i) => ckRow('s' + i, ['folder', 'link', 'reg', 'gear', 'file'][i], t, 'En espera')).join('')}</div>`, dir, () => stagger($$('.ck', body), 30, 30));
-          setFoot('<span class="t">Buscando restos. Cada uno lleva una confianza de 0 a 100 y el motivo.</span>');
+          swap(body, `<div class="scan-grid">${rows.map((t, i) => ckRow('s' + i, ['folder', 'link', 'reg', 'gear', 'file'][i], t, 'Waiting')).join('')}</div>`, dir, () => stagger($$('.ck', body), 30, 30));
+          setFoot('<span class="t">Looking for leftovers. Each one has a confidence from 0 to 100 and the reason.</span>');
         }
         const lab = d.label || m.text || ''; const i = SCAN_STEPS.findIndex(s => lab.startsWith(s));
-        if (i >= 0 && lab !== lastLabel) { lastLabel = lab; for (let k = 0; k < i; k++) { setCk('s' + k, 'ok'); const s = $(`.ck[data-c="s${k}"] .s`, body); if (s) s.textContent = 'Revisado'; } setCk('s' + i, 'run'); const s = $(`.ck[data-c="s${i}"] .s`, body); if (s) s.textContent = 'Revisando…'; }
+        if (i >= 0 && lab !== lastLabel) { lastLabel = lab; for (let k = 0; k < i; k++) { setCk('s' + k, 'ok'); const s = $(`.ck[data-c="s${k}"] .s`, body); if (s) s.textContent = 'Checked'; } setCk('s' + i, 'run'); const s = $(`.ck[data-c="s${i}"] .s`, body); if (s) s.textContent = 'Checking…'; }
       }
     } });
-    function wireCancel() { const c = $('#rfCancel', f); if (c) c.onclick = () => { job.cancel(); c.disabled = true; c.textContent = 'Cancelando…'; }; }
+    function wireCancel() { const c = $('#rfCancel', f); if (c) c.onclick = () => { job.cancel(); c.disabled = true; c.textContent = 'Cancelling…'; }; }
     wireCancel();
     let res;
     try { res = await job; } catch (e) {
       tickers.delete(t2); busy = false; if (closed) return;
-      if (e.cancelled) { SH.toast('Cancelado. No se tocó nada más.'); close(); return; }
-      swap(body, `<div class="empty"><b>No se pudo desinstalar</b>${esc(jobErr(e))}</div>`); setFoot('<span class="t"></span><button class="btn pri" data-x>Cerrar</button>'); return;
+      if (e.cancelled) { SH.toast('Cancelled. Nothing else was touched.'); close(); return; }
+      swap(body, `<div class="empty"><b>Could not uninstall</b>${esc(jobErr(e))}</div>`); setFoot('<span class="t"></span><button class="btn pri" data-x>Close</button>'); return;
     }
     tickers.delete(t2); busy = false; if (closed) return;
-    if (res.cancelled) { SH.toast('Cancelado. El programa sigue instalado.'); close(); return; }
-    $$('.ck', body).forEach(c => { setCk(c.dataset.c, 'ok'); const s = $('.s', c); if (s) s.textContent = 'Revisado'; });
+    if (res.cancelled) { SH.toast('Cancelled. The program is still installed.'); close(); return; }
+    $$('.ck', body).forEach(c => { setCk(c.dataset.c, 'ok'); const s = $('.s', c); if (s) s.textContent = 'Checked'; });
     const sc = res.scan || { items: [], key: one.eid };
     items = sc.items.map(mapItem(sc.key, one.name)); sel = new Set(items.filter(l => l.selected).map(l => l.id));
-    if (res.still_registered && mode !== 'forced') SH.toast('El programa sigue registrado: quizá cancelaste el desinstalador. Revisa los restos con cuidado.', { ms: 6000 });
-    SH.logActivity(`${one.name} desinstalado`, { sub: `modo ${MODE_NAME[mode].toLowerCase()}`, ic: 'remover', go: 'remover', tab: 'history' });
+    if (res.still_registered && mode !== 'forced') SH.toast('The program is still registered: maybe you cancelled the uninstaller. Review the leftovers carefully.', { ms: 6000 });
+    SH.logActivity(`${one.name} uninstalled`, { sub: `${MODE_NAME[mode].toLowerCase()} mode`, ic: 'remover', go: 'remover', tab: 'history' });
     await wait(400); if (!closed) stepReview();
   }
   const ckRow = (id, icon, title, sub) => `<div class="ck" data-c="${id}"><span class="st">${ic(icon)}</span><div><b>${esc(title)}</b><span class="s">${esc(sub)}</span></div><span class="n"></span></div>`;
   const setCk = (id, state, n) => { const c = $(`.ck[data-c="${id}"]`, body); if (!c) return; c.classList.remove('run', 'ok'); if (state) c.classList.add(state); if (state === 'ok') { $('.st', c).innerHTML = ic('check'); anim($('.st', c), [{ transform: 'scale(.6)' }, { transform: 'none' }], { d: 400, e: EASE.spring }); } if (n != null) $('.n', c).textContent = n; };
-  /* 2. preparar */
+  /* 2. prepare */
   async function stepPrep() {
     busy = true; const dir = setStep(1);
-    swap(body, `<div class="checks">${ckRow('rp', 'restore', 'Punto de restauración', 'Por si quieres volver atrás')}${ckRow('close', 'x', one ? `Cerrar ${one.name}` : 'Cerrar los programas', 'Si está abierto, se cierra con cuidado')}${ckRow('snap', 'eye', 'Foto del sistema', 'Para encontrar después lo que deja')}</div>`, dir, () => stagger($$('.ck', body), 40, 60));
-    setFoot('<span class="t">Preparando. Esto tarda unos segundos.</span>');
-    await wait(300); if (closed) return; setCk('rp', 'run'); await API.restorePoint(); if (closed) return; setCk('rp', 'ok', 'Creado');
-    setCk('close', 'run'); await API.closeApp(); if (closed) return; setCk('close', 'ok', 'No estaba abierto');
-    setCk('snap', 'run'); await wait(600); if (closed) return; setCk('snap', 'ok', '48 213 entradas'); await wait(400);
+    swap(body, `<div class="checks">${ckRow('rp', 'restore', 'Restore point', 'In case you want to go back')}${ckRow('close', 'x', one ? `Close ${one.name}` : 'Close the programs', 'If it is open, it is closed gently')}${ckRow('snap', 'eye', 'System snapshot', 'To find what it leaves behind later')}</div>`, dir, () => stagger($$('.ck', body), 40, 60));
+    setFoot('<span class="t">Preparing. This takes a few seconds.</span>');
+    await wait(300); if (closed) return; setCk('rp', 'run'); await API.restorePoint(); if (closed) return; setCk('rp', 'ok', 'Created');
+    setCk('close', 'run'); await API.closeApp(); if (closed) return; setCk('close', 'ok', 'Was not open');
+    setCk('snap', 'run'); await wait(600); if (closed) return; setCk('snap', 'ok', '48,213 entries'); await wait(400);
     if (closed) return; busy = false; mode === 'forced' ? stepScan() : stepUninstall();
   }
-  /* 3. desinstalar */
+  /* 3. uninstall */
   async function stepUninstall() {
     busy = true; const dir = setStep(2);
     swap(body, `<div class="unin"><div class="orb"><svg class="p" viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" style="stroke:var(--raise2)" stroke-width="6"/><circle id="rfArc" cx="60" cy="60" r="52" fill="none" style="stroke:var(--accent)" stroke-width="6" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)"/></svg>${one ? pi(one, true) : `<span class="pi lg" style="--h:200">${progs.length}</span>`}</div>
-      <div><h3 id="rfUt">${mode === 'silent' ? 'Desinstalando en silencio' : 'Esperando al desinstalador'}</h3><p id="rfUp">${mode === 'silent' ? 'Sin ventanas. No hace falta que hagas nada.' : 'Sigue los pasos en la ventana del desinstalador. StellarHub espera a todos sus procesos, no solo al primero.'}</p></div></div>`, dir);
-    setFoot(`<span class="t">Modo <b>${MODE_NAME[mode].toLowerCase()}</b>.</span>`);
+      <div><h3 id="rfUt">${mode === 'silent' ? 'Uninstalling silently' : 'Waiting for the uninstaller'}</h3><p id="rfUp">${mode === 'silent' ? 'No windows. You do not need to do anything.' : 'Follow the steps in the uninstaller window. StellarHub waits for all its processes, not just the first one.'}</p></div></div>`, dir);
+    setFoot(`<span class="t"><b>${MODE_NAME[mode]}</b> mode.</span>`);
     const sp = new Spring(0, 60, 14); const t2 = dt => { sp.step(dt); const a = $('#rfArc', body); if (a) a.style.strokeDashoffset = (326.7 * (1 - sp.v)).toFixed(2); }; tickers.add(t2);
     for (let i = 0; i < progs.length; i++) { if (closed) break; sp.t = (i + .55) / progs.length; await API.runUninstaller(progs[i], mode); sp.t = (i + 1) / progs.length; }
     await wait(500); tickers.delete(t2); if (closed) return;
-    $('#rfUt', body).textContent = 'Desinstalador terminado'; $('#rfUp', body).textContent = 'Ahora buscamos lo que dejó atrás.'; await wait(600);
+    $('#rfUt', body).textContent = 'Uninstaller finished'; $('#rfUp', body).textContent = 'Now we look for what it left behind.'; await wait(600);
     if (closed) return; busy = false; stepScan();
   }
-  /* 4. restos */
+  /* 4. leftovers */
   async function stepScan() {
     busy = true; const dir = setStep(3);
     const cats = Object.keys(TYPES).filter(t => level !== 'safe' || ['folder', 'shortcut', 'reg'].includes(t));
-    swap(body, `<div class="scan-grid">${cats.map(t => ckRow(t, TYPES[t][1], TYPES[t][0], 'En espera')).join('')}</div>`, dir, () => stagger($$('.ck', body), 30, 30));
-    setFoot('<span class="t">Buscando restos. Cada uno lleva una confianza de 0 a 100 y el motivo.</span>');
-    const found = opts.items ? opts.items : await API.scan(progs, t => { if (closed) return; $$('.ck.run', body).forEach(c => { setCk(c.dataset.c, 'ok'); $('.s', c).textContent = 'Revisado'; }); setCk(t, 'run'); const c = $(`.ck[data-c="${t}"] .s`, body); if (c) c.textContent = 'Revisando…'; });
+    swap(body, `<div class="scan-grid">${cats.map(t => ckRow(t, TYPES[t][1], TYPES[t][0], 'Waiting')).join('')}</div>`, dir, () => stagger($$('.ck', body), 30, 30));
+    setFoot('<span class="t">Looking for leftovers. Each one has a confidence from 0 to 100 and the reason.</span>');
+    const found = opts.items ? opts.items : await API.scan(progs, t => { if (closed) return; $$('.ck.run', body).forEach(c => { setCk(c.dataset.c, 'ok'); $('.s', c).textContent = 'Checked'; }); setCk(t, 'run'); const c = $(`.ck[data-c="${t}"] .s`, body); if (c) c.textContent = 'Checking…'; });
     if (closed) return;
-    $$('.ck', body).forEach(c => { const n = found.filter(l => l.type === c.dataset.c).length; setCk(c.dataset.c, 'ok', n ? `${n} ${n === 1 ? 'resto' : 'restos'}` : 'Nada'); $('.s', c).textContent = n ? 'Encontrado' : 'Limpio'; });
+    $$('.ck', body).forEach(c => { const n = found.filter(l => l.type === c.dataset.c).length; setCk(c.dataset.c, 'ok', n ? `${n} ${n === 1 ? 'leftover' : 'leftovers'}` : 'None'); $('.s', c).textContent = n ? 'Found' : 'Clean'; });
     items = found; sel = new Set(items.filter(l => l.conf >= 80 && !l.personal).map(l => l.id)); await wait(700);
     if (closed) return; busy = false; stepReview();
   }
-  /* 5. revisar */
+  /* 5. review */
   function stepReview() {
     const dir = setStep(4);
     const groups = Object.keys(TYPES).map(t => [t, items.filter(l => l.type === t)]).filter(g => g[1].length);
-    swap(body, items.length ? `<div class="rv-groups">${groups.map(([t, list]) => `<div class="rg"><h5>${ic(TYPES[t][1])}${TYPES[t][0]} <span class="faint">${list.length}</span></h5>${list.sort((a, b) => (a.blocked - b.blocked) || (b.conf - a.conf)).map(l => `<button class="lo${l.blocked ? ' blk' : ''}" data-l="${esc(l.id)}"${l.blocked ? ' aria-disabled="true"' : ''}>${l.blocked ? `<span class="check lock">${ic('lock')}</span>` : CHK(sel.has(l.id))}<span class="p"><b>${esc(l.path)}</b><span>${esc(l.why)}${progs.length > 1 ? `. De ${esc(l.prog)}` : ''}</span></span><span class="conf" style="--c:${confColor(l.conf)}"><span class="bar"><span style="transform:scaleX(0)" data-v="${l.conf / 100}"></span></span><b>${l.conf}</b></span><span class="sz">${l.mb ? fmtMB(l.mb) : ''}</span></button>`).join('')}</div>`).join('')}</div>`
-      : `<div class="empty"><b>No quedó nada</b>El desinstalador lo borró todo. No hace falta limpiar.</div>`, dir, () => {
+    swap(body, items.length ? `<div class="rv-groups">${groups.map(([t, list]) => `<div class="rg"><h5>${ic(TYPES[t][1])}${TYPES[t][0]} <span class="faint">${list.length}</span></h5>${list.sort((a, b) => (a.blocked - b.blocked) || (b.conf - a.conf)).map(l => `<button class="lo${l.blocked ? ' blk' : ''}" data-l="${esc(l.id)}"${l.blocked ? ' aria-disabled="true"' : ''}>${l.blocked ? `<span class="check lock">${ic('lock')}</span>` : CHK(sel.has(l.id))}<span class="p"><b>${esc(l.path)}</b><span>${esc(l.why)}${progs.length > 1 ? `. From ${esc(l.prog)}` : ''}</span></span><span class="conf" style="--c:${confColor(l.conf)}"><span class="bar"><span style="transform:scaleX(0)" data-v="${l.conf / 100}"></span></span><b>${l.conf}</b></span><span class="sz">${l.mb ? fmtMB(l.mb) : ''}</span></button>`).join('')}</div>`).join('')}</div>`
+      : `<div class="empty"><b>Nothing left</b>The uninstaller removed everything. No cleanup needed.</div>`, dir, () => {
       stagger($$('.rg', body), 40, 50);
       setTimeout(() => $$('.conf .bar>span', body).forEach((b, i) => anim(b, [{ transform: 'scaleX(0)' }, { transform: `scaleX(${b.dataset.v})` }], { d: 700, delay: i * 18 })), 120);
     });
-    body.onclick = e => { const r = e.target.closest('.lo'); if (!r) return; if (r.classList.contains('blk')) { SH.toast('Está protegido: StellarHub no lo toca.'); return; } const id = r.dataset.l; sel.has(id) ? sel.delete(id) : sel.add(id); const c = $('.check', r); c.classList.toggle('on', sel.has(id)); anim(c, [{ transform: 'scale(.75)' }, { transform: 'none' }], { d: 320, e: EASE.spring }); sumFoot(); };
+    body.onclick = e => { const r = e.target.closest('.lo'); if (!r) return; if (r.classList.contains('blk')) { SH.toast('It is protected: StellarHub will not touch it.'); return; } const id = r.dataset.l; sel.has(id) ? sel.delete(id) : sel.add(id); const c = $('.check', r); c.classList.toggle('on', sel.has(id)); anim(c, [{ transform: 'scale(.75)' }, { transform: 'none' }], { d: 320, e: EASE.spring }); sumFoot(); };
     function sumFoot() {
       const s = items.filter(l => sel.has(l.id)); const mb = s.reduce((a, l) => a + l.mb, 0);
-      $('.t', foot).innerHTML = items.length ? `<b>${s.length} de ${items.length}</b> marcados, ${fmtMB(mb)}. Lo marcado por defecto es lo que tiene confianza alta. Todo va a la cuarentena.` : '';
+      $('.t', foot).innerHTML = items.length ? `<b>${s.length} of ${items.length}</b> selected, ${fmtMB(mb)}. High-confidence items are selected by default. Everything goes to the quarantine.` : '';
       const b = $('#rfDel', f); if (b) b.disabled = !s.length;
     }
-    setFoot(`<span class="t"></span>${items.length ? '<button class="btn ghost" id="rfKeep">Dejar todo</button><button class="btn pri lg" id="rfDel">' + ic('trash') + 'Eliminar los marcados</button>' : '<button class="btn pri lg" id="rfKeep">Terminar</button>'}`); sumFoot();
+    setFoot(`<span class="t"></span>${items.length ? '<button class="btn ghost" id="rfKeep">Keep all</button><button class="btn pri lg" id="rfDel">' + ic('trash') + 'Remove selected</button>' : '<button class="btn pri lg" id="rfKeep">Finish</button>'}`); sumFoot();
     $('#rfKeep', f).onclick = () => stepDone([]);
-    const del = $('#rfDel', f); if (del) del.onclick = async () => { busy = true; del.disabled = true; del.innerHTML = 'Moviendo a la cuarentena…'; const chosen = items.filter(l => sel.has(l.id)); stepDone(chosen); };
+    const del = $('#rfDel', f); if (del) del.onclick = async () => { busy = true; del.disabled = true; del.innerHTML = 'Moving to the quarantine…'; const chosen = items.filter(l => sel.has(l.id)); stepDone(chosen); };
   }
-  /* 6. listo */
+  /* 6. done */
   async function realRemove(chosen) {
-    /* un escaneo por programa (o rastro): se borra cada grupo con su clave; todo va a la cuarentena */
+    /* one scan per program (or trace): each group is removed with its key; everything goes to the quarantine */
     const byKey = new Map(); items.forEach(l => { if (!byKey.has(l.key)) byKey.set(l.key, []); });
     chosen.forEach(l => byKey.get(l.key).push(l.eid));
     const out = { ok: 0, failed: 0, freed: 0, sessions: [], errors: [] };
     for (const [key, ids] of byKey) {
       if (!ids.length) { SH.engine('remover', 'forget_scan', key).catch(() => {}); continue; }
       try {
-        const r = await SH.job('remover', 'remove', [key, ids], { onProgress: m => { const t = $('.t', foot); if (t && m.text) t.textContent = `Moviendo a la cuarentena: ${m.text}`; } });
+        const r = await SH.job('remover', 'remove', [key, ids], { onProgress: m => { const t = $('.t', foot); if (t && m.text) t.textContent = `Moving to the quarantine: ${m.text}`; } });
         out.ok += r.ok || 0; out.failed += r.failed || 0; out.freed += r.freed || 0; if (r.session) out.sessions.push(r.session); out.errors.push(...(r.errors || []));
       } catch (e) { out.failed += ids.length; out.errors.push(jobErr(e)); }
     }
@@ -516,52 +516,52 @@ function openFlow(progs, opts = {}) {
     if (REAL()) {
       busy = true; const r = await realRemove(chosen); busy = false; if (closed) return;
       const dir = setStep(5);
-      swap(body, `<div class="fin">${ring('ring')}<div><h3>${one ? `${esc(one.name)}: listo` : `${progs.length} programas: listo`}</h3><p>${chosen.length ? `Movido a la cuarentena: ${r.ok} ${r.ok === 1 ? 'resto' : 'restos'}${r.failed ? `, ${r.failed} no se pudieron mover` : ''}. Se puede deshacer durante ${qDays} días.` : 'No se borró ningún resto.'}</p>
+      swap(body, `<div class="fin">${ring('ring')}<div><h3>${one ? `${esc(one.name)}: done` : `${progs.length} programs: done`}</h3><p>${chosen.length ? `Moved to the quarantine: ${r.ok} ${r.ok === 1 ? 'leftover' : 'leftovers'}${r.failed ? `, ${r.failed} could not be moved` : ''}. You can undo this for ${qDays} days.` : 'No leftovers were removed.'}</p>
         ${r.errors.length ? `<p class="faint" style="font-size:12px">${esc(r.errors.slice(0, 3).join(' · '))}</p>` : ''}
-        <div class="fin-stats"><div><b>${r.ok}</b><span>restos eliminados</span></div><div><b>${fmtMB(r.freed / 1048576)}</b><span>liberados</span></div><div><b>${MODE_NAME[mode]}</b><span>modo</span></div></div></div></div>`, dir, () => playRing($('svg.ring', body), 100));
-      setFoot(`<span class="t">${r.sessions.length ? 'Todo está en la cuarentena por si algo dejó de funcionar.' : ''}</span>${r.sessions.length ? '<button class="btn ghost" id="rfUndo">' + ic('restore') + 'Deshacer</button>' : ''}<button class="btn pri" data-x>Listo</button>`);
+        <div class="fin-stats"><div><b>${r.ok}</b><span>leftovers removed</span></div><div><b>${fmtMB(r.freed / 1048576)}</b><span>freed</span></div><div><b>${MODE_NAME[mode]}</b><span>mode</span></div></div></div></div>`, dir, () => playRing($('svg.ring', body), 100));
+      setFoot(`<span class="t">${r.sessions.length ? 'Everything is in the quarantine in case something stopped working.' : ''}</span>${r.sessions.length ? '<button class="btn ghost" id="rfUndo">' + ic('restore') + 'Undo</button>' : ''}<button class="btn pri" data-x>Done</button>`);
       const u = $('#rfUndo', f); if (u) u.onclick = async () => {
-        u.disabled = true; u.textContent = 'Devolviendo…';
+        u.disabled = true; u.textContent = 'Restoring…';
         for (const sid of r.sessions) { try { await SH.job('remover', 'quarantine_restore', [sid]); } catch (e) { SH.toast(jobErr(e)); } }
-        SH.toast('Restos devueltos a su sitio.'); SH.logActivity('Restos devueltos a su sitio', { sub: one ? one.name : `${progs.length} programas`, ic: 'restore', go: 'remover', tab: 'quarantine' });
+        SH.toast('Leftovers put back in place.'); SH.logActivity('Leftovers put back in place', { sub: one ? one.name : `${progs.length} programs`, ic: 'restore', go: 'remover', tab: 'quarantine' });
         ensureReal(true).then(refresh); close();
       };
       ensureReal(true).then(refresh); opts.onDone && opts.onDone(); return;
     }
     busy = true; const session = await API.remove(progs, chosen, MODE_NAME[mode]); busy = false; if (closed) return;
     const dir = setStep(5); const mb = chosen.reduce((a, l) => a + l.mb, 0);
-    swap(body, `<div class="fin">${ring('ring')}<div><h3>${one ? `${esc(one.name)} desinstalado` : `${progs.length} programas desinstalados`}</h3><p>${chosen.length ? `Movido a la cuarentena: ${chosen.length} ${chosen.length === 1 ? 'resto' : 'restos'}. Se puede deshacer durante ${qDays} días.` : 'No se borró ningún resto.'}</p>
-      <div class="fin-stats"><div><b>${chosen.length}</b><span>restos eliminados</span></div><div><b>${fmtMB(mb + progs.reduce((a, p) => a + p.mb, 0))}</b><span>liberados en total</span></div><div><b>${MODE_NAME[mode]}</b><span>modo</span></div></div></div></div>`, dir, () => playRing($('svg.ring', body), 100));
-    setFoot(`<span class="t">Queda un punto de restauración por si algo dejó de funcionar.</span>${chosen.length ? '<button class="btn ghost" id="rfUndo">' + ic('restore') + 'Deshacer</button>' : ''}<button class="btn pri" data-x>Listo</button>`);
-    const u = $('#rfUndo', f); if (u) u.onclick = async () => { await API.restore(session); refresh(); SH.toast('Restos devueltos a su sitio.'); close(); };
+    swap(body, `<div class="fin">${ring('ring')}<div><h3>${one ? `${esc(one.name)} uninstalled` : `${progs.length} programs uninstalled`}</h3><p>${chosen.length ? `Moved to the quarantine: ${chosen.length} ${chosen.length === 1 ? 'leftover' : 'leftovers'}. You can undo this for ${qDays} days.` : 'No leftovers were removed.'}</p>
+      <div class="fin-stats"><div><b>${chosen.length}</b><span>leftovers removed</span></div><div><b>${fmtMB(mb + progs.reduce((a, p) => a + p.mb, 0))}</b><span>freed in total</span></div><div><b>${MODE_NAME[mode]}</b><span>mode</span></div></div></div></div>`, dir, () => playRing($('svg.ring', body), 100));
+    setFoot(`<span class="t">A restore point is kept in case something stopped working.</span>${chosen.length ? '<button class="btn ghost" id="rfUndo">' + ic('restore') + 'Undo</button>' : ''}<button class="btn pri" data-x>Done</button>`);
+    const u = $('#rfUndo', f); if (u) u.onclick = async () => { await API.restore(session); refresh(); SH.toast('Leftovers put back in place.'); close(); };
     refresh(); opts.onDone && opts.onDone();
   }
   if (opts.startAt === 'review') { items = opts.items; sel = new Set(items.filter(l => l.selected !== undefined ? l.selected : (l.conf >= 80 && !l.personal)).map(l => l.id)); step = 3; stepReview(); }
   else stepMode();
 }
 
-/* ================= Programas ================= */
+/* ================= Programs ================= */
 function renderPrograms(el, ctx) {
   el.classList.add('fill');
-  el.innerHTML = `<div class="rv-left pan rv-listwrap" data-asm><div class="rv-tools"><label class="field">${ic('search')}<input id="rpQ" placeholder="Buscar un programa o editor" spellcheck="false"></label>
-      ${segHTML([['all', 'Todos'], ['recent', 'Recientes'], ['big', 'Grandes'], ['store', 'Tienda'], ['sys', 'Sistema']], 'all')}<span class="cnt" id="rpCnt"></span></div>
-    <div class="tbl-head rv-cols"><button data-s="name" class="on">Programa${ic('sortaz')}</button><button data-s="ver">Versión${ic('sortaz')}</button><button data-s="mb">Tamaño${ic('sortaz')}</button><button data-s="date">Instalado${ic('sortaz')}</button></div>
+  el.innerHTML = `<div class="rv-left pan rv-listwrap" data-asm><div class="rv-tools"><label class="field">${ic('search')}<input id="rpQ" placeholder="Search for a program or publisher" spellcheck="false"></label>
+      ${segHTML([['all', 'All'], ['recent', 'Recent'], ['big', 'Large'], ['store', 'Store'], ['sys', 'System']], 'all')}<span class="cnt" id="rpCnt"></span></div>
+    <div class="tbl-head rv-cols"><button data-s="name" class="on">Program${ic('sortaz')}</button><button data-s="ver">Version${ic('sortaz')}</button><button data-s="mb">Size${ic('sortaz')}</button><button data-s="date">Installed${ic('sortaz')}</button></div>
       <div class="rv-scroll" id="rpList"></div></div>
     <div class="pan rv-detail" data-asm><div class="rv-dscroll" id="rpDetail"></div></div>`;
   const list = $('#rpList', el); let q = '', filt = 'all', sort = 'name', desc = false, selected = null;
-  const rowHTML = p => `<button class="pr rv-cols" data-p="${p.id}"><span class="nm">${pi(p)}<span style="min-width:0"><b>${esc(p.name)}${p.prot ? '<span class="tagp">protegido</span>' : ''}</b><span>${esc(p.pub)}</span></span></span><span class="c">${esc(p.ver)}</span><span class="c sz">${fmtMB(p.mb)}</span><span class="c">${fmtDate(p.date)}</span></button>`;
+  const rowHTML = p => `<button class="pr rv-cols" data-p="${p.id}"><span class="nm">${pi(p)}<span style="min-width:0"><b>${esc(p.name)}${p.prot ? '<span class="tagp">protected</span>' : ''}</b><span>${esc(p.pub)}</span></span></span><span class="c">${esc(p.ver)}</span><span class="c sz">${fmtMB(p.mb)}</span><span class="c">${fmtDate(p.date)}</span></button>`;
   function build() { list.innerHTML = PROGRAMS.map(rowHTML).join(''); apply(false); }
   function visible(p) {
     const qq = q.toLowerCase(); const okQ = !qq || (p.name + ' ' + p.pub).toLowerCase().includes(qq);
     const okF = filt === 'all' || (filt === 'recent' && daysSince(p.date) <= 14) || (filt === 'big' && p.mb >= 1000) || (filt === 'store' && p.store) || (filt === 'sys' && p.prot);
     return okQ && okF;
   }
-  const cmp = { name: (a, b) => a.name.localeCompare(b.name, 'es'), ver: (a, b) => a.ver.localeCompare(b.ver, 'es', { numeric: true }), mb: (a, b) => b.mb - a.mb, date: (a, b) => (b.date || 0) - (a.date || 0) };
+  const cmp = { name: (a, b) => a.name.localeCompare(b.name, 'en-US'), ver: (a, b) => a.ver.localeCompare(b.ver, 'en-US', { numeric: true }), mb: (a, b) => b.mb - a.mb, date: (a, b) => (b.date || 0) - (a.date || 0) };
   function apply(animate) {
     const order = PROGRAMS.slice().sort((a, b) => (desc ? -1 : 1) * cmp[sort](a, b));
     const doIt = () => { order.forEach(p => { const r = $(`.pr[data-p="${p.id}"]`, list); if (r) { r.hidden = !visible(p); list.appendChild(r); } }); };
     animate ? flip(list, doIt) : doIt();
-    const vis = order.filter(visible); $('#rpCnt', el).textContent = `${vis.length} ${vis.length === 1 ? 'programa' : 'programas'}, ${fmt1(vis.reduce((a, p) => a + p.mb, 0) / 1024)} GB`;
+    const vis = order.filter(visible); $('#rpCnt', el).textContent = `${vis.length} ${vis.length === 1 ? 'program' : 'programs'}, ${fmt1(vis.reduce((a, p) => a + p.mb, 0) / 1024)} GB`;
     if (!animate) stagger($$('.pr:not([hidden])', list).slice(0, 16), 60, 22);
   }
   $$('.tbl-head button', el).forEach(b => b.addEventListener('click', () => {
@@ -576,27 +576,27 @@ function renderPrograms(el, ctx) {
   function summary() {
     const top = PROGRAMS.slice().sort((a, b) => b.mb - a.mb).slice(0, 4); const max = top[0] ? top[0].mb : 1;
     const recent = PROGRAMS.filter(p => p.date).sort((a, b) => b.date - a.date).slice(0, 3);
-    return `<div class="rs"><h4 class="pan-h">Resumen</h4><div class="tot">${PROGRAMS.length}<small>programas</small></div><div class="sub">${fmt1(totalGB())} GB en total. Elige uno para ver sus detalles o desinstalarlo; doble clic va directo.</div>
-      <h4 class="pan-h">Los que más ocupan</h4><div class="rs-top">${top.map(p => `<button data-p="${p.id}"><span>${esc(p.name)}</span><span class="muted">${fmtMB(p.mb)}</span><span class="bar acc"><span style="transform:scaleX(0)" data-v="${(p.mb / max).toFixed(3)}"></span></span></button>`).join('')}</div>
-      <h4 class="pan-h">Instalados hace poco</h4><div class="rows">${recent.map(p => `<button class="row" data-p="${p.id}" style="text-align:left;padding:6px 8px;margin:0 -8px">${pi(p)}<span class="rt"><b>${esc(p.name)}</b><span>${daysSince(p.date) === 0 ? "hoy" : `hace ${daysSince(p.date)} ${daysSince(p.date) === 1 ? "día" : "días"}`}</span></span></button>`).join('')}</div></div>`;
+    return `<div class="rs"><h4 class="pan-h">Summary</h4><div class="tot">${PROGRAMS.length}<small>programs</small></div><div class="sub">${fmt1(totalGB())} GB in total. Pick one to see its details or uninstall it; double-click goes straight there.</div>
+      <h4 class="pan-h">Largest</h4><div class="rs-top">${top.map(p => `<button data-p="${p.id}"><span>${esc(p.name)}</span><span class="muted">${fmtMB(p.mb)}</span><span class="bar acc"><span style="transform:scaleX(0)" data-v="${(p.mb / max).toFixed(3)}"></span></span></button>`).join('')}</div>
+      <h4 class="pan-h">Recently installed</h4><div class="rows">${recent.map(p => `<button class="row" data-p="${p.id}" style="text-align:left;padding:6px 8px;margin:0 -8px">${pi(p)}<span class="rt"><b>${esc(p.name)}</b><span>${daysSince(p.date) === 0 ? "today" : `${daysSince(p.date)} ${daysSince(p.date) === 1 ? "day" : "days"} ago`}</span></span></button>`).join('')}</div></div>`;
   }
   function growBars() { setTimeout(() => $$('.rs-top .bar>span', det).forEach((b, i) => { b.style.transform = `scaleX(${b.dataset.v})`; b.style.transitionDelay = i * 60 + 'ms'; }), 60); }
   function showSummary(first) { selected = null; if (first) { det.innerHTML = summary(); growBars(); } else swap(det, summary(), -1, growBars); }
   function select(p, row) {
     if (!p) return; selected = p; $$('.pr.sel', list).forEach(x => x.classList.remove('sel')); if (row) row.classList.add('sel');
     swap(det, `<div class="rd-top">${pi(p, true)}<div style="min-width:0"><h3>${esc(p.name)}</h3><div class="who">${esc(p.pub)}</div></div></div>
-      <div class="rd-chips">${p.arch ? `<span class="chip">${typeof p.arch === 'number' ? p.arch + ' bits' : esc(p.arch)}</span>` : ''}${p.store ? '<span class="chip acc">Tienda de Microsoft</span>' : ''}${p.prot ? '<span class="chip warn">Protegido</span>' : ''}${p.silent && !p.prot ? '<span class="chip ok">Admite modo silencioso</span>' : ''}${p.audio ? '<span class="chip">Plugins de audio</span>' : ''}</div>
-      <dl><dt>Versión</dt><dd>${esc(p.ver || '—')}</dd><dt>Instalado</dt><dd>${fmtDate(p.date)}</dd><dt>Tamaño en disco</dt><dd>${fmtMB(p.mb)}</dd>${p.kindLabel ? `<dt>Instalador</dt><dd>${esc(p.kindLabel)}</dd>` : ''}<dt>Ubicación</dt><dd>${esc(p.loc || '—')}</dd><dt>Desinstalador</dt><dd id="rdCmd">${esc(p.cmd || (REAL() ? 'Consultando…' : '—'))}</dd></dl>
-      ${p.broken || p.noUninst ? '<div class="rnote">El desinstalador oficial falta o está roto: usa el modo forzado, que borra con el escáner de restos.</div>' : ''}<div id="rdProcs"></div>
-      ${p.prot ? '<div class="rnote">Otros programas pueden necesitarlo (runtimes, drivers, antivirus, VPN). Se puede quitar, pero sin modo forzado y con una búsqueda de restos limitada.</div>' : ''}
-      <div class="rd-acts"><button class="btn pri lg" data-a="un">${ic('remover')}Desinstalar</button><div class="row2"><button class="btn sec" data-a="loc">${ic('folder')}Ubicación</button><button class="btn sec" data-a="web">${ic('globe')}Buscar en internet</button></div></div>`);
+      <div class="rd-chips">${p.arch ? `<span class="chip">${typeof p.arch === 'number' ? p.arch + '-bit' : esc(p.arch)}</span>` : ''}${p.store ? '<span class="chip acc">Microsoft Store</span>' : ''}${p.prot ? '<span class="chip warn">Protected</span>' : ''}${p.silent && !p.prot ? '<span class="chip ok">Supports silent mode</span>' : ''}${p.audio ? '<span class="chip">Audio plugins</span>' : ''}</div>
+      <dl><dt>Version</dt><dd>${esc(p.ver || '—')}</dd><dt>Installed</dt><dd>${fmtDate(p.date)}</dd><dt>Size on disk</dt><dd>${fmtMB(p.mb)}</dd>${p.kindLabel ? `<dt>Installer</dt><dd>${esc(p.kindLabel)}</dd>` : ''}<dt>Location</dt><dd>${esc(p.loc || '—')}</dd><dt>Uninstaller</dt><dd id="rdCmd">${esc(p.cmd || (REAL() ? 'Checking…' : '—'))}</dd></dl>
+      ${p.broken || p.noUninst ? '<div class="rnote">The official uninstaller is missing or broken: use forced mode, which removes everything with the leftover scanner.</div>' : ''}<div id="rdProcs"></div>
+      ${p.prot ? '<div class="rnote">Other programs may need it (runtimes, drivers, antivirus, VPN). It can be removed, but without forced mode and with a limited leftover search.</div>' : ''}
+      <div class="rd-acts"><button class="btn pri lg" data-a="un">${ic('remover')}Uninstall</button><div class="row2"><button class="btn sec" data-a="loc">${ic('folder')}Location</button><button class="btn sec" data-a="web">${ic('globe')}Search online</button></div></div>`);
     if (REAL() && p.eid) {
       const want = p; SH.engine('remover', 'details', p.eid).then(async d => {
         if (!d || selected !== want) return;
-        want.cmd = d.uninstall_string || d.command || (want.store ? 'Quitar el paquete de la Tienda' : 'No tiene');
+        want.cmd = d.uninstall_string || d.command || (want.store ? 'Remove the Store package' : 'None');
         for (let i = 0; i < 40 && !$('#rdCmd', det); i++) await wait(30);
         const c = $('#rdCmd', det); if (c && selected === want) { c.textContent = want.cmd; anim(c, [{ opacity: 0 }, { opacity: 1 }], { d: 260 }); }
-        const pr = $('#rdProcs', det); if (pr && d.processes && d.processes.length && selected === want) pr.innerHTML = `<div class="rnote">Está abierto (${esc(d.processes.map(x => x.name).slice(0, 3).join(', '))}). Se cerrará con cuidado antes de desinstalar.</div>`;
+        const pr = $('#rdProcs', det); if (pr && d.processes && d.processes.length && selected === want) pr.innerHTML = `<div class="rnote">It is open (${esc(d.processes.map(x => x.name).slice(0, 3).join(', '))}). It will be closed gently before uninstalling.</div>`;
       }).catch(e => { const c = $('#rdCmd', det); if (c) c.textContent = jobErr(e); });
     }
   }
@@ -604,13 +604,13 @@ function renderPrograms(el, ctx) {
     const pb = e.target.closest('[data-p]'); if (pb) { const p = PROGRAMS.find(x => x.id === pb.dataset.p); const r = $(`.pr[data-p="${p.id}"]`, list); if (r) r.scrollIntoView({ block: 'center', behavior: 'smooth' }); select(p, r); return; }
     const a = e.target.closest('[data-a]'); if (!a || !selected) return;
     if (a.dataset.a === 'un') openFlow([selected], { onDone: () => {} });
-    if (a.dataset.a === 'loc') { if (REAL()) SH.engine('remover', 'open_path', selected.loc).then(ok => { if (!ok) SH.toast('No tiene una carpeta que abrir.'); }); else SH.toast(`Abriendo ${selected.loc} (simulado).`); }
-    if (a.dataset.a === 'web') { if (REAL()) SH.engine('remover', 'search_web', selected.name); else SH.toast(`Buscando «${selected.name}» en internet (simulado).`); }
+    if (a.dataset.a === 'loc') { if (REAL()) SH.engine('remover', 'open_path', selected.loc).then(ok => { if (!ok) SH.toast('It has no folder to open.'); }); else SH.toast(`Opening ${selected.loc} (simulated).`); }
+    if (a.dataset.a === 'web') { if (REAL()) SH.engine('remover', 'search_web', selected.name); else SH.toast(`Searching online for "${selected.name}" (simulated).`); }
   });
   if (REAL()) {
     list.innerHTML = `<div class="sk-rows" style="padding:8px">${Array.from({ length: 9 }, (_, k) => `<div class="sk-row"><div class="sk a" style="--dl:${k * .07}s"></div><div class="sk b" style="--w:${[38, 52, 30, 46, 41][k % 5]}%;--dl:${k * .07}s"></div><div class="sk c"></div></div>`).join('')}</div>`;
-    $('#rpCnt', el).textContent = 'Leyendo los programas instalados…';
-    ensureReal().then(() => { build(); showSummary(true); }).catch(e => { list.innerHTML = `<div class="empty"><b>No se pudo leer la lista de programas</b>${esc(jobErr(e))}</div>`; });
+    $('#rpCnt', el).textContent = 'Reading installed programs…';
+    ensureReal().then(() => { build(); showSummary(true); }).catch(e => { list.innerHTML = `<div class="empty"><b>Could not read the program list</b>${esc(jobErr(e))}</div>`; });
   } else { build(); showSummary(true); }
   refreshers.add(() => {
     const ids = new Set(PROGRAMS.map(p => p.id));
@@ -621,32 +621,32 @@ function renderPrograms(el, ctx) {
   SH.remover = { select: key => { const p = PROGRAMS.find(x => x.eid === key || x.id === key || x.name === key); if (!p) return; filt = 'all'; q = ''; $('#rpQ', el).value = ''; apply(false); const r = $(`.pr[data-p="${p.id}"]`, list); if (r) r.scrollIntoView({ block: 'center' }); select(p, r); } };
 }
 
-/* ================= Por lotes ================= */
+/* ================= Batch ================= */
 function renderBatch(el) {
   el.classList.add('fill', 'rv-batch');
-  el.innerHTML = `<div class="rv-left pan rv-listwrap" data-asm><div class="rv-tools"><label class="field">${ic('search')}<input id="rbQ" placeholder="Filtrar programas" spellcheck="false"></label><span class="cnt" id="rbCnt"></span></div>
-    <div class="tbl-head rv-cols"><span></span><span>Programa</span><span>Tamaño</span><span>Instalado</span></div><div class="rv-scroll" id="rbList"></div></div>
-    <div class="pan rq" data-asm><h4 class="pan-h">Cola de desinstalación <em id="rbN">0</em></h4><div class="opts">${segHTML([['silent', 'Silenciosa si se puede'], ['normal', 'Con ventanas']], 'silent')}</div>
-      <div class="list" id="rbQueue"><div class="empty"><b>La cola está vacía</b>Marca a la izquierda los programas que quieres quitar.</div></div>
-      <div class="rd-acts"><button class="btn pri lg" id="rbGo" disabled>${ic('remover')}Desinstalar</button></div></div>`;
+  el.innerHTML = `<div class="rv-left pan rv-listwrap" data-asm><div class="rv-tools"><label class="field">${ic('search')}<input id="rbQ" placeholder="Filter programs" spellcheck="false"></label><span class="cnt" id="rbCnt"></span></div>
+    <div class="tbl-head rv-cols"><span></span><span>Program</span><span>Size</span><span>Installed</span></div><div class="rv-scroll" id="rbList"></div></div>
+    <div class="pan rq" data-asm><h4 class="pan-h">Uninstall queue <em id="rbN">0</em></h4><div class="opts">${segHTML([['silent', 'Silent when possible'], ['normal', 'With windows']], 'silent')}</div>
+      <div class="list" id="rbQueue"><div class="empty"><b>The queue is empty</b>Select the programs you want to remove on the left.</div></div>
+      <div class="rd-acts"><button class="btn pri lg" id="rbGo" disabled>${ic('remover')}Uninstall</button></div></div>`;
   const list = $('#rbList', el), queue = $('#rbQueue', el); const sel = new Set(); let mode = 'silent', running = false, q = '';
   const avail = () => PROGRAMS.filter(p => !p.prot);
   function build() {
     list.innerHTML = avail().map(p => `<button class="pr rv-cols" data-p="${p.id}">${CHK(sel.has(p.id))}<span class="nm">${pi(p)}<span style="min-width:0"><b>${esc(p.name)}</b><span>${esc(p.pub)}</span></span></span><span class="c sz">${fmtMB(p.mb)}</span><span class="c">${fmtDate(p.date)}</span></button>`).join('');
     filter(); stagger($$('.pr', list).slice(0, 16), 60, 22);
   }
-  function filter() { const qq = q.toLowerCase(); let n = 0; $$('.pr', list).forEach(r => { const p = PROGRAMS.find(x => x.id === r.dataset.p); r.hidden = !!qq && !(p.name + ' ' + p.pub).toLowerCase().includes(qq); if (!r.hidden) n++; }); $('#rbCnt', el).textContent = `${n} programas`; }
+  function filter() { const qq = q.toLowerCase(); let n = 0; $$('.pr', list).forEach(r => { const p = PROGRAMS.find(x => x.id === r.dataset.p); r.hidden = !!qq && !(p.name + ' ' + p.pub).toLowerCase().includes(qq); if (!r.hidden) n++; }); $('#rbCnt', el).textContent = `${n} programs`; }
   $('#rbQ', el).addEventListener('input', e => { q = e.target.value.trim(); filter(); });
   wireSeg($('.seg', el), v => { mode = v; });
   function drawQueue() {
     const ps = [...sel].map(id => PROGRAMS.find(p => p.id === id)).filter(Boolean);
     $('#rbN', el).textContent = ps.length; $('#rbGo', el).disabled = !ps.length || running;
-    $('#rbGo', el).innerHTML = `${ic('remover')}${ps.length ? `Desinstalar ${ps.length} ${ps.length === 1 ? 'programa' : 'programas'}, ${fmtMB(ps.reduce((a, p) => a + p.mb, 0))}` : 'Desinstalar'}`;
-    if (!ps.length) { queue.innerHTML = '<div class="empty"><b>La cola está vacía</b>Marca a la izquierda los programas que quieres quitar.</div>'; return; }
+    $('#rbGo', el).innerHTML = `${ic('remover')}${ps.length ? `Uninstall ${ps.length} ${ps.length === 1 ? 'program' : 'programs'}, ${fmtMB(ps.reduce((a, p) => a + p.mb, 0))}` : 'Uninstall'}`;
+    if (!ps.length) { queue.innerHTML = '<div class="empty"><b>The queue is empty</b>Select the programs you want to remove on the left.</div>'; return; }
     flip(queue, () => {
       $$('.empty', queue).forEach(x => x.remove());
       $$('.qi', queue).forEach(x => { if (!sel.has(x.dataset.p)) x.remove(); });
-      ps.forEach(p => { if (!$(`.qi[data-p="${p.id}"]`, queue)) { queue.insertAdjacentHTML('beforeend', `<div class="qi" data-p="${p.id}">${pi(p)}<span class="rt"><b>${esc(p.name)}</b><span>${p.silent ? 'Silenciosa' : 'Normal'}, ${fmtMB(p.mb)}</span></span><span class="chip">En cola</span><span class="fill"></span></div>`); const n = queue.lastElementChild; anim(n, [{ opacity: 0, transform: 'translate3d(20px,0,0) scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring }); } });
+      ps.forEach(p => { if (!$(`.qi[data-p="${p.id}"]`, queue)) { queue.insertAdjacentHTML('beforeend', `<div class="qi" data-p="${p.id}">${pi(p)}<span class="rt"><b>${esc(p.name)}</b><span>${p.silent ? 'Silent' : 'Normal'}, ${fmtMB(p.mb)}</span></span><span class="chip">Queued</span><span class="fill"></span></div>`); const n = queue.lastElementChild; anim(n, [{ opacity: 0, transform: 'translate3d(20px,0,0) scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring }); } });
     });
   }
   list.addEventListener('click', e => { if (running) return; const r = e.target.closest('.pr'); if (!r) return; const id = r.dataset.p; sel.has(id) ? sel.delete(id) : sel.add(id); const c = $('.check', r); c.classList.toggle('on', sel.has(id)); anim(c, [{ transform: 'scale(.75)' }, { transform: 'none' }], { d: 320, e: EASE.spring }); drawQueue(); });
@@ -661,15 +661,15 @@ function renderBatch(el) {
       try {
         const r = await SH.job('remover', 'batch_uninstall', [ps.map(p => p.eid), { quiet: mode === 'silent', level: 'moderate', restore_point: true }], { onProgress: m => {
           const d = m.data || {}; const p = byId.get(d.pid); if (!p) return;
-          if (d.status === 'running') setChip(p, 'Desinstalando', 'acc', .6);
-          else setChip(p, d.status === 'done' ? 'Hecho' : d.status === 'warn' ? 'Con avisos' : 'Falló', d.status === 'error' ? 'bad' : d.status === 'warn' ? 'warn' : 'ok', 1);
+          if (d.status === 'running') setChip(p, 'Uninstalling', 'acc', .6);
+          else setChip(p, d.status === 'done' ? 'Done' : d.status === 'warn' ? 'With warnings' : 'Failed', d.status === 'error' ? 'bad' : d.status === 'warn' ? 'warn' : 'ok', 1);
         } });
-        (r.results || []).forEach(x => { const p = byEid.get(x.program.id); if (x.scan) all = all.concat(x.scan.items.map(mapItem(x.scan.key, p ? p.name : x.program.name))); if (p && !x.error) setChip(p, `${x.scan ? x.scan.items.length : 0} restos`, 'ok'); if (p && x.error) setChip(p, x.error.slice(0, 40), 'bad'); });
-        SH.logActivity(`${ps.length} programas desinstalados por lotes`, { ic: 'remover', go: 'remover', tab: 'history' });
+        (r.results || []).forEach(x => { const p = byEid.get(x.program.id); if (x.scan) all = all.concat(x.scan.items.map(mapItem(x.scan.key, p ? p.name : x.program.name))); if (p && !x.error) setChip(p, `${x.scan ? x.scan.items.length : 0} leftovers`, 'ok'); if (p && x.error) setChip(p, x.error.slice(0, 40), 'bad'); });
+        SH.logActivity(`${ps.length} programs uninstalled in a batch`, { ic: 'remover', go: 'remover', tab: 'history' });
       } catch (e) { SH.toast(jobErr(e)); }
       running = false;
       const done = document.createElement('div'); done.className = 'rd-acts'; done.style.marginTop = '8px';
-      done.innerHTML = `<button class="btn sec lg" id="rbReview">${ic('eye')}Revisar ${all.length} restos</button>`;
+      done.innerHTML = `<button class="btn sec lg" id="rbReview">${ic('eye')}Review ${all.length} leftovers</button>`;
       $('#rbGo', el).parentElement.replaceWith(done); anim(done, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring });
       $('#rbReview', el).addEventListener('click', () => openFlow(ps, { startAt: 'review', items: all, mode: mode === 'silent' ? 'silent' : 'normal', onDone: () => { sel.clear(); renderBatch(el); } }));
       ensureReal(true).then(refresh);
@@ -679,46 +679,46 @@ function renderBatch(el) {
     for (const p of ps) {
       const it = $(`.qi[data-p="${p.id}"]`, queue); const chip = $('.chip', it); const fill = $('.fill', it);
       const set = (t, c) => { chip.className = 'chip ' + (c || ''); chip.textContent = t; anim(chip, [{ opacity: 0, transform: 'scale(.85)' }, { opacity: 1, transform: 'none' }], { d: 280, e: EASE.spring }); };
-      set('Desinstalando', 'acc'); anim(fill, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(.7)' }], { d: 1600 });
+      set('Uninstalling', 'acc'); anim(fill, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(.7)' }], { d: 1600 });
       await API.runUninstaller(p, mode === 'silent' && p.silent ? 'silent' : 'normal');
-      set('Buscando restos', 'acc'); anim(fill, [{ transform: 'scaleX(.7)' }, { transform: 'scaleX(1)' }], { d: 700 }); await wait(700);
-      const lo = leftoversFor(p); all = all.concat(lo); set(`${lo.length} restos`, 'ok');
+      set('Looking for leftovers', 'acc'); anim(fill, [{ transform: 'scaleX(.7)' }, { transform: 'scaleX(1)' }], { d: 700 }); await wait(700);
+      const lo = leftoversFor(p); all = all.concat(lo); set(`${lo.length} leftovers`, 'ok');
     }
     running = false;
     const done = document.createElement('div'); done.className = 'rd-acts'; done.style.marginTop = '8px';
-    done.innerHTML = `<button class="btn sec lg" id="rbReview">${ic('eye')}Revisar ${all.length} restos</button>`;
+    done.innerHTML = `<button class="btn sec lg" id="rbReview">${ic('eye')}Review ${all.length} leftovers</button>`;
     $('#rbGo', el).parentElement.replaceWith(done); anim(done, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring });
     $('#rbReview', el).addEventListener('click', () => openFlow(ps, { startAt: 'review', items: all, mode: mode === 'silent' ? 'silent' : 'normal', onDone: () => { sel.clear(); renderBatch(el); } }));
   });
-  if (REAL()) { list.innerHTML = '<div class="empty"><b>Leyendo los programas…</b></div>'; ensureReal().then(() => { build(); drawQueue(); }).catch(e => { list.innerHTML = `<div class="empty"><b>No se pudo leer la lista</b>${esc(jobErr(e))}</div>`; }); }
+  if (REAL()) { list.innerHTML = '<div class="empty"><b>Reading programs…</b></div>'; ensureReal().then(() => { build(); drawQueue(); }).catch(e => { list.innerHTML = `<div class="empty"><b>Could not read the list</b>${esc(jobErr(e))}</div>`; }); }
   else { build(); drawQueue(); }
   refreshers.add(() => { if (!running && el.isConnected) { const keep = [...sel].filter(id => PROGRAMS.some(p => p.id === id)); sel.clear(); keep.forEach(id => sel.add(id)); build(); drawQueue(); } });
 }
 
-/* ================= Instalación vigilada ================= */
+/* ================= Watched install ================= */
 function renderWatch(el) {
   el.innerHTML = `<div class="wv">
     <div class="pan wv-hero" data-asm><div class="wv-eye" id="wvEye"><i style="--in:0"></i><i style="--in:18px"></i><span class="pulse"></span><span class="pulse"></span><span class="pulse"></span><span class="core">${ic('eye')}</span></div>
       <div id="wvBody"></div>
-      <ol class="wv-steps"><li><b>Foto inicial</b><span>Archivos, registro, servicios y tareas tal como están ahora.</span></li><li><b>Instalas</b><span>Usa el instalador como siempre; StellarHub solo mira.</span></li><li><b>Foto final</b><span>Compara las dos y guarda lo que el instalador creó.</span></li></ol></div>
-    <div class="pan wv-listp" data-asm><h4>Instalaciones vigiladas <em id="wvN">${traces.length}</em></h4><div class="tbl-head wv-cols"><span>Instalación</span><span>Archivos</span><span>Claves</span><span>Tamaño</span><span></span></div><div class="rows wv-scroll" id="wvList"></div></div></div>`;
+      <ol class="wv-steps"><li><b>Initial snapshot</b><span>Files, registry, services and tasks as they are now.</span></li><li><b>You install</b><span>Use the installer as usual; StellarHub only watches.</span></li><li><b>Final snapshot</b><span>Compares both and saves what the installer created.</span></li></ol></div>
+    <div class="pan wv-listp" data-asm><h4>Watched installs <em id="wvN">${traces.length}</em></h4><div class="tbl-head wv-cols"><span>Install</span><span>Files</span><span>Keys</span><span>Size</span><span></span></div><div class="rows wv-scroll" id="wvList"></div></div></div>`;
   const eye = $('#wvEye', el), wb = $('#wvBody', el), wl = $('#wvList', el);
-  const trRow = t => `<div class="row wv-cols" data-t="${t.id}"><span class="rt"><b>${esc(t.name)}</b><span>${fmtDate(t.date)}</span></span><span class="muted">${t.files}</span><span class="muted">${t.keys}</span><span class="muted">${fmtMB(t.mb)}</span><span style="display:flex;gap:4px"><button class="btn sm sec" data-a="undo">Quitar lo que instaló</button><button class="btn sm ghost" data-a="del" title="Olvidar">${ic('trash')}</button></span></div>`;
+  const trRow = t => `<div class="row wv-cols" data-t="${t.id}"><span class="rt"><b>${esc(t.name)}</b><span>${fmtDate(t.date)}</span></span><span class="muted">${t.files}</span><span class="muted">${t.keys}</span><span class="muted">${fmtMB(t.mb)}</span><span style="display:flex;gap:4px"><button class="btn sm sec" data-a="undo">Remove what it installed</button><button class="btn sm ghost" data-a="del" title="Forget">${ic('trash')}</button></span></div>`;
   wl.innerHTML = traces.map(trRow).join('');
   function idle() {
     eye.classList.remove('on');
-    swap(wb, `<h3>Vigila una instalación</h3><p>StellarHub toma una foto del sistema antes de instalar algo y otra al terminar. Después puedes quitar exactamente lo que creó, sin depender de su desinstalador.</p>
-      <div class="wv-form"><label class="field">${ic('package')}<input id="wvName" placeholder="Qué vas a instalar (por ejemplo, un plugin)" spellcheck="false"></label><button class="btn pri" id="wvStart">${ic('eye')}Tomar la foto inicial</button></div>`);
+    swap(wb, `<h3>Watch an install</h3><p>StellarHub takes a snapshot of the system before you install something and another when it finishes. Then you can remove exactly what it created, without relying on its uninstaller.</p>
+      <div class="wv-form"><label class="field">${ic('package')}<input id="wvName" placeholder="What are you installing (for example, a plugin)" spellcheck="false"></label><button class="btn pri" id="wvStart">${ic('eye')}Take the initial snapshot</button></div>`);
   }
   let timer = 0;
   async function start(name) {
-    swap(wb, `<h3>Tomando la foto inicial</h3><p>Se registran archivos, claves, servicios y tareas. Tarda unos segundos.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar" style="transform:scaleX(0)"></span></div>`);
+    swap(wb, `<h3>Taking the initial snapshot</h3><p>Files, keys, services and tasks are recorded. This takes a few seconds.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar" style="transform:scaleX(0)"></span></div>`);
     await wait(200); const b = $('#wvBar', wb); if (b) anim(b, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { d: 2200, e: EASE.io }); await wait(2300);
     eye.classList.add('on'); anim($('.core', eye), [{ transform: 'scale(.7)' }, { transform: 'none' }], { d: 500, e: EASE.spring });
     const c = { f: 0, k: 0, s: 0, t: 0 }; const t0 = Date.now();
-    swap(wb, `<h3>Vigilando: ${esc(name)}</h3><p>Instala el programa como siempre. Cuando termine, vuelve y pulsa el botón. <span class="faint" id="wvT">0:00</span></p>
-      <div class="wv-live"><div><b id="wvF">0</b><span>archivos nuevos</span></div><div><b id="wvK">0</b><span>claves del registro</span></div><div><b id="wvS">0</b><span>servicios</span></div><div><b id="wvTk">0</b><span>tareas</span></div></div>
-      <div class="wv-form"><button class="btn pri" id="wvStop">${ic('check')}Ya terminé de instalar</button><button class="btn ghost" id="wvCancel">Cancelar</button></div>`);
+    swap(wb, `<h3>Watching: ${esc(name)}</h3><p>Install the program as usual. When it finishes, come back and click the button. <span class="faint" id="wvT">0:00</span></p>
+      <div class="wv-live"><div><b id="wvF">0</b><span>new files</span></div><div><b id="wvK">0</b><span>registry keys</span></div><div><b id="wvS">0</b><span>services</span></div><div><b id="wvTk">0</b><span>tasks</span></div></div>
+      <div class="wv-form"><button class="btn pri" id="wvStop">${ic('check')}I'm done installing</button><button class="btn ghost" id="wvCancel">Cancel</button></div>`);
     timer = setInterval(() => {
       if (rnd() > .3) c.f += Math.floor(rnd() * 14); if (rnd() > .6) c.k += Math.floor(rnd() * 4); if (rnd() > .97) c.s++; if (rnd() > .97) c.t++;
       const s = Math.floor((Date.now() - t0) / 1000); const set = (id, v) => { const x = $(id, wb); if (x && x.textContent !== String(v)) { x.textContent = v; anim(x, [{ transform: 'translate3d(0,-4px,0)', opacity: .5 }, { transform: 'none', opacity: 1 }], { d: 260 }); } };
@@ -727,54 +727,54 @@ function renderWatch(el) {
     wb.onclick = async e => {
       if (e.target.closest('#wvCancel')) { clearInterval(timer); wb.onclick = null; idle(); return; }
       if (!e.target.closest('#wvStop')) return; clearInterval(timer); wb.onclick = null; eye.classList.remove('on');
-      swap(wb, `<h3>Comparando fotos</h3><p>Buscando todo lo que cambió desde que empezaste.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar2" style="transform:scaleX(0)"></span></div>`);
+      swap(wb, `<h3>Comparing snapshots</h3><p>Looking for everything that changed since you started.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar2" style="transform:scaleX(0)"></span></div>`);
       await wait(200); const b2 = $('#wvBar2', wb); if (b2) anim(b2, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { d: 1600, e: EASE.io }); await wait(1700);
       const t = { id: 't' + Date.now(), name, date: new Date(TODAY), files: Math.max(c.f, 24), keys: Math.max(c.k, 6), mb: Math.round(c.f * 1.7 + 12) };
-      traces.unshift(t); history.unshift({ type: 'watch', title: `Instalación vigilada: ${name}`, sub: `${t.files} archivos y ${t.keys} claves registradas`, date: new Date(TODAY) });
+      traces.unshift(t); history.unshift({ type: 'watch', title: `Watched install: ${name}`, sub: `${t.files} files and ${t.keys} keys recorded`, date: new Date(TODAY) });
       flip(wl, () => wl.insertAdjacentHTML('afterbegin', trRow(t))); anim(wl.firstElementChild, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring }); $('#wvN', el).textContent = traces.length;
-      SH.toast(`Registrado: ${t.files} archivos y ${t.keys} claves de ${name}.`); refresh(); idle();
+      SH.toast(`Recorded: ${t.files} files and ${t.keys} keys from ${name}.`); refresh(); idle();
     };
   }
   el.addEventListener('click', e => {
     if (e.target.closest('#wvStart')) { const n = ($('#wvName', el).value || '').trim(); if (!n) { const f = $('#wvName', el).closest('.field'); anim(f, [{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'none' }], { d: 360 }); $('#wvName', el).focus(); return; } start(n); }
     const a = e.target.closest('[data-a]'); if (!a) return; const row = a.closest('.row'); const t = traces.find(x => x.id === row.dataset.t);
-    if (a.dataset.a === 'undo') { openFlow([{ id: t.id, name: t.name, pub: 'Instalación vigilada', mb: t.mb, h: 160, ini: t.name.slice(0, 2).toUpperCase(), silent: false, store: false, prot: false, loc: `C:\\Program Files\\${t.name}`, audio: false }], { startAt: 'review', items: leftoversFor({ name: t.name, pub: t.name.split(' ')[0], loc: `C:\\Program Files\\${t.name}`, mb: t.mb }).filter(l => !l.personal).map(l => ({ ...l, conf: 99, why: 'Lo creó esta instalación (está en la foto de después y no en la de antes)' })), mode: 'forced' }); }
-    if (a.dataset.a === 'del') { const i = traces.indexOf(t); traces.splice(i, 1); anim(row, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(28px)' }], { d: 220 }).finished.then(() => flip(wl, () => row.remove())).catch(() => row.remove()); $('#wvN', el).textContent = traces.length; SH.toast('Instalación olvidada.', { action: { label: 'Deshacer', run: () => { traces.splice(i, 0, t); wl.innerHTML = traces.map(trRow).join(''); $('#wvN', el).textContent = traces.length; } } }); }
+    if (a.dataset.a === 'undo') { openFlow([{ id: t.id, name: t.name, pub: 'Watched install', mb: t.mb, h: 160, ini: t.name.slice(0, 2).toUpperCase(), silent: false, store: false, prot: false, loc: `C:\\Program Files\\${t.name}`, audio: false }], { startAt: 'review', items: leftoversFor({ name: t.name, pub: t.name.split(' ')[0], loc: `C:\\Program Files\\${t.name}`, mb: t.mb }).filter(l => !l.personal).map(l => ({ ...l, conf: 99, why: 'Created by this install (it is in the after snapshot but not in the before one)' })), mode: 'forced' }); }
+    if (a.dataset.a === 'del') { const i = traces.indexOf(t); traces.splice(i, 1); anim(row, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(28px)' }], { d: 220 }).finished.then(() => flip(wl, () => row.remove())).catch(() => row.remove()); $('#wvN', el).textContent = traces.length; SH.toast('Install forgotten.', { action: { label: 'Undo', run: () => { traces.splice(i, 0, t); wl.innerHTML = traces.map(trRow).join(''); $('#wvN', el).textContent = traces.length; } } }); }
   });
   if (REAL()) { realWatch(el, { eye, wb, wl, idle }); return; }
   idle(); setTimeout(() => stagger($$('.row', wl), 120, 50), 10);
 }
-/* instalación vigilada de verdad: foto antes y después con el motor; los restos se quitan con la revisión normal */
+/* real watched install: before and after snapshots from the engine; leftovers are removed with the normal review */
 function realWatch(el, { eye, wb, wl, idle }) {
   let list = [];
-  const head = $('.wv-listp .tbl-head', el); if (head) head.innerHTML = '<span>Instalación</span><span>Elementos</span><span>Estado</span><span></span><span></span>';
-  const row = t => `<div class="row wv-cols" data-t="${esc(t.id)}"><span class="rt"><b>${esc(t.name)}</b><span>${fmtDate(t.started ? new Date(t.started * 1000) : null)}</span></span><span class="muted">${t.count ?? '—'}</span><span class="muted">${t.status === 'running' ? 'Vigilando' : 'Terminada'}</span><span></span>
-    <span style="display:flex;gap:4px">${t.status === 'running' ? '<button class="btn sm sec" data-a="resume">Terminar</button>' : `<button class="btn sm sec" data-a="undo"${t.count ? '' : ' disabled'}>Quitar lo que instaló</button>`}<button class="btn sm ghost" data-a="del" title="Olvidar">${ic('trash')}</button></span></div>`;
+  const head = $('.wv-listp .tbl-head', el); if (head) head.innerHTML = '<span>Install</span><span>Items</span><span>Status</span><span></span><span></span>';
+  const row = t => `<div class="row wv-cols" data-t="${esc(t.id)}"><span class="rt"><b>${esc(t.name)}</b><span>${fmtDate(t.started ? new Date(t.started * 1000) : null)}</span></span><span class="muted">${t.count ?? '—'}</span><span class="muted">${t.status === 'running' ? 'Watching' : 'Finished'}</span><span></span>
+    <span style="display:flex;gap:4px">${t.status === 'running' ? '<button class="btn sm sec" data-a="resume">Finish</button>' : `<button class="btn sm sec" data-a="undo"${t.count ? '' : ' disabled'}>Remove what it installed</button>`}<button class="btn sm ghost" data-a="del" title="Forget">${ic('trash')}</button></span></div>`;
   async function load(anim0) {
     try { list = await SH.engine('remover', 'traces') || []; } catch { list = []; }
     $('#wvN', el).textContent = list.length;
-    wl.innerHTML = list.length ? list.map(row).join('') : '<div class="empty"><b>Ninguna todavía</b>Las instalaciones que vigiles aparecerán aquí.</div>';
+    wl.innerHTML = list.length ? list.map(row).join('') : '<div class="empty"><b>None yet</b>The installs you watch will appear here.</div>';
     if (anim0) stagger($$('.row', wl), 80, 50);
   }
   function watching(meta) {
     eye.classList.add('on'); anim($('.core', eye), [{ transform: 'scale(.7)' }, { transform: 'none' }], { d: 500, e: EASE.spring });
     const t0 = (meta.started || Date.now() / 1000) * 1000;
-    swap(wb, `<h3>Vigilando: ${esc(meta.name)}</h3><p>Instala el programa como siempre. Cuando termine (y lo hayas abierto una vez, si quieres captar su configuración), vuelve y pulsa el botón. <span class="faint" id="wvT">0:00</span></p>
-      <div class="wv-form"><button class="btn pri" id="wvStop">${ic('check')}Ya terminé de instalar</button></div>`);
+    swap(wb, `<h3>Watching: ${esc(meta.name)}</h3><p>Install the program as usual. When it finishes (and you have opened it once, if you want to capture its settings), come back and click the button. <span class="faint" id="wvT">0:00</span></p>
+      <div class="wv-form"><button class="btn pri" id="wvStop">${ic('check')}I'm done installing</button></div>`);
     const tm = setInterval(() => { const t = $('#wvT', wb); if (!t) { clearInterval(tm); return; } const s = Math.floor((Date.now() - t0) / 1000); t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }, 1000);
     wb.onclick = async e => {
       if (!e.target.closest('#wvStop')) return; wb.onclick = null; clearInterval(tm); eye.classList.remove('on');
-      swap(wb, `<h3>Comparando fotos</h3><p>Buscando todo lo que cambió desde que empezaste. Puede tardar un poco.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar2" style="transform:scaleX(.08)"></span></div>`);
+      swap(wb, `<h3>Comparing snapshots</h3><p>Looking for everything that changed since you started. This may take a while.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar2" style="transform:scaleX(.08)"></span></div>`);
       try {
         const r = await SH.job('remover', 'monitor_stop', [meta.id], { onProgress: m => { const b = $('#wvBar2', wb); if (b) b.style.transform = `scaleX(${Math.max(.08, m.pct || 0)})`; } });
-        SH.toast(`Registrado: ${r.count || 0} elementos creados por ${meta.name}.`);
-        SH.logActivity(`Instalación vigilada: ${meta.name}`, { sub: `${r.count || 0} elementos registrados`, ic: 'eye', go: 'remover', tab: 'watch' });
+        SH.toast(`Recorded: ${r.count || 0} items created by ${meta.name}.`);
+        SH.logActivity(`Watched install: ${meta.name}`, { sub: `${r.count || 0} items recorded`, ic: 'eye', go: 'remover', tab: 'watch' });
       } catch (err) { SH.toast(jobErr(err)); }
       idle(); load(true);
     };
   }
   async function start(name) {
-    swap(wb, `<h3>Tomando la foto inicial</h3><p>Se registran archivos, claves, servicios y tareas. Tarda unos segundos.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar" style="transform:scaleX(0)"></span></div>`);
+    swap(wb, `<h3>Taking the initial snapshot</h3><p>Files, keys, services and tasks are recorded. This takes a few seconds.</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar" style="transform:scaleX(0)"></span></div>`);
     setTimeout(() => { const b = $('#wvBar', wb); if (b) anim(b, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(.9)' }], { d: 6000, e: EASE.out }); }, 200);
     try { const meta = await SH.job('remover', 'monitor_start', [name]); load(false); watching(meta); }
     catch (e) { SH.toast(jobErr(e)); idle(); }
@@ -785,57 +785,57 @@ function realWatch(el, { eye, wb, wl, idle }) {
     const rowEl = a.closest('.row'); const t = list.find(x => x.id === rowEl.dataset.t); if (!t) return;
     if (a.dataset.a === 'resume') { watching(t); return; }
     if (a.dataset.a === 'undo') {
-      a.disabled = true; a.textContent = 'Buscando…';
+      a.disabled = true; a.textContent = 'Searching…';
       try {
         const r = await SH.job('remover', 'trace_scan', [t.id]);
-        openFlow([{ id: 'w' + t.id, name: t.name, pub: 'Instalación vigilada', mb: (r.total_size || 0) / 1048576, h: 160, ini: iniOf(t.name), silent: false, store: false, prot: false, loc: '', audio: false }],
+        openFlow([{ id: 'w' + t.id, name: t.name, pub: 'Watched install', mb: (r.total_size || 0) / 1048576, h: 160, ini: iniOf(t.name), silent: false, store: false, prot: false, loc: '', audio: false }],
           { startAt: 'review', items: r.items.map(mapItem(r.key, t.name)), mode: 'forced', onDone: () => load(false) });
       } catch (err) { SH.toast(jobErr(err)); }
-      a.disabled = false; a.textContent = 'Quitar lo que instaló'; return;
+      a.disabled = false; a.textContent = 'Remove what it installed'; return;
     }
     if (a.dataset.a === 'del') {
       anim(rowEl, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(28px)' }], { d: 220 }).finished.then(() => rowEl.remove()).catch(() => rowEl.remove());
       let undone = false; const timer = setTimeout(() => { if (!undone) SH.engine('remover', 'trace_delete', t.id).then(() => load(false)); }, 4200);
-      SH.toast('Instalación olvidada.', { action: { label: 'Deshacer', run: () => { undone = true; clearTimeout(timer); load(true); } }, ms: 4000 });
+      SH.toast('Install forgotten.', { action: { label: 'Undo', run: () => { undone = true; clearTimeout(timer); load(true); } }, ms: 4000 });
     }
   }, true);
   load(true).then(() => { const run = list.find(x => x.status === 'running'); run ? watching(run) : idle(); });
 }
 
-/* ================= Cuarentena ================= */
+/* ================= Quarantine ================= */
 function renderQuarantine(el) {
   el.innerHTML = `<div class="du-wrap" style="display:flex;flex-direction:column;gap:14px">
-    <div class="pan qz-hero" data-asm><div class="n"><b id="qzS">0</b><span>desinstalaciones</span></div><div class="n"><b id="qzI">0</b><span>elementos guardados</span></div><div class="n"><b id="qzM">0</b><span>ocupado</span></div><span class="sp"></span>
-      <div class="days">Se vacía sola a los ${segHTML([['7', '7 días'], ['14', '14 días'], ['30', '30 días']], String(qDays))}</div><button class="btn danger" id="qzEmpty">${ic('trash')}Vaciar ahora</button></div>
-    <div class="qz-grid"><div class="pan qz-main" data-asm><h4>Desinstalaciones guardadas <em>clic para ver cada elemento</em></h4><div id="qzList" class="qz-list"></div></div>
-      <div class="pan qz-side" data-asm><h4>Qué hay guardado</h4><div class="qz-types" id="qzTypes"></div>
-        <p class="qz-note">Cada elemento se guarda tal cual estaba: los archivos, las claves del registro como .reg y las tareas y servicios con su configuración. Restaurar los devuelve a su sitio.</p></div></div></div>`;
+    <div class="pan qz-hero" data-asm><div class="n"><b id="qzS">0</b><span>uninstalls</span></div><div class="n"><b id="qzI">0</b><span>items saved</span></div><div class="n"><b id="qzM">0</b><span>used</span></div><span class="sp"></span>
+      <div class="days">Empties itself after ${segHTML([['7', '7 days'], ['14', '14 days'], ['30', '30 days']], String(qDays))}</div><button class="btn danger" id="qzEmpty">${ic('trash')}Empty now</button></div>
+    <div class="qz-grid"><div class="pan qz-main" data-asm><h4>Saved uninstalls <em>click to see each item</em></h4><div id="qzList" class="qz-list"></div></div>
+      <div class="pan qz-side" data-asm><h4>What is saved</h4><div class="qz-types" id="qzTypes"></div>
+        <p class="qz-note">Each item is saved exactly as it was: files, registry keys as .reg, and tasks and services with their settings. Restoring puts them back in place.</p></div></div></div>`;
   const listEl = $('#qzList', el);
   const tot = () => { const items = sessions.flatMap(s => s.items); $('#qzS', el).textContent = sessions.length; $('#qzI', el).textContent = items.length; $('#qzM', el).textContent = fmtMB(items.reduce((a, l) => a + l.mb, 0));
     const by = {}; items.forEach(l => { by[l.type] = (by[l.type] || 0) + 1; }); const mx = Math.max(1, ...Object.values(by));
-    const tEl = $('#qzTypes', el); if (tEl) tEl.innerHTML = Object.keys(by).length ? Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<div class="qt"><span class="ri">${ic(TYPES[k][1])}</span><span class="tn">${TYPES[k][0]}</span><b>${n}</b><span class="bar"><span style="transform:scaleX(${(n / mx).toFixed(3)})"></span></span></div>`).join('') : '<p class="faint" style="font-size:12.5px">Nada guardado ahora mismo.</p>'; };
+    const tEl = $('#qzTypes', el); if (tEl) tEl.innerHTML = Object.keys(by).length ? Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<div class="qt"><span class="ri">${ic(TYPES[k][1])}</span><span class="tn">${TYPES[k][0]}</span><b>${n}</b><span class="bar"><span style="transform:scaleX(${(n / mx).toFixed(3)})"></span></span></div>`).join('') : '<p class="faint" style="font-size:12.5px">Nothing saved right now.</p>'; };
   const sHTML = s => { const left = Math.max(0, qDays - daysSince(s.date)); const mb = s.items.reduce((a, l) => a + l.mb, 0);
-    return `<div class="qs" data-s="${s.id}"><div class="qs-h" role="button" tabindex="0">${ic('chev', 'i cv')}<span class="pi" style="--h:${s.h}">${esc(s.ini)}</span><span class="rt"><b>${esc(s.prog)}</b><span>${fmtDate(s.date)}, modo ${esc(s.mode.toLowerCase())}</span></span><span class="muted" style="font-size:12.5px">${s.items.length} elementos, ${fmtMB(mb)}</span>
-      <span class="left">Quedan ${left} ${left === 1 ? 'día' : 'días'}<span class="bar ${left < 4 ? 'warn' : ''}"><span style="transform:scaleX(${(left / qDays).toFixed(3)})"></span></span></span>${s.restorable === false ? '<span class="chip">borrado definitivo</span>' : `<button class="btn sm sec" data-a="all">${ic('restore')}Restaurar todo</button>`}</div>
-      <div class="qs-b"><div><div class="qs-in">${s.items.map(l => `<div class="qit" data-l="${l.id}">${ic(TYPES[l.type][1])}<span class="p" title="${esc(l.path)}">${esc(l.path)}</span><span class="s">${l.mb ? fmtMB(l.mb) : ''}</span>${s.restorable === false ? '' : '<button class="btn sm ghost" data-a="one">Restaurar</button>'}</div>`).join('')}</div></div></div></div>`; };
-  function draw() { tot(); listEl.innerHTML = sessions.length ? sessions.map(sHTML).join('') : `<div class="empty"><b>La cuarentena está vacía</b>Lo que borres al desinstalar se guarda aquí ${qDays} días por si necesitas devolverlo.</div>`; stagger([...listEl.children], 60, 50); }
+    return `<div class="qs" data-s="${s.id}"><div class="qs-h" role="button" tabindex="0">${ic('chev', 'i cv')}<span class="pi" style="--h:${s.h}">${esc(s.ini)}</span><span class="rt"><b>${esc(s.prog)}</b><span>${fmtDate(s.date)}, ${esc(s.mode.toLowerCase())}</span></span><span class="muted" style="font-size:12.5px">${s.items.length} items, ${fmtMB(mb)}</span>
+      <span class="left">${left} ${left === 1 ? 'day' : 'days'} left<span class="bar ${left < 4 ? 'warn' : ''}"><span style="transform:scaleX(${(left / qDays).toFixed(3)})"></span></span></span>${s.restorable === false ? '<span class="chip">deleted permanently</span>' : `<button class="btn sm sec" data-a="all">${ic('restore')}Restore all</button>`}</div>
+      <div class="qs-b"><div><div class="qs-in">${s.items.map(l => `<div class="qit" data-l="${l.id}">${ic(TYPES[l.type][1])}<span class="p" title="${esc(l.path)}">${esc(l.path)}</span><span class="s">${l.mb ? fmtMB(l.mb) : ''}</span>${s.restorable === false ? '' : '<button class="btn sm ghost" data-a="one">Restore</button>'}</div>`).join('')}</div></div></div></div>`; };
+  function draw() { tot(); listEl.innerHTML = sessions.length ? sessions.map(sHTML).join('') : `<div class="empty"><b>The quarantine is empty</b>What you remove when uninstalling is kept here for ${qDays} days in case you need it back.</div>`; stagger([...listEl.children], 60, 50); }
   listEl.addEventListener('click', async e => {
     const qs = e.target.closest('.qs'); if (!qs) return; const s = sessions.find(x => x.id === qs.dataset.s);
     const a = e.target.closest('[data-a]');
     if (!a) { if (e.target.closest('.qs-h')) { qs.classList.toggle('open'); if (qs.classList.contains('open')) stagger($$('.qit', qs).slice(0, 12), 80, 20); } return; }
-    if (a.dataset.a === 'all') { a.disabled = true; await API.restore(s); anim(qs, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(40px) scale(.97)' }], { d: 260 }).finished.then(() => flip(listEl, () => qs.remove())).catch(() => qs.remove()); setTimeout(() => { tot(); if (!sessions.length) draw(); }, 300); SH.toast(`${s.prog}: todo devuelto a su sitio.`); refresh(); }
-    if (a.dataset.a === 'one') { const row = a.closest('.qit'); const it = s.items.find(l => l.id === row.dataset.l); await API.restore(s, it); anim(row, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(24px)' }], { d: 200 }).finished.then(() => { row.remove(); if (!sessions.includes(s)) { qs.remove(); if (!sessions.length) draw(); } else { const m = $('.qs-h .muted', qs); m.textContent = `${s.items.length} elementos, ${fmtMB(s.items.reduce((x, l) => x + l.mb, 0))}`; } tot(); }).catch(() => {}); SH.toast('Restaurado.'); }
+    if (a.dataset.a === 'all') { a.disabled = true; await API.restore(s); anim(qs, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(40px) scale(.97)' }], { d: 260 }).finished.then(() => flip(listEl, () => qs.remove())).catch(() => qs.remove()); setTimeout(() => { tot(); if (!sessions.length) draw(); }, 300); SH.toast(`${s.prog}: everything put back in place.`); refresh(); }
+    if (a.dataset.a === 'one') { const row = a.closest('.qit'); const it = s.items.find(l => l.id === row.dataset.l); await API.restore(s, it); anim(row, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(24px)' }], { d: 200 }).finished.then(() => { row.remove(); if (!sessions.includes(s)) { qs.remove(); if (!sessions.length) draw(); } else { const m = $('.qs-h .muted', qs); m.textContent = `${s.items.length} items, ${fmtMB(s.items.reduce((x, l) => x + l.mb, 0))}`; } tot(); }).catch(() => {}); SH.toast('Restored.'); }
   });
-  wireSeg($('.seg', el), v => { qDays = +v; draw(); if (REAL()) SH.engine('remover', 'set_settings', { quarantine_days: +v }); SH.toast(`La cuarentena se vaciará sola a los ${v} días.`); });
+  wireSeg($('.seg', el), v => { qDays = +v; draw(); if (REAL()) SH.engine('remover', 'set_settings', { quarantine_days: +v }); SH.toast(`The quarantine will empty itself after ${v} days.`); });
   let armed = 0; $('#qzEmpty', el).addEventListener('click', e => {
-    const b = e.currentTarget; if (!sessions.length) { SH.toast('La cuarentena ya está vacía.'); return; }
-    if (!armed) { armed = setTimeout(() => { armed = 0; b.innerHTML = `${ic('trash')}Vaciar ahora`; }, 3000); b.innerHTML = `${ic('alert')}Pulsa otra vez: no se puede deshacer`; anim(b, [{ transform: 'scale(.95)' }, { transform: 'none' }], { d: 300, e: EASE.spring }); return; }
-    clearTimeout(armed); armed = 0; b.innerHTML = `${ic('trash')}Vaciar ahora`;
-    const n = sessions.flatMap(s => s.items).length; if (REAL()) SH.engine('remover', 'quarantine_empty').catch(err => SH.toast(jobErr(err))); sessions.splice(0); history.unshift({ type: 'empty', title: 'Cuarentena vaciada', sub: `${n} elementos borrados para siempre`, date: new Date(TODAY) });
-    $$('.qs', listEl).forEach((q, i) => anim(q, [{ opacity: 1 }, { opacity: 0, transform: 'translateY(-10px) scale(.97)' }], { d: 220, delay: i * 50 })); setTimeout(draw, 400); SH.toast(`${n} elementos borrados para siempre.`); refresh();
+    const b = e.currentTarget; if (!sessions.length) { SH.toast('The quarantine is already empty.'); return; }
+    if (!armed) { armed = setTimeout(() => { armed = 0; b.innerHTML = `${ic('trash')}Empty now`; }, 3000); b.innerHTML = `${ic('alert')}Click again: this cannot be undone`; anim(b, [{ transform: 'scale(.95)' }, { transform: 'none' }], { d: 300, e: EASE.spring }); return; }
+    clearTimeout(armed); armed = 0; b.innerHTML = `${ic('trash')}Empty now`;
+    const n = sessions.flatMap(s => s.items).length; if (REAL()) SH.engine('remover', 'quarantine_empty').catch(err => SH.toast(jobErr(err))); sessions.splice(0); history.unshift({ type: 'empty', title: 'Quarantine emptied', sub: `${n} items deleted permanently`, date: new Date(TODAY) });
+    $$('.qs', listEl).forEach((q, i) => anim(q, [{ opacity: 1 }, { opacity: 0, transform: 'translateY(-10px) scale(.97)' }], { d: 220, delay: i * 50 })); setTimeout(draw, 400); SH.toast(`${n} items deleted permanently.`); refresh();
   });
   if (REAL()) {
-    listEl.innerHTML = '<div class="empty"><b>Leyendo la cuarentena…</b></div>';
+    listEl.innerHTML = '<div class="empty"><b>Reading the quarantine…</b></div>';
     const seg = $('.seg', el);
     loadRealSessions().then(() => { $$('button', seg).forEach(b => b.classList.toggle('on', b.dataset.v === String(qDays))); SH.placeSeg(seg, true); draw(); });
     refreshers.add(() => { if (el.isConnected) loadRealSessions().then(draw); });
@@ -843,14 +843,14 @@ function renderQuarantine(el) {
   }
   draw(); refreshers.add(() => { if (el.isConnected) draw(); });
 }
-/* cuarentena e historial reales -> las mismas estructuras que usa la interfaz */
+/* real quarantine and history -> the same structures the UI uses */
 async function loadRealSessions() {
-  if (!realInfo) { try { realInfo = await SH.engine('remover', 'init'); qDays = (realInfo.settings || {}).quarantine_days || qDays; } catch { /* sigue */ } }
+  if (!realInfo) { try { realInfo = await SH.engine('remover', 'init'); qDays = (realInfo.settings || {}).quarantine_days || qDays; } catch { /* carry on */ } }
   let list = []; try { list = await SH.engine('remover', 'quarantine_list') || []; } catch { list = []; }
   sessions.splice(0, sessions.length, ...list.map(s => {
-    const name = s.program || 'Sin nombre';
+    const name = s.program || 'Unnamed';
     return { id: s.id, prog: name, pub: s.publisher || '', h: hueOf(name), ini: iniOf(name), date: s.created ? new Date(s.created * 1000) : null,
-      mode: s.mode === 'quarantine' ? 'Cuarentena' : 'Borrado definitivo', restorable: s.restorable,
+      mode: s.mode === 'quarantine' ? 'Quarantine' : 'Permanent delete', restorable: s.restorable,
       items: (s.items || []).filter(i => i.status === 'done').map(i => ({ id: 'q' + i.idx, idx: i.idx, type: typeOf({ kind: i.kind, target: i.target || i.display }), path: i.display, mb: (i.size || 0) / 1048576 })) };
   }).filter(s => s.items.length));
 }
@@ -858,43 +858,43 @@ const HIST_TYPE = { uninstall: 'uninstall', remove: 'uninstall', restore: 'resto
 async function loadRealHistory() {
   let list = []; try { list = await SH.engine('remover', 'history') || []; } catch { list = []; }
   const sub = h => { const d = h.detail || {};
-    if (h.action === 'uninstall') return `Modo ${({ normal: 'normal', quiet: 'silencioso', forced: 'forzado', batch: 'por lotes' })[d.mode] || d.mode || 'normal'}${d.ok === false ? ', con avisos' : ''}${d.seconds ? `, ${Math.round(d.seconds)} s` : ''}`;
-    if (h.action === 'remove') return `${d.ok || 0} restos ${d.mode === 'delete' ? 'borrados' : 'a la cuarentena'}${d.failed ? `, ${d.failed} fallaron` : ''}`;
-    if (h.action === 'restore') return `${d.ok || 0} elementos devueltos${d.failed ? `, ${d.failed} fallaron` : ''}`;
-    if (h.action === 'empty') return `${d.items || 0} elementos borrados para siempre`;
+    if (h.action === 'uninstall') return `${({ normal: 'Normal', quiet: 'Silent', forced: 'Forced', batch: 'Batch' })[d.mode] || d.mode || 'Normal'} mode${d.ok === false ? ', with warnings' : ''}${d.seconds ? `, ${Math.round(d.seconds)} s` : ''}`;
+    if (h.action === 'remove') return `${d.ok || 0} leftovers ${d.mode === 'delete' ? 'deleted' : 'to the quarantine'}${d.failed ? `, ${d.failed} failed` : ''}`;
+    if (h.action === 'restore') return `${d.ok || 0} items restored${d.failed ? `, ${d.failed} failed` : ''}`;
+    if (h.action === 'empty') return `${d.items || 0} items deleted permanently`;
     return ''; };
-  const title = h => ({ uninstall: `${h.title} desinstalado`, remove: `Restos de ${h.title}`, restore: 'Restaurado desde la cuarentena', watch: `Instalación vigilada: ${h.title}`, empty: 'Cuarentena vaciada', delete_session: 'Borrada una desinstalación de la cuarentena' })[h.action] || h.title;
+  const title = h => ({ uninstall: `${h.title} uninstalled`, remove: `Leftovers from ${h.title}`, restore: 'Restored from the quarantine', watch: `Watched install: ${h.title}`, empty: 'Quarantine emptied', delete_session: 'Deleted an uninstall from the quarantine' })[h.action] || h.title;
   history.splice(0, history.length, ...list.filter(h => HIST_TYPE[h.action]).map(h => ({ type: HIST_TYPE[h.action], title: title(h), sub: sub(h), date: new Date(h.time * 1000) })));
 }
 
-/* ================= Historial ================= */
+/* ================= History ================= */
 function renderHistory(el) {
   const COL = { uninstall: 'var(--accent)', restore: 'var(--ok)', watch: 'var(--accent2)', empty: 'var(--warn)' };
   function draw() {
     const cnt = t => history.filter(h => h.type === t).length;
-    el.innerHTML = `<div class="hv-grid"><div class="pan hv-main" data-asm><h4>Lo que ha hecho Program Remover <em><button class="btn sm ghost" id="hvClear">Borrar historial</button></em></h4>
-      ${history.length ? `<div class="hv-scroll"><div class="hv">${history.map(h => `<div class="he" style="--c:${COL[h.type]}"><div><b>${esc(h.title)}</b><span>${esc(h.sub)}</span></div><span class="d">${fmtDate(h.date)}</span></div>`).join('')}</div></div>` : '<div class="empty"><b>Sin actividad</b>Aquí aparecerá cada desinstalación, restauración e instalación vigilada.</div>'}</div>
-      <div class="pan hv-side" data-asm><h4>En resumen</h4><div class="hv-stats">
-        <div><b>${cnt('uninstall')}</b><span>programas desinstalados</span></div><div><b>${cnt('restore')}</b><span>restauraciones</span></div>
-        <div><b>${cnt('watch')}</b><span>instalaciones vigiladas</span></div><div><b>${sessions.flatMap(x => x.items).length}</b><span>restos en cuarentena</span></div></div>
-        <div class="hv-legend"><span><i style="background:var(--accent)"></i>desinstalación</span><span><i style="background:var(--ok)"></i>restauración</span><span><i style="background:var(--accent2)"></i>instalación vigilada</span><span><i style="background:var(--warn)"></i>cuarentena vaciada</span></div></div></div>`;
+    el.innerHTML = `<div class="hv-grid"><div class="pan hv-main" data-asm><h4>What Program Remover has done <em><button class="btn sm ghost" id="hvClear">Clear history</button></em></h4>
+      ${history.length ? `<div class="hv-scroll"><div class="hv">${history.map(h => `<div class="he" style="--c:${COL[h.type]}"><div><b>${esc(h.title)}</b><span>${esc(h.sub)}</span></div><span class="d">${fmtDate(h.date)}</span></div>`).join('')}</div></div>` : '<div class="empty"><b>No activity</b>Every uninstall, restore and watched install will appear here.</div>'}</div>
+      <div class="pan hv-side" data-asm><h4>At a glance</h4><div class="hv-stats">
+        <div><b>${cnt('uninstall')}</b><span>programs uninstalled</span></div><div><b>${cnt('restore')}</b><span>restores</span></div>
+        <div><b>${cnt('watch')}</b><span>watched installs</span></div><div><b>${sessions.flatMap(x => x.items).length}</b><span>leftovers in quarantine</span></div></div>
+        <div class="hv-legend"><span><i style="background:var(--accent)"></i>uninstall</span><span><i style="background:var(--ok)"></i>restore</span><span><i style="background:var(--accent2)"></i>watched install</span><span><i style="background:var(--warn)"></i>quarantine emptied</span></div></div></div>`;
     stagger($$('.he', el), 60, 40);
     $('#hvClear', el).addEventListener('click', () => {
       const old = history.splice(0); draw(); let undone = false;
       const t = REAL() ? setTimeout(() => { if (!undone) SH.engine('remover', 'clear_history'); }, 4200) : 0;
-      SH.toast('Historial borrado.', { action: { label: 'Deshacer', run: () => { undone = true; clearTimeout(t); history.push(...old); draw(); } }, ms: 4000 });
+      SH.toast('History cleared.', { action: { label: 'Undo', run: () => { undone = true; clearTimeout(t); history.push(...old); draw(); } }, ms: 4000 });
     });
   }
-  if (REAL()) { el.innerHTML = '<div class="empty"><b>Leyendo el historial…</b></div>'; Promise.all([loadRealHistory(), loadRealSessions()]).then(draw); refreshers.add(() => { if (el.isConnected) Promise.all([loadRealHistory(), loadRealSessions()]).then(draw); }); return; }
+  if (REAL()) { el.innerHTML = '<div class="empty"><b>Reading the history…</b></div>'; Promise.all([loadRealHistory(), loadRealSessions()]).then(draw); refreshers.add(() => { if (el.isConnected) Promise.all([loadRealHistory(), loadRealSessions()]).then(draw); }); return; }
   draw(); refreshers.add(() => { if (el.isConnected) draw(); });
 }
 
-/* ================= Modo cazador ================= */
-const HUNT_TIP = 'Pulsa «Apuntar a una ventana»: StellarHub se esconde y tienes 3 segundos para dejar el ratón encima de la ventana que quieras.';
+/* ================= Hunter mode ================= */
+const HUNT_TIP = 'Click "Point at a window": StellarHub hides and you have 3 seconds to hover the mouse over the window you want.';
 function hunter() {
   const mod = sectionEl(); if (!mod || $('.hunt', mod)) return;
   const h = document.createElement('div'); h.className = 'hunt';
-  h.innerHTML = `<div class="tip2"><h3>Modo cazador</h3><p>${REAL() ? HUNT_TIP : 'Arrastra la mira hasta cualquier ventana abierta y te digo qué programa es.'}</p><div class="row-btns">${REAL() ? '<button class="btn sec" data-h="win">Apuntar a una ventana</button>' : '<button class="btn sec" data-h="demo">Probar con la ventana de FL Studio</button>'}<button class="btn ghost" data-h="file">Elegir un .exe o acceso directo</button><button class="btn ghost" data-h="x">Salir</button></div></div><div class="cross">${ic('crosshair')}</div>`;
+  h.innerHTML = `<div class="tip2"><h3>Hunter mode</h3><p>${REAL() ? HUNT_TIP : 'Drag the crosshair onto any open window and I will tell you which program it is.'}</p><div class="row-btns">${REAL() ? '<button class="btn sec" data-h="win">Point at a window</button>' : '<button class="btn sec" data-h="demo">Try it on the FL Studio window</button>'}<button class="btn ghost" data-h="file">Choose an .exe or shortcut</button><button class="btn ghost" data-h="x">Exit</button></div></div><div class="cross">${ic('crosshair')}</div>`;
   mod.appendChild(h);
   anim(h, [{ opacity: 0 }, { opacity: 1 }], { d: 260 }); anim($('.tip2', h), [{ opacity: 0, transform: 'translate(-50%,-12px)', filter: 'blur(6px)' }, { opacity: 1, transform: 'translate(-50%,0)', filter: 'blur(0px)' }], { d: 480, e: EASE.spring });
   const cx = new Spring(0, 260, 22), cy = new Spring(0, 260, 22); const r0 = h.getBoundingClientRect(); cx.set(r0.width / 2); cy.set(r0.height / 2 + 40);
@@ -908,8 +908,8 @@ function hunter() {
     const res = document.createElement('div'); res.className = 'pan res';
     const p = r && r.program ? fromEngine(r.program) : null;
     const file = r && r.info && r.info.path ? r.info.path.split('\\').pop() : '';
-    res.innerHTML = p ? `<div class="rd-top">${pi(p, true)}<div><h3>Es ${esc(p.name)}</h3><div class="who">${esc(p.pub || '')}${file ? `, ${esc(file)}` : ''}</div></div></div><div class="row-btns"><button class="btn pri" data-h="goreal" data-e="${esc(p.eid)}">Ver en la lista</button><button class="btn ghost" data-h="x">Cerrar</button></div>`
-      : `<div class="rd-top"><div><h3>No es un programa instalado</h3><div class="who">${r && r.info && (r.info.path || r.info.title) ? esc(r.info.path || r.info.title) : 'No se pudo identificar la ventana'}</div></div></div><div class="row-btns"><button class="btn ghost" data-h="x">Cerrar</button></div>`;
+    res.innerHTML = p ? `<div class="rd-top">${pi(p, true)}<div><h3>It's ${esc(p.name)}</h3><div class="who">${esc(p.pub || '')}${file ? `, ${esc(file)}` : ''}</div></div></div><div class="row-btns"><button class="btn pri" data-h="goreal" data-e="${esc(p.eid)}">Show in the list</button><button class="btn ghost" data-h="x">Close</button></div>`
+      : `<div class="rd-top"><div><h3>Not an installed program</h3><div class="who">${r && r.info && (r.info.path || r.info.title) ? esc(r.info.path || r.info.title) : 'Could not identify the window'}</div></div></div><div class="row-btns"><button class="btn ghost" data-h="x">Close</button></div>`;
     h.appendChild(res); anim(res, [{ opacity: 0, transform: 'scale(.9)', filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 480, e: EASE.spring });
   }
   h.addEventListener('click', async e => {
@@ -918,19 +918,19 @@ function hunter() {
     if (b.dataset.h === 'goreal') { const eid = b.dataset.e; close(); ctxRef && ctxRef.setTab('programs'); ensureReal().then(() => setTimeout(() => SH.remover && SH.remover.select(eid), 300 * SH.motion())); return; }
     if (REAL() && b.dataset.h === 'win') {
       b.disabled = true; const tip = $('.tip2 p', h);
-      try { const r = await SH.job('remover', 'hunter_window', [], { onProgress: m => { if (m.data && m.data.count && tip) tip.textContent = `Pon el ratón sobre la ventana… ${m.data.count}`; } }); showResult(r); }
+      try { const r = await SH.job('remover', 'hunter_window', [], { onProgress: m => { if (m.data && m.data.count && tip) tip.textContent = `Hover over the window… ${m.data.count}`; } }); showResult(r); }
       catch (err) { SH.toast(jobErr(err)); }
       b.disabled = false; if (tip) tip.textContent = HUNT_TIP; return;
     }
     if (REAL() && b.dataset.h === 'file') { try { const r = await SH.engine('remover', 'hunter_file'); if (r) showResult(r); } catch (err) { SH.toast(jobErr(err)); } return; }
-    if (b.dataset.h === 'file') SH.toast('Aquí se abrirá el selector de archivos de Windows.');
+    if (b.dataset.h === 'file') SH.toast('The Windows file picker will open here.');
     if (b.dataset.h === 'demo' || b.dataset.h === 'go') {
       if (b.dataset.h === 'go') { close(); ctxRef && ctxRef.setTab('programs'); setTimeout(() => SH.remover && SH.remover.select('FL Studio 2025'), 300 * SH.motion()); return; }
-      const p = PROGRAMS.find(x => x.name === 'FL Studio 2025'); if (!p) { SH.toast('FL Studio ya no está instalado.'); return; }
+      const p = PROGRAMS.find(x => x.name === 'FL Studio 2025'); if (!p) { SH.toast('FL Studio is no longer installed.'); return; }
       const r = h.getBoundingClientRect(); cx.t = r.width / 2; cy.t = r.height / 2 - 20;
       setTimeout(() => {
         const res = document.createElement('div'); res.className = 'pan res';
-        res.innerHTML = `<div class="rd-top">${pi(p, true)}<div><h3>Es ${esc(p.name)}</h3><div class="who">${esc(p.pub)}, proceso FL64.exe</div></div></div><div class="row-btns"><button class="btn pri" data-h="go">Ver en la lista</button><button class="btn ghost" data-h="x">Cerrar</button></div>`;
+        res.innerHTML = `<div class="rd-top">${pi(p, true)}<div><h3>It's ${esc(p.name)}</h3><div class="who">${esc(p.pub)}, process FL64.exe</div></div></div><div class="row-btns"><button class="btn pri" data-h="go">Show in the list</button><button class="btn ghost" data-h="x">Close</button></div>`;
         h.appendChild(res); anim(res, [{ opacity: 0, transform: 'scale(.9)', filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 480, e: EASE.spring });
         anim(cross, [{ opacity: 1 }, { opacity: 0 }], { d: 300, keep: true });
       }, 500 * SH.motion());
@@ -942,11 +942,11 @@ SH.module({
   id: 'remover', real: true,
   actions(el, ctx) {
     ctxRef = ctx;
-    el.innerHTML = `<button class="btn ghost" id="rvExport">${ic('export')}Exportar lista</button><button class="btn sec" id="rvHunt">${ic('crosshair')}Modo cazador</button>`;
+    el.innerHTML = `<button class="btn ghost" id="rvExport">${ic('export')}Export list</button><button class="btn sec" id="rvHunt">${ic('crosshair')}Hunter mode</button>`;
     $('#rvHunt', el).addEventListener('click', hunter);
     $('#rvExport', el).addEventListener('click', async () => {
-      if (!REAL()) { SH.toast(`Lista de ${PROGRAMS.length} programas guardada en Documentos (simulado).`); return; }
-      try { const path = await SH.engine('remover', 'export_programs'); if (path) SH.toast(`Lista guardada en ${path.split('\\').pop()}.`); } catch (err) { SH.toast(jobErr(err)); }
+      if (!REAL()) { SH.toast(`List of ${PROGRAMS.length} programs saved to Documents (simulated).`); return; }
+      try { const path = await SH.engine('remover', 'export_programs'); if (path) SH.toast(`List saved to ${path.split('\\').pop()}.`); } catch (err) { SH.toast(jobErr(err)); }
     });
   },
   renderTab(tab, el, ctx) {
@@ -960,9 +960,9 @@ SH.module({
   enterTab(tab, el) { requestAnimationFrame(() => $$('.seg', el).forEach(s => SH.placeSeg(s, true))); },
 });
 SH.actions.add([
-  { t: 'Desinstalación por lotes', go: 'remover', tab: 'batch', ic: 'list' },
-  { t: 'Vigilar la instalación de un programa', go: 'remover', tab: 'watch', ic: 'eye' },
-  { t: 'Qué programa es esta ventana (modo cazador)', run: () => { SH.go('remover'); setTimeout(hunter, 650 * SH.motion()); }, ic: 'crosshair' },
-  { t: 'Ver los programas que más ocupan', go: 'remover', tab: 'programs', ic: 'sort' },
+  { t: 'Batch uninstall', go: 'remover', tab: 'batch', ic: 'list' },
+  { t: 'Watch a program install', go: 'remover', tab: 'watch', ic: 'eye' },
+  { t: 'Which program is this window (hunter mode)', run: () => { SH.go('remover'); setTimeout(hunter, 650 * SH.motion()); }, ic: 'crosshair' },
+  { t: 'See the largest programs', go: 'remover', tab: 'programs', ic: 'sort' },
 ]);
 })();

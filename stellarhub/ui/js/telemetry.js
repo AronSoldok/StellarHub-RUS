@@ -1,8 +1,8 @@
-/* StellarHub · telemetría compartida.
-   Dentro de la app los datos son REALES: Python los manda con SH.tele.push({...}) (stellarhub/engine/telemetry.py).
-   Fuera de la app (navegador, pruebas) se simulan para poder diseñar.
-   Lo que Windows no da llega como null: la interfaz debe mostrar "—" (usa SH.tele.fmt / SH.tele.has).
-   Uso: SH.tele.v (valores actuales), SH.tele.hist[clave] (últimos 120), SH.tele.on(fn) (cada actualización). */
+/* StellarHub · shared telemetry.
+   Inside the app the data is REAL: Python sends it with SH.tele.push({...}) (stellarhub/engine/telemetry.py).
+   Outside the app (browser, tests) it is simulated so the UI can be designed.
+   What Windows does not provide arrives as null: the UI must show "—" (use SH.tele.fmt / SH.tele.has).
+   Usage: SH.tele.v (current values), SH.tele.hist[key] (last 120), SH.tele.on(fn) (every update). */
 'use strict';
 (() => {
 const rw = (v, lo, hi, j) => Math.max(lo, Math.min(hi, v + (Math.random() - .5) * j));
@@ -21,7 +21,7 @@ const subs = new Set();
 const emit = () => subs.forEach(fn => { try { fn(v); } catch (e) { console.error(e); } });
 const record = () => KEYS.forEach(k => { hist[k].push(v[k] ?? 0); hist[k].shift(); });
 
-/* ---------- simulación (solo fuera de la app) ---------- */
+/* ---------- simulation (outside the app only) ---------- */
 let burst = 0;
 function tick() {
   if (Math.random() < .07) burst = 5;
@@ -52,14 +52,14 @@ function push(d) {
   record(); emit();
 }
 const has = k => v[k] !== null && v[k] !== undefined;
-/* formatea o devuelve "—" si Windows no da ese dato */
+/* formats the value, or returns "—" if Windows does not provide it */
 const fmt = (k, f = x => Math.round(x)) => has(k) ? f(v[k]) : '—';
 SH.tele = {
   v, hist, has, fmt, push, simulated: true,
   on(fn) { subs.add(fn); return () => subs.delete(fn); },
   setRate(ms) { SH.call('tele_rate', ms); if (timer) { clearInterval(timer); timer = setInterval(tick, Math.max(250, ms * .7)); } },
 };
-/* dentro de la app: real desde el primer momento (aunque la primera muestra tarde un poco) */
+/* inside the app: real from the start (even if the first sample takes a moment) */
 SH.apiReady.then(a => { if (a) goReal(); });
 SH.on && SH.on('boot', () => SH.tele.setRate(+(SH.state.settings.teleRate || 1000)));
 })();

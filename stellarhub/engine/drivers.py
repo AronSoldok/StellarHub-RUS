@@ -1,11 +1,11 @@
-"""Motor del Driver Updater. Todo real:
-- inventario: Win32_PnPSignedDriver (+ estado de cada dispositivo en Win32_PnPEntity)
-- búsqueda e instalación: Windows Update (COM Microsoft.Update.Session), solo drivers firmados, sin telemetría
-- problemas: dispositivos con error (ConfigManagerErrorCode), deshabilitados y desconectados ("fantasma")
-- copia de seguridad: pnputil /export-driver y /add-driver
-- historial: historial de Windows Update filtrado a drivers
-- versiones guardadas y revertir: pnputil /enum-devices /drivers + UpdateDriverForPlugAndPlayDevices
-Lo que modifica el sistema exige administrador: se comprueba aquí y se devuelve {"needAdmin": True}.
+"""Driver Updater engine. Everything is real:
+- inventory: Win32_PnPSignedDriver (+ the state of each device from Win32_PnPEntity)
+- search and install: Windows Update (COM Microsoft.Update.Session), signed drivers only, no telemetry
+- problems: devices with errors (ConfigManagerErrorCode), disabled and disconnected ("ghost") devices
+- backup: pnputil /export-driver and /add-driver
+- history: Windows Update history filtered to drivers
+- stored versions and rollback: pnputil /enum-devices /drivers + UpdateDriverForPlugAndPlayDevices
+Anything that changes the system needs administrator rights: checked here, returning {"needAdmin": True}.
 """
 import ctypes
 import json
@@ -62,7 +62,7 @@ def _load_json(path, default):
 
 
 def _ps_job(job, script, timeout=900):
-    """PowerShell que se puede cancelar: si el usuario cancela, se mata el proceso."""
+    """Cancellable PowerShell: if the user cancels, the process is killed."""
     pre = ("$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; ")
     p = subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                           "-Command", pre + script], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -81,7 +81,7 @@ def _ps_job(job, script, timeout=900):
             raise Cancelled()
         if time.monotonic() - t0 > timeout:
             p.kill()
-            raise TimeoutError("Windows Update no respondió a tiempo")
+            raise TimeoutError("Windows Update did not respond in time")
     return (out.get("o") or b"").decode("utf-8", "replace"), (out.get("e") or b"").decode("utf-8", "replace")
 
 
@@ -97,7 +97,7 @@ def _json_lines(text):
     return out
 
 
-# ================= inventario =================
+# ================= inventory =================
 _INV = r"""
 $st=@{}; Get-CimInstance Win32_PnPEntity | ForEach-Object { $st[$_.DeviceID] = $_.ConfigManagerErrorCode }
 Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DeviceName -and $_.DriverVersion } | ForEach-Object {
@@ -108,7 +108,7 @@ Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DeviceName -and $_.Dri
 
 
 def list_drivers(fresh=False):
-    """Drivers instalados. inbox=True para los que vienen con Windows (fecha 21/06/2006, proveedor Microsoft)."""
+    """Installed drivers. inbox=True for the ones that ship with Windows (dated 2006-06-21, provider Microsoft)."""
     with _lock:
         if not fresh and _cache["drivers"] and time.time() - _cache["at"] < 120:
             return _cache["drivers"]
@@ -125,7 +125,7 @@ def list_drivers(fresh=False):
         return out
 
 
-# ================= búsqueda en Windows Update =================
+# ================= Windows Update search =================
 _SEARCH = r"""
 $s = New-Object -ComObject Microsoft.Update.Session
 $s.ClientApplicationID = 'StellarHub'
@@ -162,13 +162,13 @@ def _match(update, drivers):
 
 
 def search(job):
-    """Pregunta a Windows Update qué drivers hay para este equipo (solo lectura)."""
-    job.progress(.05, "Conectando con Windows Update", phase=0, force=True)
+    """Asks Windows Update which drivers are available for this PC (read-only)."""
+    job.progress(.05, "Connecting to Windows Update", phase=0, force=True)
     drivers = []
     t = threading.Thread(target=lambda: drivers.extend(list_drivers()), daemon=True)
     t.start()
-    phases = ["Pidiendo el catálogo de drivers para tu equipo", "Esperando la respuesta de Windows Update",
-              "Comparando con tus drivers instalados"]
+    phases = ["Requesting the driver catalog for your PC", "Waiting for Windows Update to respond",
+              "Comparing with your installed drivers"]
     done = {}
 
     def run_search():
@@ -186,18 +186,18 @@ def search(job):
         ph = min(len(phases) - 1, int(el // 6))
         if ph != i or el < 2:
             i = ph
-        job.progress(min(.85, .1 + el / 90), phases[i] if el > 1 else "Conectando con Windows Update", phase=i + 1, secs=int(el))
+        job.progress(min(.85, .1 + el / 90), phases[i] if el > 1 else "Connecting to Windows Update", phase=i + 1, secs=int(el))
     if "err" in done:
         if isinstance(done["err"], Cancelled):
             raise done["err"]
-        raise RuntimeError(f"Windows Update no respondió: {done['err']}")
+        raise RuntimeError(f"Windows Update did not respond: {done['err']}")
     out, err = done.get("out", ("", ""))
     data = _json_lines(out)
     ups = data[0] if data and isinstance(data[0], list) else (data if data and isinstance(data[0], dict) else [])
     if not data and err.strip():
-        raise RuntimeError("Windows Update devolvió un error: " + err.strip().splitlines()[-1][:300])
+        raise RuntimeError("Windows Update returned an error: " + err.strip().splitlines()[-1][:300])
     t.join(60)
-    job.progress(.92, "Comparando con tus drivers instalados", phase=3)
+    job.progress(.92, "Comparing with your installed drivers", phase=3)
     res = []
     for u in ups:
         d = _match(u, drivers)
@@ -208,16 +208,16 @@ def search(job):
                                  "provider": d["provider"], "instance": d["instance"]} if d else None)})
     payload = {"at": time.time(), "updates": res}
     _save_json(LAST, payload)
-    job.progress(1, "Listo", phase=4)
+    job.progress(1, "Done", phase=4)
     return payload
 
 
 def last_search():
-    """Resultado de la última búsqueda (se guarda en disco), sin tocar Windows Update."""
+    """Result of the last search (saved to disk), without contacting Windows Update."""
     return _load_json(LAST, {"at": None, "updates": []})
 
 
-# ================= instalación =================
+# ================= installation =================
 _INSTALL = r"""
 $ids = '__IDS__' | ConvertFrom-Json
 function Say($o) { [Console]::Out.WriteLine(($o | ConvertTo-Json -Compress)); [Console]::Out.Flush() }
@@ -234,7 +234,7 @@ foreach ($u in $todo) {
     $col = New-Object -ComObject Microsoft.Update.UpdateColl; [void]$col.Add($u)
     Say @{ step='download'; id=$id }
     $dl = $s.CreateUpdateDownloader(); $dl.Updates = $col; $dr = $dl.Download()
-    if ($dr.ResultCode -ne 2 -and $dr.ResultCode -ne 3) { Say @{ step='error'; id=$id; code=$dr.ResultCode; msg='La descarga falló' }; continue }
+    if ($dr.ResultCode -ne 2 -and $dr.ResultCode -ne 3) { Say @{ step='error'; id=$id; code=$dr.ResultCode; msg='The download failed' }; continue }
     Say @{ step='install'; id=$id }
     $ins = $s.CreateUpdateInstaller(); $ins.Updates = $col; $res = $ins.Install()
     $c = $res.GetUpdateResult(0).ResultCode; $h = '{0:X8}' -f $res.GetUpdateResult(0).HResult
@@ -254,7 +254,7 @@ try {{ Enable-ComputerRestore -Drive "$env:SystemDrive\\" -ErrorAction SilentlyC
 
 
 def install(job, ids, restore_point=True):
-    """Instala los drivers elegidos (ids de Windows Update), uno a uno, con punto de restauración antes."""
+    """Installs the selected drivers (Windows Update ids), one by one, creating a restore point first."""
     need = _need_admin()
     if need:
         return need
@@ -263,10 +263,10 @@ def install(job, ids, restore_point=True):
         return {"results": [], "reboot": False}
     rp = {"ok": None}
     if restore_point:
-        job.progress(.02, "Creando el punto de restauración", step="rp", phase="run", force=True)
-        rp = _restore_point("StellarHub: antes de instalar drivers")
-        job.progress(.08, "Punto de restauración", step="rp", phase="done" if rp.get("ok") else "skip",
-                     msg=None if rp.get("ok") else "Windows no creó uno nuevo (solo permite uno cada 24 h o está desactivado).", force=True)
+        job.progress(.02, "Creating a restore point", step="rp", phase="run", force=True)
+        rp = _restore_point("StellarHub: before installing drivers")
+        job.progress(.08, "Restore point", step="rp", phase="done" if rp.get("ok") else "skip",
+                     msg=None if rp.get("ok") else "Windows did not create a new one (it only allows one every 24 hours, or it is turned off).", force=True)
     results, reboot = {}, False
     n = len(ids)
 
@@ -277,23 +277,23 @@ def install(job, ids, restore_point=True):
             k = list(results).index(uid) if uid in results else len(results)
             if st == "download":
                 results.setdefault(uid, {"id": uid, "ok": False})
-                job.progress(.1 + .9 * (k / n), "Descargando", step=uid, phase="download", force=True)
+                job.progress(.1 + .9 * (k / n), "Downloading", step=uid, phase="download", force=True)
             elif st == "install":
-                job.progress(.1 + .9 * ((k + .6) / n), "Instalando", step=uid, phase="install", force=True)
+                job.progress(.1 + .9 * ((k + .6) / n), "Installing", step=uid, phase="install", force=True)
             elif st in ("done", "error"):
                 r = results.setdefault(uid, {"id": uid})
                 r.update(ok=bool(m.get("ok")), code=m.get("code"), msg=m.get("msg"), reboot=bool(m.get("reboot")), hresult=m.get("hresult"))
                 reboot = reboot or r["reboot"]
-                job.progress(.1 + .9 * ((k + 1) / n), "Hecho" if r["ok"] else "Falló", step=uid, phase="done" if r["ok"] else "error",
+                job.progress(.1 + .9 * ((k + 1) / n), "Done" if r["ok"] else "Failed", step=uid, phase="done" if r["ok"] else "error",
                              result=r, force=True)
             elif st == "none":
-                job.progress(1, "Esos drivers ya no están disponibles", force=True)
+                job.progress(1, "Those drivers are no longer available", force=True)
     script = _INSTALL.replace("__IDS__", json.dumps(ids))
     code, _ = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
                    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; " + script],
                   on_line=on_line, job=job, timeout=3600)
     job.check()
-    # lo instalado ya no está pendiente
+    # what was installed is no longer pending
     last = last_search()
     okids = {k for k, v in results.items() if v.get("ok")}
     last["updates"] = [u for u in last.get("updates", []) if u["id"] not in okids]
@@ -303,7 +303,7 @@ def install(job, ids, restore_point=True):
 
 
 def restart(seconds=60):
-    subprocess.run(["shutdown", "/r", "/t", str(int(seconds)), "/c", "StellarHub reinicia el equipo para terminar de instalar drivers."],
+    subprocess.run(["shutdown", "/r", "/t", str(int(seconds)), "/c", "StellarHub is restarting the PC to finish installing drivers."],
                    creationflags=NO_WINDOW)
     return True
 
@@ -313,16 +313,16 @@ def cancel_restart():
     return True
 
 
-# ================= problemas =================
+# ================= problems =================
 CODES = {
-    1: "No está bien configurado.", 3: "El driver está dañado o el sistema va justo de memoria.", 10: "El dispositivo no puede arrancar.",
-    12: "No encuentra recursos libres suficientes.", 14: "Necesita reiniciar el equipo para funcionar.", 18: "Hay que reinstalar sus drivers.",
-    19: "Su configuración en el registro está dañada.", 21: "Windows lo está quitando.", 22: "Está deshabilitado.",
-    24: "No está presente, no funciona bien o le faltan drivers.", 28: "No tiene driver instalado.", 29: "Está deshabilitado en el firmware (BIOS).",
-    31: "Windows no puede cargar sus drivers.", 32: "Su servicio de driver está deshabilitado.", 37: "El driver falló al iniciarse.",
-    39: "El driver falta o está dañado.", 41: "Windows cargó el driver pero no encuentra el dispositivo.",
-    43: "Windows lo detuvo porque informó de un problema.", 45: "No está conectado ahora mismo.", 48: "Windows bloqueó su driver por problemas conocidos.",
-    52: "Windows no puede verificar la firma digital de su driver.",
+    1: "It is not configured correctly.", 3: "The driver is damaged or the system is low on memory.", 10: "The device cannot start.",
+    12: "It cannot find enough free resources.", 14: "The PC needs a restart for it to work.", 18: "Its drivers need to be reinstalled.",
+    19: "Its registry configuration is damaged.", 21: "Windows is removing it.", 22: "It is disabled.",
+    24: "It is not present, not working properly or missing drivers.", 28: "It has no driver installed.", 29: "It is disabled in the firmware (BIOS).",
+    31: "Windows cannot load its drivers.", 32: "Its driver service is disabled.", 37: "The driver failed to start.",
+    39: "The driver is missing or damaged.", 41: "Windows loaded the driver but cannot find the device.",
+    43: "Windows stopped it because it reported a problem.", 45: "It is not connected right now.", 48: "Windows blocked its driver because of known problems.",
+    52: "Windows cannot verify the digital signature of its driver.",
 }
 _PROBLEMS = r"""
 $err = @(Get-CimInstance Win32_PnPEntity -Filter 'ConfigManagerErrorCode<>0' | ForEach-Object {
@@ -343,7 +343,7 @@ def problems():
         c = e.get("code")
         if c in (45,):
             continue
-        errs.append({**e, "why": CODES.get(c, f"Windows informa del código {c}."), "disabled": c == 22})
+        errs.append({**e, "why": CODES.get(c, f"Windows reports code {c}."), "disabled": c == 22})
     ghosts = sorted((r.get("ghosts") or []), key=lambda g: g.get("last") or "", reverse=True)
     return {"errors": [e for e in errs if not e["disabled"]], "disabled": [e for e in errs if e["disabled"]], "ghosts": ghosts,
             "at": time.time()}
@@ -362,7 +362,7 @@ def set_enabled(job, instance_id, enable):
 
 
 def remove_device(job, instance_id):
-    """Quita un dispositivo (normalmente uno que ya no está conectado). Su driver sigue en el equipo."""
+    """Removes a device (usually one that is no longer connected). Its driver stays on the PC."""
     need = _need_admin()
     if need:
         return need
@@ -370,7 +370,7 @@ def remove_device(job, instance_id):
     return {"ok": code == 0, "msg": out.strip().splitlines()[-1] if out.strip() else ""}
 
 
-# ================= historial =================
+# ================= history =================
 _HIST = r"""
 $s = New-Object -ComObject Microsoft.Update.Session; $se = $s.CreateUpdateSearcher()
 $n = $se.GetTotalHistoryCount(); if ($n -le 0) { return }
@@ -395,11 +395,11 @@ def history():
         name = parts[0] if len(parts) >= 3 else t
         res.append({"date": e.get("date"), "title": t, "name": name, "cls": parts[1] if len(parts) >= 3 else "",
                     "ver": _ver_from_title(t), "ok": e.get("code") in (2, 3), "code": e.get("code"),
-                    "err": None if e.get("code") in (2, 3) else f"Windows Update devolvió 0x{e.get('hr')}"})
+                    "err": None if e.get("code") in (2, 3) else f"Windows Update returned 0x{e.get('hr')}"})
     return res
 
 
-# ================= copias de seguridad =================
+# ================= backups =================
 def default_backup_dir():
     docs = os.path.join(os.path.expanduser("~"), "Documents")
     try:
@@ -408,7 +408,12 @@ def default_backup_dir():
             docs = winreg.QueryValueEx(k, "Personal")[0]
     except OSError:
         pass
-    return os.path.join(docs, "StellarHub", "Copias de drivers")
+    return os.path.join(docs, "StellarHub", "Driver backups")
+
+
+def _legacy_backup_dir():
+    """Folder used by earlier versions (Spanish name): still listed so old backups are not lost."""
+    return os.path.join(os.path.dirname(default_backup_dir()), "Copias de drivers")
 
 
 def _dir_stats(path):
@@ -429,9 +434,10 @@ def backups():
     base = default_backup_dir()
     out = []
     cands = set(roots)
-    if os.path.isdir(base):
-        for d in os.listdir(base):
-            cands.add(os.path.join(base, d))
+    for b in (base, _legacy_backup_dir()):
+        if os.path.isdir(b):
+            for d in os.listdir(b):
+                cands.add(os.path.join(b, d))
     for p in cands:
         if not os.path.isdir(p):
             continue
@@ -467,7 +473,7 @@ def _third_party_count():
 
 
 def export(job, folder=None):
-    """Exporta todos los drivers de fabricantes (los de Windows vienen con Windows y no se pueden exportar)."""
+    """Exports every manufacturer driver (the Windows ones ship with Windows and cannot be exported)."""
     need = _need_admin()
     if need:
         return need
@@ -482,7 +488,7 @@ def export(job, folder=None):
             if inf.lower() not in seen:
                 seen.add(inf.lower())
                 job.progress(len(seen) / total, line.strip()[:160], n=len(seen), total=total)
-    job.progress(0, "Preparando la copia", n=0, total=total, force=True)
+    job.progress(0, "Preparing the backup", n=0, total=total, force=True)
     code, out = run(["pnputil", "/export-driver", "*", dest], on_line=on_line, encoding="cp1252", job=job, timeout=3600)
     job.check()
     n, size = _dir_stats(dest)
@@ -495,7 +501,7 @@ def export(job, folder=None):
             os.rmdir(dest)
         except OSError:
             pass
-        return {"ok": False, "msg": out.strip().splitlines()[-1] if out.strip() else "pnputil no exportó nada"}
+        return {"ok": False, "msg": out.strip().splitlines()[-1] if out.strip() else "pnputil did not export anything"}
     return {"ok": True, "path": dest, "count": n, "gb": round(size / 1024 ** 3, 2)}
 
 
@@ -504,7 +510,7 @@ def restore_backup(job, path):
     if need:
         return need
     if not path or not os.path.isdir(path):
-        return {"ok": False, "msg": "La carpeta de la copia ya no existe."}
+        return {"ok": False, "msg": "The backup folder no longer exists."}
     total = max(1, _dir_stats(path)[0])
     done = [0]
 
@@ -519,10 +525,10 @@ def restore_backup(job, path):
 
 
 def delete_backup(job, path):
-    """Manda la copia a la papelera (se puede recuperar desde ahí)."""
+    """Sends the backup to the Recycle Bin (it can be recovered from there)."""
     known = {b["path"] for b in backups()}
     if path not in known:
-        return {"ok": False, "msg": "Esa carpeta no es una copia de StellarHub."}
+        return {"ok": False, "msg": "That folder is not a StellarHub backup."}
     from ctypes import wintypes
 
     class SHFILEOPSTRUCTW(ctypes.Structure):
@@ -534,9 +540,9 @@ def delete_backup(job, path):
     return {"ok": r == 0 and not op.fAnyOperationsAborted}
 
 
-# ================= versiones guardadas y revertir =================
+# ================= stored versions and rollback =================
 def driver_versions(instance_id):
-    """Paquetes de driver del almacén que sirven para este dispositivo (el instalado y los anteriores)."""
+    """Driver packages in the driver store that fit this device (the installed one and older ones)."""
     code, out = run(["pnputil", "/enum-devices", "/instanceid", str(instance_id), "/drivers"], encoding="cp1252", timeout=60)
     if code != 0:
         return []
@@ -545,7 +551,7 @@ def driver_versions(instance_id):
         m = re.search(r":\s*((?:oem\d+|[\w.-]+)\.inf)\s*$", line, re.I)
         if m and line.startswith((" ", "\t")):
             if cur is not None and not cur["version"]:
-                cur["original"] = m.group(1)  # "Nombre original" del mismo paquete, no otro paquete
+                cur["original"] = m.group(1)  # "Original name" of the same package, not another package
             else:
                 cur = {"inf": m.group(1), "version": "", "date": "", "installed": False, "original": ""}
                 res.append(cur)
@@ -556,37 +562,38 @@ def driver_versions(instance_id):
         if v:
             cur["date"] = f"{v.group(3)}-{int(v.group(1)):02d}-{int(v.group(2)):02d}"
             cur["version"] = v.group(4)
+        # pnputil output is localized: match Spanish and English ("instalado"/"installed", "estado"/"status")
         if re.search(r"instalad|installed", line, re.I) and re.search(r"estado|status", line, re.I):
             cur["installed"] = True
-    # el que hay que poner al revertir: el más nuevo de los no instalados que sea más viejo que el instalado
+    # the one to use when rolling back: the newest non-installed package that is older than the installed one
     inst = next((r for r in res if r["installed"]), None)
 
     def vkey(s):
         return tuple(int(x) for x in re.findall(r"\d+", s or "0"))
     for r in res:
-        # solo paquetes de fabricante (oemNN.inf): volver al driver genérico de Windows no es "la versión anterior"
+        # only manufacturer packages (oemNN.inf): going back to the generic Windows driver is not "the previous version"
         r["older"] = bool(inst and not r["installed"] and re.fullmatch(r"oem\d+\.inf", r["inf"], re.I)
                           and vkey(r["version"]) < vkey(inst["version"]))
     return res
 
 
 def rollback(job, instance_id, inf, hwid):
-    """Vuelve a una versión anterior que ya está en el almacén de drivers (fuerza ese INF para el dispositivo)."""
+    """Goes back to an older version already in the driver store (forces that INF for the device)."""
     need = _need_admin()
     if need:
         return need
     if not re.fullmatch(r"oem\d+\.inf", str(inf), re.I):
-        return {"ok": False, "msg": "Solo se puede volver a drivers de fabricantes guardados en el equipo."}
+        return {"ok": False, "msg": "You can only go back to manufacturer drivers stored on this PC."}
     path = os.path.join(INF_DIR, inf)
     if not os.path.isfile(path):
-        return {"ok": False, "msg": "Ese driver ya no está en el equipo."}
-    job.progress(.1, "Creando el punto de restauración", force=True)
-    rp = _restore_point("StellarHub: antes de revertir un driver")
-    job.progress(.4, "Instalando la versión anterior", force=True)
+        return {"ok": False, "msg": "That driver is no longer on this PC."}
+    job.progress(.1, "Creating a restore point", force=True)
+    rp = _restore_point("StellarHub: before rolling back a driver")
+    job.progress(.4, "Installing the previous version", force=True)
     reboot = ctypes.c_int(0)
     newdev = ctypes.windll.newdev
     newdev.UpdateDriverForPlugAndPlayDevicesW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_int)]
     ok = newdev.UpdateDriverForPlugAndPlayDevicesW(None, str(hwid), path, 1, ctypes.byref(reboot))  # INSTALLFLAG_FORCE
     err = ctypes.GetLastError()
     _cache["at"] = 0
-    return {"ok": bool(ok), "reboot": bool(reboot.value), "restorePoint": rp, "msg": None if ok else f"Windows devolvió el error {err}."}
+    return {"ok": bool(ok), "reboot": bool(reboot.value), "restorePoint": rp, "msg": None if ok else f"Windows returned error {err}."}

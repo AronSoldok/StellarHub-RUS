@@ -41,7 +41,7 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .du-actbar .t{flex:1;color:var(--mute)}
 #v-drivers .du-actbar .t b{color:var(--ink);font-weight:500}
 
-/* instalación */
+/* installation */
 #v-drivers .du-inst{padding:8px}
 #v-drivers .du-step{display:grid;grid-template-columns:34px minmax(0,1fr) 220px 110px;gap:14px;align-items:center;padding:12px}
 #v-drivers .du-step .st{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--raise2);color:var(--mute);position:relative}
@@ -60,7 +60,7 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .du-done p{color:var(--mute);margin-top:4px}
 #v-drivers .du-done .a{margin-left:auto;display:flex;gap:8px}
 
-/* todos los drivers */
+/* all drivers */
 #v-drivers .tab.fill{display:grid;grid-template-columns:minmax(0,1fr) clamp(300px,26vw,380px);gap:14px}
 #v-drivers .da-left{display:flex;flex-direction:column;min-height:0}
 #v-drivers .da-tools{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
@@ -102,7 +102,7 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .dd-empty{flex:1;display:grid;place-items:center;text-align:center;color:var(--mute);padding:20px}
 #v-drivers .dd-empty svg{width:34px;height:34px;color:var(--faint);margin-bottom:10px}
 
-/* problemas */
+/* problems */
 #v-drivers .dp-hero{display:flex;align-items:center;gap:20px;padding:20px 22px}
 #v-drivers .dp-hero svg.ring{width:64px;height:64px;flex:none}
 #v-drivers .dp-hero h3{font:500 20px var(--display);letter-spacing:-.02em}
@@ -111,7 +111,7 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .dp-ex{opacity:.8;border-style:dashed}
 #v-drivers .dp-ex .code{font-size:12px;color:var(--faint);margin:10px 0 14px;line-height:1.5}
 
-/* copia de seguridad */
+/* backup */
 #v-drivers .db-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px 26px;align-items:end;padding:20px 22px}
 #v-drivers .db-hero h3{font:500 20px var(--display);letter-spacing:-.02em}
 #v-drivers .db-hero p{color:var(--mute);margin-top:4px;max-width:560px}
@@ -131,7 +131,7 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .db-row .a{display:flex;gap:4px}
 #v-drivers .db-row.fresh{background:color-mix(in oklab,var(--accent2) 9%,transparent)}
 
-/* historial */
+/* history */
 #v-drivers .dh-month{font-size:12.5px;color:var(--mute);margin:18px 6px 8px}
 #v-drivers .dh-month:first-child{margin-top:0}
 #v-drivers .dh-row{display:grid;grid-template-columns:86px minmax(0,1.6fr) minmax(0,1.4fr) 110px auto;gap:14px;align-items:center;padding:11px 12px;border-radius:12px;transition:background-color calc(150ms*var(--f))}
@@ -147,23 +147,23 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
   #v-drivers .da-row>:nth-child(3){display:none}
   #v-drivers .dp-grid{grid-template-columns:1fr}
 }
-/* ajustes tras revisar capturas */
+/* adjustments after reviewing screenshots */
 #v-drivers .subnav .bd[hidden]{display:none}
 #v-drivers .dh-row{grid-template-columns:86px minmax(0,1.6fr) minmax(0,1.4fr) 110px 90px}
 #v-drivers .db-cols{grid-template-columns:minmax(0,1.2fr) 90px 90px minmax(0,1.8fr) 190px}
 #v-drivers .db-row .a{justify-content:flex-end}
 #v-drivers .du-step{grid-template-columns:34px minmax(0,1fr) 220px 160px}
 
-/* ---------- distribución: todo llega hasta el dock, el scroll va dentro de los paneles ---------- */
+/* ---------- layout: everything reaches down to the dock, scrolling happens inside the panels ---------- */
 #v-drivers .du-wrap{height:100%;min-height:0}
 #v-drivers .du-wrap>.pan:last-child{flex:1 1 auto}
-/* actualizaciones: la lista crece y hace scroll dentro; la barra de selección va debajo, sin tapar filas */
+/* updates: the list grows and scrolls inside; the selection bar sits below it without covering rows */
 #v-drivers .du-list{flex:1 1 0;min-height:200px;display:flex;flex-direction:column}
 #v-drivers .du-list>.tbl-head{flex:none}
 #v-drivers .du-list>#duRows,#v-drivers .du-list>.du-inst,#v-drivers .du-list>.sk-rows{flex:1;min-height:0;overflow:auto}
 #v-drivers .du-actbar{position:relative;margin-top:0;flex:none}
 #v-drivers .du-done{flex:none}
-/* todos los drivers: buscador y filtros en la cabecera del panel; grupos como secciones del mismo panel */
+/* all drivers: search and filters in the panel header; groups as sections of the same panel */
 #v-drivers .da-left{padding:12px 8px 4px}
 #v-drivers .da-tools{padding:0 6px 12px;margin:0 0 6px;border-bottom:1px solid var(--line);flex:none}
 #v-drivers .da-scroll{padding:0 2px 0 0}
@@ -173,11 +173,11 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .da-row .n1{white-space:normal}
 #v-drivers .da-row .n1>small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-drivers .da-detail{padding:18px}
-/* problemas y copias: los paneles de abajo ocupan el alto que queda */
+/* problems and backups: the lower panels take the remaining height */
 #v-drivers .dp-grid{flex:1 1 auto;min-height:220px;align-items:stretch}
 #v-drivers .dp-grid>.pan{display:flex;flex-direction:column}
 
-/* ---------- motor real: confirmaciones, problemas, rendimiento ---------- */
+/* ---------- real engine: confirmations, problems, performance ---------- */
 #v-drivers .dq-o{position:absolute;inset:0;z-index:30;display:grid;place-items:center}
 #v-drivers .dq-s{position:absolute;inset:-60px -40px;background:rgba(3,5,11,.55)}
 #v-drivers .dq{position:relative;width:min(460px,calc(100% - 40px));padding:22px 22px 18px;border-radius:20px;background:var(--deep);border:1px solid var(--line2);
@@ -196,7 +196,7 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .dh-note{font-size:12.5px;color:var(--mute);padding:2px 6px 6px}
 #v-drivers .dd-files div{align-items:center;gap:10px}
 #v-drivers .dd-files small{font-size:11px}
-/* scroll fluido: el navegador no pinta los grupos que no se ven */
+/* smooth scrolling: the browser does not paint the groups that are out of view */
 #v-drivers .da-grp{content-visibility:auto;contain-intrinsic-size:auto 52px}
 #v-drivers .da-grp.open{contain-intrinsic-size:auto 400px}
 #v-drivers .dh-row,#v-drivers .db-row{content-visibility:auto;contain-intrinsic-size:auto 56px}

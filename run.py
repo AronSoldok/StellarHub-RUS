@@ -1,9 +1,9 @@
-"""Lanzador de StellarHub.  Uso: pythonw run.py   (--debug abre las herramientas de desarrollo)"""
+"""StellarHub launcher.  Usage: pythonw run.py   (--debug opens the developer tools)"""
 import os
 import sys
 
 if sys.platform != "win32":
-    sys.exit("StellarHub solo funciona en Windows.")
+    sys.exit("StellarHub only runs on Windows.")
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 

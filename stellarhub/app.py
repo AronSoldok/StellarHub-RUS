@@ -1,4 +1,4 @@
-"""Ventana de StellarHub (pywebview + WebView2) y la API que ve la interfaz."""
+"""StellarHub window (pywebview + WebView2) and the API the UI sees."""
 import ctypes
 import hashlib
 import json
@@ -32,7 +32,7 @@ def is_admin():
 
 
 def _gui_python():
-    """pythonw.exe si existe, para no abrir una consola al relanzar."""
+    """pythonw.exe if it exists, so relaunching does not open a console."""
     exe = sys.executable
     if not getattr(sys, "frozen", False) and exe.lower().endswith("python.exe"):
         w = exe[:-10] + "pythonw.exe"
@@ -42,7 +42,7 @@ def _gui_python():
 
 
 class Api:
-    """Todo lo público de esta clase es invocable desde JS como window.pywebview.api.<nombre>."""
+    """Everything public in this class can be called from JS as window.pywebview.api.<name>."""
 
     def __init__(self):
         self._window = None
@@ -58,11 +58,11 @@ class Api:
     def _attach(self, window):
         self._window = window
 
-    # ---------- información ----------
+    # ---------- information ----------
     def info(self):
         return {"version": VERSION, "admin": is_admin()}
 
-    # ---------- ajustes ----------
+    # ---------- settings ----------
     def settings_get(self):
         try:
             with open(SETTINGS, encoding="utf-8") as fh:
@@ -84,7 +84,7 @@ class Api:
             os.replace(tmp, SETTINGS)
         return True
 
-    # ---------- marco propio de la ventana ----------
+    # ---------- custom window frame ----------
     def win_drag(self):
         self._chrome and self._chrome.drag()
 
@@ -103,13 +103,13 @@ class Api:
     def win_state(self):
         return {"max": bool(self._chrome and self._chrome.max), "frameless": self._chrome is not None}
 
-    # ---------- ventana ----------
+    # ---------- window ----------
     def set_zoom(self, factor):
-        """Zoom real de WebView2 (el mismo que Ctrl + rueda), no un escalado CSS."""
+        """Real WebView2 zoom (the same as Ctrl + wheel), not CSS scaling."""
         try:
             factor = max(0.75, min(2.0, float(factor)))
             form = self._window.native
-            from System import Action  # pythonnet, viene con pywebview
+            from System import Action  # pythonnet, ships with pywebview
 
             def apply():
                 form.webview.ZoomFactor = factor
@@ -120,10 +120,10 @@ class Api:
             return False
 
     def relaunch_admin(self):
-        """Abre una copia elevada y cierra esta. Si el usuario dice que no en UAC, sigue todo igual."""
+        """Opens an elevated copy and closes this one. If the user says no in UAC, nothing changes."""
         if is_admin():
             return True
-        # la copia elevada espera a que esta termine (libera la "copia única" y los datos de WebView2)
+        # the elevated copy waits for this one to exit (it frees the single-instance lock and the WebView2 data)
         args = [a for a in sys.argv[1:] if a not in ("--tray",)]
         if "--wait-pid" in args:
             i = args.index("--wait-pid")
@@ -138,10 +138,10 @@ class Api:
             return True
         return False
 
-    # ---------- cerrar, ocultar en la bandeja y salir ----------
+    # ---------- close, hide in the tray and quit ----------
     def _js(self, code, target=None):
-        """Avisa a la interfaz SIN esperar. evaluate_js espera la respuesta de WebView2, que llega por el hilo
-        de la ventana: llamado desde ese hilo (eventos, Invoke, redimensionar) la bloquearía para siempre."""
+        """Notifies the UI WITHOUT waiting. evaluate_js waits for WebView2's reply, which arrives on the window
+        thread: called from that thread (events, Invoke, resizing) it would block it forever."""
         w = target or self._window
 
         def run():
@@ -152,14 +152,14 @@ class Api:
         threading.Thread(target=run, daemon=True).start()
 
     def close_main(self):
-        """La X: con "cerrar a la bandeja" activado solo oculta la ventana; si no, sale de la app."""
+        """The X: with "close to the tray" on it only hides the window; otherwise it quits the app."""
         if self._tray is not None and self.settings_get().get("trayOnClose", True):
             self._window.hide()
             self._visible = False
             self._tele_refresh()
             if not self._told_tray:
                 self._told_tray = True
-                self._tray.notify("StellarHub sigue en la bandeja. Ábrelo desde aquí o sal con clic derecho > Salir.")
+                self._tray.notify("StellarHub is still running in the tray. Open it from here, or right-click > Quit to exit.")
             return "hidden"
         self.quit()
         return "quit"
@@ -175,8 +175,8 @@ class Api:
         return True
 
     def _on_closing(self):
-        """Alt+F4 o cerrar desde la barra de tareas: igual que la X. Corre en el hilo de la ventana, así que
-        decide y cancela al momento; ocultar o salir se hace después, fuera de este hilo."""
+        """Alt+F4 or closing from the taskbar: same as the X. It runs on the window thread, so it decides
+        and cancels right away; hiding or quitting happens afterwards, off this thread."""
         if self._quitting:
             return True
         if self._tray is not None and self.settings_get().get("trayOnClose", True):
@@ -204,7 +204,7 @@ class Api:
         return True
 
     def set_autostart(self, on):
-        """Abrir con Windows (minimizado en la bandeja): entrada en HKCU\\...\\Run."""
+        """Open with Windows (minimized to the tray): an entry in HKCU\\...\\Run."""
         import winreg
         key = r"Software\Microsoft\Windows\CurrentVersion\Run"
         try:
@@ -222,9 +222,9 @@ class Api:
         except OSError:
             return False
 
-    # ---------- widget siempre visible ----------
+    # ---------- always-on-top widget ----------
     def widget_toggle(self, width=400, height=190):
-        """Abre o cierra el widget. Devuelve True si queda abierto."""
+        """Opens or closes the widget. Returns True if it ends up open."""
         import webview
         if self._widget is not None:
             self.widget_close()
@@ -251,9 +251,9 @@ class Api:
         return True
 
     def _widget_keep_on_top(self, w):
-        """La barra de tareas también es "siempre visible" y, al tocarla, se pone delante de todo.
-        - Ventana de herramientas: sale en todos los escritorios virtuales y no aparece en Alt+Tab.
-        - Un hilo vuelve a ponerla arriba cada poco (sin activarla ni moverla) mientras el widget exista."""
+        """The taskbar is also "always on top" and, when touched, it jumps in front of everything.
+        - Tool window: shows on every virtual desktop and does not appear in Alt+Tab.
+        - A thread puts it back on top every so often (without activating or moving it) while the widget exists."""
         try:
             hwnd = w.native.Handle.ToInt32()
         except Exception:
@@ -266,7 +266,7 @@ class Api:
             ex = u.GetWindowLongPtrW(ctypes.c_void_p(hwnd), GWL_EXSTYLE)
             u.SetWindowLongPtrW(ctypes.c_void_p(hwnd), GWL_EXSTYLE, (ex | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW)
         except Exception as e:
-            print("widget estilo:", e)
+            print("widget style:", e)
         HWND_TOPMOST = ctypes.c_void_p(-1)
         FLAGS = 0x0001 | 0x0002 | 0x0010 | 0x0200  # NOSIZE | NOMOVE | NOACTIVATE | NOOWNERZORDER
 
@@ -281,14 +281,14 @@ class Api:
 
     def _widget_gone(self, w=None):
         if w is not None and self._widget is not w:
-            return  # era un widget anterior ya sustituido
+            return  # it was an earlier widget that has already been replaced
         self._widget = None
         self._tray and self._tray.refresh()
         self._js("SH.emit('widget', {on: false})")
 
     def widget_close(self):
-        """Se cierra un instante después de responder: si la llamada viene del propio widget, destruirlo
-        mientras pywebview aún le está devolviendo el resultado puede dejarlo colgado."""
+        """It closes a moment after replying: if the call comes from the widget itself, destroying it
+        while pywebview is still returning the result to it can leave it hanging."""
         w = self._widget
         self._widget = None
         if w is not None:
@@ -305,7 +305,7 @@ class Api:
         return True
 
     def widget_mode(self, mode):
-        """El botón mini/grande del propio widget: guarda y avisa a la ventana principal."""
+        """The widget's own small/large button: saves it and tells the main window."""
         mode = "mini" if mode == "mini" else "full"
         self.settings_set({"widgetMode": mode})
         self._js(f"SH.state.settings.widgetMode='{mode}'; SH.emit('widget-mode','{mode}')")
@@ -315,13 +315,13 @@ class Api:
         return self._widget is not None
 
     def widget_update(self, conf):
-        """Ajustes del widget cambiados en la ventana principal: se aplican al momento."""
+        """Widget settings changed in the main window: applied instantly."""
         if self._widget is not None:
             self._js(f"window.SH && SH.widgetApply && SH.widgetApply({json.dumps(conf)})", self._widget)
         return True
 
     def widget_resize(self, width, height):
-        """Cambia el tamaño manteniendo fija la esquina superior derecha (el widget suele vivir a la derecha)."""
+        """Resizes it keeping the top-right corner fixed (the widget usually lives on the right)."""
         if self._widget is not None:
             try:
                 from webview.window import FixPoint
@@ -331,23 +331,23 @@ class Api:
         return True
 
     def log_js_error(self, msg):
-        """Errores de la interfaz al registro (stellarhub.log), para poder diagnosticar."""
-        print("[interfaz]", str(msg)[:2000], flush=True)
+        """UI errors go to the log (stellarhub.log), to help diagnose problems."""
+        print("[ui]", str(msg)[:2000], flush=True)
         return True
 
-    # ---------- motor real ----------
+    # ---------- real engine ----------
     def engine(self, mod, fn, args=None):
-        """SH.engine(mod, fn, ...args): llamada rápida a stellarhub/engine/<mod>.py (solo lo que está en EXPORTS)."""
+        """SH.engine(mod, fn, ...args): quick call into stellarhub/engine/<mod>.py (only what is in EXPORTS)."""
         from . import engine as E
         try:
             return {"ok": True, "data": E.resolve(mod, fn, "call")(*(args or []))}
         except Exception as e:
             import traceback
-            print(f"[motor {mod}.{fn}]", traceback.format_exc())
+            print(f"[engine {mod}.{fn}]", traceback.format_exc())
             return {"ok": False, "error": str(e)}
 
     def engine_job(self, mod, fn, args=None):
-        """SH.job(...): tarea larga; el progreso llega como SH.emit('job', ...). Devuelve el id de la tarea."""
+        """SH.job(...): long task; progress arrives as SH.emit('job', ...). Returns the task id."""
         from . import engine as E
         from .engine import jobs
         try:
@@ -376,8 +376,8 @@ class Api:
         return True
 
     def _tele_push(self, data):
-        """Cada muestra de telemetría va a la ventana principal (si se ve) y al widget (si está abierto).
-        Se llama desde el hilo del muestreador, nunca desde el de la ventana."""
+        """Each telemetry sample goes to the main window (if visible) and to the widget (if open).
+        Called from the sampler thread, never from the window thread."""
         payload = json.dumps(data)
         if self._visible:
             try:
@@ -398,10 +398,10 @@ class Api:
             self._sampler.set_active(self._visible or self._widget is not None,
                                      gpu=self._visible or (self._widget is not None and gpu_in_widget))
 
-    # ---------- administrador permanente ----------
+    # ---------- permanent administrator mode ----------
     def set_always_admin(self, on):
-        """Con esto activado StellarHub se abre siempre como administrador. Se usa una tarea programada con
-        privilegios altos para que Windows no pregunte en cada arranque (crearla sí necesita ser admin)."""
+        """With this on, StellarHub always opens as administrator. A scheduled task with highest privileges is
+        used so Windows does not ask at every start (creating it does require admin)."""
         self.settings_set({"alwaysAdmin": bool(on)})
         if on and is_admin():
             return _ensure_admin_task()
@@ -409,9 +409,9 @@ class Api:
             _delete_admin_task()
         return True
 
-    # ---------- acerca de ----------
+    # ---------- about ----------
     def project_stats(self):
-        """Bytes de código por lenguaje, como la barra de lenguajes de GitHub."""
+        """Bytes of code per language, like GitHub's language bar."""
         langs = {".py": "Python", ".js": "JavaScript", ".css": "CSS", ".html": "HTML"}
         out = {}
         root = os.path.join(base_dir(), "stellarhub")
@@ -426,7 +426,7 @@ class Api:
                         pass
         return out
 
-    # ---------- herramientas de Windows y datos ----------
+    # ---------- Windows tools and data ----------
     TOOLS = {
         "devmgmt": "devmgmt.msc", "services": "services.msc", "eventvwr": "eventvwr.msc", "taskschd": "taskschd.msc",
         "diskmgmt": "diskmgmt.msc", "regedit": "regedit.exe", "msconfig": "msconfig.exe", "msinfo32": "msinfo32.exe",
@@ -452,8 +452,8 @@ class Api:
 
     def export_settings(self):
         import webview
-        r = self._window.create_file_dialog(webview.SAVE_DIALOG, save_filename="StellarHub-ajustes.json",
-                                            file_types=("Ajustes de StellarHub (*.json)",))
+        r = self._window.create_file_dialog(webview.SAVE_DIALOG, save_filename="StellarHub-settings.json",
+                                            file_types=("StellarHub settings (*.json)",))
         if not r:
             return None
         path = r if isinstance(r, str) else r[0]
@@ -463,7 +463,7 @@ class Api:
 
     def import_settings(self):
         import webview
-        r = self._window.create_file_dialog(webview.OPEN_DIALOG, file_types=("Ajustes de StellarHub (*.json)",))
+        r = self._window.create_file_dialog(webview.OPEN_DIALOG, file_types=("StellarHub settings (*.json)",))
         if not r:
             return None
         try:
@@ -477,7 +477,7 @@ class Api:
         return data
 
     def reset_settings(self):
-        """Devuelve los ajustes guardados (para poder deshacer) y los borra."""
+        """Returns the saved settings (so it can be undone) and deletes them."""
         old = self.settings_get()
         try:
             os.remove(SETTINGS)
@@ -493,8 +493,8 @@ class Api:
 
 
 def refresh_ui_cache():
-    """WebView2 guarda los .js/.css en su caché HTTP: tras cambiar la interfaz seguiría mostrando la vieja.
-    Si cambia algún archivo de la interfaz, se vacía esa caché."""
+    """WebView2 keeps the .js/.css in its HTTP cache: after a UI change it would keep showing the old one.
+    If any UI file changes, that cache is cleared."""
     h = hashlib.sha1()
     for root, _dirs, files in sorted(os.walk(UI_DIR)):
         for f in sorted(files):
@@ -524,26 +524,26 @@ def refresh_ui_cache():
 
 
 def _round_corners(window):
-    """Esquinas redondeadas de Windows 11 para ventanas sin marco, con un filo sutil dibujado por Windows
-    (la interfaz del widget no dibuja borde propio: así no se ve un doble marco en las esquinas)."""
+    """Windows 11 rounded corners for frameless windows, with a subtle edge drawn by Windows
+    (the widget UI draws no border of its own, so there is no double frame at the corners)."""
     try:
         hwnd = window.native.Handle.ToInt32()
         dwm = ctypes.windll.dwmapi
         pref = ctypes.c_int(2)  # DWMWCP_ROUND
         dwm.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(pref), 4)
-        border = ctypes.c_int(0x00473A2C)  # #2C3A47 en BGR
+        border = ctypes.c_int(0x00473A2C)  # #2C3A47 in BGR
         dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border), 4)
     except Exception:
         pass
 
 
 def _grant_media(window):
-    """Cámara y micrófono para la propia interfaz de StellarHub (Device Tester) sin el aviso del navegador.
-    Lo único que puede bloquearlos es la privacidad de Windows, y la app enlaza a esos ajustes."""
+    """Camera and microphone for StellarHub's own UI (Device Tester) without the browser prompt.
+    The only thing that can block them is Windows privacy, and the app links to those settings."""
     state = {"done": False}
 
     def hook():
-        """Corre en el hilo de la ventana (WebView2 solo se puede tocar desde ahí). Devuelve True si quedó puesto."""
+        """Runs on the window thread (WebView2 can only be touched from there). Returns True if it got hooked."""
         if state["done"]:
             return True
         form = window.native
@@ -569,30 +569,30 @@ def _grant_media(window):
                 if form.Invoke(Func[Boolean](hook)):
                     return
             except Exception as e:
-                print("permisos:", e)
+                print("permissions:", e)
                 return
             time.sleep(0.15)
     threading.Thread(target=wait_and_hook, daemon=True).start()
 
 
 def style_titlebar(window):
-    """Barra de título oscura y del mismo color que el fondo (Windows 11)."""
+    """Dark title bar in the same color as the background (Windows 11)."""
     try:
         hwnd = window.native.Handle.ToInt32()
         dwm = ctypes.windll.dwmapi
         on = ctypes.c_int(1)
-        dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(on), 4)  # modo oscuro
+        dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(on), 4)  # dark mode
         r, g, b = int(BG[1:3], 16), int(BG[3:5], 16), int(BG[5:7], 16)
         color = ctypes.c_int(r | (g << 8) | (b << 16))
-        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(color), 4)  # fondo del título
+        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(color), 4)  # title background
         text = ctypes.c_int(0x00F6EDE8)
-        dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text), 4)  # texto del título
+        dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text), 4)  # title text
     except Exception:
         pass
 
 
 def _log_to_file():
-    """Con pythonw no hay consola: los errores van a %APPDATA%\\StellarHub\\stellarhub.log."""
+    """With pythonw there is no console: errors go to %APPDATA%\\StellarHub\\stellarhub.log."""
     if sys.stderr is None or "pythonw" in os.path.basename(sys.executable).lower():
         try:
             os.makedirs(DATA_DIR, exist_ok=True)
@@ -602,7 +602,8 @@ def _log_to_file():
             pass
 
 
-ADMIN_TASK = r"StellarHub\Abrir como administrador"
+ADMIN_TASK = r"StellarHub\Open as administrator"
+LEGACY_ADMIN_TASKS = (r"StellarHub\Abrir como administrador",)  # name used by earlier versions
 
 
 def _launch_cmd(extra=""):
@@ -612,24 +613,28 @@ def _launch_cmd(extra=""):
 
 
 def _ensure_admin_task():
-    """Crea (o actualiza) la tarea programada que abre StellarHub elevado sin el aviso de UAC."""
+    """Creates (or updates) the scheduled task that opens StellarHub elevated without the UAC prompt."""
     import subprocess
     exe, args = _launch_cmd("--from-task")
     tr = f'"{exe}" {args}'
     r = subprocess.run(["schtasks", "/create", "/tn", ADMIN_TASK, "/tr", tr, "/sc", "once", "/st", "00:00",
                         "/sd", "01/01/2000", "/rl", "highest", "/it", "/f"],
                        capture_output=True, text=True, creationflags=0x08000000)
+    if r.returncode == 0:  # replace tasks left by earlier versions under another name
+        for old in LEGACY_ADMIN_TASKS:
+            subprocess.run(["schtasks", "/delete", "/tn", old, "/f"], capture_output=True, creationflags=0x08000000)
     return r.returncode == 0
 
 
 def _delete_admin_task():
     import subprocess
-    subprocess.run(["schtasks", "/delete", "/tn", ADMIN_TASK, "/f"], capture_output=True, creationflags=0x08000000)
+    for name in (ADMIN_TASK, *LEGACY_ADMIN_TASKS):
+        subprocess.run(["schtasks", "/delete", "/tn", name, "/f"], capture_output=True, creationflags=0x08000000)
 
 
 def _elevate_on_start():
-    """Si el usuario eligió el modo administrador permanente y esta copia no lo es: se relanza elevada
-    (primero por la tarea programada, sin aviso; si no existe, con el aviso de UAC). Devuelve True si hay que salir."""
+    """If the user chose permanent administrator mode and this copy is not elevated: relaunch elevated
+    (first through the scheduled task, with no prompt; if it does not exist, with the UAC prompt). Returns True if we must exit."""
     if is_admin() or "--no-elevate" in sys.argv or "--from-task" in sys.argv:
         return False
     try:
@@ -639,16 +644,16 @@ def _elevate_on_start():
     except (OSError, ValueError):
         return False
     import subprocess
-    r = subprocess.run(["schtasks", "/run", "/tn", ADMIN_TASK], capture_output=True, creationflags=0x08000000)
-    if r.returncode == 0:
-        return True
+    for name in (ADMIN_TASK, *LEGACY_ADMIN_TASKS):
+        if subprocess.run(["schtasks", "/run", "/tn", name], capture_output=True, creationflags=0x08000000).returncode == 0:
+            return True
     exe, args = _launch_cmd("--no-elevate")
     if ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, args, base_dir(), 1) > 32:
         return True
-    return False  # dijo que no: sigue en modo normal
+    return False  # the user said no: stay in normal mode
 
 
-SINGLE_PORT = 47821  # una sola copia: la segunda le pide a la primera que se muestre y se cierra
+SINGLE_PORT = 47821  # single instance: a second copy asks the first one to show itself, then exits
 
 
 def _already_running():
@@ -683,7 +688,7 @@ def _listen_single(api):
 
 
 def _wait_for_previous():
-    """--wait-pid N: al relanzarse como administrador, espera a que la copia anterior se haya cerrado."""
+    """--wait-pid N: when relaunching as administrator, wait for the previous copy to close."""
     if "--wait-pid" not in sys.argv:
         return
     try:
@@ -718,7 +723,7 @@ def main():
     import webview
 
     api = Api()
-    title = "StellarHub" + ("  (administrador)" if is_admin() else "")
+    title = "StellarHub" + ("  (administrator)" if is_admin() else "")
     from .chrome import Chrome
 
     start_hidden = "--tray" in sys.argv
@@ -729,7 +734,7 @@ def main():
     )
     api._attach(window)
 
-    def on_state(maxed):  # se llama desde el hilo de la ventana: nunca esperar aquí
+    def on_state(maxed):  # called from the window thread: never wait here
         api._js(f"window.SH && SH.emit('win', {{max: {'true' if maxed else 'false'}}})")
 
     api._chrome = Chrome(window, on_state)
@@ -740,13 +745,13 @@ def main():
     try:
         api._tray = Tray(api)
         api._tray.start()
-    except Exception as e:  # sin bandeja la app sigue funcionando; la X cierra del todo
-        print("bandeja:", e)
+    except Exception as e:  # without a tray the app still works; the X quits completely
+        print("tray:", e)
         api._tray = None
 
     _listen_single(api)
 
-    # motor: avisos de tareas largas y telemetría real
+    # engine: long-task notifications and real telemetry
     from .engine import jobs
     jobs.set_emitter(lambda ev, data: api._js(f"window.SH && SH.emit({json.dumps(ev)}, {json.dumps(data)})"))
     try:
@@ -757,7 +762,7 @@ def main():
         api._visible = not start_hidden
         window.events.loaded += lambda: (api._sampler.start(), api._tele_refresh())
     except Exception as e:
-        print("telemetría:", e)
+        print("telemetry:", e)
 
     refresh_ui_cache()
     webview.start(gui="edgechromium", debug="--debug" in sys.argv, http_server=True,

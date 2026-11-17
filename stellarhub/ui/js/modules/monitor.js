@@ -1,5 +1,5 @@
-/* StellarHub · Live Monitor. Pestañas: resumen, procesador, gráficos, memoria, discos, red, batería, procesos, salud.
-   Datos: SH.tele (compartido) + simulación propia de lo que la telemetría aún no trae (procesos, SMART, batería, red). */
+/* StellarHub · Live Monitor. Tabs: overview, processor, graphics, memory, disks, network, battery, processes, health.
+   Data: SH.tele (shared) + its own simulation of what telemetry does not provide yet (processes, SMART, battery, network). */
 'use strict';
 (() => {
 const { $, $$, state, Spring, EASE, anim, tickers, ic, esc, fmt1, fmtInt } = SH;
@@ -9,7 +9,7 @@ let curTab = 'overview', paused = false, lastPush = performance.now(), frozen = 
 const visible = () => state.view === ID;
 const chev = ic('chev');
 
-/* ---------- colores para canvas ---------- */
+/* ---------- canvas colors ---------- */
 const C = {};
 const nctx = document.createElement('canvas').getContext('2d');
 function rgba(c, a) {
@@ -23,13 +23,13 @@ function readColors() {
 }
 SH.on('look', () => setTimeout(readColors, 30));
 
-/* ---------- historiales propios (lo que SH.tele no guarda) ---------- */
+/* ---------- own histories (what SH.tele does not keep) ---------- */
 const LOC = { igpu: [], sysPower: [], cpuFreq: [], gpuClock: [], diskTemp: [], fanCpu: [] };
 Object.values(LOC).forEach(a => { for (let i = 0; i < 120; i++) a.push(0); });
 const extra = { diskTemp: 41, sysPower: 46 };
 const hist = k => (paused && frozen ? frozen[k] : (SH.tele.hist[k] || LOC[k]));
 
-/* ---------- gráfica de línea que se desliza entre muestras ---------- */
+/* ---------- line chart that glides between samples ---------- */
 class Chart {
   constructor(canvas, o) {
     this.c = canvas; this.ctx = canvas.getContext('2d'); this.w = 0; this.h = 0; this.hx = null;
@@ -53,7 +53,7 @@ class Chart {
     ctx.clearRect(0, 0, w, h);
     ctx.strokeStyle = C.line; ctx.lineWidth = 1;
     for (let i = 1; i < o.grid; i++) { const y = Math.round(h * i / o.grid) + .5; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
-    /* series opcionales (temperatura de la CPU...) se ocultan si Windows no da ese dato */
+    /* optional series (CPU temperature...) are hidden when Windows does not provide that value */
     const series = o.series.filter(s => !(s.opt && REAL() && !SH.tele.has(s.key))).map(s => ({ ...s, data: hist(s.key).slice(-(o.n + 2)) }));
     if (!series.length) { ctx.clearRect(0, 0, w, h); return; }
     let max = o.max;
@@ -85,7 +85,7 @@ class Chart {
       const col = C[s.col] || s.col; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(p[0], p[1], 3.5, 0, 6.283); ctx.fill();
       labels.push([col, (s.label ? s.label + ': ' : '') + (s.fmt ? s.fmt(v) : (o.dec ? fmt1(v) : Math.round(v)) + (s.unit ?? o.unit))]);
     });
-    const secs = Math.max(0, Math.round((o.n + 1 - idx) * .7)); labels.push([C.mute, secs <= 1 ? 'ahora' : `hace ${secs} s`]);
+    const secs = Math.max(0, Math.round((o.n + 1 - idx) * .7)); labels.push([C.mute, secs <= 1 ? 'now' : `${secs} s ago`]);
     ctx.font = '500 11.5px Onest, system-ui, sans-serif';
     const tw = Math.max(...labels.map(l => ctx.measureText(l[1]).width)) + 20, bh = labels.length * 17 + 10;
     const bx = x + 14 + tw > w ? x - 14 - tw : x + 14, by = 6;
@@ -95,11 +95,11 @@ class Chart {
   }
 }
 
-/* ---------- enlaces dato → interfaz (muelles para que todo se deslice) ---------- */
+/* ---------- data → interface bindings (springs so everything glides) ---------- */
 const T = {};
 const tab = id => (T[id] ||= { charts: [], nums: [], bars: [], arcs: [], fns: [], fans: [] });
 const clamp01 = x => Math.max(0, Math.min(1, x));
-/* un dato que Windows no da llega null: se muestra "—" (nunca 0 ni inventado) */
+/* a value Windows does not provide arrives as null: show "—" (never 0 or a made-up number) */
 const nil = x => x == null || Number.isNaN(x);
 const safe = f => v => { try { const x = f(v); return nil(x) ? null : x; } catch { return null; } };
 function setNum(b, v) { const x = b.get(v); b.nil = nil(x); if (!b.nil) b.s.t = x; }
@@ -115,47 +115,49 @@ function refresh(t) {
   tc.fns.forEach(f => { try { f(v); } catch (e) { console.error(e); } });
 }
 
-/* ---------- motor real: dentro de la app, SH.engine responde; fuera, undefined y se usa el modo de ejemplo ---------- */
+/* ---------- real engine: inside the app SH.engine answers; outside it returns undefined and sample mode is used ---------- */
 const REAL = () => !SH.tele.simulated;
 const PC = () => SH.PC;
 const comp = id => (PC().components || []).find(c => c.id === id) || { title: '', rows: [] };
-const row = (id, label) => ((comp(id).rows || []).find(r => r[0] === label) || [, ''])[1];
+/* spec rows are looked up by label; the patterns also accept the labels of older (Spanish) builds */
+const row = (id, label) => ((comp(id).rows || []).find(r => label instanceof RegExp ? label.test(r[0]) : r[0] === label) || [, ''])[1];
+const LBL = { cores: /^(cores|n\u00facleos)$/i, threads: /^(threads|hilos)$/i, base: /^(base|frecuencia base)/i, igpu: /^(integrated|integrada)/i, driver: /^driver/i, speed: /^(speed|velocidad)$/i, maker: /^(manufacturer|maker|fabricante)$/i };
 async function eng(fn_, ...a) { try { return await SH.engine('monitor', fn_, ...a); } catch (e) { console.error(e); return null; } }
-const cache = {};   /* resultados del motor que tardan: se piden una vez por visita a la pestaña */
+const cache = {};   /* slow engine results: requested once per tab visit */
 async function load(k, fn_, ...a) { if (cache[k] && Date.now() - cache[k].t < 30000) return cache[k].d; const d = await eng(fn_, ...a); if (d !== undefined) cache[k] = { t: Date.now(), d }; return d; }
-/* núcleos: los primeros 2×P hilos son de los núcleos de rendimiento (con HT), el resto eficientes (sin HT) */
+/* cores: the first 2×P threads belong to the performance cores (with HT), the rest to the efficient ones (no HT) */
 function coreSplit() {
-  const cores = parseInt(row('cpu', 'Núcleos')) || 16, threads = parseInt(row('cpu', 'Hilos')) || (V().threads || []).length || 24;
+  const cores = parseInt(row('cpu', LBL.cores)) || 16, threads = parseInt(row('cpu', LBL.threads)) || (V().threads || []).length || 24;
   const p = Math.max(0, Math.min(cores, threads - cores)), e = cores - p; return { cores, threads, p, e };
 }
 
-/* ---------- simulación: procesos y extras ---------- */
+/* ---------- simulation: processes and extras ---------- */
 const PROCS = [
   { n: 'Brave', exe: 'brave.exe', k: 14, cpu: 4.2, ram: 1880, gpu: 3, disk: .4, net: 2.4, path: 'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application' },
   { n: 'FL Studio', exe: 'FL64.exe', k: 1, cpu: 6.5, ram: 1420, gpu: 2, disk: 1.2, net: 0, path: 'C:\\Program Files\\Image-Line\\FL Studio 2025' },
-  { n: 'Discord', exe: 'Discord.exe', k: 6, cpu: 1.1, ram: 610, gpu: 1, disk: .1, net: .6, path: 'C:\\Users\\usuario\\AppData\\Local\\Discord' },
-  { n: 'Spotify', exe: 'Spotify.exe', k: 5, cpu: .8, ram: 420, gpu: 0, disk: .2, net: .4, path: 'C:\\Users\\usuario\\AppData\\Roaming\\Spotify' },
-  { n: 'Claude', exe: 'claude.exe', k: 4, cpu: 1.6, ram: 540, gpu: 1, disk: .2, net: .3, path: 'C:\\Users\\usuario\\AppData\\Local\\AnthropicClaude' },
-  { n: 'StellarHub', exe: 'pythonw.exe', k: 3, cpu: 1.3, ram: 260, gpu: 2, disk: .1, net: 0, path: 'C:\\Users\\usuario\\Documents\\StellarHub' },
+  { n: 'Discord', exe: 'Discord.exe', k: 6, cpu: 1.1, ram: 610, gpu: 1, disk: .1, net: .6, path: 'C:\\Users\\user\\AppData\\Local\\Discord' },
+  { n: 'Spotify', exe: 'Spotify.exe', k: 5, cpu: .8, ram: 420, gpu: 0, disk: .2, net: .4, path: 'C:\\Users\\user\\AppData\\Roaming\\Spotify' },
+  { n: 'Claude', exe: 'claude.exe', k: 4, cpu: 1.6, ram: 540, gpu: 1, disk: .2, net: .3, path: 'C:\\Users\\user\\AppData\\Local\\AnthropicClaude' },
+  { n: 'StellarHub', exe: 'pythonw.exe', k: 3, cpu: 1.3, ram: 260, gpu: 2, disk: .1, net: 0, path: 'C:\\Users\\user\\Documents\\StellarHub' },
   { n: 'Wallpaper Engine', exe: 'wallpaper64.exe', k: 2, cpu: 2.1, ram: 230, gpu: 9, disk: 0, net: 0, path: 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\wallpaper_engine' },
-  { n: 'Medal', exe: 'Medal.exe', k: 5, cpu: 1.4, ram: 380, gpu: 4, disk: 2.6, net: .2, path: 'C:\\Users\\usuario\\AppData\\Local\\Medal' },
-  { n: 'Explorador de Windows', exe: 'explorer.exe', k: 1, cpu: .7, ram: 190, gpu: 1, disk: .1, net: 0, path: 'C:\\Windows', sys: true },
-  { n: 'Administrador de ventanas', exe: 'dwm.exe', k: 1, cpu: 1.9, ram: 140, gpu: 6, disk: 0, net: 0, path: 'C:\\Windows\\System32', sys: true },
-  { n: 'Antimalware de Microsoft Defender', exe: 'MsMpEng.exe', k: 1, cpu: 1.2, ram: 310, gpu: 0, disk: 1.8, net: 0, path: 'C:\\ProgramData\\Microsoft\\Windows Defender\\Platform', sys: true },
-  { n: 'Servicios de Windows', exe: 'svchost.exe', k: 86, cpu: 1.5, ram: 980, gpu: 0, disk: .6, net: .3, path: 'C:\\Windows\\System32', sys: true },
-  { n: 'Sistema', exe: 'System', k: 1, cpu: .9, ram: 12, gpu: 0, disk: .9, net: .1, path: 'C:\\Windows\\System32', sys: true },
+  { n: 'Medal', exe: 'Medal.exe', k: 5, cpu: 1.4, ram: 380, gpu: 4, disk: 2.6, net: .2, path: 'C:\\Users\\user\\AppData\\Local\\Medal' },
+  { n: 'Windows Explorer', exe: 'explorer.exe', k: 1, cpu: .7, ram: 190, gpu: 1, disk: .1, net: 0, path: 'C:\\Windows', sys: true },
+  { n: 'Desktop Window Manager', exe: 'dwm.exe', k: 1, cpu: 1.9, ram: 140, gpu: 6, disk: 0, net: 0, path: 'C:\\Windows\\System32', sys: true },
+  { n: 'Microsoft Defender Antimalware', exe: 'MsMpEng.exe', k: 1, cpu: 1.2, ram: 310, gpu: 0, disk: 1.8, net: 0, path: 'C:\\ProgramData\\Microsoft\\Windows Defender\\Platform', sys: true },
+  { n: 'Service Host', exe: 'svchost.exe', k: 86, cpu: 1.5, ram: 980, gpu: 0, disk: .6, net: .3, path: 'C:\\Windows\\System32', sys: true },
+  { n: 'System', exe: 'System', k: 1, cpu: .9, ram: 12, gpu: 0, disk: .9, net: .1, path: 'C:\\Windows\\System32', sys: true },
   { n: 'NVIDIA Container', exe: 'nvcontainer.exe', k: 3, cpu: .3, ram: 120, gpu: 0, disk: 0, net: 0, path: 'C:\\Program Files\\NVIDIA Corporation\\NvContainer' },
-  { n: 'Audio de Windows', exe: 'audiodg.exe', k: 1, cpu: .9, ram: 36, gpu: 0, disk: 0, net: 0, path: 'C:\\Windows\\System32', sys: true },
+  { n: 'Windows Audio', exe: 'audiodg.exe', k: 1, cpu: .9, ram: 36, gpu: 0, disk: 0, net: 0, path: 'C:\\Windows\\System32', sys: true },
   { n: 'Steam', exe: 'steam.exe', k: 4, cpu: .4, ram: 290, gpu: 0, disk: .3, net: .9, path: 'C:\\Program Files (x86)\\Steam' },
   { n: 'OneDrive', exe: 'OneDrive.exe', k: 1, cpu: .2, ram: 95, gpu: 0, disk: .4, net: .5, path: 'C:\\Program Files\\Microsoft OneDrive' },
-  { n: 'Terminal de Windows', exe: 'WindowsTerminal.exe', k: 2, cpu: .3, ram: 120, gpu: 0, disk: 0, net: 0, path: 'C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal' },
-  { n: 'Python', exe: 'python.exe', k: 2, cpu: .6, ram: 85, gpu: 0, disk: .1, net: 0, path: 'C:\\Users\\usuario\\AppData\\Local\\Microsoft\\WindowsApps' },
-  { n: 'Buscar', exe: 'SearchHost.exe', k: 1, cpu: .1, ram: 160, gpu: 0, disk: 0, net: 0, path: 'C:\\Windows\\SystemApps', sys: true },
+  { n: 'Windows Terminal', exe: 'WindowsTerminal.exe', k: 2, cpu: .3, ram: 120, gpu: 0, disk: 0, net: 0, path: 'C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal' },
+  { n: 'Python', exe: 'python.exe', k: 2, cpu: .6, ram: 85, gpu: 0, disk: .1, net: 0, path: 'C:\\Users\\user\\AppData\\Local\\Microsoft\\WindowsApps' },
+  { n: 'Search', exe: 'SearchHost.exe', k: 1, cpu: .1, ram: 160, gpu: 0, disk: 0, net: 0, path: 'C:\\Windows\\SystemApps', sys: true },
   { n: 'Realtek Audio Console', exe: 'RtkAudUService64.exe', k: 1, cpu: .1, ram: 18, gpu: 0, disk: 0, net: 0, path: 'C:\\Windows\\System32\\DriverStore' },
   { n: 'Armoury Crate', exe: 'ArmouryCrate.exe', k: 3, cpu: .4, ram: 210, gpu: 0, disk: .1, net: .1, path: 'C:\\Program Files\\ASUS\\ARMOURY CRATE Service' },
 ];
 PROCS.forEach((p, i) => { p.id = i; p.b = { cpu: p.cpu, ram: p.ram, gpu: p.gpu, disk: p.disk, net: p.net }; p.alive = true; });
-/* temperaturas máximas de esta sesión (solo con datos reales; en ejemplo, valores de muestra) */
+/* peak temperatures this session (real data only; sample values in sample mode) */
 const MAXT = { cpu: null, gpu: null, ssd: null, cpuAt: 0, gpuAt: 0 };
 const SUM = { cpu: PROCS.reduce((s, p) => s + p.b.cpu, 0), gpu: PROCS.reduce((s, p) => s + p.b.gpu, 0) };
 const jit = (b, j, lo = 0) => Math.max(lo, b * (1 + (Math.random() - .5) * j));
@@ -167,7 +169,7 @@ function simTick(v) {
     if (!nil(v.gpuTemp) && (MAXT.gpu == null || v.gpuTemp > MAXT.gpu)) { MAXT.gpu = v.gpuTemp; MAXT.gpuAt = Date.now(); }
     return;
   }
-  const load = Math.max(.15, v.cpu * .9 / SUM.cpu), gl = Math.max(.05, v.gpu * .9 / SUM.gpu); /* los procesos se reparten el total real */
+  const load = Math.max(.15, v.cpu * .9 / SUM.cpu), gl = Math.max(.05, v.gpu * .9 / SUM.gpu); /* the processes share the real total */
   PROCS.forEach(p => {
     if (!p.alive) return;
     p.cpu = jit(p.b.cpu * load, .8); p.ram = jit(p.b.ram, .06, 4); p.gpu = jit(p.b.gpu * gl, .9);
@@ -179,8 +181,8 @@ function simTick(v) {
   MAXT.cpu = Math.max(MAXT.cpu || 0, v.cpuTemp); MAXT.gpu = Math.max(MAXT.gpu || 0, v.gpuTemp); MAXT.ssd = Math.max(MAXT.ssd || 0, extra.diskTemp);
 }
 
-/* ---------- procesos reales: el motor los agrupa por programa como el Administrador de tareas ---------- */
-const RP = new Map();   // clave (exe en minúsculas) -> objeto estable del proceso
+/* ---------- real processes: the engine groups them per program like Task Manager ---------- */
+const RP = new Map();   // key (lowercase exe) -> stable process object
 let procTimer = 0, procBusy = false, procInfo = { total: 0, gpuPerProcess: true };
 const PROC_TABS = new Set(['overview', 'cpu', 'gpu', 'memory', 'network', 'processes']);
 async function pollProcs() {
@@ -205,7 +207,7 @@ function startProcPoll() { if (!procTimer) { pollProcs(); procTimer = setInterva
 function stopProcPoll() { clearInterval(procTimer); procTimer = 0; }
 const procList = () => REAL() ? [...RP.values()] : PROCS;
 const top = (key, n) => procList().filter(p => p.alive).sort((a, b) => b[key] - a[key]).slice(0, n);
-const initial = n => (String(n || '?').replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ0-9]/g, '').slice(0, 1).toUpperCase() || '?');
+const initial = n => (String(n || '?').replace(/[^\p{L}\p{N}]/gu, '').slice(0, 1).toUpperCase() || '?');
 const mono = (n, icon) => icon ? `<span class="mono img"><img src="${icon}" alt=""></span>` : `<span class="mono">${esc(initial(n))}</span>`;
 function topList(t, el, key, n, fmt, max) {
   if (!el) return;
@@ -230,48 +232,48 @@ const mb = v => v >= 1024 ? fmt1(v / 1024) + ' GB' : fmtInt(v) + ' MB';
 const pct = v => (v < 10 ? fmt1(v) : fmtInt(v)) + ' %';
 function upt(s) { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h ${m} min` : `${m} min`; }
 
-/* ---------- piezas de HTML ---------- */
+/* ---------- HTML pieces ---------- */
 const head = (title, em, go) => `<h4>${go ? `<button class="goto" data-goto="${go}">${title}${chev}</button>` : title}${em ? `<em>${em}</em>` : ''}</h4>`;
 const stat = (label, id, unit = '', sub = '') => `<div class="st"><span class="sl">${label}</span><b><span id="${id}">–</span>${unit ? `<small>${unit}</small>` : ''}</b>${sub ? `<span class="ss">${sub}</span>` : ''}</div>`;
 const cv = id => `<canvas class="ch" id="${id}"></canvas>`;
-const axis = '<div class="axis"><span>hace 1 min</span><span>ahora</span></div>';
-const gauge = id => `<div class="gauge"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" fill="none" style="stroke:var(--raise2)" stroke-width="9" stroke-linecap="round" stroke-dasharray="235.6 314.2"/><circle id="${id}A" cx="60" cy="60" r="50" fill="none" style="stroke:var(--accent)" stroke-width="9" stroke-linecap="round" stroke-dasharray="0 314.2"/></svg><div class="gv"><div><b id="${id}V">0</b><span>% de uso</span></div></div></div>`;
+const axis = '<div class="axis"><span>1 min ago</span><span>now</span></div>';
+const gauge = id => `<div class="gauge"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" fill="none" style="stroke:var(--raise2)" stroke-width="9" stroke-linecap="round" stroke-dasharray="235.6 314.2"/><circle id="${id}A" cx="60" cy="60" r="50" fill="none" style="stroke:var(--accent)" stroke-width="9" stroke-linecap="round" stroke-dasharray="0 314.2"/></svg><div class="gv"><div><b id="${id}V">0</b><span>% used</span></div></div></div>`;
 const ring = (id, col = 'var(--accent2)') => `<svg class="ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="none" style="stroke:var(--raise2)" stroke-width="4"/><circle id="${id}" cx="20" cy="20" r="16" fill="none" style="stroke:${col}" stroke-width="4" stroke-linecap="round" stroke-dasharray="0 100.5"/></svg>`;
 const fanIc = id => `<svg class="i fan" id="${id}" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M12 10c-1-3-.5-6 1.5-7 2 1.5 1.5 5-1.5 7zM14 12c3-1 6-.5 7 1.5-1.5 2-5 1.5-7-1.5zM12 14c1 3 .5 6-1.5 7-2-1.5-1.5-5 1.5-7zM10 12c-3 1-6 .5-7-1.5 1.5-2 5-1.5 7 1.5z"/></svg>`;
 const S = (root, id) => $('#' + id, root);
 
-/* ================= pestañas ================= */
+/* ================= tabs ================= */
 const R = {};
 
-/* nombres cortos para cabeceras */
+/* short names for headers */
 const short = s => String(s || '').replace(/^(NVIDIA|Intel|AMD)\s+/i, '').replace(/GeForce\s+/i, '').replace(/\s+GPU$/i, '').replace(/\(R\)|\(TM\)/g, '').trim();
 const gpuTitle = () => comp('gpu').title || 'GPU';
 const NA = (why) => `<span class="na" title="${esc(why)}">—</span>`;
-/* explicación corta de un dato que no llega */
+/* short explanation of a value that does not arrive */
 const why = {
-  cpuTemp: () => SH.state.admin ? 'Windows no informa la temperatura de este procesador sin un driver del fabricante.' : 'Windows solo la da en modo administrador.',
-  fan: 'Windows no informa la velocidad de los ventiladores; la lleva el firmware del fabricante (en este equipo, Armoury Crate).',
+  cpuTemp: () => SH.state.admin ? 'Windows does not report this processor\'s temperature without the manufacturer\'s driver.' : 'Windows only reports it in administrator mode.',
+  fan: 'Windows does not report fan speed; the manufacturer\'s firmware controls it (on this PC, Armoury Crate).',
 };
 
 R.overview = (el, t) => {
   el.classList.add('fill');
   const sp = coreSplit();
   el.innerHTML = `<div class="ov">
-    <div class="pan p-cpu" data-asm>${head('Procesador', esc(short(comp('cpu').title)), 'cpu')}
+    <div class="pan p-cpu" data-asm>${head('Processor', esc(short(comp('cpu').title)), 'cpu')}
       <div class="top3"><div class="big"><span id="oCpu">0</span><small>%</small></div>
-        <div class="meta"><b id="oFreq">–</b> GHz<br>${sp.threads} hilos</div><div class="meta"><b id="oCt">–</b> °C<br>temperatura</div></div>
+        <div class="meta"><b id="oFreq">–</b> GHz<br>${sp.threads} threads</div><div class="meta"><b id="oCt">–</b> °C<br>temperature</div></div>
       ${cv('oCpuCh')}<div class="threads" id="oThr" style="grid-template-columns:repeat(${sp.threads},1fr)">${'<i><b></b></i>'.repeat(sp.threads)}</div></div>
-    <div class="pan p-gpu" data-asm>${head('Gráficos', esc(short(gpuTitle())), 'gpu')}
+    <div class="pan p-gpu" data-asm>${head('Graphics', esc(short(gpuTitle())), 'gpu')}
       <div class="gbody">${gauge('oG')}<div class="gstats">
-        <div class="s"><b><span id="oGt">–</span> °C</b>temperatura</div><div class="s"><b><span id="oGp">–</span> W</b>consumo</div>
-        <div class="s"><b><span id="oVr">–</span> de <span id="oVrT">–</span> GB</b>memoria de vídeo<div class="bar acc"><span id="oVrB"></span></div></div></div></div></div>
-    <div class="pan p-ram" data-asm>${head('Memoria', esc(comp('ram').title), 'memory')}
-      <div class="big"><span id="oRam">–</span><small>de <span id="oRamT">–</span> GB</small></div><div class="bar" style="margin-top:12px"><span id="oRamB"></span></div>
+        <div class="s"><b><span id="oGt">–</span> °C</b>temperature</div><div class="s"><b><span id="oGp">–</span> W</b>power</div>
+        <div class="s"><b><span id="oVr">–</span> of <span id="oVrT">–</span> GB</b>video memory<div class="bar acc"><span id="oVrB"></span></div></div></div></div></div>
+    <div class="pan p-ram" data-asm>${head('Memory', esc(comp('ram').title), 'memory')}
+      <div class="big"><span id="oRam">–</span><small>of <span id="oRamT">–</span> GB</small></div><div class="bar" style="margin-top:12px"><span id="oRamB"></span></div>
       <div class="tops" id="oRamTop"></div></div>
-    <div class="pan p-net" data-asm>${head('Red', esc(short(comp('wifi').title)), 'network')}
-      <div class="pair"><div><i style="background:var(--accent2)"></i><b id="oDn">–</b> Mb/s bajada</div><div><i style="background:var(--accent)"></i><b id="oUp">–</b> Mb/s subida</div></div>${cv('oNetCh')}</div>
-    <div class="pan p-disk" data-asm>${head('Disco', esc(short(comp('ssd').title)), 'disks')}
-      <div class="pair"><div><i style="background:var(--accent2)"></i><b id="oRd">–</b> MB/s lectura</div><div><i style="background:var(--accent)"></i><b id="oWr">–</b> MB/s escritura</div></div>${cv('oDiskCh')}</div>
+    <div class="pan p-net" data-asm>${head('Network', esc(short(comp('wifi').title)), 'network')}
+      <div class="pair"><div><i style="background:var(--accent2)"></i><b id="oDn">–</b> Mb/s down</div><div><i style="background:var(--accent)"></i><b id="oUp">–</b> Mb/s up</div></div>${cv('oNetCh')}</div>
+    <div class="pan p-disk" data-asm>${head('Disk', esc(short(comp('ssd').title)), 'disks')}
+      <div class="pair"><div><i style="background:var(--accent2)"></i><b id="oRd">–</b> MB/s read</div><div><i style="background:var(--accent)"></i><b id="oWr">–</b> MB/s write</div></div>${cv('oDiskCh')}</div>
   </div>`;
   num(t, S(el, 'oCpu'), v => v.cpu); num(t, S(el, 'oFreq'), v => v.cpuFreq, fmt1); num(t, S(el, 'oCt'), v => v.cpuTemp);
   S(el, 'oCt').title = why.cpuTemp();
@@ -283,36 +285,36 @@ R.overview = (el, t) => {
   num(t, S(el, 'oRam'), v => v.ram, fmt1); num(t, S(el, 'oRamT'), v => v.ramTotal); bar(t, S(el, 'oRamB'), v => v.ram / v.ramTotal);
   topList(t, S(el, 'oRamTop'), 'ram', 3, mb);
   num(t, S(el, 'oDn'), v => v.down, fmt1); num(t, S(el, 'oUp'), v => v.up, fmt1);
-  chart(t, S(el, 'oNetCh'), { max: 'auto', min: 20, unit: ' Mb/s', dec: 1, series: [{ key: 'down', col: 'accent2', fill: true, label: 'Bajada' }, { key: 'up', col: 'accent', label: 'Subida' }] });
+  chart(t, S(el, 'oNetCh'), { max: 'auto', min: 20, unit: ' Mb/s', dec: 1, series: [{ key: 'down', col: 'accent2', fill: true, label: 'Download' }, { key: 'up', col: 'accent', label: 'Upload' }] });
   num(t, S(el, 'oRd'), v => v.diskRead); num(t, S(el, 'oWr'), v => v.diskWrite);
-  chart(t, S(el, 'oDiskCh'), { max: 'auto', min: 100, unit: ' MB/s', series: [{ key: 'diskRead', col: 'accent2', fill: true, label: 'Lectura' }, { key: 'diskWrite', col: 'accent', label: 'Escritura' }] });
+  chart(t, S(el, 'oDiskCh'), { max: 'auto', min: 100, unit: ' MB/s', series: [{ key: 'diskRead', col: 'accent2', fill: true, label: 'Read' }, { key: 'diskWrite', col: 'accent', label: 'Write' }] });
 };
 
 R.cpu = (el, t) => {
   const sp = coreSplit(), c = comp('cpu');
   el.innerHTML = `<div class="grid g-cpu">
-    <div class="pan wide" data-asm>${head('Uso del procesador', 'último minuto')}
+    <div class="pan wide" data-asm>${head('Processor usage', 'last minute')}
       <div class="hero"><div class="big"><span id="cU">0</span><small>%</small></div>
-        <div class="legend"><span><i style="background:var(--accent)"></i>uso</span><span class="ltemp"><i class="dash" style="border-color:var(--accent2)"></i>temperatura</span></div></div>
+        <div class="legend"><span><i style="background:var(--accent)"></i>usage</span><span class="ltemp"><i class="dash" style="border-color:var(--accent2)"></i>temperature</span></div></div>
       <div class="chwrap tall">${cv('cCh')}</div>${axis}</div>
-    <div class="pan" data-asm>${head('Estado', 'en vivo')}<div class="stats">
-      ${stat('Frecuencia', 'cF', 'GHz', `base ${esc(row('cpu', 'Frecuencia base') || '–')}`)}${stat('Temperatura', 'cT', '°C', '<span id="cTw"></span>')}
-      <div class="st"><span class="sl">Ventilador</span><b>${fanIc('cFan')}<span id="cFn">–</span><small>rpm</small></b><span class="ss" id="cFnW"></span></div>
-      ${stat('Procesos', 'cP', '', '<span id="cPh"></span>')}${stat('Hilos ocupados', 'cHo', `de ${sp.threads}`, 'por encima del 50 %')}${stat('Encendido', 'cUp', '', 'desde el último arranque')}</div></div>
-    <div class="pan wide" data-asm>${head('Núcleos', sp.p && sp.e ? `${sp.p} de rendimiento y ${sp.e} eficientes` : `${sp.cores} núcleos`)}
-      <div class="cores">${sp.p ? `<div class="cg"><span class="cgl">Rendimiento</span><div class="pc" id="cPc"></div></div>` : ''}${sp.e ? `<div class="cg"><span class="cgl">${sp.p ? 'Eficientes' : 'Núcleos'}</span><div class="ec" id="cEc"></div></div>` : ''}</div></div>
-    <div class="pan" data-asm>${head('Lo que más usa el procesador')}<div class="tops" id="cTop"></div></div>
-    <div class="pan" data-asm>${head('Ficha técnica')}<dl class="spec">
-      <dt>Modelo</dt><dd>${esc(c.title)}</dd>${(c.rows || []).map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl></div>
+    <div class="pan" data-asm>${head('Status', 'live')}<div class="stats">
+      ${stat('Frequency', 'cF', 'GHz', `base ${esc(row('cpu', LBL.base) || '–')}`)}${stat('Temperature', 'cT', '°C', '<span id="cTw"></span>')}
+      <div class="st"><span class="sl">Fan</span><b>${fanIc('cFan')}<span id="cFn">–</span><small>rpm</small></b><span class="ss" id="cFnW"></span></div>
+      ${stat('Processes', 'cP', '', '<span id="cPh"></span>')}${stat('Busy threads', 'cHo', `of ${sp.threads}`, 'above 50 %')}${stat('Uptime', 'cUp', '', 'since the last startup')}</div></div>
+    <div class="pan wide" data-asm>${head('Cores', sp.p && sp.e ? `${sp.p} performance and ${sp.e} efficient` : `${sp.cores} cores`)}
+      <div class="cores">${sp.p ? `<div class="cg"><span class="cgl">Performance</span><div class="pc" id="cPc"></div></div>` : ''}${sp.e ? `<div class="cg"><span class="cgl">${sp.p ? 'Efficient' : 'Cores'}</span><div class="ec" id="cEc"></div></div>` : ''}</div></div>
+    <div class="pan" data-asm>${head('Using the most CPU')}<div class="tops" id="cTop"></div></div>
+    <div class="pan" data-asm>${head('Specifications')}<dl class="spec">
+      <dt>Model</dt><dd>${esc(c.title)}</dd>${(c.rows || []).map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl></div>
   </div>`;
   num(t, S(el, 'cU'), v => v.cpu);
-  chart(t, S(el, 'cCh'), { series: [{ key: 'cpu', col: 'accent', fill: true, label: 'Uso' }, { key: 'cpuTemp', col: 'accent2', dash: [5, 4], w: 1.5, label: 'Temp.', unit: ' °C', opt: true }] });
+  chart(t, S(el, 'cCh'), { series: [{ key: 'cpu', col: 'accent', fill: true, label: 'Usage' }, { key: 'cpuTemp', col: 'accent2', dash: [5, 4], w: 1.5, label: 'Temp.', unit: ' °C', opt: true }] });
   num(t, S(el, 'cF'), v => v.cpuFreq, fmt1); num(t, S(el, 'cT'), v => v.cpuTemp); num(t, S(el, 'cFn'), v => v.fanCpu); fan(t, S(el, 'cFan'), v => v.fanCpu);
   fn(t, v => {
-    S(el, 'cTw').textContent = nil(v.cpuTemp) ? (SH.state.admin ? 'Windows no la informa' : 'solo en modo administrador') : 'paquete';
-    S(el, 'cFnW').textContent = nil(v.fanCpu) ? 'Windows no lo informa' : 'automático';
+    S(el, 'cTw').textContent = nil(v.cpuTemp) ? (SH.state.admin ? 'Windows does not report it' : 'administrator mode only') : 'package';
+    S(el, 'cFnW').textContent = nil(v.fanCpu) ? 'Windows does not report it' : 'automatic';
     S(el, 'cFnW').title = why.fan; $('.ltemp', el).hidden = REAL() && nil(v.cpuTemp);
-    S(el, 'cPh').textContent = nil(v.threadsTotal) ? '' : `y ${fmtInt(v.threadsTotal)} hilos`;
+    S(el, 'cPh').textContent = nil(v.threadsTotal) ? '' : `and ${fmtInt(v.threadsTotal)} threads`;
   });
   num(t, S(el, 'cP'), v => REAL() ? v.procs : 287); num(t, S(el, 'cHo'), v => (v.threads || []).filter(x => x > .5).length); num(t, S(el, 'cUp'), v => v.uptime, upt, 400, 40);
   const pc = S(el, 'cPc'), ec = S(el, 'cEc');
@@ -322,38 +324,38 @@ R.cpu = (el, t) => {
 };
 
 R.gpu = (el, t) => {
-  const g = comp('gpu'), igpu = row('gpu', 'Integrada');
+  const g = comp('gpu'), igpu = row('gpu', LBL.igpu);
   const mons = (comp('display').monitors || []);
   el.innerHTML = `<div class="grid g-gpu">
-    <div class="pan wide" data-asm>${head(esc(short(gpuTitle())), `driver <span id="gDrv">${esc(row('gpu', 'Driver') || '–')}</span>`)}
+    <div class="pan wide" data-asm>${head(esc(short(gpuTitle())), `driver <span id="gDrv">${esc(row('gpu', LBL.driver) || '–')}</span>`)}
       <div class="gsplit">
         <div class="gl"><div class="gpuhero">${gauge('gG')}<div class="stats s4">
-          ${stat('Temperatura', 'gT', '°C', '<span id="gTl"></span>')}${stat('Consumo', 'gP', 'W', '')}${stat('Reloj', 'gC', 'GHz', '<span id="gCm"></span>')}
-          <div class="st"><span class="sl">Ventilador</span><b>${fanIc('gFan')}<span id="gFn">–</span><small id="gFnU">%</small></b><span class="ss" id="gFnW"></span></div></div></div>
-          <div class="vram"><span>Memoria de vídeo</span><b><span id="gV">–</span> de <span id="gVT">–</span> GB</b><div class="bar acc"><span id="gVB"></span></div></div></div>
-        <div class="gr"><div class="legend"><span><i style="background:var(--accent)"></i>uso</span><span><i class="dash" style="border-color:var(--accent2)"></i>temperatura</span></div>
+          ${stat('Temperature', 'gT', '°C', '<span id="gTl"></span>')}${stat('Power', 'gP', 'W', '')}${stat('Clock', 'gC', 'GHz', '<span id="gCm"></span>')}
+          <div class="st"><span class="sl">Fan</span><b>${fanIc('gFan')}<span id="gFn">–</span><small id="gFnU">%</small></b><span class="ss" id="gFnW"></span></div></div></div>
+          <div class="vram"><span>Video memory</span><b><span id="gV">–</span> of <span id="gVT">–</span> GB</b><div class="bar acc"><span id="gVB"></span></div></div></div>
+        <div class="gr"><div class="legend"><span><i style="background:var(--accent)"></i>usage</span><span><i class="dash" style="border-color:var(--accent2)"></i>temperature</span></div>
           <div class="chwrap">${cv('gCh')}</div>${axis}</div></div></div>
-    <div class="pan" data-asm>${head(esc(short(igpu) || 'Gráfica integrada'), 'integrada')}
-      <p class="mnote">${igpu ? 'Mueve la pantalla del portátil y ahorra batería. La dedicada entra cuando un programa la pide.' : 'Este equipo no tiene gráfica integrada activa.'}</p>
-      <p class="mnote faint">Windows no separa el uso de cada gráfica sin abrir la consola de Microsoft: aquí ves la dedicada en detalle.</p></div>
-    <div class="pan" data-asm>${head('Qué usa la GPU', procInfo.gpuPerProcess === false ? 'no disponible' : '')}<div class="tops" id="gTop"></div></div>
-    <div class="pan" data-asm>${head('Pantallas', `${mons.length || '–'}`)}<div class="rows">
-      ${mons.map(m => `<div class="row"><span class="ri">${ic('display')}</span><span class="rt"><b>${m.internal ? 'Pantalla del portátil' : 'Monitor externo'}</b><span>${esc([m.vendor, m.name || m.code].filter(Boolean).join(' '))}${m.inches ? `, ${m.inches}"` : ''}</span></span><span class="chip ok">activa</span></div>`).join('') || '<div class="muted">Sin datos de pantallas.</div>'}</div></div>
-    <div class="pan" data-asm>${head('Ficha técnica')}<dl class="spec" id="gSpec">
-      <dt>Modelo</dt><dd>${esc(gpuTitle())}</dd>${(g.rows || []).map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl></div>
+    <div class="pan" data-asm>${head(esc(short(igpu) || 'Integrated graphics'), 'integrated')}
+      <p class="mnote">${igpu ? 'Drives the laptop screen and saves battery. The dedicated GPU kicks in when a program asks for it.' : 'This PC has no active integrated graphics.'}</p>
+      <p class="mnote faint">Windows does not split usage per graphics card without extra Microsoft tools, so this shows the dedicated GPU in detail.</p></div>
+    <div class="pan" data-asm>${head('Using the GPU', procInfo.gpuPerProcess === false ? 'not available' : '')}<div class="tops" id="gTop"></div></div>
+    <div class="pan" data-asm>${head('Displays', `${mons.length || '–'}`)}<div class="rows">
+      ${mons.map(m => `<div class="row"><span class="ri">${ic('display')}</span><span class="rt"><b>${m.internal ? 'Laptop screen' : 'External monitor'}</b><span>${esc([m.vendor, m.name || m.code].filter(Boolean).join(' '))}${m.inches ? `, ${m.inches}"` : ''}</span></span><span class="chip ok">active</span></div>`).join('') || '<div class="muted">No display data.</div>'}</div></div>
+    <div class="pan" data-asm>${head('Specifications')}<dl class="spec" id="gSpec">
+      <dt>Model</dt><dd>${esc(gpuTitle())}</dd>${(g.rows || []).map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl></div>
   </div>`;
   arc(t, S(el, 'gGA'), v => v.gpu / 100, 235.6, 314.2); num(t, S(el, 'gGV'), v => v.gpu);
   num(t, S(el, 'gT'), v => v.gpuTemp); num(t, S(el, 'gP'), v => v.gpuPower); num(t, S(el, 'gC'), v => v.gpuClock, fmt1); num(t, S(el, 'gFn'), v => v.fanGpu); fan(t, S(el, 'gFan'), v => (v.fanGpu || 0) * 40);
-  fn(t, v => { S(el, 'gFnW').textContent = nil(v.fanGpu) ? 'Windows no lo informa' : 'automático'; S(el, 'gFnW').title = why.fan; });
+  fn(t, v => { S(el, 'gFnW').textContent = nil(v.fanGpu) ? 'Windows does not report it' : 'automatic'; S(el, 'gFnW').title = why.fan; });
   num(t, S(el, 'gV'), v => v.vram, fmt1); num(t, S(el, 'gVT'), v => v.vramTotal); bar(t, S(el, 'gVB'), v => v.vram / (v.vramTotal || 8));
-  chart(t, S(el, 'gCh'), { series: [{ key: 'gpu', col: 'accent', fill: true, label: 'Uso' }, { key: 'gpuTemp', col: 'accent2', dash: [5, 4], w: 1.5, label: 'Temp.', unit: ' °C', opt: true }] });
+  chart(t, S(el, 'gCh'), { series: [{ key: 'gpu', col: 'accent', fill: true, label: 'Usage' }, { key: 'gpuTemp', col: 'accent2', dash: [5, 4], w: 1.5, label: 'Temp.', unit: ' °C', opt: true }] });
   topList(t, S(el, 'gTop'), 'gpu', 6, pct, 0);
   load('gpu', 'gpu_info').then(gi => {
     if (!gi) return;
     S(el, 'gDrv').textContent = gi.driver;
-    if (gi.maxClock) S(el, 'gCm').textContent = `máximo ${fmt1(gi.maxClock)} GHz`;
-    if (gi.tlimitMargin != null) S(el, 'gTl').textContent = `${gi.tlimitMargin} °C hasta frenarse`;
-    const add = [gi.pcie && ['Conexión', gi.pcie], gi.powerLimit && ['Consumo máximo', gi.powerLimit + ' W']].filter(Boolean);
+    if (gi.maxClock) S(el, 'gCm').textContent = `max ${fmt1(gi.maxClock)} GHz`;
+    if (gi.tlimitMargin != null) S(el, 'gTl').textContent = `${gi.tlimitMargin} °C before throttling`;
+    const add = [gi.pcie && ['Connection', gi.pcie], gi.powerLimit && ['Max power', gi.powerLimit + ' W']].filter(Boolean);
     S(el, 'gSpec').insertAdjacentHTML('beforeend', add.map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join(''));
   });
 };
@@ -361,183 +363,183 @@ R.gpu = (el, t) => {
 R.memory = (el, t) => {
   const r = comp('ram'), slots = r.slots || 0, mods = r.modules || 0;
   el.innerHTML = `<div class="grid g-mem">
-    <div class="pan wide" data-asm>${head('Memoria en uso', `<span id="mTot">–</span> GB utilizables`)}
+    <div class="pan wide" data-asm>${head('Memory in use', `<span id="mTot">–</span> GB usable`)}
       <div class="hero"><div class="big"><span id="mU">–</span><small>GB</small></div>
-        <div class="legend"><span><i style="background:var(--accent)"></i>en uso <b id="mL1"></b></span><span><i style="background:var(--accent2)"></i>en caché <b id="mL2"></b></span><span><i style="background:var(--raise3)"></i>libre <b id="mL3"></b></span></div></div>
+        <div class="legend"><span><i style="background:var(--accent)"></i>in use <b id="mL1"></b></span><span><i style="background:var(--accent2)"></i>cached <b id="mL2"></b></span><span><i style="background:var(--raise3)"></i>free <b id="mL3"></b></span></div></div>
       <div class="stack"><span class="s2" id="mS2"></span><span class="s1" id="mS1"></span></div>
       <div class="chwrap">${cv('mCh')}</div>${axis}</div>
-    <div class="pan" data-asm>${head('Módulos', esc(r.title))}
+    <div class="pan" data-asm>${head('Modules', esc(r.title))}
       <div class="slots">${Array.from({ length: Math.max(slots, mods, 1) }, (_, i) => i < mods
-        ? `<div class="slot on"><div class="stick"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b>Ranura ${i + 1}</b><span>${esc(row('ram', 'Fabricante'))}, ${esc(row('ram', 'Velocidad'))}</span></div>`
-        : `<div class="slot"><div class="stick empty"></div><b>Ranura ${i + 1}</b><span>Libre</span></div>`).join('')}</div>
-      ${mods === 1 && slots > 1 ? '<p class="mnote">Con un solo módulo la memoria trabaja en un canal. Otro módulo igual duplicaría el ancho de banda.</p>' : ''}</div>
-    <div class="pan" data-asm>${head('Detalle')}<div class="stats">
-      ${stat('Comprometida', 'mC', '<span id="mCl"></span>', 'incluye el archivo de paginación')}${stat('En caché', 'mCa', 'GB')}${stat('Grupo paginado', 'mPp', 'MB')}${stat('Grupo no paginado', 'mNp', 'MB')}${stat('Velocidad', 'mSp', '')}${stat('Comprimida', 'mZ', 'MB')}</div></div>
-    <div class="pan" data-asm>${head('Lo que más memoria usa')}<div class="tops" id="mTop"></div></div>
+        ? `<div class="slot on"><div class="stick"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><b>Slot ${i + 1}</b><span>${esc(row('ram', LBL.maker))}, ${esc(row('ram', LBL.speed))}</span></div>`
+        : `<div class="slot"><div class="stick empty"></div><b>Slot ${i + 1}</b><span>Empty</span></div>`).join('')}</div>
+      ${mods === 1 && slots > 1 ? '<p class="mnote">With a single module, memory runs in single-channel mode. A second identical module would double the bandwidth.</p>' : ''}</div>
+    <div class="pan" data-asm>${head('Details')}<div class="stats">
+      ${stat('Committed', 'mC', '<span id="mCl"></span>', 'includes the page file')}${stat('Cached', 'mCa', 'GB')}${stat('Paged pool', 'mPp', 'MB')}${stat('Non-paged pool', 'mNp', 'MB')}${stat('Speed', 'mSp', '')}${stat('Compressed', 'mZ', 'MB')}</div></div>
+    <div class="pan" data-asm>${head('Using the most memory')}<div class="tops" id="mTop"></div></div>
   </div>`;
   const mi = { paged: null, nonpaged: null, compressed: null, commitLimit: null };
   num(t, S(el, 'mU'), v => v.ram, fmt1); num(t, S(el, 'mTot'), v => v.ramTotal, fmt1);
   fn(t, v => { const free = Math.max(0, (v.ramTotal || 0) - (v.ram || 0) - (v.ramCache || 0)); S(el, 'mL1').textContent = fmt1(v.ram || 0) + ' GB'; S(el, 'mL2').textContent = nil(v.ramCache) ? '—' : fmt1(v.ramCache) + ' GB'; S(el, 'mL3').textContent = fmt1(free) + ' GB';
-    S(el, 'mCl').textContent = `de ${fmt1(v.ramCommitLimit || mi.commitLimit || 0)} GB`; });
+    S(el, 'mCl').textContent = `of ${fmt1(v.ramCommitLimit || mi.commitLimit || 0)} GB`; });
   bar(t, S(el, 'mS1'), v => v.ram / v.ramTotal); bar(t, S(el, 'mS2'), v => (v.ram + (v.ramCache || 0)) / v.ramTotal);
-  chart(t, S(el, 'mCh'), { max: Math.ceil(V().ramTotal || 16), unit: ' GB', dec: 1, series: [{ key: 'ram', col: 'accent', fill: true, label: 'En uso' }] });
+  chart(t, S(el, 'mCh'), { max: Math.ceil(V().ramTotal || 16), unit: ' GB', dec: 1, series: [{ key: 'ram', col: 'accent', fill: true, label: 'In use' }] });
   num(t, S(el, 'mC'), v => v.ramCommit, fmt1); num(t, S(el, 'mCa'), v => v.ramCache, fmt1);
   num(t, S(el, 'mPp'), () => REAL() ? mi.paged : 612); num(t, S(el, 'mNp'), () => REAL() ? mi.nonpaged : 488); num(t, S(el, 'mZ'), () => REAL() ? mi.compressed : 240);
-  S(el, 'mSp').textContent = row('ram', 'Velocidad') || '–';
+  S(el, 'mSp').textContent = row('ram', LBL.speed) || '–';
   topList(t, S(el, 'mTop'), 'ram', 6, mb);
   const poll = async () => { const d = await eng('memory_info'); if (d) { Object.assign(mi, d); if (curTab === 'memory') refresh('memory'); } };
   if (REAL()) { poll(); tab(t).poll = poll; }
 };
 
-/* ---------- discos: salud SMART y particiones reales ---------- */
+/* ---------- disks: real SMART health and partitions ---------- */
 const gb = b => b >= 1e12 ? fmt1(b / 1e12) + ' TB' : b >= 1e9 ? fmtInt(b / 1e9) + ' GB' : fmtInt(b / 1e6) + ' MB';
 const MOCK_DISKS = { admin: true, trim: true, physical: [{ name: 'WD PC SN5000S SDEQNSJ-1T00', media: 'SSD', bus: 'NVMe', size: 1024209543168, health: 'Healthy', fw: '34230100', temp: 41, tempMax: 70, wear: 2, hours: 1204, starts: 412, readErr: 0, writeErr: 0, smart: true }],
   volumes: [{ disk: 0, letter: 'C', type: 'Basic', size: 1023141740544, hidden: false, fs: 'NTFS', free: 382796140544 }, { disk: 0, letter: '', type: 'Recovery', size: 943718400, hidden: true, fs: 'NTFS', free: null }, { disk: 0, letter: '', type: 'System', size: 104857600, hidden: true, fs: '', free: null }] };
 R.disks = (el, t) => {
   el.innerHTML = `<div class="grid g-disk">
-    <div class="pan wide" data-asm>${head('Actividad', esc(short(comp('ssd').title)))}
-      <div class="pair big2"><div><i style="background:var(--accent2)"></i><b id="dR">–</b> MB/s lectura</div><div><i style="background:var(--accent)"></i><b id="dW">–</b> MB/s escritura</div></div>
+    <div class="pan wide" data-asm>${head('Activity', esc(short(comp('ssd').title)))}
+      <div class="pair big2"><div><i style="background:var(--accent2)"></i><b id="dR">–</b> MB/s read</div><div><i style="background:var(--accent)"></i><b id="dW">–</b> MB/s write</div></div>
       <div class="chwrap">${cv('dCh')}</div>${axis}</div>
-    <div class="pan" data-asm>${head('Salud', 'SMART')}<div id="dHealth"><div class="sk" style="height:46px"></div><div class="sk" style="height:120px;margin-top:12px"></div></div></div>
-    <div class="pan" data-asm>${head('Espacio')}<div id="dVols"><div class="sk" style="height:40px"></div><div class="sk" style="height:40px;margin-top:10px"></div></div>
-      <button class="btn sec sm" data-act="storage">${ic('storage')}Ver qué ocupa el disco</button></div>
-    <div class="pan" data-asm>${head('Ficha técnica')}<dl class="spec" id="dSpec"><dt>Modelo</dt><dd>${esc(comp('ssd').title)}</dd></dl></div>
+    <div class="pan" data-asm>${head('Health', 'SMART')}<div id="dHealth"><div class="sk" style="height:46px"></div><div class="sk" style="height:120px;margin-top:12px"></div></div></div>
+    <div class="pan" data-asm>${head('Space')}<div id="dVols"><div class="sk" style="height:40px"></div><div class="sk" style="height:40px;margin-top:10px"></div></div>
+      <button class="btn sec sm" data-act="storage">${ic('storage')}See what fills the disk</button></div>
+    <div class="pan" data-asm>${head('Specifications')}<dl class="spec" id="dSpec"><dt>Model</dt><dd>${esc(comp('ssd').title)}</dd></dl></div>
   </div>`;
   num(t, S(el, 'dR'), v => v.diskRead); num(t, S(el, 'dW'), v => v.diskWrite);
-  chart(t, S(el, 'dCh'), { max: 'auto', min: 100, unit: ' MB/s', series: [{ key: 'diskRead', col: 'accent2', fill: true, label: 'Lectura' }, { key: 'diskWrite', col: 'accent', label: 'Escritura' }] });
+  chart(t, S(el, 'dCh'), { max: 'auto', min: 100, unit: ' MB/s', series: [{ key: 'diskRead', col: 'accent2', fill: true, label: 'Read' }, { key: 'diskWrite', col: 'accent', label: 'Write' }] });
   load('disks', 'disks').then(d => {
-    d = d === undefined ? MOCK_DISKS : d; if (!d) { S(el, 'dHealth').innerHTML = '<p class="mnote">No se pudo leer el disco.</p>'; return; }
+    d = d === undefined ? MOCK_DISKS : d; if (!d) { S(el, 'dHealth').innerHTML = '<p class="mnote">Could not read the disk.</p>'; return; }
     const p = (d.physical || [])[0] || {};
     const ok = (p.health || '').toLowerCase() === 'healthy';
     const hd = S(el, 'dHealth');
-    if (!p.smart) hd.innerHTML = `<div class="health-big">${ring('dRing', ok ? 'var(--ok)' : 'var(--warn)')}<div><b>${ok ? 'Buena' : esc(p.health || 'Desconocida')}</b><span>Según Windows. El detalle SMART necesita modo administrador.</span></div></div>
-      <button class="btn sec sm" data-act="admin">${ic('shield')}Ver el detalle SMART</button>`;
+    if (!p.smart) hd.innerHTML = `<div class="health-big">${ring('dRing', ok ? 'var(--ok)' : 'var(--warn)')}<div><b>${ok ? 'Good' : esc(p.health || 'Unknown')}</b><span>According to Windows. SMART details need administrator mode.</span></div></div>
+      <button class="btn sec sm" data-act="admin">${ic('shield')}See SMART details</button>`;
     else {
       const life = nil(p.wear) ? null : 100 - p.wear;
-      hd.innerHTML = `<div class="health-big">${ring('dRing', ok ? 'var(--ok)' : 'var(--warn)')}<div><b>${ok ? 'Buena' : esc(p.health)}</b><span>${life == null ? 'El disco no reporta errores.' : `Le queda el ${life} % de vida útil.`}</span></div></div>
-      <dl class="spec">${[['Vida usada', nil(p.wear) ? null : p.wear + ' %'], ['Horas encendido', nil(p.hours) ? null : fmtInt(p.hours) + ' h'], ['Encendidos', nil(p.starts) ? null : fmtInt(p.starts)],
-        ['Temperatura', nil(p.temp) ? null : `${p.temp} °C${p.tempMax ? `, máx. ${p.tempMax} °C` : ''}`], ['Errores de lectura', nil(p.readErr) ? null : fmtInt(p.readErr)], ['Errores de escritura', nil(p.writeErr) ? null : fmtInt(p.writeErr)]]
-        .filter(x => x[1] != null).map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('') || '<dt>SMART</dt><dd>sin datos del fabricante</dd>'}</dl>`;
+      hd.innerHTML = `<div class="health-big">${ring('dRing', ok ? 'var(--ok)' : 'var(--warn)')}<div><b>${ok ? 'Good' : esc(p.health)}</b><span>${life == null ? 'The disk reports no errors.' : `${life} % of its lifespan left.`}</span></div></div>
+      <dl class="spec">${[['Life used', nil(p.wear) ? null : p.wear + ' %'], ['Power-on hours', nil(p.hours) ? null : fmtInt(p.hours) + ' h'], ['Power cycles', nil(p.starts) ? null : fmtInt(p.starts)],
+        ['Temperature', nil(p.temp) ? null : `${p.temp} °C${p.tempMax ? `, max ${p.tempMax} °C` : ''}`], ['Read errors', nil(p.readErr) ? null : fmtInt(p.readErr)], ['Write errors', nil(p.writeErr) ? null : fmtInt(p.writeErr)]]
+        .filter(x => x[1] != null).map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('') || '<dt>SMART</dt><dd>no manufacturer data</dd>'}</dl>`;
     }
     arc(t, S(el, 'dRing'), () => ok ? (nil(p.wear) ? .96 : 1 - p.wear / 100) : .5, 100.5, 100.5); refresh(t);
     const vols = (d.volumes || []).filter(v => v.size > 50e6);
-    const vName = v => v.letter && v.letter.trim() && v.letter !== '\u0000' ? v.letter + ':' : ({ Recovery: 'Recuperación', System: 'Arranque EFI', Reserved: 'Reservada' }[v.type] || v.type || 'Partición');
-    S(el, 'dVols').innerHTML = vols.map((v, i) => `<div class="part"><div class="pl"><b>${esc(vName(v))}</b><span>${v.hidden ? 'oculta' : esc([v.label, v.fs].filter(Boolean).join(', ') || '—')}</span><em>${v.free != null ? `${gb(v.free)} libres de ${gb(v.size)}` : gb(v.size)}</em></div>
+    const vName = v => v.letter && v.letter.trim() && v.letter !== '\u0000' ? v.letter + ':' : ({ Recovery: 'Recovery', System: 'EFI boot', Reserved: 'Reserved' }[v.type] || v.type || 'Partition');
+    S(el, 'dVols').innerHTML = vols.map((v, i) => `<div class="part"><div class="pl"><b>${esc(vName(v))}</b><span>${v.hidden ? 'hidden' : esc([v.label, v.fs].filter(Boolean).join(', ') || '—')}</span><em>${v.free != null ? `${gb(v.free)} free of ${gb(v.size)}` : gb(v.size)}</em></div>
       <div class="bar ${v.hidden ? '' : 'acc'}"><span id="dV${i}"></span></div></div>`).join('');
     vols.forEach((v, i) => bar(t, S(el, 'dV' + i), () => v.free != null ? 1 - v.free / v.size : 1));
-    S(el, 'dSpec').insertAdjacentHTML('beforeend', [['Capacidad', p.size ? gb(p.size) : null], ['Tipo', [p.media, p.bus].filter(x => x && x !== 'Unspecified').join(', ') || null], ['Firmware', p.fw || null],
-      ['TRIM', d.trim == null ? null : d.trim ? 'Activado' : 'Desactivado'], ['Discos en el equipo', (d.physical || []).length]].filter(x => x[1] != null).map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join(''));
+    S(el, 'dSpec').insertAdjacentHTML('beforeend', [['Capacity', p.size ? gb(p.size) : null], ['Type', [p.media, p.bus].filter(x => x && x !== 'Unspecified').join(', ') || null], ['Firmware', p.fw || null],
+      ['TRIM', d.trim == null ? null : d.trim ? 'On' : 'Off'], ['Disks in this PC', (d.physical || []).length]].filter(x => x[1] != null).map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join(''));
     refresh(t); assembleIn(el);
   });
 };
 const assembleIn = el => $$('.part, .health-big, .spec dt, .spec dd', el).forEach((x, i) => anim(x, [{ opacity: 0 }, { opacity: 1 }], { d: 300, delay: Math.min(i, 12) * 20, keep: true }));
 
-/* ---------- red ---------- */
+/* ---------- network ---------- */
 let ipShown = false, pubIp = null;
 const MOCK_NET = { admin: true, adapters: [{ alias: 'Wi-Fi', desc: 'Realtek 8852CE WiFi 6E PCI-E NIC', ipv4: ['192.168.1.37'], gw: ['192.168.1.1'], dns: ['192.168.1.1'], dhcpDns: true, mac: '3C-A6-F6-12-34-7E', speed: '1.2 Gbps', virtual: false }],
-  wifi: { connected: true, ssid: 'Red_Casa_6E', signal: 82, band: '6 GHz', channel: '37', radio: '802.11ax', rx: '1201', tx: '1201' },
+  wifi: { connected: true, ssid: 'Home_WiFi_6E', signal: 82, band: '6 GHz', channel: '37', radio: '802.11ax', rx: '1201', tx: '1201' },
   apps: [{ n: 'Brave', conns: 14 }, { n: 'Discord', conns: 6 }, { n: 'Spotify', conns: 3 }, { n: 'Steam', conns: 2 }] };
 R.network = (el, t) => {
   el.innerHTML = `<div class="grid g-net">
-    <div class="pan wide" data-asm>${head('Tráfico', '<span id="nAd">–</span>')}
-      <div class="pair big2"><div><i style="background:var(--accent2)"></i><b id="nD">–</b> Mb/s bajada</div><div><i style="background:var(--accent)"></i><b id="nU">–</b> Mb/s subida</div></div>
+    <div class="pan wide" data-asm>${head('Traffic', '<span id="nAd">–</span>')}
+      <div class="pair big2"><div><i style="background:var(--accent2)"></i><b id="nD">–</b> Mb/s down</div><div><i style="background:var(--accent)"></i><b id="nU">–</b> Mb/s up</div></div>
       <div class="chwrap">${cv('nCh')}</div>${axis}</div>
-    <div class="pan" data-asm>${head('Latencia', 'hacia 1.1.1.1')}
+    <div class="pan" data-asm>${head('Latency', 'to 1.1.1.1')}
       <div class="big"><span id="nP">–</span><small>ms</small></div><div class="chwrap sm">${cv('nPCh')}</div>
-      <div class="mini"><span>Variación <b id="nJ">–</b> ms</span><span>Mínima <b id="nMin">–</b> ms</span></div></div>
-    <div class="pan" data-asm>${head('Conexión')}<div id="nConn"><div class="sk" style="height:44px"></div><div class="sk" style="height:140px;margin-top:12px"></div></div></div>
-    <div class="pan" data-asm>${head('Servidor DNS')}
-      <div class="seg" id="nDns"><span class="ind"></span><button data-v="auto" class="on">Automático</button><button data-v="cloudflare">Cloudflare</button><button data-v="google">Google</button></div>
-      <p class="mnote" id="nDnsTxt">Comprobando el DNS que usas…</p>
-      <div class="dnsl"><span>Tiempo de respuesta medido desde tu red</span>
+      <div class="mini"><span>Jitter <b id="nJ">–</b> ms</span><span>Min <b id="nMin">–</b> ms</span></div></div>
+    <div class="pan" data-asm>${head('Connection')}<div id="nConn"><div class="sk" style="height:44px"></div><div class="sk" style="height:140px;margin-top:12px"></div></div></div>
+    <div class="pan" data-asm>${head('DNS server')}
+      <div class="seg" id="nDns"><span class="ind"></span><button data-v="auto" class="on">Automatic</button><button data-v="cloudflare">Cloudflare</button><button data-v="google">Google</button></div>
+      <p class="mnote" id="nDnsTxt">Checking which DNS you use…</p>
+      <div class="dnsl"><span>Response time measured from your network</span>
         <div class="dnsr"><b>Router</b><span class="bar"><span id="nDr1"></span></span><em id="nDv1">–</em></div>
         <div class="dnsr"><b>Cloudflare</b><span class="bar"><span id="nDr2"></span></span><em id="nDv2">–</em></div>
         <div class="dnsr"><b>Google</b><span class="bar"><span id="nDr3"></span></span><em id="nDv3">–</em></div></div></div>
-    <div class="pan" data-asm>${head('Qué usa la red', 'conexiones abiertas')}<div class="tops" id="nTop"></div></div>
+    <div class="pan" data-asm>${head('Using the network', 'open connections')}<div class="tops" id="nTop"></div></div>
   </div>`;
   num(t, S(el, 'nD'), v => v.down, fmt1); num(t, S(el, 'nU'), v => v.up, fmt1);
-  chart(t, S(el, 'nCh'), { max: 'auto', min: 20, unit: ' Mb/s', dec: 1, series: [{ key: 'down', col: 'accent2', fill: true, label: 'Bajada' }, { key: 'up', col: 'accent', label: 'Subida' }] });
+  chart(t, S(el, 'nCh'), { max: 'auto', min: 20, unit: ' Mb/s', dec: 1, series: [{ key: 'down', col: 'accent2', fill: true, label: 'Download' }, { key: 'up', col: 'accent', label: 'Upload' }] });
   num(t, S(el, 'nP'), v => v.ping);
   fn(t, () => { const h = SH.tele.hist.ping.slice(-40).filter(x => x > 0); if (!h.length) return; const mn = Math.min(...h), avg = h.reduce((a, b) => a + b, 0) / h.length;
     S(el, 'nMin').textContent = fmtInt(mn); S(el, 'nJ').textContent = fmt1(h.reduce((a, b) => a + Math.abs(b - avg), 0) / h.length); });
-  chart(t, S(el, 'nPCh'), { max: 'auto', min: 40, unit: ' ms', grid: 3, series: [{ key: 'ping', col: 'accent2', fill: true, label: 'Latencia' }] });
-  topList(t, S(el, 'nTop'), 'net', 5, v => fmtInt(v) + ' conex.');
+  chart(t, S(el, 'nPCh'), { max: 'auto', min: 40, unit: ' ms', grid: 3, series: [{ key: 'ping', col: 'accent2', fill: true, label: 'Latency' }] });
+  topList(t, S(el, 'nTop'), 'net', 5, v => fmtInt(v) + ' conn.');
   const seg = S(el, 'nDns'); let adapter = null;
-  const DNSN = { auto: 'Automático', cloudflare: 'Cloudflare', google: 'Google' };
-  const DNST = { auto: ip => `Usa el que te da el router${ip ? ` (${ip})` : ''}.`, cloudflare: () => '1.1.1.1 y 1.0.0.1. Rápido y sin registro de lo que visitas.', google: () => '8.8.8.8 y 8.8.4.4. Muy estable en todo el mundo.' };
+  const DNSN = { auto: 'Automatic', cloudflare: 'Cloudflare', google: 'Google' };
+  const DNST = { auto: ip => `Uses the one your router provides${ip ? ` (${ip})` : ''}.`, cloudflare: () => '1.1.1.1 and 1.0.0.1. Fast, and it does not log what you visit.', google: () => '8.8.8.8 and 8.8.4.4. Very reliable worldwide.' };
   const setSeg = v => { $$('button', seg).forEach(x => x.classList.toggle('on', x.dataset.v === v)); SH.placeSeg(seg); const p = S(el, 'nDnsTxt'); p.textContent = DNST[v](adapter && adapter.gw && adapter.gw[0]); };
   load('net', 'network').then(d => {
     d = d === undefined ? MOCK_NET : d; if (!d) return;
     adapter = (d.adapters || []).find(a => !a.virtual) || (d.adapters || [])[0] || null; const w = d.wifi || {};
-    S(el, 'nAd').textContent = adapter ? short(adapter.desc) : 'sin conexión';
+    S(el, 'nAd').textContent = adapter ? short(adapter.desc) : 'offline';
     const sig = w.signal != null ? w.signal : V().wifiSignal;
     const mask = ip => ip ? ip.replace(/^(\d+)\.\d+\.\d+\.(\d+)$/, '$1.•••.•••.$2') : '—';
-    S(el, 'nConn').innerHTML = `${w.connected ? `<div class="wifi"><div class="sig" id="nSig">${'<i></i>'.repeat(4)}</div><div><b>${esc(w.ssid)}</b><span>${sig != null ? `${sig} % de señal` : 'Wi-Fi'}${w.band ? `, ${esc(w.band)}` : ''}${w.channel ? `, canal ${esc(w.channel)}` : ''}</span></div></div>`
-      : adapter ? `<div class="wifi"><div class="ri">${ic('globe')}</div><div><b>${esc(adapter.alias)}</b><span>Conexión por cable</span></div></div>` : '<p class="mnote">Sin conexión de red.</p>'}
-      ${adapter ? `<dl class="spec"><dt>Adaptador</dt><dd>${esc(adapter.desc)}</dd><dt>Velocidad del enlace</dt><dd>${esc(adapter.speed || '—')}</dd>${w.radio ? `<dt>Estándar</dt><dd>${esc(w.radio)}</dd>` : ''}
-        <dt>IP local</dt><dd>${esc((adapter.ipv4 || [])[0] || '—')}</dd><dt>Puerta de enlace</dt><dd>${esc((adapter.gw || [])[0] || '—')}</dd>
-        <dt>IP pública</dt><dd class="reveal"><span id="nIp">oculta</span><button class="iconbtn" id="nEye" title="Mostrar u ocultar">${ic('eye')}</button></dd>
+    S(el, 'nConn').innerHTML = `${w.connected ? `<div class="wifi"><div class="sig" id="nSig">${'<i></i>'.repeat(4)}</div><div><b>${esc(w.ssid)}</b><span>${sig != null ? `${sig} % signal` : 'Wi-Fi'}${w.band ? `, ${esc(w.band)}` : ''}${w.channel ? `, channel ${esc(w.channel)}` : ''}</span></div></div>`
+      : adapter ? `<div class="wifi"><div class="ri">${ic('globe')}</div><div><b>${esc(adapter.alias)}</b><span>Wired connection</span></div></div>` : '<p class="mnote">No network connection.</p>'}
+      ${adapter ? `<dl class="spec"><dt>Adapter</dt><dd>${esc(adapter.desc)}</dd><dt>Link speed</dt><dd>${esc(adapter.speed || '—')}</dd>${w.radio ? `<dt>Standard</dt><dd>${esc(w.radio)}</dd>` : ''}
+        <dt>Local IP</dt><dd>${esc((adapter.ipv4 || [])[0] || '—')}</dd><dt>Gateway</dt><dd>${esc((adapter.gw || [])[0] || '—')}</dd>
+        <dt>Public IP</dt><dd class="reveal"><span id="nIp">hidden</span><button class="iconbtn" id="nEye" title="Show or hide">${ic('eye')}</button></dd>
         <dt>MAC</dt><dd>${esc((adapter.mac || '').replace(/^(\w\w)-(\w\w)-(\w\w)-\w\w-\w\w-(\w\w)$/, '$1:$2:$3:••:••:$4') || '—')}</dd></dl>` : ''}`;
     $$('#nSig i', el).forEach((b, i) => b.classList.toggle('on', (sig || 0) >= [5, 30, 55, 78][i]));
     const eye = S(el, 'nEye');
     if (eye) eye.addEventListener('click', async () => {
       ipShown = !ipShown; const ip = S(el, 'nIp');
-      if (ipShown && !pubIp) { ip.textContent = 'consultando…'; pubIp = REAL() ? await eng('public_ip') : '181.199.47.214'; }
+      if (ipShown && !pubIp) { ip.textContent = 'checking…'; pubIp = REAL() ? await eng('public_ip') : '181.199.47.214'; }
       anim(ip, [{ opacity: 1, filter: 'blur(0px)' }, { opacity: 0, filter: 'blur(6px)' }], { d: 140 }).finished.then(() => {
-        ip.textContent = ipShown ? (pubIp || 'no se pudo consultar') : (pubIp ? mask(pubIp) : 'oculta'); anim(ip, [{ opacity: 0, filter: 'blur(6px)' }, { opacity: 1, filter: 'blur(0px)' }], { d: 260 });
+        ip.textContent = ipShown ? (pubIp || 'could not check') : (pubIp ? mask(pubIp) : 'hidden'); anim(ip, [{ opacity: 0, filter: 'blur(6px)' }, { opacity: 1, filter: 'blur(0px)' }], { d: 260 });
       }).catch(() => {});
     });
     const dns = adapter && adapter.dns || [];
     const cur = adapter && !adapter.dhcpDns ? (dns.includes('1.1.1.1') ? 'cloudflare' : dns.includes('8.8.8.8') ? 'google' : 'custom') : 'auto';
-    if (cur === 'custom') { $$('button', seg).forEach(x => x.classList.remove('on')); S(el, 'nDnsTxt').textContent = `Personalizado: ${dns.join(', ')}`; } else setSeg(cur);
-    /* apps con conexiones: el motor ya las agrupa; en real las saca de procesos (red = conexiones) */
+    if (cur === 'custom') { $$('button', seg).forEach(x => x.classList.remove('on')); S(el, 'nDnsTxt').textContent = `Custom: ${dns.join(', ')}`; } else setSeg(cur);
+    /* apps with connections: the engine already groups them; in real mode they come from processes (network = connections) */
     (REAL() ? load('dns', 'dns_test', adapter && adapter.gw && adapter.gw[0]) : Promise.resolve({ router: 9.4, cloudflare: 4.1, google: 5.3 })).then(r => {
       if (!r) return; const vals = [r.router, r.cloudflare, r.google]; const best = Math.min(...vals.filter(x => x != null));
-      vals.forEach((x, i) => { S(el, 'nDv' + (i + 1)).textContent = x == null ? 'sin respuesta' : `${fmt1(x)} ms`; const b = S(el, 'nDr' + (i + 1)); b.style.transform = `scaleX(${x == null ? 0 : Math.min(1, x / Math.max(30, best * 4)).toFixed(3)})`;
+      vals.forEach((x, i) => { S(el, 'nDv' + (i + 1)).textContent = x == null ? 'no response' : `${fmt1(x)} ms`; const b = S(el, 'nDr' + (i + 1)); b.style.transform = `scaleX(${x == null ? 0 : Math.min(1, x / Math.max(30, best * 4)).toFixed(3)})`;
         b.parentElement.classList.toggle('ok', x === best); b.closest('.dnsr').classList.toggle('best', x === best); });
     });
   });
   seg.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return;
-    if (!SH.requireAdmin('para cambiar el servidor DNS.')) return;
-    if (!adapter) { SH.toast('No hay un adaptador de red activo.'); return; }
-    confirmDlg({ title: `Cambiar el DNS a ${DNSN[b.dataset.v]}`, text: `Se aplica al adaptador «${adapter.alias}». Se puede volver a Automático cuando quieras.`, yes: 'Cambiar', danger: false }, async () => {
+    if (!SH.requireAdmin('to change the DNS server.')) return;
+    if (!adapter) { SH.toast('There is no active network adapter.'); return; }
+    confirmDlg({ title: `Change the DNS to ${DNSN[b.dataset.v]}`, text: `It applies to the "${adapter.alias}" adapter. You can switch back to Automatic at any time.`, yes: 'Change', danger: false }, async () => {
       const r = REAL() ? await eng('set_dns', adapter.alias, b.dataset.v) : { ok: true };
-      if (r && r.ok) { setSeg(b.dataset.v); SH.toast(`DNS cambiado a ${DNSN[b.dataset.v]}.`); SH.logActivity && SH.logActivity(`DNS cambiado a ${DNSN[b.dataset.v]}`, { sub: adapter.alias, ic: 'globe', go: 'monitor', tab: 'network' }); delete cache.net; }
-      else if (r && r.needAdmin) SH.requireAdmin('para cambiar el servidor DNS.');
-      else SH.toast(`No se pudo cambiar el DNS${r && r.error ? ': ' + r.error : '.'}`);
+      if (r && r.ok) { setSeg(b.dataset.v); SH.toast(`DNS changed to ${DNSN[b.dataset.v]}.`); SH.logActivity && SH.logActivity(`DNS changed to ${DNSN[b.dataset.v]}`, { sub: adapter.alias, ic: 'globe', go: 'monitor', tab: 'network' }); delete cache.net; }
+      else if (r && r.needAdmin) SH.requireAdmin('to change the DNS server.');
+      else SH.toast(`Could not change the DNS${r && r.error ? ': ' + r.error : '.'}`);
     });
   });
 };
 
-/* ---------- batería ---------- */
+/* ---------- battery ---------- */
 let batChart = null;
 R.battery = (el, t) => {
-  if (!SH.PC.components.some(c => c.id === 'battery') && REAL()) { el.innerHTML = '<div class="empty"><b>Este equipo no tiene batería</b>Es un PC de sobremesa o la batería no está conectada.</div>'; return; }
+  if (!SH.PC.components.some(c => c.id === 'battery') && REAL()) { el.innerHTML = '<div class="empty"><b>This PC has no battery</b>It is a desktop PC or the battery is not connected.</div>'; return; }
   el.innerHTML = `<div class="grid g-bat">
-    <div class="pan" data-asm>${head('Carga')}
+    <div class="pan" data-asm>${head('Charge')}
       <div class="batrow"><div class="batt"><div class="body"><span id="bF"></span></div><div class="cap"></div><svg class="i bolt" id="bBolt" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H12L11 21.5l8.5-11H12z"/></svg></div>
         <div><div class="big"><span id="bP">–</span><small>%</small></div><p class="muted" id="bSt">–</p></div></div>
-      <div class="stats s2">${stat('Carga o descarga', 'bW', 'W', '<span id="bWs"></span>')}${stat('Tiempo restante', 'bE', '', '<span id="bEs"></span>')}</div></div>
-    <div class="pan" data-asm>${head('Salud', '<span id="bName">–</span>')}
-      <div class="health-big">${ring('bRing', 'var(--ok)')}<div><b><span id="bH">–</span> %</b><span>de la capacidad original</span></div></div>
+      <div class="stats s2">${stat('Charge or discharge', 'bW', 'W', '<span id="bWs"></span>')}${stat('Time left', 'bE', '', '<span id="bEs"></span>')}</div></div>
+    <div class="pan" data-asm>${head('Health', '<span id="bName">–</span>')}
+      <div class="health-big">${ring('bRing', 'var(--ok)')}<div><b><span id="bH">–</span> %</b><span>of the original capacity</span></div></div>
       <dl class="spec" id="bSpec"></dl>
-      <p class="mnote">Si el portátil pasa casi todo el día enchufado, limitar la carga al 80 % en la app del fabricante alarga la vida de la batería.</p></div>
-    <div class="pan wide" data-asm>${head('Nivel de carga', '<span id="bRange">esta sesión</span>')}
-      <div class="legend"><span><i style="background:var(--accent2)"></i>carga</span><span><i style="background:var(--raise3)"></i>enchufado</span></div>
-      <div class="chwrap tall"><canvas class="ch" id="bCh"></canvas></div><div class="axis"><span id="bA0">antes</span><span>ahora</span></div></div>
+      <p class="mnote">If the laptop stays plugged in most of the day, limiting the charge to 80 % in the manufacturer's app extends battery life.</p></div>
+    <div class="pan wide" data-asm>${head('Charge level', '<span id="bRange">this session</span>')}
+      <div class="legend"><span><i style="background:var(--accent2)"></i>charge</span><span><i style="background:var(--raise3)"></i>plugged in</span></div>
+      <div class="chwrap tall"><canvas class="ch" id="bCh"></canvas></div><div class="axis"><span id="bA0">earlier</span><span>now</span></div></div>
   </div>`;
   num(t, S(el, 'bP'), v => v.battery); bar(t, S(el, 'bF'), v => v.battery / 100);
   num(t, S(el, 'bW'), v => nil(v.batteryPower) ? null : Math.abs(v.batteryPower), fmt1);
   num(t, S(el, 'bE'), v => v.batterySecs, s => `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min`, 60, 16);
   num(t, S(el, 'bH'), v => v.batteryHealth); arc(t, S(el, 'bRing'), v => (v.batteryHealth || 0) / 100, 100.5, 100.5);
   fn(t, v => {
-    S(el, 'bSt').textContent = v.charging ? (v.battery >= 99 ? 'Enchufado, carga completa.' : 'Enchufado y cargando.') : 'Funcionando con batería.';
-    S(el, 'bWs').textContent = nil(v.batteryPower) ? 'Windows no lo informa' : v.batteryPower > 0 ? 'entrando a la batería' : v.batteryPower < 0 ? 'que gasta el equipo' : 'sin carga ni descarga';
-    S(el, 'bEs').textContent = v.charging ? 'enchufado' : nil(v.batterySecs) ? 'calculando' : 'a este ritmo';
+    S(el, 'bSt').textContent = v.charging ? (v.battery >= 99 ? 'Plugged in, fully charged.' : 'Plugged in and charging.') : 'Running on battery.';
+    S(el, 'bWs').textContent = nil(v.batteryPower) ? 'Windows does not report it' : v.batteryPower > 0 ? 'going into the battery' : v.batteryPower < 0 ? 'used by the PC' : 'not charging or discharging';
+    S(el, 'bEs').textContent = v.charging ? 'plugged in' : nil(v.batterySecs) ? 'calculating' : 'at this rate';
     S(el, 'bBolt').style.opacity = v.charging ? 1 : 0;
   });
-  /* gráfica: informe de Windows de las últimas 24 h si hay cambios; si no, lo medido en esta sesión */
+  /* chart: the Windows report for the last 24 h if it has changes; otherwise what was measured this session */
   let pts = null;
   const cvs = S(el, 'bCh'); const ctx = cvs.getContext('2d'); const rv = new Spring(0, 30, 10); let w = 0, h = 0;
   const size = () => { const r = cvs.getBoundingClientRect(); if (!r.width || !r.height) return; const d = Math.min(2, devicePixelRatio || 1); cvs.width = r.width * d; cvs.height = r.height * d; w = r.width; h = r.height; ctx.setTransform(d, 0, 0, d, 0, 0); };
@@ -560,27 +562,27 @@ R.battery = (el, t) => {
   };
   batChart.replay();
   const fill = (rep) => {
-    const spec = rep ? [['Capacidad original', rep.design ? fmt1(rep.design / 1000) + ' Wh' : null], ['Capacidad actual', rep.full ? fmt1(rep.full / 1000) + ' Wh' : null],
-      ['Ciclos de carga', rep.cycles ? fmtInt(rep.cycles) : 'Windows no los informa'], ['Fabricante', rep.maker || null]].filter(x => x[1] != null) : [];
-    S(el, 'bSpec').innerHTML = spec.map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join(''); S(el, 'bName').textContent = rep && rep.name || 'batería';
+    const spec = rep ? [['Original capacity', rep.design ? fmt1(rep.design / 1000) + ' Wh' : null], ['Current capacity', rep.full ? fmt1(rep.full / 1000) + ' Wh' : null],
+      ['Charge cycles', rep.cycles ? fmtInt(rep.cycles) : 'Windows does not report them'], ['Manufacturer', rep.maker || null]].filter(x => x[1] != null) : [];
+    S(el, 'bSpec').innerHTML = spec.map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join(''); S(el, 'bName').textContent = rep && rep.name || 'battery';
     const u = rep && rep.usage || [];
-    if (u.length >= 3) { pts = u.map(e => ({ c: e.pct, plugged: e.ac })); S(el, 'bRange').textContent = 'últimas 24 h'; S(el, 'bA0').textContent = 'hace 24 h'; batChart.replay(); }
-    else { S(el, 'bRange').textContent = REAL() ? 'esta sesión (Windows no tiene cambios en 24 h)' : 'últimas 24 h'; S(el, 'bA0').textContent = REAL() ? 'hace 1 min' : 'hace 24 h'; }
+    if (u.length >= 3) { pts = u.map(e => ({ c: e.pct, plugged: e.ac })); S(el, 'bRange').textContent = 'last 24 h'; S(el, 'bA0').textContent = '24 h ago'; batChart.replay(); }
+    else { S(el, 'bRange').textContent = REAL() ? 'this session (Windows has no changes in the last 24 h)' : 'last 24 h'; S(el, 'bA0').textContent = REAL() ? '1 min ago' : '24 h ago'; }
   };
   if (REAL()) load('bat', 'battery_report').then(fill); else fill({ design: 90001, full: 87206, cycles: 38, maker: 'ASUS', name: 'GU60558', usage: [] });
 };
 const BAT24 = (() => { const a = []; let c = 100; for (let i = 0; i < 96; i++) { const plugged = !(i >= 52 && i < 66); c = plugged ? Math.min(100, c + 6) : Math.max(20, c - 4.6 - Math.random()); a.push({ c, plugged }); } return a; })();
 
-/* ---------- procesos: tabla ordenable con filas que se reordenan (FLIP) ---------- */
-const COLS = [['n', 'Nombre'], ['cpu', 'CPU'], ['ram', 'Memoria'], ['gpu', 'GPU'], ['disk', 'Disco'], ['net', 'Red']];
+/* ---------- processes: sortable table whose rows reorder (FLIP) ---------- */
+const COLS = [['n', 'Name'], ['cpu', 'CPU'], ['ram', 'Memory'], ['gpu', 'GPU'], ['disk', 'Disk'], ['net', 'Network']];
 let sortK = 'cpu', sortDir = -1, query = '', hoverTable = false, procBody = null; const rowEls = new Map();
-const CELL = { cpu: v => pct(v), ram: mb, gpu: v => pct(v), disk: v => fmt1(v) + ' MB/s', net: v => REAL() ? (v ? fmtInt(v) + ' conex.' : '—') : fmt1(v) + ' Mb/s' };
+const CELL = { cpu: v => pct(v), ram: mb, gpu: v => pct(v), disk: v => fmt1(v) + ' MB/s', net: v => REAL() ? (v ? fmtInt(v) + ' conn.' : '—') : fmt1(v) + ' Mb/s' };
 const HEAT = { cpu: 12, ram: 2000, gpu: 12, disk: 6, net: 12 };
 R.processes = (el, t) => {
   el.classList.add('fill');
   el.innerHTML = `<div class="procs">
-    <div class="ptools" data-asm><label class="field"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg><input id="pQ" placeholder="Buscar un proceso" spellcheck="false"></label>
-      <span class="muted" id="pCount"></span><span class="faint hint" id="pHint">El orden se detiene mientras el ratón está sobre la lista.</span></div>
+    <div class="ptools" data-asm><label class="field"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg><input id="pQ" placeholder="Search for a process" spellcheck="false"></label>
+      <span class="muted" id="pCount"></span><span class="faint hint" id="pHint">Sorting pauses while the pointer is over the list.</span></div>
     <div class="pan ptable" data-asm>
       <div class="ph">${COLS.map(([k, n]) => `<button data-sort="${k}"${k === sortK ? ' class="on"' : ''}>${n}<svg class="i" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>`).join('')}<span></span></div>
       <div class="pb" id="pB"></div></div></div>`;
@@ -597,34 +599,34 @@ R.processes = (el, t) => {
   procBody.addEventListener('click', e => {
     const b = e.target.closest('[data-pact]'); if (!b) return; const id = b.closest('.pr').dataset.id;
     const p = procList().find(x => String(x.id) === id); if (!p) return;
-    if (b.dataset.pact === 'loc') { if (REAL()) eng('open_location', p.path).then(r => { if (!r) SH.toast('Windows no deja ver dónde está ese programa.'); }); else SH.toast(`Abriendo ${p.path}`); }
+    if (b.dataset.pact === 'loc') { if (REAL()) eng('open_location', p.path).then(r => { if (!r) SH.toast('Windows does not show where that program is located.'); }); else SH.toast(`Opening ${p.path}`); }
     if (b.dataset.pact === 'end') askEnd(p);
   });
   fn(t, () => renderProcs(!hoverTable));
 };
 function sortedProcs() {
   return procList().filter(p => p.alive && (!query || (p.n + ' ' + p.exe).toLowerCase().includes(query)))
-    .sort((a, b) => sortK === 'n' ? a.n.localeCompare(b.n, 'es') * sortDir : (a[sortK] - b[sortK]) * sortDir);
+    .sort((a, b) => sortK === 'n' ? a.n.localeCompare(b.n, 'en') * sortDir : (a[sortK] - b[sortK]) * sortDir);
 }
 function makeRow(p) {
   const el = document.createElement('div'); el.className = 'pr'; el.dataset.id = p.id;
   el.dataset.ic = p.icon ? '1' : '0';
-  el.innerHTML = `${mono(p.n, p.icon)}<span class="pn"><b>${esc(p.n)}</b><span>${esc(p.exe)}${p.k > 1 ? `, ${p.k} procesos` : ''}</span></span>
+  el.innerHTML = `${mono(p.n, p.icon)}<span class="pn"><b>${esc(p.n)}</b><span>${esc(p.exe)}${p.k > 1 ? `, ${p.k} processes` : ''}</span></span>
     ${['cpu', 'ram', 'gpu', 'disk', 'net'].map(k => `<span class="c" data-c="${k}"></span>`).join('')}
-    <span class="pa"><button class="iconbtn" data-pact="loc" title="Abrir ubicación">${ic('folder')}</button>
-    <button class="iconbtn" data-pact="end" title="${p.own ? 'Es StellarHub' : p.sys ? 'Windows lo necesita' : 'Finalizar'}"${p.sys || p.own ? ' disabled' : ''}>${ic('x')}</button></span>`;
+    <span class="pa"><button class="iconbtn" data-pact="loc" title="Open file location">${ic('folder')}</button>
+    <button class="iconbtn" data-pact="end" title="${p.own ? 'This is StellarHub' : p.sys ? 'Windows needs it' : 'End task'}"${p.sys || p.own ? ' disabled' : ''}>${ic('x')}</button></span>`;
   return el;
 }
 function fillRow(el, p) {
   if (p.icon && el.dataset.ic !== '1') { el.dataset.ic = '1'; $('.mono', el).outerHTML = mono(p.n, p.icon); }
-  const sub = $('.pn span', el); const st = `${p.exe}${p.k > 1 ? `, ${p.k} procesos` : ''}`; if (sub.textContent !== st) sub.textContent = st;
+  const sub = $('.pn span', el); const st = `${p.exe}${p.k > 1 ? `, ${p.k} processes` : ''}`; if (sub.textContent !== st) sub.textContent = st;
   $$('.c', el).forEach(c => { const k = c.dataset.c; c.textContent = CELL[k](p[k]); c.style.setProperty('--h', clamp01(p[k] / HEAT[k]).toFixed(3)); });
 }
 function renderProcs(reorder, force) {
   if (!procBody || (paused && !force)) return;
   const list = sortedProcs();
-  const cnt = $('#pCount'); if (cnt) cnt.textContent = `${list.length} programas, ${list.reduce((s, p) => s + p.k, 0)} procesos`;
-  if (!list.length) { rowEls.forEach(el => el.remove()); if (!$('.empty', procBody)) procBody.insertAdjacentHTML('beforeend', `<div class="empty"><b>Nada con «${esc(query)}»</b>Prueba con el nombre del programa o del archivo .exe.</div>`); return; }
+  const cnt = $('#pCount'); if (cnt) cnt.textContent = `${list.length} programs, ${list.reduce((s, p) => s + p.k, 0)} processes`;
+  if (!list.length) { rowEls.forEach(el => el.remove()); if (!$('.empty', procBody)) procBody.insertAdjacentHTML('beforeend', `<div class="empty"><b>Nothing matches "${esc(query)}"</b>Try the program name or its .exe file.</div>`); return; }
   const em = $('.empty', procBody); if (em) em.remove();
   if (!reorder) { list.forEach(p => { const el = rowEls.get(p.id); if (el && el.parentNode) fillRow(el, p); }); return; }
   const first = new Map(); rowEls.forEach((el, id) => { if (el.parentNode) first.set(id, el.getBoundingClientRect().top); });
@@ -634,28 +636,28 @@ function renderProcs(reorder, force) {
   if (state.settings.intensity === 'min') return;
   list.forEach((p, i) => {
     const el = rowEls.get(p.id), f = first.get(p.id);
-    /* keep + fill sin 'forwards': las animaciones de fila no se cancelan entre sí (cancelar a mitad dejaba opacidad 0 fijada) */
+    /* keep + fill without 'forwards': row animations do not cancel each other (cancelling midway left opacity stuck at 0) */
     if (f == null) anim(el, [{ opacity: 0 }, { opacity: 1 }], { d: 320, delay: Math.min(i, 12) * 18, keep: true, fill: 'backwards' });
     else { const d = f - el.getBoundingClientRect().top; if (Math.abs(d) > 1) { el.getAnimations().forEach(a => { if (a.effect && a.effect.getKeyframes().some(k => k.transform)) a.cancel(); }); anim(el, [{ transform: `translate3d(0,${d}px,0)` }, { transform: 'none' }], { d: 460, e: EASE.spring, keep: true, fill: 'none' }); } }
   });
 }
 function askEnd(p) {
-  confirmDlg({ title: `Finalizar ${p.n}`, text: `Se cerrará${p.k > 1 ? ` con sus ${p.k} procesos` : ''} sin guardar. Lo que no hayas guardado en ese programa se pierde.`, yes: 'Finalizar' }, async () => {
+  confirmDlg({ title: `End ${p.n}`, text: `It will close${p.k > 1 ? ` along with its ${p.k} processes` : ''} without saving. Anything unsaved in that program will be lost.`, yes: 'End task' }, async () => {
     const row = rowEls.get(p.id);
     const r = REAL() ? await eng('end_process', p.exe) : { killed: 1 };
-    if (!r || !r.killed) { SH.toast(r && r.denied ? `Windows no deja cerrar ${p.n}${SH.state.admin ? '' : ': prueba en modo administrador'}.` : `No se pudo cerrar ${p.n}.`); return; }
-    const done = () => { p.alive = false; if (REAL()) RP.delete(p.id); if (row) row.remove(); renderProcs(true, true); SH.toast(`${p.n} finalizado.`);
-      if (SH.logActivity) SH.logActivity(`${p.n} finalizado`, { sub: 'desde Live Monitor', ic: 'x', go: 'monitor', tab: 'processes' }); };
+    if (!r || !r.killed) { SH.toast(r && r.denied ? `Windows did not allow closing ${p.n}${SH.state.admin ? '' : ': try administrator mode'}.` : `Could not close ${p.n}.`); return; }
+    const done = () => { p.alive = false; if (REAL()) RP.delete(p.id); if (row) row.remove(); renderProcs(true, true); SH.toast(`${p.n} ended.`);
+      if (SH.logActivity) SH.logActivity(`${p.n} ended`, { sub: 'from Live Monitor', ic: 'x', go: 'monitor', tab: 'processes' }); };
     if (row && row.parentNode) anim(row, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(24px,0,0)' }], { d: 220 }).finished.then(done).catch(done); else done();
   });
 }
-/* diálogo propio de confirmación (no confirm()): lo usan finalizar proceso y cambiar el DNS */
+/* our own confirmation dialog (no confirm()): used by end task and change DNS */
 function confirmDlg(o, onYes) {
   const sec = $('#v-monitor'); let dlg = $('.mdlg', sec);
   if (!dlg) { dlg = document.createElement('div'); dlg.className = 'mdlg'; sec.appendChild(dlg); }
   dlg.innerHTML = `<div class="scrim"></div><div class="box" role="dialog" aria-label="${esc(o.title)}"><span class="bi">${ic(o.danger === false ? 'info' : 'alert')}</span>
     <h3>${esc(o.title)}</h3><p>${esc(o.text)}</p>
-    <div class="row-btns"><button class="btn ghost" data-d="no">Cancelar</button><button class="btn ${o.danger === false ? 'pri' : 'danger'}" data-d="yes">${esc(o.yes)}</button></div></div>`;
+    <div class="row-btns"><button class="btn ghost" data-d="no">Cancel</button><button class="btn ${o.danger === false ? 'pri' : 'danger'}" data-d="yes">${esc(o.yes)}</button></div></div>`;
   dlg.classList.add('on');
   anim($('.scrim', dlg), [{ opacity: 0 }, { opacity: 1 }], { d: 200 });
   anim($('.box', dlg), [{ opacity: 0, transform: 'translate3d(0,12px,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
@@ -671,36 +673,36 @@ function confirmDlg(o, onYes) {
   dlg.onclick = e => { const b = e.target.closest('[data-d]'); if (b) close(b.dataset.d === 'yes'); else if (e.target.classList.contains('scrim')) close(false); };
 }
 
-/* ---------- salud: dispositivos con error y eventos reales ---------- */
-const CLASS_N = { Display: ['display', 'Pantallas y gráficos'], Monitor: ['display', 'Monitores'], MEDIA: ['audio', 'Audio'], AudioEndpoint: ['speaker', 'Salidas y entradas de audio'],
-  Net: ['wifi', 'Red'], Bluetooth: ['wifi', 'Bluetooth'], DiskDrive: ['ssd', 'Discos'], SCSIAdapter: ['ssd', 'Controladoras de almacenamiento'], Volume: ['ssd', 'Volúmenes'],
-  Keyboard: ['keyboard', 'Teclados'], Mouse: ['mouse', 'Ratones y touchpad'], HIDClass: ['keyboard', 'Dispositivos de entrada'], USB: ['tray', 'USB'], Battery: ['battery', 'Batería y energía'],
-  System: ['cpu', 'Sistema y placa'], Processor: ['cpu', 'Procesadores'], Camera: ['camera', 'Cámaras'], Image: ['camera', 'Cámaras'], Biometric: ['lock', 'Biometría'],
-  SecurityDevices: ['shield', 'Seguridad (TPM)'], Firmware: ['cpu', 'Firmware'], SoftwareDevice: ['package', 'Dispositivos de software'], Printer: ['file', 'Impresoras'] };
+/* ---------- health: devices with errors and real events ---------- */
+const CLASS_N = { Display: ['display', 'Display and graphics'], Monitor: ['display', 'Monitors'], MEDIA: ['audio', 'Audio'], AudioEndpoint: ['speaker', 'Audio inputs and outputs'],
+  Net: ['wifi', 'Network'], Bluetooth: ['wifi', 'Bluetooth'], DiskDrive: ['ssd', 'Disks'], SCSIAdapter: ['ssd', 'Storage controllers'], Volume: ['ssd', 'Volumes'],
+  Keyboard: ['keyboard', 'Keyboards'], Mouse: ['mouse', 'Mice and touchpads'], HIDClass: ['keyboard', 'Input devices'], USB: ['tray', 'USB'], Battery: ['battery', 'Battery and power'],
+  System: ['cpu', 'System and motherboard'], Processor: ['cpu', 'Processors'], Camera: ['camera', 'Cameras'], Image: ['camera', 'Cameras'], Biometric: ['lock', 'Biometrics'],
+  SecurityDevices: ['shield', 'Security (TPM)'], Firmware: ['cpu', 'Firmware'], SoftwareDevice: ['package', 'Software devices'], SoftwareComponent: ['package', 'Software components'], Printer: ['file', 'Printers'] };
 const MOCK_HEALTH = { admin: true, fastStartup: true, boot: new Date(Date.now() - 3 * 864e5).toISOString(),
-  errors: [{ name: 'Dispositivo USB desconocido (Error de solicitud de descriptor de dispositivo)', code: 43, cls: 'USB', why: 'Windows lo detuvo porque informó de un problema' }],
+  errors: [{ name: 'Unknown USB Device (Device Descriptor Request Failed)', code: 43, cls: 'USB', why: 'Windows stopped it because it reported a problem' }],
   classes: [{ cls: 'Display', n: 4, bad: 0 }, { cls: 'MEDIA', n: 5, bad: 0 }, { cls: 'Net', n: 3, bad: 0 }, { cls: 'USB', n: 14, bad: 1 }, { cls: 'System', n: 41, bad: 0 }, { cls: 'Battery', n: 3, bad: 0 }],
-  events: [{ src: 'Microsoft-Windows-WindowsUpdateClient', id: 20, level: 2, t: new Date(Date.now() - 864e5).toISOString(), msg: 'Error de instalación', count: 7, help: 'Una actualización de Windows no se pudo instalar.' },
-    { src: 'Service Control Manager', id: 7023, level: 2, t: new Date(Date.now() - 2 * 864e5).toISOString(), msg: 'El servicio terminó con un error', count: 2, help: 'Un servicio se detuvo con un error.' }] };
-const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
+  events: [{ src: 'Microsoft-Windows-WindowsUpdateClient', id: 20, level: 2, t: new Date(Date.now() - 864e5).toISOString(), msg: 'Installation Failure', count: 7, help: 'A Windows update could not be installed.' },
+    { src: 'Service Control Manager', id: 7023, level: 2, t: new Date(Date.now() - 2 * 864e5).toISOString(), msg: 'The service terminated with an error', count: 2, help: 'A service stopped with an error.' }] };
+const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
 const srcName = s => String(s || '').replace(/^Microsoft-Windows-/, '').replace(/-/g, ' ');
 R.health = (el, t) => {
   el.innerHTML = `<div class="grid g-health">
     <div class="pan wide allok" data-asm id="hTop"><div class="sk" style="width:52px;height:52px;border-radius:50%"></div>
-      <div class="okt"><h3>Revisando el sistema…</h3><p>Dispositivos, drivers y avisos de Windows de los últimos 7 días.</p></div>
-      <div class="stats s3">${stat('Encendido', 'hUp', '', 'desde el último arranque')}${stat('Último arranque', 'hBoot', '', '<span id="hFast"></span>')}${stat('Dispositivos', 'hDev', '', '<span id="hDevS">contando</span>')}</div></div>
-    <div class="pan" data-asm>${head('Dispositivos', '<span id="hDevT">–</span>')}<div class="devs" id="hDevs"><div class="sk" style="height:180px"></div></div></div>
-    <div class="pan" data-asm>${head('Con error')}<div class="rows" id="hErr"><div class="sk" style="height:60px"></div></div>
-      ${head('Temperaturas máximas de esta sesión')}<div class="maxt">
-        <div><span>Procesador</span><b><span id="hMc">–</span> °C</b><em id="hMcA"></em></div><div><span>Gráficos</span><b><span id="hMg">–</span> °C</b><em id="hMgA"></em></div></div></div>
-    <div class="pan wide" data-asm>${head('Avisos de Windows', 'últimos 7 días')}<div class="events" id="hEv"><div class="sk" style="height:120px"></div></div></div>
+      <div class="okt"><h3>Checking the system…</h3><p>Devices, drivers and Windows warnings from the last 7 days.</p></div>
+      <div class="stats s3">${stat('Uptime', 'hUp', '', 'since the last startup')}${stat('Last startup', 'hBoot', '', '<span id="hFast"></span>')}${stat('Devices', 'hDev', '', '<span id="hDevS">counting</span>')}</div></div>
+    <div class="pan" data-asm>${head('Devices', '<span id="hDevT">–</span>')}<div class="devs" id="hDevs"><div class="sk" style="height:180px"></div></div></div>
+    <div class="pan" data-asm>${head('With errors')}<div class="rows" id="hErr"><div class="sk" style="height:60px"></div></div>
+      ${head('Peak temperatures this session')}<div class="maxt">
+        <div><span>Processor</span><b><span id="hMc">–</span> °C</b><em id="hMcA"></em></div><div><span>Graphics</span><b><span id="hMg">–</span> °C</b><em id="hMgA"></em></div></div></div>
+    <div class="pan wide" data-asm>${head('Windows warnings', 'last 7 days')}<div class="events" id="hEv"><div class="sk" style="height:120px"></div></div></div>
   </div>`;
   num(t, S(el, 'hUp'), v => v.uptime, upt, 400, 40);
   fn(t, v => {
     if (nil(v.uptime)) return; const b = new Date(Date.now() - v.uptime * 1000);
-    S(el, 'hBoot').textContent = b.toLocaleString('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    S(el, 'hMcA').textContent = MAXT.cpu == null ? (REAL() ? (SH.state.admin ? 'no disponible' : 'solo en modo admin') : '') : `a las ${new Date(MAXT.cpuAt || Date.now()).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}`;
-    S(el, 'hMgA').textContent = MAXT.gpu == null ? '' : `a las ${new Date(MAXT.gpuAt || Date.now()).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}`;
+    S(el, 'hBoot').textContent = b.toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    S(el, 'hMcA').textContent = MAXT.cpu == null ? (REAL() ? (SH.state.admin ? 'not available' : 'admin mode only') : '') : `at ${new Date(MAXT.cpuAt || Date.now()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+    S(el, 'hMgA').textContent = MAXT.gpu == null ? '' : `at ${new Date(MAXT.gpuAt || Date.now()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
   });
   num(t, S(el, 'hMc'), () => MAXT.cpu); num(t, S(el, 'hMg'), () => MAXT.gpu);
   load('health', 'health').then(d => {
@@ -710,24 +712,24 @@ R.health = (el, t) => {
     top.classList.toggle('warn', !ok);
     top.firstElementChild.outerHTML = ok ? '<svg class="okmark go" viewBox="0 0 52 52"><circle cx="26" cy="26" r="23"/><path d="m15 27 7.5 7.5L37.5 19"/></svg>'
       : `<span class="warnmark">${ic('alert')}</span>`;
-    $('.okt', top).innerHTML = ok ? `<h3>Todo en orden</h3><p>Ningún dispositivo con error. ${(d.events || []).length ? `Abajo tienes ${(d.events || []).length} tipos de avisos de Windows de esta semana.` : 'Sin avisos de Windows esta semana.'}</p>`
-      : `<h3>${errs.length} dispositivo${errs.length > 1 ? 's' : ''} con error</h3><p>${esc(errs[0].name)}: ${esc(errs[0].why)}.</p>`;
-    S(el, 'hDev').textContent = fmtInt(total); S(el, 'hDevS').textContent = ok ? 'todos funcionando' : `${errs.length} con error`; S(el, 'hDevT').textContent = `${fmtInt(total)} en total`;
-    S(el, 'hFast').textContent = d.fastStartup ? 'arranque rápido activado' : 'arranque normal';
+    $('.okt', top).innerHTML = ok ? `<h3>All good</h3><p>No devices with errors. ${(d.events || []).length ? `Below are ${(d.events || []).length} kinds of Windows warnings from this week.` : 'No Windows warnings this week.'}</p>`
+      : `<h3>${errs.length} device${errs.length > 1 ? 's' : ''} with errors</h3><p>${esc(errs[0].name)}: ${esc(errs[0].why)}.</p>`;
+    S(el, 'hDev').textContent = fmtInt(total); S(el, 'hDevS').textContent = ok ? 'all working' : `${errs.length} with errors`; S(el, 'hDevT').textContent = `${fmtInt(total)} in total`;
+    S(el, 'hFast').textContent = d.fastStartup ? 'fast startup on' : 'normal startup';
     const cls = (d.classes || []).filter(c => c.n).sort((a, b) => b.bad - a.bad || b.n - a.n).slice(0, 10);
-    S(el, 'hDevs').innerHTML = cls.map(c => { const [i, n] = CLASS_N[c.cls] || ['package', c.cls]; return `<div class="dv"><span class="ri">${ic(i)}</span><span>${esc(n)}</span><em>${c.n}</em><span class="chip ${c.bad ? 'warn' : 'ok'}">${c.bad ? `${c.bad} con aviso` : 'bien'}</span></div>`; }).join('');
-    S(el, 'hErr').innerHTML = errs.length ? errs.map(e => `<div class="row"><span class="ri">${ic('alert')}</span><span class="rt"><b>${esc(e.name)}</b><span>${esc(e.why)}${e.code === 43 && /usb/i.test(e.name) ? '. Suele ser un cable o un puerto USB que falla: desconéctalo y vuelve a conectarlo en otro puerto.' : ''}</span></span><button class="btn sec sm" data-act="drivers">Drivers</button></div>`).join('')
-      : `<div class="row"><span class="ri">${ic('check')}</span><span class="rt"><b>Ningún dispositivo con error</b><span>Todos los drivers cargan bien.</span></span></div>`;
+    S(el, 'hDevs').innerHTML = cls.map(c => { const [i, n] = CLASS_N[c.cls] || ['package', c.cls || 'Other']; return `<div class="dv"><span class="ri">${ic(i)}</span><span>${esc(n)}</span><em>${c.n}</em><span class="chip ${c.bad ? 'warn' : 'ok'}">${c.bad ? `${c.bad} with warnings` : 'OK'}</span></div>`; }).join('');
+    S(el, 'hErr').innerHTML = errs.length ? errs.map(e => `<div class="row"><span class="ri">${ic('alert')}</span><span class="rt"><b>${esc(e.name)}</b><span>${esc(e.why)}${e.code === 43 && /usb/i.test(e.name) ? '. It is usually a faulty cable or USB port: unplug it and plug it into another port.' : ''}</span></span><button class="btn sec sm" data-act="drivers">Drivers</button></div>`).join('')
+      : `<div class="row"><span class="ri">${ic('check')}</span><span class="rt"><b>No devices with errors</b><span>All drivers load correctly.</span></span></div>`;
     const ev = d.events || [];
-    S(el, 'hEv').innerHTML = ev.length ? ev.map(e => `<div class="evt"><span class="dotc ${e.level === 1 ? 'bad' : 'warn'}"></span><div><b>${esc(e.help || e.msg || 'Aviso de Windows')}</b>
-      <p>${esc(srcName(e.src))} ${e.id}${e.count > 1 ? `, ${e.count} veces esta semana` : ''}${e.help && e.msg ? `. Windows dice: «${esc(e.msg.slice(0, 160))}»` : ''}</p></div><time>${when(e.t)}</time></div>`).join('')
-      : '<p class="mnote">Ningún error ni aviso crítico en los últimos 7 días.</p>';
+    S(el, 'hEv').innerHTML = ev.length ? ev.map(e => `<div class="evt"><span class="dotc ${e.level === 1 ? 'bad' : 'warn'}"></span><div><b>${esc(e.help || e.msg || 'Windows warning')}</b>
+      <p>${esc(srcName(e.src))} ${e.id}${e.count > 1 ? `, ${e.count} times this week` : ''}${e.help && e.msg ? `. Windows says: "${esc(e.msg.slice(0, 160))}"` : ''}</p></div><time>${when(e.t)}</time></div>`).join('')
+      : '<p class="mnote">No errors or critical warnings in the last 7 days.</p>';
     refresh(t);
     $$('#hDevs .dv, #hEv .evt, #hErr .row', el).forEach((x, i) => anim(x, [{ opacity: 0, transform: 'translate3d(0,6px,0)' }, { opacity: 1, transform: 'none' }], { d: 360, delay: Math.min(i, 14) * 25, keep: true }));
   });
 };
 
-/* ---------- bucle ---------- */
+/* ---------- loop ---------- */
 SH.tele.on(v => {
   simTick(v);
   if (paused) return;
@@ -747,26 +749,26 @@ tickers.add((dt, t) => {
   if (curTab === 'battery' && batChart) batChart.draw(dt);
 });
 
-/* ---------- registro ---------- */
+/* ---------- registration ---------- */
 SH.module({
   id: ID, real: true,
   actions(el) {
-    el.innerHTML = `<button class="btn ghost" id="monPause">${ic('pause')}<span>Pausar</span></button><button class="btn sec" id="monCompact">${ic('monitor')}Modo compacto</button>`;
+    el.innerHTML = `<button class="btn ghost" id="monPause">${ic('pause')}<span>Pause</span></button><button class="btn sec" id="monCompact">${ic('monitor')}Compact mode</button>`;
     $('#monPause', el).addEventListener('click', e => {
       paused = !paused; const b = e.currentTarget;
       if (paused) { frozen = {}; Object.keys(SH.tele.hist).forEach(k => { frozen[k] = SH.tele.hist[k].slice(); }); Object.keys(LOC).forEach(k => { frozen[k] = LOC[k].slice(); }); frozenFrac = Math.min(1, (performance.now() - lastPush) / 700); }
       else { frozen = null; lastPush = performance.now(); refresh(curTab); }
-      b.innerHTML = `${ic(paused ? 'play' : 'pause')}<span>${paused ? 'Reanudar' : 'Pausar'}</span>`;
+      b.innerHTML = `${ic(paused ? 'play' : 'pause')}<span>${paused ? 'Resume' : 'Pause'}</span>`;
       anim(b, [{ transform: 'scale(.92)' }, { transform: 'scale(1)' }], { d: 320, e: EASE.spring });
-      SH.toast(paused ? 'Gráficas en pausa. Pasa el ratón por ellas para ver cada momento.' : 'Gráficas en marcha.');
+      SH.toast(paused ? 'Charts paused. Hover over them to see each moment.' : 'Charts running again.');
     });
-    $('#monCompact', el).addEventListener('click', () => { if (SH.toggleWidget) SH.toggleWidget(); else SH.toast('El modo compacto llegará pronto.'); });
+    $('#monCompact', el).addEventListener('click', () => { if (SH.toggleWidget) SH.toggleWidget(); else SH.toast('Compact mode is coming soon.'); });
   },
   renderTab(id, el) {
     readColors();
     const f = R[id]; if (!f) return;
     f(el, id);
-    /* el contenido de cada panel va en un cuerpo flexible: las gráficas se estiran y lo que no cabe hace scroll dentro (con desvanecido) */
+    /* each panel's content goes in a flexible body: charts stretch and whatever does not fit scrolls inside (with a fade) */
     $$('.grid>.pan', el).forEach(p => {
       if (p.classList.contains('allok')) return;
       const h = p.firstElementChild && p.firstElementChild.tagName === 'H4' ? p.firstElementChild : null;
@@ -795,11 +797,11 @@ SH.module({
 });
 
 SH.actions.add([
-  { t: 'Ver qué procesos usan más CPU', go: ID, tab: 'processes', ic: 'cpu' },
-  { t: 'Finalizar un proceso', go: ID, tab: 'processes', ic: 'x' },
-  { t: 'Cambiar el servidor DNS', go: ID, tab: 'network', ic: 'globe' },
-  { t: 'Ver mi IP', go: ID, tab: 'network', ic: 'wifi' },
-  { t: 'Salud del disco (SMART)', go: ID, tab: 'disks', ic: 'ssd' },
-  { t: 'Ver avisos y errores de Windows', go: ID, tab: 'health', ic: 'alert' },
+  { t: 'See which processes use the most CPU', go: ID, tab: 'processes', ic: 'cpu' },
+  { t: 'End a process', go: ID, tab: 'processes', ic: 'x' },
+  { t: 'Change the DNS server', go: ID, tab: 'network', ic: 'globe' },
+  { t: 'Show my IP address', go: ID, tab: 'network', ic: 'wifi' },
+  { t: 'Disk health (SMART)', go: ID, tab: 'disks', ic: 'ssd' },
+  { t: 'See Windows warnings and errors', go: ID, tab: 'health', ic: 'alert' },
 ]);
 })();

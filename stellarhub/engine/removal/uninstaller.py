@@ -1,8 +1,8 @@
-"""Ejecucion de desinstaladores.
+"""Running uninstallers.
 
-NSIS e Inno se copian a TEMP, lanzan la copia y el proceso original termina al instante.
-Por eso el desinstalador se mete en un Job Object de Windows y se espera a que el TRABAJO
-completo (con todos sus hijos) quede vacio, no solo el primer proceso.
+NSIS and Inno copy themselves to TEMP, launch the copy and the original process exits immediately.
+That is why the uninstaller runs inside a Windows Job Object and we wait until the WHOLE job
+(with all its children) is empty, not just the first process.
 """
 import ctypes
 import os
@@ -35,8 +35,8 @@ def _job_active(job):
 
 
 def run_tracked(cmd, cancel=None, timeout=3600, on_tick=None):
-    """Ejecuta cmd y espera a que terminen el y todos sus descendientes.
-    Devuelve dict(exit_code, processes, seconds, cancelled, timeout)."""
+    """Run cmd and wait until it and all its descendants have finished.
+    Return dict(exit_code, processes, seconds, cancelled, timeout)."""
     cancel = cancel or threading.Event()
     job = _k32.CreateJobObjectW(None, None)
     t0 = time.time()
@@ -78,7 +78,7 @@ def still_registered(p):
 
 
 def prepare(p):
-    """Lo que hay que saber antes de desinstalar."""
+    """What we need to know before uninstalling."""
     locs = [p.get("location")] if p.get("location") and os.path.isdir(p.get("location")) else []
     procs = system.processes_in(locs) if locs else []
     cmd, quiet = progmod.uninstall_command(p, quiet=False)
@@ -91,7 +91,7 @@ def prepare(p):
 
 
 def close_processes(p):
-    """Cierra los procesos que se ejecutan desde la carpeta del programa."""
+    """Close the processes running from the program folder."""
     loc = p.get("location")
     if not loc or not os.path.isdir(loc):
         return []
@@ -104,15 +104,15 @@ def close_processes(p):
 
 
 def uninstall(p, quiet=False, cancel=None, on_tick=None):
-    """Ejecuta el desinstalador oficial. Devuelve dict con el resultado."""
+    """Run the official uninstaller. Return a dict with the result."""
     if p.get("source") == "store":
         t0 = time.time()
-        # por familia (nombre + editor), no por nombre completo: la lista puede venir de la cache y la app
-        # haberse actualizado (el nombre completo lleva la version)
+        # by family (name + publisher), not by full name: the list may come from the cache and the app
+        # may have been updated since (the full name includes the version)
         name, fam = p.get("package_name", "").replace("'", ""), p.get("family", "").replace("'", "")
         if name and fam:
             cmd = (f"$p = @(Get-AppxPackage -Name '{name}' | Where-Object {{ $_.PackageFamilyName -eq '{fam}' }}); "
-                   f"if (-not $p) {{ throw 'La app ya no está instalada' }}; $p | Remove-AppxPackage -ErrorAction Stop")
+                   f"if (-not $p) {{ throw 'The app is no longer installed' }}; $p | Remove-AppxPackage -ErrorAction Stop")
         else:
             cmd = f"Remove-AppxPackage -Package '{p['package']}' -ErrorAction Stop"
         code, out = system.powershell(cmd, timeout=600)
@@ -121,9 +121,9 @@ def uninstall(p, quiet=False, cancel=None, on_tick=None):
                 "still_registered": still_registered(p), "command": "Remove-AppxPackage"}
     cmd, is_quiet = progmod.uninstall_command(p, quiet)
     if not cmd:
-        return {"ok": False, "error": "El programa no tiene desinstalador", "still_registered": True}
+        return {"ok": False, "error": "The program has no uninstaller", "still_registered": True}
     r = run_tracked(cmd, cancel=cancel, on_tick=on_tick)
-    # Steam y otros lanzadores delegan en un proceso que ya estaba abierto: esperar a que la entrada desaparezca
+    # Steam and other launchers hand off to a process that was already running: wait for the entry to disappear
     if not r["cancelled"] and p.get("kind") in ("steam",):
         t0 = time.time()
         while still_registered(p) and time.time() - t0 < 300 and not (cancel and cancel.is_set()):

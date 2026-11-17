@@ -1,4 +1,4 @@
-/* StellarHub · ficha emergente de componente */
+/* StellarHub · component pop-up card */
 .cs-o{position:fixed;inset:0;z-index:65;display:grid;place-items:center;visibility:hidden}
 .cs-o.on{visibility:visible}
 .cs-scrim{position:absolute;inset:0;background:rgba(3,5,11,.6);backdrop-filter:blur(6px);opacity:0}
@@ -38,7 +38,7 @@
 .cs-r dt{color:var(--mute)}
 .cs-r dd{text-align:right}
 .cs-acts{margin-top:auto;padding-top:20px;display:flex;flex-direction:column;gap:8px}
-/* pantallas: cada una dibujada con lo que muestra ahora */
+/* displays: each one drawn showing what it displays right now */
 .cs.wide{width:min(1060px,calc(100vw - 80px))}
 .cs-b.wide{grid-template-columns:1.7fr 1fr}
 .cs-screens{display:flex;align-items:flex-end;justify-content:center;gap:34px;padding:14px 4px 4px;min-height:280px}

@@ -1,4 +1,4 @@
-"""Cuarentena: mover, restaurar y borrar, sobre carpetas temporales y HKCU\\Software\\MiniRevoTest."""
+"""Quarantine: move, restore and delete, on temporary folders and HKCU\\Software\\MiniRevoTest."""
 import os
 import shutil
 import tempfile
@@ -105,19 +105,19 @@ class Quarantine(unittest.TestCase):
         quarantine.delete_session(r["session"])
 
     def test_folder_of_other_installed_program_is_skipped(self):
-        other = {"id": "o", "name": "Otro", "location": os.path.join(self.app, "sub")}
+        other = {"id": "o", "name": "Other", "location": os.path.join(self.app, "sub")}
         r = quarantine.remove(self.prog, self.items()[:1], [self.prog, other])
         self.assertEqual(r["skipped"], 1)
         self.assertTrue(os.path.isdir(self.app))
         quarantine.delete_session(r["session"])
 
     def test_locked_file_does_not_abort(self):
-        locked = open(os.path.join(self.app, "sub", "b.bin"), "rb")  # sin FILE_SHARE_DELETE
+        locked = open(os.path.join(self.app, "sub", "b.bin"), "rb")  # without FILE_SHARE_DELETE
         try:
             r = quarantine.remove(self.prog, self.items()[:2], [self.prog])
         finally:
             locked.close()
-        # el resto se movio; el bloqueado queda (o se programa para el reinicio si hay permisos)
+        # the rest was moved; the locked one stays (or is scheduled for reboot if permissions allow)
         self.assertFalse(os.path.exists(os.path.join(self.app, "a.txt")))
         self.assertFalse(os.path.exists(self.file))
         quarantine.delete_session(r["session"])
@@ -129,15 +129,15 @@ class Quarantine(unittest.TestCase):
         quarantine.delete_session(r["session"])
 
     def test_two_sessions_in_the_same_second_do_not_collide(self):
-        a = quarantine.remove(self.prog, self.items()[1:2], [self.prog])   # el .lnk
-        b = quarantine.remove(self.prog, self.items()[3:4], [self.prog])   # un valor del registro
+        a = quarantine.remove(self.prog, self.items()[1:2], [self.prog])   # the .lnk
+        b = quarantine.remove(self.prog, self.items()[3:4], [self.prog])   # a registry value
         try:
             self.assertNotEqual(a["session"], b["session"])
             ids = {s["id"]: s for s in quarantine.sessions()}
             self.assertEqual(ids[a["session"]]["count"], 1)
             self.assertEqual(ids[b["session"]]["count"], 1)
             quarantine.restore(a["session"])
-            self.assertTrue(os.path.exists(self.file))  # lo de la primera sigue siendo restaurable
+            self.assertTrue(os.path.exists(self.file))  # the first session's items can still be restored
         finally:
             for s in (a["session"], b["session"]):
                 quarantine.delete_session(s)

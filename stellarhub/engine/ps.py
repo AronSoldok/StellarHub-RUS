@@ -1,4 +1,4 @@
-"""Ejecutar PowerShell y programas de consola sin abrir ventanas, en UTF-8, con salida en vivo si hace falta."""
+"""Run PowerShell and console programs without opening windows, in UTF-8, with live output when needed."""
 import json
 import subprocess
 
@@ -8,15 +8,15 @@ _PRE = ("$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Continu
 
 
 def ps(script, timeout=90):
-    """Devuelve la salida (texto) de un script de PowerShell."""
+    """Returns the output (text) of a PowerShell script."""
     r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                         "-Command", _PRE + script], capture_output=True, timeout=timeout, creationflags=NO_WINDOW)
     return r.stdout.decode("utf-8", "replace")
 
 
 def ps_json(script, timeout=90, as_list=False):
-    """Ejecuta `script | ConvertTo-Json` y devuelve el objeto. Con as_list siempre devuelve una lista."""
-    # strip(): en PowerShell 5 una línea no puede empezar por "|"
+    """Runs `script | ConvertTo-Json` and returns the object. With as_list it always returns a list."""
+    # strip(): in PowerShell 5 a line cannot start with "|"
     out = ps(f"{script.strip()} | ConvertTo-Json -Depth 6 -Compress", timeout=timeout).strip()
     if not out:
         return [] if as_list else None
@@ -30,8 +30,8 @@ def ps_json(script, timeout=90, as_list=False):
 
 
 def run(cmd, on_line=None, timeout=None, cwd=None, encoding=None, job=None):
-    """Ejecuta un programa. Con on_line recibe cada línea en cuanto sale (para consolas en vivo).
-    Si se pasa `job` y el usuario cancela, el proceso se termina. Devuelve (código, salida completa)."""
+    """Runs a program. With on_line it gets each line as soon as it is printed (for live consoles).
+    If `job` is passed and the user cancels, the process is killed. Returns (exit code, full output)."""
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                          cwd=cwd, creationflags=NO_WINDOW)
     out = []
@@ -52,7 +52,7 @@ def run(cmd, on_line=None, timeout=None, cwd=None, encoding=None, job=None):
 
 
 def _decode(raw, enc):
-    # sfc/dism/chkdsk escriben en UTF-16 o en la página de códigos OEM según la versión
+    # sfc/dism/chkdsk write UTF-16 or the OEM code page depending on the version
     if raw.count(b"\x00") > len(raw) // 3:
         return raw.decode("utf-16-le", "replace").replace("\x00", "")
     try:

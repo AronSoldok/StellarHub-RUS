@@ -1,9 +1,9 @@
-/* StellarHub · Inicio: rejilla de cabecera + tres columnas alineadas (estado en vivo, componentes, lo pendiente). */
+/* StellarHub · Home: header grid + three aligned columns (live status, components, what is pending). */
 #v-home{--lw:clamp(300px,23vw,380px);--rw:clamp(290px,22vw,360px)}
 .home-grid{position:absolute;inset:8px 30px var(--dockspace) 30px;display:grid;grid-template-columns:var(--lw) minmax(0,1fr) var(--rw);
   grid-template-rows:auto minmax(0,1fr);column-gap:26px;row-gap:20px}
 
-/* cabecera */
+/* header */
 .h-head{grid-column:1 / -1;display:flex;align-items:flex-end;gap:34px;min-width:0}
 .h-id{min-width:0;flex:0 1 auto}
 .h-id .model{font:500 34px/1.08 var(--display);letter-spacing:-.025em;white-space:nowrap}
@@ -22,11 +22,11 @@
 .wbtn.on .wdot::after{transform:translateX(11px);background:var(--accent)}
 #widgetBtn.on{color:var(--accent)}
 
-/* columnas */
+/* columns */
 .h-col{min-height:0;display:flex;flex-direction:column;gap:14px}
 .h-col>.pan{min-height:0}
 
-/* estado en vivo */
+/* live status */
 .vitals{flex:1;padding:14px 8px 8px;display:flex;flex-direction:column}
 .vitals>h4{padding:0 10px}
 .vit-list{flex:1;display:flex;flex-direction:column;justify-content:space-around;min-height:0}
@@ -44,7 +44,7 @@
 .vit .bar>span{transition:none;background:linear-gradient(90deg,color-mix(in oklab,var(--accent) 70%,var(--accent2)),var(--accent))}
 .vit.hot .bar>span{background:var(--warn)}
 
-/* centro: componentes */
+/* center: components */
 .h-center{min-width:0;min-height:0;display:flex;flex-direction:column;gap:10px}
 .stage-head{display:flex;align-items:center;gap:10px;height:34px;flex:none}
 .stage-head h4{font-size:12.5px;font-weight:500;color:var(--mute)}
@@ -56,7 +56,7 @@
 .stage{position:relative;flex:1;min-height:0}
 .stage>.vwrap{position:absolute;inset:0}
 
-/* derecha */
+/* right */
 .pending{padding:14px 8px 6px;flex:none}
 .pending>h4{padding:0 10px;margin-bottom:4px}
 .pend{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:9px 10px;border-radius:12px;position:relative;

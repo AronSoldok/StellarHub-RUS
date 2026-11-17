@@ -1,6 +1,6 @@
 /* StellarHub · Storage Checker */
 #v-storage .sp{flex:1}
-/* paneles que llegan hasta el dock con el scroll en un elemento interior sin fondo (core.js le pone el desvanecido) */
+/* panels that reach the dock with scrolling on an inner element with no background (core.js adds the fade) */
 #v-storage .st-scroll{overflow:auto;min-height:0}
 #v-storage .st-fp{display:flex;flex-direction:column;min-height:0}
 #v-storage .st-fp>.st-scroll{flex:1;margin:0 -4px;padding:0 4px 6px}
@@ -16,7 +16,7 @@
 #v-storage .acts .seg button{display:flex;align-items:center;gap:7px;padding:0 12px}
 #v-storage .acts .seg svg{width:15px;height:15px}
 
-/* mapa */
+/* map */
 #v-storage .st-map{display:grid;grid-template-columns:minmax(0,1fr) clamp(270px,22vw,330px);gap:16px;height:100%}
 #v-storage .st-mainc{display:flex;flex-direction:column;min-width:0;min-height:0}
 #v-storage .st-bar{display:flex;align-items:center;gap:10px;margin-bottom:10px;min-height:34px}
@@ -37,16 +37,16 @@
 #v-storage .st-tip b{font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-storage .st-tip span{overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 #v-storage .st-tip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
-/* análisis: el anillo rodea al contador; ruta y velocidad debajo, todo centrado como un solo bloque */
+/* scan: the ring surrounds the counter; path and speed below, all centered as one block */
 #v-storage .st-scan{position:absolute;inset:0;z-index:4;display:grid;place-items:center;background:rgba(6,10,20,.6)}
 #v-storage .st-scan.done{display:none}
 #v-storage .st-sbox{display:flex;flex-direction:column;align-items:center;gap:6px;width:min(560px,90%)}
 #v-storage .st-dial{position:relative;width:250px;height:250px;display:grid;place-items:center;margin-bottom:4px}
-/* el SVG tiene margen en su viewBox y no recorta: el brillo del anillo ya no se corta en seco */
+/* the SVG has margin in its viewBox and doesn't clip: the ring's glow no longer gets cut off */
 #v-storage .st-ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
 #v-storage .st-cancel{margin-top:8px;opacity:0;pointer-events:none;transition:opacity calc(200ms*var(--f))}
 #v-storage .st-scan.busy .st-cancel{opacity:1;pointer-events:auto}
-/* interruptor del espacio libre en la barra del mapa */
+/* free space switch in the map bar */
 #v-storage .st-free{height:30px;display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:9px;color:var(--mute);font-size:12.5px;white-space:nowrap;
   transition:background-color calc(150ms*var(--f)),color calc(150ms*var(--f))}
 #v-storage .st-free:hover{background:var(--raise2);color:var(--ink)}
@@ -56,7 +56,7 @@
 #v-storage .st-free.on{color:var(--ink)}
 #v-storage .st-free.on .st-fsw{background:color-mix(in oklab,var(--accent2) 40%,transparent)}
 #v-storage .st-free.on .st-fsw::after{transform:translateX(11px);background:var(--accent2)}
-/* pestañas que esperan un análisis, y búsqueda de duplicados */
+/* tabs waiting for a scan, and the duplicate search */
 #v-storage .st-first{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:30px}
 #v-storage .st-first>b{font:500 18px var(--display);letter-spacing:-.02em}
 #v-storage .st-first>.muted{max-width:520px}
@@ -111,7 +111,7 @@
 #v-storage .st-lr i{width:12px;height:12px;border-radius:4px}
 #v-storage .st-lr b{font-weight:500;color:var(--ink)}
 
-/* carpetas */
+/* folders */
 #v-storage .st-ttools,#v-storage .st-btools{display:flex;align-items:center;gap:12px;margin-bottom:12px}
 #v-storage .st-ttools .btn svg{width:15px;height:15px}
 #v-storage .st-tree{padding:12px 8px 6px;height:100%}
@@ -143,7 +143,7 @@
 #v-storage .st-kids>div{overflow:hidden;min-height:0}
 #v-storage .st-kids.open{grid-template-rows:1fr}
 
-/* tipos */
+/* types */
 #v-storage .st-tywrap{display:flex;flex-direction:column;gap:14px;height:100%;min-height:0}
 #v-storage .st-stack{flex:none}
 #v-storage .st-types.st-fp{flex:1}
@@ -166,7 +166,7 @@
 #v-storage .tab:not(.in) .st-ty .bar>span{transform:scaleX(0)}
 #v-storage .st-ty:nth-child(n) .bar>span{transition-delay:calc(var(--i,0) * 30ms)}
 
-/* más grandes */
+/* largest */
 #v-storage .st-bq{width:300px}
 #v-storage .st-btot{font-size:12.5px}
 #v-storage .st-big{padding:12px 8px 6px;height:100%}
@@ -187,7 +187,7 @@
 #v-storage .st-ba .iconbtn svg{width:16px;height:16px}
 #v-storage [data-btrash]:hover{color:var(--bad)}
 
-/* duplicados */
+/* duplicates */
 #v-storage .st-dhero{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin:2px 4px 18px}
 #v-storage .st-dhero .big small{font:400 15px var(--text)}
 #v-storage .st-dhero p{margin-top:8px;font-size:12.5px}
@@ -232,7 +232,7 @@
 #v-storage .st-dc.keep .st-dkl{color:var(--ok)}
 #v-storage .st-dfoot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 10px 8px 68px;font-size:12px}
 
-/* comparar */
+/* compare */
 #v-storage .st-cmp{display:grid;grid-template-columns:minmax(0,1fr) clamp(280px,26vw,360px);gap:16px;height:100%;min-height:0}
 #v-storage .st-cl,#v-storage .st-cr{display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0}
 #v-storage .st-diff{padding:16px 8px 6px;flex:1}

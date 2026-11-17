@@ -1,4 +1,4 @@
-"""Acceso al registro con vistas de 32/64 bits, copia en .reg y borrado recursivo."""
+"""Registry access with 32/64-bit views, .reg backups and recursive deletion."""
 import os
 import subprocess
 import winreg
@@ -20,9 +20,9 @@ SHORT = {winreg.HKEY_LOCAL_MACHINE: "HKLM", winreg.HKEY_CURRENT_USER: "HKCU",
 @dataclass(frozen=True)
 class RegRef:
     hive: str          # "HKLM" | "HKCU" | "HKU"
-    path: str          # sin la colmena
-    view: int = 0      # 0, V64 o V32
-    value: str = None  # None = la clave entera
+    path: str          # without the hive
+    view: int = 0      # 0, V64 or V32
+    value: str = None  # None = the whole key
 
     @property
     def root(self):
@@ -39,7 +39,7 @@ class RegRef:
         return p + (f"  →  {self.value}" if self.value is not None else "")
 
     def key(self):
-        """Identificador estable (sirve para deduplicar)."""
+        """Stable identifier (used to deduplicate)."""
         return f"{self.display().lower()}"
 
     def to_str(self):
@@ -92,7 +92,7 @@ def subkeys(root, path, view=0):
 
 
 def values(root, path, view=0):
-    """Lista de (nombre, dato, tipo)."""
+    """List of (name, data, type)."""
     try:
         k = open_key(root, path, view)
     except OSError:
@@ -118,7 +118,7 @@ def get_value(root, path, name, view=0, default=None):
 
 
 def read_value_full(ref):
-    """(dato, tipo) de un valor o None."""
+    """(data, type) of a value, or None."""
     try:
         with open_key(ref) as k:
             return winreg.QueryValueEx(k, ref.value)
@@ -137,7 +137,7 @@ def delete_value(ref):
 
 
 def delete_tree(ref):
-    """Borra una clave y todas sus subclaves en la vista indicada."""
+    """Delete a key and all its subkeys in the given view."""
     root, path, view = ref.root, ref.path, ref.view
     try:
         k = winreg.OpenKey(root, path, 0, winreg.KEY_ALL_ACCESS | view)
@@ -154,7 +154,7 @@ def delete_tree(ref):
 
 
 def export_key(ref, out_file):
-    """Exporta la clave a un .reg. Devuelve True si se creo el archivo."""
+    """Export the key to a .reg file. Return True if the file was created."""
     os.makedirs(os.path.dirname(out_file), exist_ok=True)
     args = ["reg", "export", RegRef(ref.hive, ref.path).full, out_file, "/y"]
     if ref.view == V32:
@@ -176,7 +176,7 @@ def import_reg(reg_file, view=0):
 
 
 def walk_values(root, path, view=0, max_depth=6, _depth=0):
-    """Generador de (subruta, nombre, dato) recorriendo subclaves."""
+    """Generator of (subpath, name, data) walking the subkeys."""
     for name, data, _ in values(root, path, view):
         yield path, name, data
     if _depth >= max_depth:

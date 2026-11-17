@@ -1,18 +1,18 @@
-"""Tareas largas con progreso, registro y cancelación. Los avisos llegan a la interfaz como SH.emit('job', {...}).
+"""Long tasks with progress, a log and cancellation. Updates reach the UI as SH.emit('job', {...}).
 
-    def scan(job, carpeta):
-        for i, f in enumerate(archivos):
-            if job.cancelled: return job.stop()        # el usuario pulsó Cancelar
-            job.progress(i / total, f"Leyendo {f}", files=i)   # pct 0..1, texto, datos extra
-            job.log("línea de salida")                 # para consolas en vivo (SFC, DISM, winget...)
-        return resultado                               # llega como {state:'done', result}
+    def scan(job, folder):
+        for i, f in enumerate(files):
+            if job.cancelled: return job.stop()        # the user pressed Cancel
+            job.progress(i / total, f"Reading {f}", files=i)   # pct 0..1, text, extra data
+            job.log("output line")                     # for live consoles (SFC, DISM, winget...)
+        return result                                  # arrives as {state:'done', result}
 """
 import itertools
 import threading
 import time
 import traceback
 
-_emit = lambda event, data: None  # la app lo sustituye por el envío a la interfaz
+_emit = lambda event, data: None  # the app replaces it with the sender to the UI
 _jobs = {}
 _ids = itertools.count(1)
 
@@ -40,7 +40,7 @@ class Job:
         self._logbuf = []
         self._lock = threading.Lock()
 
-    # ---- para el código de la tarea ----
+    # ---- for the task code ----
     def progress(self, pct=None, text=None, force=False, **data):
         if pct is not None:
             self.pct = max(0.0, min(1.0, float(pct)))
@@ -60,14 +60,14 @@ class Job:
             self._send("progress")
 
     def check(self):
-        """Lanza Cancelled si el usuario canceló (útil dentro de bucles profundos)."""
+        """Raises Cancelled if the user cancelled (useful inside deep loops)."""
         if self.cancelled:
             raise Cancelled()
 
     def stop(self):
         raise Cancelled()
 
-    # ---- interno ----
+    # ---- internal ----
     def _send(self, kind):
         with self._lock:
             logs, self._logbuf = self._logbuf, []
@@ -99,7 +99,7 @@ def start(name, fn, *args, **kwargs):
         except Exception as e:
             job.state = "error"
             job.result = {"error": str(e), "trace": traceback.format_exc(limit=6)}
-            print(f"[tarea {name}]", traceback.format_exc())
+            print(f"[job {name}]", traceback.format_exc())
         job.pct = 1.0 if job.state == "done" else job.pct
         job._send("end")
         threading.Timer(600, lambda: _jobs.pop(job.id, None)).start()

@@ -1,12 +1,12 @@
-"""Icono de StellarHub en la bandeja del sistema (pystray), con su menú."""
+"""StellarHub icon in the system tray (pystray), with its menu."""
 import threading
 
 from PIL import Image, ImageDraw
 
 
 def make_icon_image(size=64):
-    """El logo dibujado: planeta coral con su anillo hielo, sobre transparente."""
-    s = size * 4  # se dibuja grande y se reduce para que quede suave
+    """The drawn logo: a coral planet with its ice ring, on a transparent background."""
+    s = size * 4  # drawn large and scaled down so it looks smooth
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     ring = Image.new("RGBA", (s, s), (0, 0, 0, 0))
@@ -39,18 +39,18 @@ class Tray:
             return run
 
         menu = Menu(
-            Item("Abrir StellarHub", lambda i, it: a.show_main(), default=True),
-            Item("Widget siempre visible", lambda i, it: a.widget_toggle(), checked=lambda it: a._widget is not None),
+            Item("Open StellarHub", lambda i, it: a.show_main(), default=True),
+            Item("Always-on-top widget", lambda i, it: a.widget_toggle(), checked=lambda it: a._widget is not None),
             Menu.SEPARATOR,
             Item("Live Monitor", go("monitor")),
-            Item("Optimizar todo", go("optimizer", "overview")),
-            Item("Buscar actualizaciones", go("updater", "overview")),
-            Item("Analizar el disco", go("storage", "map")),
+            Item("Optimize everything", go("optimizer", "overview")),
+            Item("Check for updates", go("updater", "overview")),
+            Item("Analyze the disk", go("storage", "map")),
             Menu.SEPARATOR,
-            Item("Activar el modo administrador", lambda i, it: a.relaunch_admin(), visible=lambda it: not a.info()["admin"]),
-            Item("Ajustes", lambda i, it: (a.show_main(), a._js("SH.go('settings')"))),
+            Item("Turn on administrator mode", lambda i, it: a.relaunch_admin(), visible=lambda it: not a.info()["admin"]),
+            Item("Settings", lambda i, it: (a.show_main(), a._js("SH.go('settings')"))),
             Menu.SEPARATOR,
-            Item("Salir de StellarHub", lambda i, it: a.quit()),
+            Item("Quit StellarHub", lambda i, it: a.quit()),
         )
         self.icon = pystray.Icon("StellarHub", make_icon_image(), "StellarHub", menu)
         threading.Thread(target=self.icon.run, daemon=True, name="tray").start()
