@@ -354,3 +354,41 @@ html[data-int=min] #v-optimizer .opt-spin{animation-duration:2.4s}
 #v-optimizer button.pf-plan{width:100%;text-align:left;transition:background-color calc(150ms*var(--f))}
 #v-optimizer button.pf-plan:not(.on):hover{background:var(--raise2);color:var(--ink)}
 #v-optimizer .pf-bg{max-height:240px;overflow:auto;padding-right:4px}
+
+/* Cleanup: days to keep, per-folder preview of the temp folders and the live progress panel */
+#v-optimizer .cl-days{display:flex;flex-direction:column;gap:6px;font-size:12px}
+#v-optimizer .cl-days .seg button{font-size:12px}
+#v-optimizer .btn.xs{height:24px;padding:0 9px;font-size:11.5px;border-radius:8px;white-space:nowrap}
+#v-optimizer .cl-rule{display:flex;gap:8px;align-items:flex-start;color:var(--mute);line-height:1.4;margin-bottom:8px}
+#v-optimizer .cl-rule svg{width:15px;height:15px;flex:none;color:var(--ok);margin-top:1px}
+#v-optimizer .cl-rule b{color:var(--text);font-weight:500}
+#v-optimizer .cl-tbl{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px}
+#v-optimizer .cl-tr{display:grid;grid-template-columns:18px minmax(0,1fr) auto 64px auto;gap:10px;align-items:center;padding:6px 8px;border-radius:8px;cursor:pointer}
+#v-optimizer .cl-tr:hover{background:var(--raise2)}
+#v-optimizer .cl-tr.kept{cursor:default}
+#v-optimizer .cl-tr.kept .cl-tn,#v-optimizer .cl-tr.kept .cl-ts,#v-optimizer .cl-tr.kept .cl-tf{opacity:.62}
+#v-optimizer .cl-tr .check[disabled]{opacity:.3}
+#v-optimizer .cl-tn{min-width:0}
+#v-optimizer .cl-tn b{display:flex;align-items:center;gap:6px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#v-optimizer .cl-tn span{display:block;font-size:11.5px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#v-optimizer .cl-tn .chip{height:18px;font-size:10.5px;padding:0 6px;flex:none}
+#v-optimizer .cl-tf{font-size:11.5px;white-space:nowrap;text-align:right}
+#v-optimizer .cl-ts{font-size:12px;font-weight:500;white-space:nowrap;text-align:right}
+#v-optimizer .cl-more{padding:6px 8px}
+#v-optimizer .cl-perm{margin-top:10px;display:flex;flex-direction:column;gap:4px}
+#v-optimizer .cl-pi{display:flex;align-items:center;gap:8px;color:var(--mute)}
+#v-optimizer .cl-pi span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#v-optimizer .cl-run{flex:none;display:flex;flex-direction:column;gap:8px}
+#v-optimizer .cl-run[hidden]{display:none}
+#v-optimizer .cl-run-h{display:flex;align-items:center;gap:12px}
+#v-optimizer .cl-run-h b{font-weight:500;font-size:14px;font-variant-numeric:tabular-nums}
+#v-optimizer .cl-run-h .btn{margin-left:auto}
+#v-optimizer .cl-run-h #clRunE{font-size:12.5px;font-variant-numeric:tabular-nums}
+#v-optimizer .cl-bar{height:6px;border-radius:6px;background:var(--raise2);overflow:hidden}
+#v-optimizer .cl-bar span{display:block;height:100%;background:var(--accent);transform:scaleX(0);transform-origin:0 50%;transition:transform calc(220ms*var(--f)) linear}
+#v-optimizer .cl-run.indet .cl-bar span{width:30%;transform:none;transition:none;animation:optIndet calc(1100ms*var(--f) + 300ms) cubic-bezier(.45,0,.2,1) infinite}
+#v-optimizer .cl-run.done .cl-bar span{background:var(--ok)}
+#v-optimizer .cl-run-s{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--mute);font-variant-numeric:tabular-nums}
+#v-optimizer .cl-run-s span:empty{display:none}
+#v-optimizer .cl-run-c{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:16px}
+#v-optimizer .cl-busy .cl-row,#v-optimizer .cl-busy .cl-tr{cursor:progress}

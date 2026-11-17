@@ -46,10 +46,27 @@ def _short(p, n=64):
 
 
 # =============================================================== cleanup
-def clean_scan(job):
-    """Measures every cleaner category for real (without deleting anything)."""
+def _clean_opts(opts):
+    """Options from the interface: days to keep temp files (1/7/30) and folders to always/now skip."""
+    opts = opts or {}
+    days = opts.get("days", cleaner.TEMP_GRACE_DAYS)
+    try:
+        days = int(days)
+    except (TypeError, ValueError):
+        days = cleaner.TEMP_GRACE_DAYS
+    if days not in cleaner.GRACE_CHOICES:
+        days = cleaner.TEMP_GRACE_DAYS
+    exclude = [str(x) for x in (opts.get("exclude") or []) if str(x).strip()]
+    return days, exclude
+
+
+def clean_scan(job, opts=None):
+    """Measures every cleaner category for real (without deleting anything). For temp folders it also returns
+    one row per first-level folder saying whether it will be emptied or why it is kept."""
+    days, exclude = _clean_opts(opts)
     cats = cleaner.categories()
     out = []
+    job.progress(0, "Checking which folders running programs are using…")
 
     def on_item(it):
         c = cats[it["id"]]
@@ -57,13 +74,17 @@ def clean_scan(job):
         pths = [_short(d) for d in dirs[:4]] + [_short(f) for f in files[:2]]
         if c.get("recycle"):
             pths = ["All drives"]
-        out.append({"id": it["id"], "g": it["group"], "label": it["label"], "size": it["size"], "files": it["count"],
-                    "def": bool(c.get("default")), "admin": bool(c.get("admin")), "needs_admin": it["needs_admin"],
-                    "busy": it["process"] if it["busy"] else "", "desc": it["desc"] or _DESC.get(it["id"], ""),
-                    "paths": pths or ["(not present on this PC)"]})
+        row = {"id": it["id"], "g": it["group"], "label": it["label"], "size": it["size"], "files": it["count"],
+               "def": bool(c.get("default")), "admin": bool(c.get("admin")), "needs_admin": it["needs_admin"],
+               "busy": it["process"] if it["busy"] else "", "desc": it["desc"] or _DESC.get(it["id"], ""),
+               "paths": pths or ["(not present on this PC)"], "temp": bool(c.get("temp"))}
+        if "rows" in it:
+            row["rows"] = [{**r, "short": _short(r["path"], 70)} for r in it["rows"]]
+            row["keptSize"], row["keptCount"] = it.get("keptSize", 0), it.get("keptCount", 0)
+        out.append(row)
         job.progress(len(out) / len(cats), it["label"], done=len(out))
 
-    cleaner.scan(on_item=on_item)
+    cleaner.scan(on_item=on_item, days=days, exclude=exclude)
     order = list(cats)
     out.sort(key=lambda x: order.index(x["id"]))
     return out
@@ -84,24 +105,41 @@ _DESC = {
 }
 
 
-def clean(job, ids):
-    """Cleans the chosen categories one by one, reporting what was freed. Files in use are skipped."""
+def clean(job, ids, opts=None):
+    """Cleans the chosen categories with real progress (files deleted of N, bytes freed, current folder, speed,
+    time left) and a real Cancel. Skips categories that need administrator rights or whose app is open (deleting
+    a running browser's cache can corrupt it), and temp folders that are recent, in use or excluded."""
+    days, exclude = _clean_opts(opts)
     cats = cleaner.categories()
     admin = _admin()
-    total = {"freed": 0, "deleted": 0, "skipped": 0, "per": {}, "skippedCats": []}
-    ids = [i for i in ids if i in cats]
-    for n, cid in enumerate(ids):
-        job.check()
-        c = cats[cid]
+    procs = {p["name"].lower() for p in rsys.list_processes()}
+    total = {"freed": 0, "deleted": 0, "skipped": 0, "per": {}, "skippedCats": [], "busyCats": [], "cancelled": False}
+    run = []
+    for cid in ids:
+        c = cats.get(cid)
+        if not c:
+            continue
         if c.get("admin") and not admin:
             total["skippedCats"].append(cid)
-            continue
-        job.progress(n / max(1, len(ids)), f"Cleaning {c['label'].lower()}…", id=cid, freed=total["freed"])
-        r = cleaner.clean([cid])
-        total["per"][cid] = r["freed"]
-        for k in ("freed", "deleted", "skipped"):
-            total[k] += r[k]
-        job.progress((n + 1) / max(1, len(ids)), c["label"], id=cid, freed=total["freed"], catFreed=r["freed"], force=True)
+        elif cleaner.running(c.get("process"), procs):
+            total["busyCats"].append(cid)
+        else:
+            run.append(cid)
+    job.progress(0, "Checking which folders running programs are using…", force=True)
+
+    def on_progress(d):
+        tot = max(1, d.get("total") or 0)
+        pct = (d["deleted"] + d["skipped"]) / tot if d.get("total") else 0
+        cur = d.get("current") or ""
+        data = dict(d, current=_short(cur, 60) if os.path.isabs(cur) else cur)
+        job.progress(min(.99, pct), f"Deleted {d['deleted']:,} of {d.get('total', 0):,} files", **data)
+
+    r = cleaner.clean(run, days=days, exclude=exclude, cancel=lambda: job.cancelled, on_progress=on_progress)
+    for k in ("freed", "deleted", "skipped", "cancelled"):
+        total[k] = r[k]
+    total["per"] = r["per"]
+    for cid, freed in r["per"].items():
+        job.progress(None, cats[cid]["label"], id=cid, catFreed=freed, force=True)
     return total
 
 
@@ -330,7 +368,7 @@ SERVICES = [
     {"id": "Spooler", "svc": ["Spooler"], "name": "Print spooler", "desc": "Needed to print.", "bal": "manual", "max": "disabled", "printers": True},
     {"id": "SysMain", "svc": ["SysMain"], "name": "SysMain (app preloading)", "desc": "Loads the apps you use most into memory. On a fast SSD it's barely noticeable.", "bal": None, "max": "manual"},
     {"id": "WSearch", "svc": ["WSearch"], "name": "Search indexing", "desc": "Builds the index that makes file search instant.", "bal": None, "max": "manual", "warn": "Searching for files from Start will be slower."},
-    {"id": "Xbox", "svc": ["XblAuthManager", "XblGameSave", "XboxNetApiSvc", "XboxGipSvc"], "name": "Xbox services", "desc": "Xbox Live sign-in, saved games and networking.", "bal": None, "max": "manual", "warn": "If you play with Game Pass or the Xbox app, leave them on."},
+    {"id": "Xbox", "svc": ["XblAuthManager", "XblGameSave", "XboxNetApiSvc", "XboxGipSvc"], "name": "Xbox services", "desc": "Xbox Live sign-in, saved games and networking.", "bal": None, "max": "manual", "warn": "If you play with Game Pass, use the Xbox app, Game Bar or an Xbox controller, leave them on (Xbox Accessory Management is what controllers and Game Bar rely on)."},
     {"id": "lfsvc", "svc": ["lfsvc"], "name": "Geolocation", "desc": "Gives your location to apps that ask for it.", "bal": None, "max": "disabled", "warn": "Apps that use your location will no longer know it."},
     {"id": "PhoneSvc", "svc": ["PhoneSvc"], "name": "Phone service", "desc": "Calls from the PC through your phone.", "bal": None, "max": "manual"},
     {"id": "WbioSrvc", "svc": ["WbioSrvc"], "name": "Biometrics", "desc": "Windows Hello fingerprint and face recognition.", "bal": None, "max": None, "warn": "If you sign in with your fingerprint or face, don't touch it."},

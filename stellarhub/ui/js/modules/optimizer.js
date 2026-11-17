@@ -18,7 +18,17 @@ SH.icons.add({
 /* ================= data (the shape Python returns) ================= */
 const DB = {
   clean: [
-    { id: 'user_temp', g: 'Windows', label: 'User temporary files', size: 2.84e9, files: 18342, def: true, desc: 'What programs leave in %TEMP%. Files from the last hour are kept.', paths: ['C:\\Users\\usuario\\AppData\\Local\\Temp'] },
+    { id: 'user_temp', g: 'Windows', label: 'User temporary files', size: 2.84e9, files: 18342, def: true, temp: true, keptSize: 3.1e9, keptCount: 4,
+      desc: 'Files programs leave in %TEMP%. Folders used recently or by a running program are kept.', paths: ['C:\\Users\\usuario\\AppData\\Local\\Temp'],
+      rows: [
+        { name: 'chrome_installer_old', path: 'C:\\Users\\usuario\\AppData\\Local\\Temp\\chrome_installer_old', short: '%USERPROFILE%\\AppData\\Local\\Temp\\chrome_installer_old', kind: 'dir', size: 1.62e9, files: 412, status: 'clean', reason: '' },
+        { name: 'nvidia_logs', path: 'C:\\Users\\usuario\\AppData\\Local\\Temp\\nvidia_logs', short: '%USERPROFILE%\\AppData\\Local\\Temp\\nvidia_logs', kind: 'dir', size: .74e9, files: 15210, status: 'clean', reason: '' },
+        { name: '(files directly in this folder)', path: 'C:\\Users\\usuario\\AppData\\Local\\Temp', short: '%USERPROFILE%\\AppData\\Local\\Temp', kind: 'files', size: .48e9, files: 2720, status: 'clean', reason: '' },
+        { name: 'build_tool_work', path: 'C:\\Users\\usuario\\AppData\\Local\\Temp\\build_tool_work', short: '%USERPROFILE%\\AppData\\Local\\Temp\\build_tool_work', kind: 'dir', size: 2.05e9, files: 3800, status: 'in_use', reason: 'In use by python.exe' },
+        { name: 'WinGet', path: 'C:\\Users\\usuario\\AppData\\Local\\Temp\\WinGet', short: '%USERPROFILE%\\AppData\\Local\\Temp\\WinGet', kind: 'dir', size: .63e9, files: 2, status: 'recent', reason: 'Used recently' },
+        { name: 'project_review', path: 'C:\\Users\\usuario\\AppData\\Local\\Temp\\project_review', short: '%USERPROFILE%\\AppData\\Local\\Temp\\project_review', kind: 'dir', size: .4e9, files: 1959, status: 'excluded', reason: 'You chose to always keep it' },
+        { name: 'node_modules', path: 'C:\\Users\\usuario\\AppData\\Local\\Temp\\link', short: '%USERPROFILE%\\AppData\\Local\\Temp\\link', kind: 'link', size: 0, files: 0, status: 'link', reason: 'Link to another folder: never followed' },
+      ] },
     { id: 'win_temp', g: 'Windows', label: 'Windows temporary files', size: .61e9, files: 2210, def: true, admin: true, desc: 'Leftovers from installations and system tasks.', paths: ['C:\\Windows\\Temp'] },
     { id: 'thumbs', g: 'Windows', label: 'Thumbnail cache', size: .42e9, files: 14, def: true, desc: 'Windows rebuilds it when you open folders.', paths: ['C:\\Users\\usuario\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_*.db'] },
     { id: 'dumps', g: 'Windows', label: 'Crash dumps and error reports', size: 1.37e9, files: 41, def: true, desc: 'Memory copies of programs that crashed. Only useful for debugging.', paths: ['C:\\Users\\usuario\\AppData\\Local\\CrashDumps', 'C:\\Windows\\Minidump', 'C:\\ProgramData\\Microsoft\\Windows\\WER'] },
@@ -129,7 +139,7 @@ async function engJob(fn, args = [], o = {}) {
   return r;
 }
 const LOADERS = {
-  async clean() { const r = await engJob('clean_scan'); DB.clean = r.map(c => ({ ...c, sel: c.def && !c.busy && c.size > 0 && (!c.admin || state.admin) })); publishJunk(); },
+  async clean() { const r = await engJob('clean_scan', [cleanOpts()]); DB.clean = r.map(c => ({ ...c })); DB.clean.forEach(c => { applySkips(c); c.sel = c.def && !c.busy && c.size > 0 && (!c.admin || state.admin); }); publishJunk(); },
   async startup() { const r = await engJob('startup_list'); DB.startup = r.items.map(s => ({ ...s, pub: s.pub || '', orig: s.on, path: s.path || '' })); DB.measured = r.measured; },
   async boot() { const r = await eng('boot_info'); DB.bios = r.bios; DB.boots = (r.boots || []).map(b => b.s); },
   async services() { const r = await eng('services_list'); DB.services = r.items.map(s => ({ ...s, orig: s.start, cur: s.start })); },
@@ -141,6 +151,17 @@ function load(area, force) {
   if (!loaded[area] || force) loaded[area] = LOADERS[area]().catch(e => { console.error('optimizer', area, e); delete loaded[area]; throw e; });
   return loaded[area];
 }
+/* temp folders: how many days to keep (setting cleanTempDays), folders skipped always (setting cleanExclusions)
+   and folders unchecked only for this run. Rows come from the engine, one per first-level folder of the temp folder. */
+const DAY_CHOICES = [1, 7, 30];
+const tempDays = () => DAY_CHOICES.includes(+state.settings.cleanTempDays) ? +state.settings.cleanTempDays : 7;
+const permEx = () => Array.isArray(state.settings.cleanExclusions) ? state.settings.cleanExclusions : [];
+const skipNow = new Set();
+const rowKey = r => r.kind === 'files' ? 'loose:' + r.path : r.path;
+const cleanOpts = () => ({ days: tempDays(), exclude: [...permEx(), ...skipNow] });
+/* a temp category's size is the sum of the rows that will really be emptied */
+function applySkips(c) { if (!c.rows) return; const go = c.rows.filter(r => r.status === 'clean' && !skipNow.has(rowKey(r))); c.size = go.reduce((a, r) => a + r.size, 0); c.files = go.reduce((a, r) => a + r.files, 0); }
+DB.clean.forEach(applySkips);
 function publishJunk() { const gbv = DB.clean.filter(c => c.def).reduce((a, c) => a + c.size, 0) / 1e9; SH.setPending('junk', Math.round(gbv * 10) / 10); }
 
 const API = {
@@ -152,18 +173,33 @@ const API = {
     }
     for (const a of ['clean', 'startup', 'services', 'registry', 'performance']) { await wait(520 + Math.random() * 380); onArea && onArea(a); }
   },
-  /* cleans; onProgress(c) gets the category with its updated size */
-  async clean(ids, onProgress) {
+  /* cleans; onCat(c) gets each category once it is done, onStatus(d) the live numbers (deleted, total, freed,
+     current, rate, eta) several times a second; ctl.cancel() is filled in so the caller can stop it */
+  async clean(ids, onCat, onStatus, ctl = {}) {
+    const start = {}; ids.forEach(id => { const c = DB.clean.find(x => x.id === id); if (c) start[id] = c.size; });
+    const finish = (id, freedHere) => { const c = DB.clean.find(x => x.id === id); if (!c || c._done) return; c._done = true; c.size = Math.max(0, start[id] - freedHere); c.sel = false;
+      if (c.rows) c.rows.forEach(r => { if (r.status === 'clean' && !skipNow.has(rowKey(r))) { r.status = 'done'; r.reason = 'Cleaned'; } });
+      onCat && onCat(c); };
+    ids.forEach(id => { const c = DB.clean.find(x => x.id === id); if (c) delete c._done; });
     if (REAL) {
-      const start = {}; ids.forEach(id => { const c = DB.clean.find(x => x.id === id); if (c) start[id] = c.size; });
-      const r = await engJob('clean', [ids], { onProgress: m => { const d = m.data || {}; if (d.id && d.catFreed !== undefined) { const c = DB.clean.find(x => x.id === d.id); if (c) { c.size = Math.max(0, start[d.id] - d.catFreed); c.sel = false; onProgress && onProgress(c); } } } });
-      ids.forEach(id => { const c = DB.clean.find(x => x.id === id); if (c && r.per && r.per[id] !== undefined) { c.size = Math.max(0, start[id] - r.per[id]); c.sel = false; } });
+      const p = SH.job('optimizer', 'clean', [ids, cleanOpts()], { onProgress: m => { const d = m.data || {}; try { onStatus && onStatus(d); } catch (e) { console.error(e); }
+        if (d.id && d.catFreed !== undefined && start[d.id] !== undefined) finish(d.id, d.catFreed); } });
+      ctl.cancel = () => p.cancel();
+      const r = await p;
+      if (r && r.needAdmin) { SH.requireAdmin('to make this change in Windows.'); const e = new Error('Needs administrator mode'); e.needAdmin = true; throw e; }
+      Object.entries(r.per || {}).forEach(([id, f]) => finish(id, f));
       publishJunk(); return r;
     }
-    for (const id of ids) { const c = DB.clean.find(x => x.id === id); const steps = 18; const start = c.size;
-      for (let i = 1; i <= steps; i++) { await wait(45 + Math.random() * 35); c.size = start * (1 - i / steps); onProgress && onProgress(c); }
-      c.size = 0; c.sel = false; }
-    return { freed: ids.reduce((a, id) => a + 0, 0) };
+    /* sample mode: the same shape of numbers, slowed down so the progress can be seen */
+    let stop = false; ctl.cancel = () => { stop = true; };
+    const total = ids.reduce((a, id) => a + (DB.clean.find(x => x.id === id).files || 0), 0), totalBytes = ids.reduce((a, id) => a + start[id], 0);
+    let deleted = 0, freed = 0; const t0 = performance.now();
+    for (const id of ids) { if (stop) break; const c = DB.clean.find(x => x.id === id); const steps = 24, cf = c.files || 0, cs = start[id];
+      for (let i = 1; i <= steps && !stop; i++) { await wait(60 + Math.random() * 50); deleted += cf / steps; freed += cs / steps; c.size = cs * (1 - i / steps);
+        const el = (performance.now() - t0) / 1000, rate = deleted / Math.max(.001, el);
+        onStatus && onStatus({ deleted: Math.round(deleted), total, freed, totalBytes, skipped: 0, current: (c.rows && c.rows[0] ? c.rows[0].short : c.paths[0]) || c.label, rate: Math.round(rate), eta: rate > 1 ? Math.round((total - deleted) / rate) : null }); }
+      if (!stop) finish(id, cs); }
+    publishJunk(); return { freed, deleted: Math.round(deleted), skipped: 0, cancelled: stop, per: {}, busyCats: [], skippedCats: [] };
   },
 };
 
@@ -333,7 +369,7 @@ async function runPlan(el, steps) {
     if (s.id === 'clean') {
       const ids = DB.clean.filter(c => c.sel && c.size > 0 && (!c.admin || state.admin)).map(c => c.id); const start = {}; ids.forEach(id => start[id] = DB.clean.find(c => c.id === id).size);
       const tot = Object.values(start).reduce((a, b) => a + b, 0);
-      await API.clean(ids, c => { freed = ids.reduce((a, id) => a + (start[id] - DB.clean.find(x => x.id === id).size), 0); setP(tot ? freed / tot : 1); msg.textContent = `Cleaning ${c.label.toLowerCase()}…`; const f = $('#optFreed', el); if (f) f.textContent = `${gb(freed)} freed`; });
+      await API.clean(ids, null, d => { freed = d.freed || 0; setP(d.total ? d.deleted / d.total : 0); msg.textContent = `Deleted ${SH.fmtInt(d.deleted)} of ${SH.fmtInt(d.total)} files`; const f = $('#optFreed', el); if (f) f.textContent = `${gb(freed)} freed`; });
       msg.textContent = `${gb(freed)} freed`; log.push(['ok', `Cleanup: ${gb(freed)}`]);
     }
     if (s.id === 'startup') { const rec = recStartup(); for (let i = 0; i < rec.length; i++) { rec[i].on = false; msg.textContent = `Removing ${rec[i].name} from startup`; setP((i + 1) / rec.length); await wait(380); } msg.textContent = `${rec.length} apps removed from startup`; log.push(['ok', `Startup: ${rec.length} apps removed`]); }
@@ -376,7 +412,8 @@ async function realStep(s, msg, setP) {
     const ids = DB.clean.filter(c => c.sel && c.size > 0 && (!c.admin || state.admin)).map(c => c.id);
     const tot = ids.reduce((a, id) => a + DB.clean.find(c => c.id === id).size, 0);
     msg.textContent = 'Cleaning…';
-    const r = await API.clean(ids, c => { msg.textContent = `${c.label}: done`; });
+    const r = await API.clean(ids, null, d => { if (!d.total) { msg.textContent = 'Checking which folders running programs are using…'; return; }
+      setP(Math.min(.99, (d.deleted + (d.skipped || 0)) / d.total)); msg.textContent = `Deleted ${SH.fmtInt(d.deleted)} of ${SH.fmtInt(d.total)} files · ${gb(d.freed || 0)} freed`; });
     setP(1); msg.textContent = `${gb(r.freed)} freed${r.skipped ? `; ${SH.fmtInt(r.skipped)} files in use were skipped` : ''}`;
     return { freed: r.freed, log: `Cleanup: ${gb(r.freed)} of ${gb(tot)}` };
   }
@@ -424,39 +461,100 @@ async function undo(el) {
 }
 
 /* ================= Cleanup ================= */
+const ST_CHIP = { in_use: ['warn', 'in use'], recent: ['', 'recent'], excluded: ['', 'skipped'], link: ['', 'link'], done: ['ok', 'cleaned'] };
+const ROWS_SHOWN = 80;
+const dur = s => s == null ? '' : s < 60 ? `${Math.max(1, Math.round(s))} s` : s < 3600 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min`;
+/* the per-folder preview of a temp category: what will be emptied, what is kept and why */
+function tempDetHTML(c) {
+  const rows = c.rows || [], perm = permEx();
+  const kept = rows.filter(r => r.status !== 'clean' && r.status !== 'done');
+  const keptSize = kept.reduce((a, r) => a + r.size, 0);
+  const days = tempDays();
+  const row = r => {
+    const k = rowKey(r), can = r.status === 'clean', on = can && !skipNow.has(k), chip = ST_CHIP[r.status], isPerm = perm.includes(k);
+    const act = isPerm ? `<button class="btn ghost xs" data-unperm="${esc(k)}">Stop skipping</button>`
+      : (can || r.status === 'recent' || r.status === 'in_use') ? `<button class="btn ghost xs" data-perm="${esc(k)}">Always skip</button>` : '<span></span>';
+    return `<div class="cl-tr${can ? '' : ' kept'}${on ? ' on' : ''}" data-k="${esc(k)}">
+      <button class="check${on ? ' on' : ''}"${can ? '' : ' disabled'} aria-label="${esc(r.name)}">${ic('check')}</button>
+      <div class="cl-tn"><b title="${esc(r.path)}">${esc(r.name)}${chip ? ` <span class="chip ${chip[0]}">${chip[1]}</span>` : ''}</b><span>${esc(r.reason || (r.kind === 'files' ? 'Loose files older than the limit' : 'Nothing inside changed recently'))}</span></div>
+      <span class="cl-tf faint">${r.kind === 'link' ? '' : SH.fmtInt(r.files) + ' files'}</span><span class="cl-ts">${r.kind === 'link' ? '' : gb(r.size)}</span>${act}</div>`;
+  };
+  const others = perm.filter(k => !rows.some(r => rowKey(r) === k));
+  return `<p class="cl-rule">${ic('shield')}<span>Folders changed in the last <b>${days} day${days > 1 ? 's' : ''}</b>, folders a running program uses and links to other places are kept whole.${kept.length ? ` Keeping ${kept.length} folder${kept.length > 1 ? 's' : ''} (${gb(keptSize)}).` : ''} Uncheck a folder to keep it this time.</span></p>
+    <div class="cl-tbl">${rows.slice(0, ROWS_SHOWN).map(row).join('')}${rows.length > ROWS_SHOWN ? `<p class="faint cl-more">and ${rows.length - ROWS_SHOWN} more small folders</p>` : ''}${rows.length ? '' : '<p class="faint">Nothing here.</p>'}</div>
+    ${others.length ? `<div class="cl-perm"><span class="muted">Always skipped</span>${others.map(k => `<div class="cl-pi"><span title="${esc(k)}">${esc(k.replace(/^loose:/, 'Loose files in '))}</span><button class="btn ghost xs" data-unperm="${esc(k)}">Remove</button></div>`).join('')}</div>` : ''}`;
+}
 function renderClean(el) {
   el.classList.add('fill');
   const groups = [...new Set(DB.clean.map(c => c.g))];
   /* two real columns, balanced by item count (CSS columns don't get along with animations) */
   const cols = [[], []], load = [0, 0];
-  groups.map(g => [g, DB.clean.filter(c => c.g === g).length]).sort((x, y) => y[1] - x[1]).forEach(([g, n]) => { const i = load[0] <= load[1] ? 0 : 1; cols[i].push(g); load[i] += n + 1.5; });
+  groups.map(g => [g, DB.clean.filter(c => c.g === g).reduce((a, c) => a + 1 + (c.rows ? 3 : 0), 0)]).sort((x, y) => y[1] - x[1]).forEach(([g, n]) => { const i = load[0] <= load[1] ? 0 : 1; cols[i].push(g); load[i] += n + 1.5; });
+  const days = tempDays();
+  const detHTML = c => (c.busy ? `<p class="warn-t">${esc(c.label)} is open. Close it to clean its cache; otherwise it's skipped.</p>` : '') + (c.rows ? tempDetHTML(c)
+    : `<p class="faint">${SH.fmtInt(c.files)} files</p>${c.paths.map(p => `<div class="cl-path">${ic('folder')}<span>${esc(p)}</span></div>`).join('')}`);
   el.innerHTML = `<div class="cl">
     <div class="pan cl-top" data-asm><div class="cl-tot"><span class="muted">Selected</span><div><b class="big" id="clTot">0</b><small class="muted"> GB</small></div></div>
       <div class="cl-meta"><span id="clCount"></span><span class="faint" id="clAllSize"></span></div>
+      <div class="cl-days"><span class="muted">Keep temp files from the last</span><div class="seg" id="clDays"><span class="ind"></span>${DAY_CHOICES.map(d => `<button data-v="${d}"${d === days ? ' class="on"' : ''}>${d} day${d > 1 ? 's' : ''}</button>`).join('')}</div></div>
       <div class="cl-acts"><button class="btn ghost sm" id="clRec">Select recommended</button><button class="btn ghost sm" id="clNone">Clear selection</button><button class="btn pri lg" id="clGo">${ic('broom')}Clean selected</button></div></div>
+    <div class="pan cl-run" id="clRun" hidden><div class="cl-run-h"><b id="clRunT">Getting ready…</b><span class="faint" id="clRunE"></span><button class="btn ghost sm" id="clCancel">${ic('stop')}Cancel</button></div>
+      <div class="cl-bar"><span></span></div>
+      <div class="cl-run-s"><span id="clRunF"></span><span id="clRunR"></span><span id="clRunK"></span></div><div class="cl-run-c faint" id="clRunC"></div></div>
     <div class="cl-list">${cols.map(col => `<div class="cl-col">${col.map(g => `<div class="cl-g" data-asm><div class="cl-gh">${esc(g)}<em data-g="${esc(g)}"></em></div>${DB.clean.filter(c => c.g === g).map(c => `
-      <div class="cl-it" data-id="${c.id}">
+      <div class="cl-it${c.rows && c.id === 'user_temp' ? ' open' : ''}" data-id="${c.id}">
         <div class="cl-row"><button class="check" aria-label="${esc(c.label)}">${ic('check')}</button>
           <div class="rt"><b>${esc(c.label)}${c.busy ? ' <span class="chip warn">open</span>' : ''}${c.admin && !state.admin ? ' <span class="chip">administrator</span>' : ''}</b><span>${esc(c.desc)}</span></div>
           <span class="cl-size"></span><button class="iconbtn cl-x" aria-label="Show details">${ic('chevd')}</button></div>
-        <div class="cl-det"><div><div class="cl-det-in">${c.busy ? `<p class="warn-t">${esc(c.label)} is open. Close it to clean its cache; otherwise it's skipped.</p>` : ''}<p class="faint">${SH.fmtInt(c.files)} files</p>${c.paths.map(p => `<div class="cl-path">${ic('folder')}<span>${esc(p)}</span></div>`).join('')}</div></div></div>
+        <div class="cl-det"><div><div class="cl-det-in">${detHTML(c)}</div></div></div>
         <div class="cl-prog"><span></span></div></div>`).join('')}</div>`).join('')}</div>`).join('')}</div></div>`;
   const tot = $('#clTot', el);
-  const upd = () => { SH.countUp(tot, totalSel() / 1e9, 450, 1); $('#clCount', el).textContent = `${DB.clean.filter(c => c.sel && c.size > 0).length} categories`; $('#clAllSize', el).textContent = `of ${gb(totalAll())} that can be cleaned`; $('#clGo', el).disabled = !totalSel(); };
+  let busy = false;
+  const upd = () => { SH.countUp(tot, totalSel() / 1e9, 450, 1); $('#clCount', el).textContent = `${DB.clean.filter(c => c.sel && c.size > 0).length} categories`; $('#clAllSize', el).textContent = `of ${gb(totalAll())} that can be cleaned`; $('#clGo', el).disabled = busy || !totalSel(); };
   function sync() {
-    DB.clean.forEach(c => { const it = $(`.cl-it[data-id="${c.id}"]`, el); it.classList.toggle('sel', c.sel); $('.check', it).classList.toggle('on', c.sel); it.classList.toggle('clean', c.size === 0); $('.cl-size', it).textContent = c.size ? gb(c.size) : 'Clean'; });
+    DB.clean.forEach(c => { const it = $(`.cl-it[data-id="${c.id}"]`, el); if (!it) return; it.classList.toggle('sel', c.sel); $('.check', it).classList.toggle('on', c.sel); it.classList.toggle('clean', c.size === 0); $('.cl-size', it).textContent = c.size ? gb(c.size) : 'Clean'; });
     $$('.cl-gh em', el).forEach(e => e.textContent = gb(DB.clean.filter(c => c.g === e.dataset.g).reduce((a, c) => a + c.size, 0))); upd();
   }
+  const redrawTemp = c => { const box = $(`.cl-it[data-id="${c.id}"] .cl-det-in`, el); if (box) box.innerHTML = detHTML(c); };
+  /* changing the days or removing an exclusion needs a fresh look at the folders */
+  async function rescan() {
+    if (!REAL) { renderClean(el); SH.assemble(el, 0, 30); return; }
+    el.innerHTML = loadingHTML('clean');
+    try { await load('clean', true); } catch (e) { SH.toast(`Couldn't measure: ${e.message}`); }
+    el.innerHTML = ''; renderClean(el); SH.assemble(el, 0, 30);
+  }
   sync();
-  el.addEventListener('click', e => {
+  requestAnimationFrame(() => { const sg = $('#clDays', el); if (sg) SH.placeSeg(sg, true); });
+  if (el._clClick) el.removeEventListener('click', el._clClick);
+  el._clClick = e => {
+    if (busy && !e.target.closest('#clCancel, .cl-x')) return;
+    const db = e.target.closest('#clDays button');
+    if (db) { if (db.classList.contains('on')) return; $$('#clDays button', el).forEach(x => x.classList.toggle('on', x === db)); SH.placeSeg($('#clDays', el)); SH.setSetting('cleanTempDays', +db.dataset.v); setTimeout(rescan, 220); return; }
+    const pb = e.target.closest('[data-perm]');
+    if (pb) {
+      const k = pb.dataset.perm; SH.setSetting('cleanExclusions', [...permEx().filter(x => x !== k), k]); skipNow.delete(k);
+      DB.clean.forEach(c => { if (!c.rows) return; c.rows.forEach(r => { if (rowKey(r) === k && r.status === 'clean') { r.status = 'excluded'; r.reason = 'You chose to always keep it'; } }); applySkips(c); if (!c.size) c.sel = false; redrawTemp(c); });
+      sync(); SH.toast('It will always be skipped. You can undo it here.'); return;
+    }
+    const ub = e.target.closest('[data-unperm]');
+    if (ub) { SH.setSetting('cleanExclusions', permEx().filter(x => x !== ub.dataset.unperm)); rescan(); return; }
+    const tr = e.target.closest('.cl-tr');
+    if (tr) {
+      if (tr.classList.contains('kept')) return;
+      const k = tr.dataset.k; if (skipNow.has(k)) skipNow.delete(k); else skipNow.add(k);
+      const on = !skipNow.has(k); tr.classList.toggle('on', on); $('.check', tr).classList.toggle('on', on);
+      const c = DB.clean.find(x => x.id === tr.closest('.cl-it').dataset.id); applySkips(c); if (!c.size) c.sel = false; sync(); return;
+    }
     const it = e.target.closest('.cl-it'); if (!it) return;
     if (e.target.closest('.cl-x')) { it.classList.toggle('open'); return; }
     if (e.target.closest('.cl-row') && !it.classList.contains('clean') && !it.classList.contains('busyrun')) {
       const c = DB.clean.find(x => x.id === it.dataset.id); c.sel = !c.sel; it.classList.toggle('sel', c.sel); $('.check', it).classList.toggle('on', c.sel); upd(); }
-  });
-  $('#clRec', el).addEventListener('click', () => { DB.clean.forEach(c => c.sel = c.def && !c.busy && c.size > 0); sync(); });
-  $('#clNone', el).addEventListener('click', () => { DB.clean.forEach(c => c.sel = false); sync(); });
+  };
+  el.addEventListener('click', el._clClick);
+  $('#clRec', el).addEventListener('click', () => { if (busy) return; DB.clean.forEach(c => c.sel = c.def && !c.busy && c.size > 0); sync(); });
+  $('#clNone', el).addEventListener('click', () => { if (busy) return; DB.clean.forEach(c => c.sel = false); sync(); });
   $('#clGo', el).addEventListener('click', async () => {
+    if (busy) return;
     let ids = DB.clean.filter(c => c.sel && c.size > 0).map(c => c.id);
     const needAdmin = ids.filter(id => DB.clean.find(c => c.id === id).admin);
     if (needAdmin.length && !state.admin) { SH.requireAdmin('to clean Windows temporary files and Windows Update downloads. Everything else is cleaned anyway.'); ids = ids.filter(id => !needAdmin.includes(id)); }
@@ -469,21 +567,59 @@ function renderClean(el) {
       setTimeout(() => { if (go.dataset.sure) { delete go.dataset.sure; go.innerHTML = `${ic('broom')}Clean selected`; } }, 4000); return;
     }
     delete go.dataset.sure;
-    go.disabled = true; go.innerHTML = `${ic('broom')}Cleaning…`; let freed = 0;
-    for (const id of ids) {
-      const it = $(`.cl-it[data-id="${id}"]`, el); it.classList.add('busyrun'); it.scrollIntoView({ block: 'nearest', behavior: isMin() ? 'auto' : 'smooth' });
-      const c = DB.clean.find(x => x.id === id); const start = c.size; const pr = $('.cl-prog span', it);
-      if (REAL) it.classList.add('indet');
-      let r;
-      try { r = await API.clean([id], cc => { $('.cl-size', it).textContent = cc.size ? gb(cc.size) : 'Clean'; pr.style.transform = `scaleX(${(1 - cc.size / start).toFixed(3)})`; tot.textContent = fmt1(totalSel() / 1e9); tot.dataset.v = totalSel() / 1e9; }); }
-      catch (e) { it.classList.remove('busyrun', 'indet'); SH.toast(`${c.label}: ${e.message}`); continue; }
-      it.classList.remove('indet');
-      freed += REAL ? (r.freed || 0) : start; it.classList.remove('busyrun'); if (!c.size) it.classList.add('clean');
-      anim($('.cl-size', it), [{ transform: 'scale(.7)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { d: 360, e: EASE.spring });
-    }
+    busy = true; el.classList.add('cl-busy'); go.disabled = true; go.innerHTML = `${ic('broom')}Cleaning…`;
+    /* the engine goes through the categories in this order, skipping the apps that are open */
+    const queue = ids.filter(id => !DB.clean.find(c => c.id === id).busy);
+    const mark = () => {
+      $$('.cl-it.busyrun', el).forEach(x => x.classList.remove('busyrun', 'indet'));
+      const cur = queue.find(id => !DB.clean.find(c => c.id === id)._done), it = cur && $(`.cl-it[data-id="${cur}"]`, el);
+      if (it) { it.classList.add('busyrun', 'indet'); it.scrollIntoView({ block: 'nearest', behavior: isMin() ? 'auto' : 'smooth' }); }
+    };
+    const run = $('#clRun', el); run.hidden = false; run.classList.remove('done');
+    anim(run, [{ opacity: 0, transform: 'translate3d(0,-8px,0)' }, { opacity: 1, transform: 'none' }], { d: 360, e: EASE.spring });
+    const bar = $('.cl-bar span', run), T = $('#clRunT', run), F = $('#clRunF', run), R = $('#clRunR', run), K = $('#clRunK', run), C = $('#clRunC', run), E = $('#clRunE', run);
+    const cancelBtn = $('#clCancel', run); cancelBtn.disabled = false; cancelBtn.innerHTML = `${ic('stop')}Cancel`;
+    run.classList.add('indet'); bar.style.transform = ''; T.textContent = 'Checking which folders running programs are using…';
+    F.textContent = R.textContent = K.textContent = C.textContent = E.textContent = '';
+    const ctl = {};
+    cancelBtn.onclick = () => { if (ctl.cancel) ctl.cancel(); cancelBtn.disabled = true; cancelBtn.textContent = 'Stopping…'; };
+    ids.forEach(id => { delete DB.clean.find(c => c.id === id)._done; });
+    mark();
+    const status = d => {
+      if (!d.total) return;
+      run.classList.remove('indet');
+      const pct = Math.min(1, (d.deleted + (d.skipped || 0)) / d.total);
+      bar.style.transform = `scaleX(${pct.toFixed(4)})`;
+      T.textContent = `Deleted ${SH.fmtInt(d.deleted)} of ${SH.fmtInt(d.total)} files`;
+      F.textContent = `${gb(d.freed || 0)} of ${gb(d.totalBytes || 0)} freed`;
+      R.textContent = d.rate ? `${SH.fmtInt(d.rate)} files/s` : '';
+      K.textContent = d.skipped ? `${SH.fmtInt(d.skipped)} in use, skipped` : '';
+      E.textContent = d.eta != null && pct < 1 ? `about ${dur(d.eta)} left` : '';
+      if (d.current) C.textContent = `Now: ${d.current}`;
+      tot.textContent = fmt1(totalSel() / 1e9); tot.dataset.v = totalSel() / 1e9;
+    };
+    const onCat = c => {
+      const it = $(`.cl-it[data-id="${c.id}"]`, el);
+      if (it) { $('.cl-size', it).textContent = c.size ? gb(c.size) : 'Clean'; if (!c.size) it.classList.add('clean'); if (c.rows) redrawTemp(c);
+        anim($('.cl-size', it), [{ transform: 'scale(.7)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { d: 360, e: EASE.spring }); }
+      mark();
+    };
+    let r = null;
+    try { r = await API.clean(ids, onCat, status, ctl); }
+    catch (e) { SH.toast(`Cleanup: ${e.message}`); }
+    busy = false; el.classList.remove('cl-busy'); $$('.cl-it.busyrun', el).forEach(x => x.classList.remove('busyrun', 'indet'));
     go.innerHTML = `${ic('broom')}Clean selected`; sync(); refresh('overview');
-    SH.toast(`Freed ${gb(freed)}.`);
-    if (REAL) SH.logActivity('Cleanup done', { sub: `${gb(freed)} freed`, ic: 'broom', go: 'optimizer', tab: 'clean' });
+    run.classList.remove('indet'); run.classList.add('done'); cancelBtn.disabled = false; cancelBtn.innerHTML = `${ic('x')}Close`; cancelBtn.onclick = () => { run.hidden = true; };
+    if (!r) { T.textContent = 'Cleanup stopped'; return; }
+    const freed = r.freed || 0;
+    const open = (r.busyCats || []).map(id => (DB.clean.find(c => c.id === id) || {}).label).filter(Boolean);
+    T.textContent = r.cancelled ? `Stopped. ${gb(freed)} freed before cancelling` : `Done. ${gb(freed)} freed`;
+    F.textContent = `${SH.fmtInt(r.deleted || 0)} files deleted`; R.textContent = ''; E.textContent = '';
+    K.textContent = r.skipped ? `${SH.fmtInt(r.skipped)} files in use were skipped` : '';
+    C.textContent = open.length ? `Skipped because they're open: ${open.join(', ')}` : '';
+    if (!r.cancelled) bar.style.transform = 'scaleX(1)';
+    SH.toast(r.cancelled ? `Stopped. Freed ${gb(freed)}.` : `Freed ${gb(freed)}.`);
+    if (REAL) SH.logActivity(r.cancelled ? 'Cleanup stopped' : 'Cleanup done', { sub: `${gb(freed)} freed`, ic: 'broom', go: 'optimizer', tab: 'clean' });
   });
   rendered.clean = sync;
 }

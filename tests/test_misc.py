@@ -85,11 +85,13 @@ class Cleaner(unittest.TestCase):
             for f in (old, new):
                 with open(f, "w") as fh:
                     fh.write("x" * 100)
-            past = time.time() - 7200
+            past = time.time() - 10 * 86400   # older than the 7-day temp grace
             os.utime(old, (past, past))
-            cats = {"t": {"id": "t", "label": "t", "group": "g", "globs": [d], "grace": True, "default": True, "desc": ""}}
+            os.utime(os.path.dirname(old), (past, past))
+            cats = {"t": {"id": "t", "label": "t", "group": "g", "globs": [d], "grace": True, "temp": True,
+                          "default": True, "desc": ""}}
             with mock.patch.object(cleaner, "categories", return_value=cats):
-                r = cleaner.clean(["t"])
+                r = cleaner.clean(["t"], in_use={})
             self.assertEqual(r["deleted"], 1)
             self.assertFalse(os.path.exists(old))
             self.assertTrue(os.path.exists(new))   # recent: kept
@@ -134,13 +136,16 @@ class Cleaner(unittest.TestCase):
             old = os.path.join(outside, "old.tmp")
             with open(old, "w") as fh:
                 fh.write("x")
-            past = time.time() - 7200
+            past = time.time() - 10 * 86400
             os.utime(old, (past, past))
             os.makedirs(os.path.join(d, "empty", "deeper"))
+            for p in (os.path.join(d, "empty", "deeper"), os.path.join(d, "empty")):
+                os.utime(p, (past, past))
             subprocess.run(["cmd", "/c", "mklink", "/J", os.path.join(d, "j"), outside], capture_output=True)
-            cats = {"t": {"id": "t", "label": "t", "group": "g", "globs": [d], "grace": True, "default": True, "desc": ""}}
+            cats = {"t": {"id": "t", "label": "t", "group": "g", "globs": [d], "grace": True, "temp": True,
+                          "default": True, "desc": ""}}
             with mock.patch.object(cleaner, "categories", return_value=cats):
-                cleaner.clean(["t"])
+                cleaner.clean(["t"], in_use={})
             self.assertTrue(os.path.isdir(os.path.join(outside, "empty_inside")))  # outside: untouched
             self.assertTrue(os.path.exists(old))
             self.assertFalse(os.path.exists(os.path.join(d, "empty")))            # inside: empty ones removed
