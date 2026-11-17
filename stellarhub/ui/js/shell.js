@@ -152,9 +152,9 @@ function setTab(mid, tabId, quiet) {
   to.getAnimations().forEach(a => a.cancel()); to.style.transform = to.style.filter = to.style.opacity = '';
   to.classList.add('on');
   if (!quiet) {
-    const a = anim(from, [{ opacity: 1, transform: 'translate3d(0,0,0)', filter: 'blur(0px)' }, { opacity: 0, transform: `translate3d(${-dir * 28}px,0,0)`, filter: 'blur(6px)' }], { d: 200, e: EASE.out });
+    const a = anim(from, [{ opacity: 1, transform: 'translate3d(0,0,0) scale(1)' }, { opacity: 0, transform: `translate3d(${-dir * 22}px,0,0) scale(.985)` }], { d: 180, e: EASE.out });
     a && a.finished.then(() => { if (ms.tab !== prev) from.classList.remove('on'); }).catch(() => {});
-    anim(to, [{ opacity: 0, transform: `translate3d(${dir * 40}px,0,0)`, filter: 'blur(8px)' }, { opacity: 1, transform: 'translate3d(0,0,0)', filter: 'blur(0px)' }], { d: 480, delay: 40, e: EASE.spring });
+    anim(to, [{ opacity: 0, transform: `translate3d(${dir * 34}px,0,0) scale(.985)` }, { opacity: 1, transform: 'translate3d(0,0,0) scale(1)' }], { d: 460, delay: 30, e: EASE.glide });
     if (fresh) assemble(to, 80, 32);
   } else { from.classList.remove('on'); }
   if (def.enterTab) try { def.enterTab(tabId, to, ctxFor(modById(mid))); } catch (e) { console.error(e); }
@@ -212,17 +212,17 @@ function go(name, opts = {}) {
   if (fromName === 'home') {
     SH.homeAnimating = true;
     if (cam) { warp.t = 1; setTimeout(() => { warp.t = 0; }, 260 * motion()); }
-    outA = anim(from, [{ opacity: 1, transform: 'scale(1)', filter: 'blur(0px)' }, { opacity: 0, transform: `scale(${cam ? 2.4 : 1.05})`, filter: 'blur(16px)' }], { d: cam ? 560 : 260, e: EASE.io });
+    outA = anim(from, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: `scale(${cam ? 1.9 : 1.05})` }], { d: cam ? 480 : 240, e: EASE.io });
     anim(to, [{ opacity: 1 }, { opacity: 1 }], { d: 1 }); assemble(to, cam ? 200 : 60);
   } else if (name === 'home') {
     SH.homeAnimating = true;
     if (cam) { warp.t = -.8; setTimeout(() => { warp.t = 0; }, 240 * motion()); }
-    outA = anim(from, [{ opacity: 1, transform: 'scale(1)', filter: 'blur(0px)' }, { opacity: 0, transform: 'scale(.86)', filter: 'blur(10px)' }], { d: 300, e: EASE.out });
-    anim(to, [{ opacity: 0, transform: `scale(${cam ? 2.4 : 1.04})`, filter: 'blur(16px)' }, { opacity: 1, transform: 'scale(1)', filter: 'blur(0px)' }], { d: cam ? 640 : 320, delay: 60, e: EASE.out });
+    outA = anim(from, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(.9)' }], { d: 260, e: EASE.out });
+    anim(to, [{ opacity: 0, transform: `scale(${cam ? 1.9 : 1.04})` }, { opacity: 1, transform: 'scale(1)' }], { d: cam ? 560 : 300, delay: 40, e: EASE.glide });
     SH.emit('home:return');
   } else {
     if (cam) { warp.t = .45; setTimeout(() => { warp.t = 0; }, 180 * motion()); }
-    outA = anim(from, [{ opacity: 1, transform: 'scale(1)', filter: 'blur(0px)' }, { opacity: 0, transform: `scale(${cam ? 1.3 : 1.03})`, filter: 'blur(12px)' }], { d: 380, e: EASE.io });
+    outA = anim(from, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: `scale(${cam ? 1.18 : 1.03})` }], { d: 320, e: EASE.io });
     anim(to, [{ opacity: 1 }, { opacity: 1 }], { d: 1 }); assemble(to, 120);
   }
   const def = registry.modules[name];

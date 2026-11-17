@@ -78,12 +78,20 @@ SH.tele.on(paint);
 function fitWindow(st) {
   requestAnimationFrame(() => {
     paint(SH.tele.v);
+    /* a size the user chose by dragging the edges wins over the automatic one (per mode) */
+    const saved = st['widgetSize_' + (st.widgetMode === 'mini' ? 'mini' : 'full')];
     if (st.widgetMode === 'mini') {
-      const need = 12 + 7 + 10 + $('#rows').scrollWidth + 10 + $('.hd').scrollWidth + 8;
-      SH.call('widget_resize', Math.ceil(need), 38);
-    } else { const sz = SH.widgetSize(st); SH.call('widget_resize', sz.w, sz.h); }
+      const need = Math.ceil(12 + 7 + 10 + $('#rows').scrollWidth + 10 + $('.hd').scrollWidth + 8);
+      SH.call('widget_resize', saved ? Math.max(need, saved[0]) : need, 38);
+    } else if (saved) SH.call('widget_resize', saved[0], saved[1]);
+    else { const sz = SH.widgetSize(st); SH.call('widget_resize', sz.w, sz.h); }
   });
 }
+/* resize handles: Windows' own resize loop does the dragging */
+document.querySelectorAll('.wrz').forEach(h => h.addEventListener('mousedown', e => {
+  if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); SH.call('widget_drag_resize', h.dataset.edge);
+}));
+SH.widgetResized = () => { SH.loadSettings().then(() => paint(SH.tele.v)); };
 SH.widgetApply = conf => { const st = build(Object.assign({}, state.settings, conf)); fitWindow(st); };
 $('#sizeBtn').addEventListener('click', async () => {
   const next = state.settings.widgetMode === 'mini' ? 'full' : 'mini';

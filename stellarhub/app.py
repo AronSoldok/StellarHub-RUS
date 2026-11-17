@@ -168,6 +168,11 @@ class Api:
         self._quitting = True
         if self._sampler:
             self._sampler.stop()
+        try:
+            from .engine import autopilot
+            autopilot.stop()
+        except Exception:
+            pass
         self.widget_close()
         if self._tray is not None:
             self._tray.stop()
@@ -329,6 +334,32 @@ class Api:
             except Exception as e:
                 print("widget_resize:", e)
         return True
+
+    def widget_drag_resize(self, edge):
+        """The user drags an edge of the widget: Windows' own resize loop (smooth, like any window).
+        When it ends, the new size is saved for that widget size mode so it is kept next time."""
+        w = self._widget
+        hit = {"w": 10, "e": 11, "n": 12, "nw": 13, "ne": 14, "s": 15, "sw": 16, "se": 17}.get(edge)
+        if w is None or not hit:
+            return False
+        try:
+            from System import Action
+            form = w.native
+            u = ctypes.windll.user32
+
+            def go():
+                if not (u.GetAsyncKeyState(0x01) & 0x8000):
+                    return  # the button was already released: do not start a loop stuck to the cursor
+                u.ReleaseCapture()
+                u.SendMessageW(form.Handle.ToInt32(), 0x00A1, hit, 0)  # WM_NCLBUTTONDOWN: blocks until released
+                mode = self.settings_get().get("widgetMode") or "full"
+                self.settings_set({f"widgetSize_{mode}": [w.width, w.height]})
+                self._js("window.SH && SH.widgetResized && SH.widgetResized()", w)
+            form.BeginInvoke(Action(go))
+            return True
+        except Exception as e:
+            print("widget_drag_resize:", e)
+            return False
 
     def log_js_error(self, msg):
         """UI errors go to the log (stellarhub.log), to help diagnose problems."""
@@ -763,6 +794,13 @@ def main():
         window.events.loaded += lambda: (api._sampler.start(), api._tele_refresh())
     except Exception as e:
         print("telemetry:", e)
+
+    # Autopilot: runs the routines while the app is open, also hidden in the tray
+    try:
+        from .engine import autopilot
+        autopilot.attach((lambda title, text: api._tray.notify(text, title)) if api._tray else None)
+    except Exception as e:
+        print("autopilot:", e)
 
     refresh_ui_cache()
     webview.start(gui="edgechromium", debug="--debug" in sys.argv, http_server=True,

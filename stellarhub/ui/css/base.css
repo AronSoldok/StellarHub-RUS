@@ -201,7 +201,7 @@ html[data-int=min] .sk::after{animation:none}
 .subnav button .bd[hidden]{display:none}
 .subnav .ind{position:absolute;left:0;top:4px;height:34px;border-radius:11px;background:var(--raise2);border:1px solid var(--line2);will-change:transform,width;pointer-events:none}
 .tabs{position:relative;flex:1;min-height:0}
-.tab{position:absolute;inset:0;overflow:auto;visibility:hidden;padding:2px 4px 14px 2px}
+.tab{position:absolute;inset:0;overflow:auto;visibility:hidden;padding:2px 4px 14px 2px;scrollbar-gutter:stable}
 .tab.fill{padding-bottom:8px}
 
 /* fade on scrollable areas: at the top only once you have scrolled, at the bottom only if there is more content.

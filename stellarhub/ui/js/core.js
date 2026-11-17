@@ -13,7 +13,7 @@ const DEFAULTS = {
   stars: true, camera: true, parallax: true, homeVariant: 'bento', adminHints: true, trayOnClose: true,
   startWithWindows: false, autoUpdate: true, language: 'en', density: 'comfortable', sounds: false,
   widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetOnStart: false, widgetLayout: 'grid',
-  starCount: 400, starSpeed: 1.5, starBright: 1.2, widgetMode: 'full', widgetWasOpen: false, alwaysAdmin: false, twinkle: true, shooting: true, nebula: 1, animSpeed: 1, panelAlpha: 1, corners: 'mid',
+  starCount: 400, starSpeed: 1.5, starBright: 1.2, widgetMode: 'full', widgetWasOpen: false, alwaysAdmin: false, twinkle: true, shooting: true, nebula: 1, animSpeed: 1, panelAlpha: 1.75, corners: 'mid',
   countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', lastView: 'home',
 };
 const state = { view: 'home', admin: false, palOpen: false, setOpen: false, version: '0.2.0', settings: { ...DEFAULTS } };
@@ -108,7 +108,8 @@ function springEase(k = 180, c = 19) {
   for (let i = 0; i <= 60; i++) { pts.push(+x.toFixed(4)); for (let j = 0; j < 4; j++) { const a = -k * (x - 1) - c * v; v += a * h / 4; x += v * h / 4; } }
   pts[pts.length - 1] = 1; return `linear(${pts.join(',')})`;
 }
-const EASE = { out: 'cubic-bezier(.16,1,.3,1)', io: 'cubic-bezier(.62,0,.18,1)', spring: springEase(), soft: springEase(120, 17), snappy: springEase(300, 26) };
+const EASE = { out: 'cubic-bezier(.16,1,.3,1)', io: 'cubic-bezier(.62,0,.18,1)', spring: springEase(), soft: springEase(120, 17), snappy: springEase(300, 26),
+  glide: springEase(150, 22) /* settles without overshoot: smooth view and tab changes */ };
 
 /* WAAPI with the motion intensity applied. Cancels whatever the element was animating (interruptible). */
 function anim(el, kf, o = {}) {
@@ -121,8 +122,8 @@ function anim(el, kf, o = {}) {
 /* staggered entrance of everything marked [data-asm] inside a container */
 function assemble(root, base = 0, step = 40, sel = '[data-asm]') {
   $$(sel, root).forEach((el, i) => anim(el, [
-    { opacity: 0, transform: 'translate3d(0,16px,0) scale(.96)', filter: 'blur(8px)' },
-    { opacity: 1, transform: 'translate3d(0,0,0) scale(1)', filter: 'blur(0px)' }
+    { opacity: 0, transform: 'translate3d(0,14px,0) scale(.97)' },
+    { opacity: 1, transform: 'translate3d(0,0,0) scale(1)' }
   ], { d: 520, delay: base + Math.min(i, 14) * step, e: EASE.spring }));
 }
 

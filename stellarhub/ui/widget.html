@@ -68,9 +68,23 @@
   .lab{display:none}
   .M-mini .lab{display:block}
   .M-mini .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);flex:none}
+  /* edges to resize the widget (the small version only stretches sideways) */
+  .wrz{position:fixed;z-index:20}
+  .wrz[data-edge=n]{top:0;left:8px;right:8px;height:4px;cursor:n-resize}
+  .wrz[data-edge=s]{bottom:0;left:8px;right:8px;height:4px;cursor:s-resize}
+  .wrz[data-edge=w]{left:0;top:8px;bottom:8px;width:4px;cursor:w-resize}
+  .wrz[data-edge=e]{right:0;top:8px;bottom:8px;width:4px;cursor:e-resize}
+  .wrz[data-edge=nw]{left:0;top:0;width:8px;height:8px;cursor:nw-resize}
+  .wrz[data-edge=ne]{right:0;top:0;width:8px;height:8px;cursor:ne-resize}
+  .wrz[data-edge=sw]{left:0;bottom:0;width:8px;height:8px;cursor:sw-resize}
+  .wrz[data-edge=se]{right:0;bottom:0;width:8px;height:8px;cursor:se-resize}
+  body:has(.M-mini) .wrz:is([data-edge=n],[data-edge=s],[data-edge=nw],[data-edge=ne],[data-edge=sw],[data-edge=se]){display:none}
+  body:has(.M-mini) .wrz:is([data-edge=w],[data-edge=e]){top:0;bottom:0}
 </style>
 </head>
 <body class="pywebview-drag-region">
+<div class="wrz" data-edge="n"></div><div class="wrz" data-edge="s"></div><div class="wrz" data-edge="w"></div><div class="wrz" data-edge="e"></div>
+<div class="wrz" data-edge="nw"></div><div class="wrz" data-edge="ne"></div><div class="wrz" data-edge="sw"></div><div class="wrz" data-edge="se"></div>
 <div class="w pywebview-drag-region" id="w">
   <div class="hd pywebview-drag-region">
     <svg class="logo" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.6"/></svg>
