@@ -1,16 +1,22 @@
 """Run PowerShell and console programs without opening windows, in UTF-8, with live output when needed."""
 import json
 import subprocess
+import threading
 
 NO_WINDOW = 0x08000000
 _PRE = ("$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Continue'; "
         "[Console]::OutputEncoding=[Text.Encoding]::UTF8; ")
+# At startup several modules query Windows at once; a dozen PowerShell processes in parallel starve each
+# other and hit their timeouts on a busy PC. At most 3 run at the same time; the rest wait their turn,
+# and a script's timeout only starts counting once it actually runs.
+_SLOTS = threading.BoundedSemaphore(3)
 
 
 def ps(script, timeout=90):
     """Returns the output (text) of a PowerShell script."""
-    r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                        "-Command", _PRE + script], capture_output=True, timeout=timeout, creationflags=NO_WINDOW)
+    with _SLOTS:
+        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                            "-Command", _PRE + script], capture_output=True, timeout=timeout, creationflags=NO_WINDOW)
     return r.stdout.decode("utf-8", "replace")
 
 
