@@ -2,202 +2,201 @@
 
 # 🪐 StellarHub
 
-**El centro de control de tu PC con Windows.**
-Tu equipo en vivo, drivers, programas, disco, limpieza y pruebas de hardware, en una sola app cuidada al detalle.
+**The control center for your Windows PC.**
+Live hardware stats, drivers, apps, disk space, cleanup and hardware tests, in one carefully crafted app.
 
-[![Licencia: GPL v3](https://img.shields.io/badge/licencia-GPLv3-FF7A66.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-FF7A66.svg)](LICENSE)
 ![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-9ED6FF.svg)
 ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3572A5.svg)
-![Estado](https://img.shields.io/badge/estado-en%20desarrollo-F4C26B.svg)
+![Status](https://img.shields.io/badge/status-in%20development-F4C26B.svg)
 
-![Inicio de StellarHub](docs/img/inicio.png)
+![StellarHub home screen](docs/img/home.png)
 
 </div>
 
-## Índice
+## 📑 Contents
 
-- [✨ Qué es](#-qué-es)
-- [🧩 Módulos](#-módulos)
-- [🎛️ Además](#️-además)
-- [🖼️ Capturas](#️-capturas)
-- [🚀 Instalación](#-instalación)
-- [⌨️ Atajos](#️-atajos)
-- [🛡️ Seguridad](#️-seguridad)
-- [🏗️ Cómo está hecho](#️-cómo-está-hecho)
-- [🗺️ Hoja de ruta](#️-hoja-de-ruta)
-- [🤝 Contribuir](#-contribuir)
-- [📜 Licencia y créditos](#-licencia-y-créditos)
+- [What it is](#-what-it-is)
+- [Modules](#-modules)
+- [Also included](#-also-included)
+- [Screenshots](#-screenshots)
+- [Getting started](#-getting-started)
+- [Keyboard shortcuts](#-keyboard-shortcuts)
+- [Safety](#-safety)
+- [How it's built](#-how-its-built)
+- [Roadmap](#-roadmap)
+- [Contributing](#-contributing)
+- [License and credits](#-license-and-credits)
 
-## ✨ Qué es
+## ✨ What it is
 
-StellarHub reúne en un solo sitio las herramientas que normalmente están repartidas en media docena de programas:
-un monitor del sistema, un actualizador de drivers y de programas, un desinstalador que borra los restos, un
-analizador de espacio, un optimizador y un probador de periféricos.
+StellarHub brings together the tools that are usually spread across half a dozen programs: a system monitor,
+a driver and app updater, an uninstaller that removes leftovers, a disk space analyzer, an optimizer and a
+peripheral tester.
 
-Todo trabaja con **datos reales de tu equipo**, todo lo que cambia el sistema es **reversible** cuando se puede, y
-la interfaz está pensada para que usarla sea agradable: animaciones fluidas, un fondo espacial configurable y
-ninguna pantalla recargada.
+Everything works with **real data from your PC**, everything that changes the system is **reversible** whenever
+possible, and the interface is designed to be a pleasure to use: smooth animations, a configurable starfield and
+no cluttered screens.
 
-## 🧩 Módulos
+## 🧩 Modules
 
-### 🏠 Inicio
-Tu equipo de un vistazo: el modelo real, sus componentes en un **mosaico** o en un **modelo 3D** que puedes girar,
-el estado en vivo (CPU, GPU, temperaturas, memoria, disco, red, batería), la salud del sistema y lo que hay
-pendiente. Cada componente abre una ficha con datos en vivo; la de pantallas muestra en directo lo que se ve en
-cada monitor.
+### ⌂ Home
+Your PC at a glance: the real model, its components as a **tile grid** or a **3D model** you can rotate, live
+stats (CPU, GPU, temperatures, memory, disk, network, battery), system health and what needs attention. Each
+component opens a detail card with live data; the displays card even shows what is on each monitor right now.
 
-### 📈 Live Monitor
-CPU por hilo (separando núcleos de rendimiento y eficientes), frecuencia real, GPU NVIDIA (uso, temperatura, consumo,
-VRAM), memoria, discos con salud **SMART**, red y Wi-Fi, batería con su desgaste, procesos con su icono y la salud
-del sistema (dispositivos con error y eventos críticos explicados en lenguaje claro).
+### ∿ Live Monitor
+CPU per thread (performance and efficient cores apart), real clock speed, NVIDIA GPU (load, temperature, power,
+VRAM), memory, disks with **SMART** health, network and Wi-Fi, battery wear, processes with their icons, and system
+health (failing devices and critical events explained in plain language).
 
-### 🔧 Driver Updater
-Inventario de todos los drivers, búsqueda e instalación desde **Windows Update** con punto de restauración,
-dispositivos con problemas o desconectados, **copias de seguridad** de los drivers, versiones guardadas para
-revertir e historial.
+### ⇅ Driver Updater
+A full driver inventory, search and install from **Windows Update** with a restore point first, devices with
+problems or no longer connected, **driver backups**, stored versions to roll back to, and history.
 
-### 🗑️ Program Remover
-Desinstalación normal, silenciosa o forzada; **escáner de restos** con nivel de confianza y motivo; **cuarentena**
-para deshacer; desinstalación por lotes; **instalación vigilada** (quita exactamente lo que creó un instalador) y
-modo cazador (apuntas a una ventana y te dice qué programa es).
+### ⌫ Program Remover
+Standard, silent or forced uninstall; a **leftover scanner** with a confidence score and the reason for each item;
+a **quarantine** so everything can be undone; batch uninstall; **watched installs** (removes exactly what an
+installer created); and a hunter mode (point at a window to find out which program it belongs to).
 
-### 🔄 Program Updater
-Actualizaciones de programas con **winget**, Windows Update, Microsoft Store, componentes del sistema (.NET,
-Visual C++, WebView2…) y herramientas de desarrollo (pip, npm), con notas de versión y una cola con progreso real.
+### ↻ Program Updater
+App updates through **winget**, Windows Update, Microsoft Store, system components (.NET, Visual C++, WebView2…)
+and developer tools (pip, npm), with release notes and a queue that shows real progress.
 
-### 💾 Storage Checker
-Mapa interactivo de lo que ocupa cada carpeta, al estilo WinDirStat, con zoom y el espacio libre a la vista. Tipos
-de archivo, archivos más grandes, **duplicados** y comparación con análisis anteriores para ver qué creció.
+### ▦ Storage Checker
+An interactive map of what each folder takes up, WinDirStat style, with zoom and free space in view. File types,
+largest files, **duplicates**, and comparisons with earlier scans to see what grew.
 
-### ⚡ Super Optimizer
-Limpieza de temporales y cachés, programas de **arranque**, servicios, registro, **reparaciones** de Windows (SFC,
-DISM, chkdsk, red, Windows Update…) con la salida en vivo, y ajustes de rendimiento (plan de energía, efectos
-visuales, modo juego, GPU por hardware). Todo con copia previa y deshacer.
+### ↯ Super Optimizer
+Cleanup of temp files and caches, **startup** apps, services, registry, Windows **repairs** (SFC, DISM, chkdsk,
+network, Windows Update…) with live output, and performance settings (power plan, visual effects, game mode,
+hardware-accelerated GPU scheduling). Everything backed up first and undoable.
 
-### ⌨️ Device Tester
-Teclado (portátil, 100 %, TKL, 75 %, 65 % y varios idiomas), píxeles muertos, altavoces, micrófono, cámara y
-ratón, con **test de CPS**.
+### ⌨︎ Device Tester
+Keyboard (laptop, 100 %, TKL, 75 %, 65 % and several layouts), dead pixels, speakers, microphone, camera and
+mouse, with a **CPS test**.
 
-### 🤖 Autopilot
-Rutinas de mantenimiento: eliges cuándo (hora, al iniciar, al desenchufar, con poco espacio…), con qué
-condiciones y qué hacer.
+### ◎ Autopilot
+Maintenance routines: you choose when (a time, at startup, on unplugging, when space runs low…), under which
+conditions and what to do.
 
-## 🎛️ Además
+## 🎛️ Also included
 
-- 🪟 **Widget siempre visible**, en versión grande (con gráficas) o pequeña (una barra fina), por encima de todo,
-  incluida la barra de tareas y en todos los escritorios virtuales.
-- 📌 **Icono en la bandeja** con accesos rápidos; cerrar la ventana la deja en segundo plano.
-- 🔍 **Paleta de comandos** (`Ctrl K`) para ir a cualquier herramienta o acción escribiendo.
-- 🛡️ **Modo administrador** opcional, y permanente si lo quieres (sin el aviso de Windows en cada arranque).
-- 🎨 **Ajustes para casi todo**: tema, colores, tamaño de la interfaz, densidad, esquinas, fondo de estrellas,
-  intensidad y velocidad de las animaciones, accesos directos a las herramientas de Windows y más.
-- 🖱️ Los **botones laterales del ratón** van atrás y adelante, como en el navegador.
+- **Always-on-top widget**, large (with charts) or small (a slim bar), above everything including the taskbar and on
+  every virtual desktop.
+- **Tray icon** with quick actions; closing the window keeps StellarHub running in the background.
+- **Command palette** (`Ctrl K`) to jump to any tool or action by typing.
+- **Optional administrator mode**, and a permanent one if you want it (no Windows prompt on every launch).
+- **Settings for almost everything**: theme, colors, interface size, density, corners, starfield, animation
+  intensity and speed, shortcuts to Windows tools and more.
+- The **side buttons of your mouse** go back and forward, like in a browser.
 
-## 🖼️ Capturas
+## 🖼️ Screenshots
 
 | Live Monitor | Storage Checker |
 |---|---|
 | ![Live Monitor](docs/img/live-monitor.png) | ![Storage Checker](docs/img/storage-checker.png) |
 
-| Program Remover | |
+| Program Remover | Settings |
 |---|---|
-| ![Program Remover](docs/img/program-remover.png) | |
+| ![Program Remover](docs/img/program-remover.png) | ![Settings](docs/img/settings.png) |
 
-> Las capturas se hicieron con datos de ejemplo.
+> Screenshots were taken with sample data.
 
-## 🚀 Instalación
+## 🚀 Getting started
 
-> Pronto habrá un instalador `.exe`. Mientras tanto, se ejecuta desde el código.
+> A `.exe` installer is coming soon. Until then, StellarHub runs from source.
 
-**Requisitos**
+### ◇ Requirements
 
-- Windows 10 u 11 (64 bits)
-- Python 3.12 o superior
-- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (Windows 11 ya lo trae)
+- Windows 10 or 11 (64-bit)
+- Python 3.12 or later
+- [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (already included in Windows 11)
 
-**Pasos**
+### ◇ Run it
 
 ```powershell
-git clone https://github.com/Chivitos100/StellarHub.git
+git clone https://github.com/estebanarosemena/StellarHub.git
 cd StellarHub
 python -m pip install -r requirements.txt
 pythonw run.py
 ```
 
-Para desarrollar: `python run.py --debug` abre las herramientas de desarrollo de la interfaz.
+For development, `python run.py --debug` opens the developer tools for the interface.
 
-**¿Modo administrador?** StellarHub funciona sin él, en modo limitado. Instalar drivers, limpiar archivos del
-sistema, reparar Windows o leer la temperatura de la CPU y el SMART de los discos lo necesitan; la app lo sugiere
-con discreción cuando hace falta.
+### ◇ Administrator mode
 
-## ⌨️ Atajos
+StellarHub works without it, in limited mode. Installing drivers, cleaning system files, repairing Windows or
+reading the CPU temperature and disk SMART data require it; the app suggests it quietly when needed.
 
-| Atajo | Acción |
+## ⌨️ Keyboard shortcuts
+
+| Shortcut | Action |
 |---|---|
-| `Ctrl K` | Buscar una herramienta o acción |
-| `Ctrl ,` | Ajustes |
-| `Ctrl 1` … `Ctrl 9` | Ir a un módulo |
-| `Alt ←` / `Alt →` o botones laterales del ratón | Atrás / adelante |
-| `Esc` | Cerrar lo que esté abierto o volver a Inicio |
-| Doble clic en la barra superior | Maximizar o restaurar |
+| `Ctrl K` | Search for a tool or action |
+| `Ctrl ,` | Settings |
+| `Ctrl 1` … `Ctrl 9` | Go to a module |
+| `Alt ←` / `Alt →` or mouse side buttons | Back / forward |
+| `Esc` | Close whatever is open, or go back to Home |
+| Double-click the top bar | Maximize or restore |
 
-## 🛡️ Seguridad
+## 🛡️ Safety
 
-StellarHub toca partes delicadas de Windows, así que lo hace con cuidado:
+StellarHub touches sensitive parts of Windows, so it does it carefully:
 
-- Todo lo que modifica el sistema **pide confirmación**.
-- Antes de los cambios importantes crea un **punto de restauración**, guarda una **copia** (registro, servicios,
-  arranque) o mueve lo eliminado a una **cuarentena** desde la que se puede restaurar.
-- Hay zonas que **nunca se tocan**: Windows, carpetas compartidas, datos personales, servicios críticos, drivers
-  del núcleo y la propia carpeta de StellarHub.
-- Lo que Windows no informa se muestra como «—»: la app no se inventa números.
+- Everything that changes the system **asks for confirmation** first.
+- Before important changes it creates a **restore point**, saves a **backup** (registry, services, startup) or
+  moves deleted items to a **quarantine** they can be restored from.
+- Some areas are **never touched**: Windows itself, shared folders, personal data, critical services, kernel
+  drivers and StellarHub's own folder.
+- Whatever Windows does not report is shown as "—": the app never makes up numbers.
 
-## 🏗️ Cómo está hecho
+## 🏗️ How it's built
 
-- 🐍 **Python** para todo lo que toca Windows (`stellarhub/engine/`): telemetría en vivo (psutil, contadores de
-  rendimiento, nvidia-smi), WMI, PowerShell, Windows Update, winget, pnputil…
-- 🌐 **Una sola interfaz** en HTML, CSS y JavaScript sin frameworks (`stellarhub/ui/`), dentro de una ventana
-  nativa con [pywebview](https://pywebview.flowrl.com/) y WebView2.
-- 📄 Cómo se escribe un módulo y cómo habla con el motor: [`docs/CONTRATO_UI.md`](docs/CONTRATO_UI.md).
+- **Python** for everything that talks to Windows (`stellarhub/engine/`): live telemetry (psutil, performance
+  counters, nvidia-smi), WMI, PowerShell, Windows Update, winget, pnputil…
+- **A single interface** in plain HTML, CSS and JavaScript, no frameworks (`stellarhub/ui/`), inside a native
+  window powered by [pywebview](https://pywebview.flowrl.com/) and WebView2.
+- How a module is written and how it talks to the engine: [`docs/UI_CONTRACT.md`](docs/UI_CONTRACT.md).
 
 ```
-run.py                     lanzador
+run.py                     launcher
 stellarhub/
-├─ app.py                  ventana, API para la interfaz, widget y modo administrador
-├─ chrome.py               marco propio de la ventana (mover, redimensionar, maximizar)
-├─ tray.py                 icono de la bandeja
-├─ engine/                 motor: un archivo por módulo + telemetría, sistema y tareas largas
-│  └─ removal/             escáner de restos, cuarentena, limpieza e inicio de Windows
-└─ ui/                     interfaz: núcleo, armazón, módulos, vistas de Inicio y widget
-tests/                     pruebas del motor (no tocan el sistema)
-docs/                      contrato de la interfaz y capturas
+├─ app.py                  window, API for the interface, widget and administrator mode
+├─ chrome.py               custom window frame (move, resize, maximize)
+├─ tray.py                 tray icon
+├─ engine/                 engine: one file per module, plus telemetry, system info and long-running jobs
+│  └─ removal/             leftover scanner, quarantine, cleanup and Windows startup
+└─ ui/                     interface: core, shell, modules, Home views and widget
+tests/                     engine tests (they never touch the system)
+docs/                      UI contract and screenshots
+designs/                   the early design explorations
 ```
 
-**Pruebas:** `python -m unittest discover -s tests -t .`
+**Tests:** `python -m unittest discover -s tests -t .`
 
-## 🗺️ Hoja de ruta
+## 🗺️ Roadmap
 
-- [x] Interfaz completa de los 9 módulos
-- [x] Motor real: telemetría, drivers, programas, actualizaciones, disco, optimizador y monitor
-- [ ] Autopilot ejecutando las rutinas por su cuenta
-- [ ] Instalador `.exe`
-- [ ] Actualizaciones automáticas de StellarHub desde este repositorio
-- [ ] Interfaz en inglés
+- [x] Full interface for all 9 modules
+- [x] Real engine: telemetry, drivers, apps, updates, disk, optimizer and monitor
+- [ ] Autopilot running routines on its own
+- [ ] `.exe` installer
+- [ ] Automatic StellarHub updates from this repository
 
-## 🤝 Contribuir
+## 🤝 Contributing
 
-Las ideas, los avisos de fallos y las mejoras son bienvenidos: abre un *issue* o un *pull request*. Si vas a
-añadir o cambiar un módulo, empieza por [`docs/CONTRATO_UI.md`](docs/CONTRATO_UI.md) y prueba lo que toque el
-sistema solo en modo lectura.
+Ideas, bug reports and improvements are welcome: open an issue or a pull request. If you add or change a module,
+start with [`docs/UI_CONTRACT.md`](docs/UI_CONTRACT.md), and only test anything that touches the system in
+read-only mode.
 
-## 📜 Licencia y créditos
+## 📜 License and credits
 
-Creado por **Esteban Arosemena** y **Claude**.
+Created by **Esteban Arosemena** and **Claude**.
 
-StellarHub es software libre: puedes redistribuirlo y modificarlo bajo los términos de la
-**GNU General Public License v3.0**. Consulta [LICENSE](LICENSE).
+StellarHub is free software: you can redistribute it and/or modify it under the terms of the
+**GNU General Public License v3.0**. See [LICENSE](LICENSE).
 
-Usa [pywebview](https://github.com/r0x0r/pywebview) (BSD-3), [psutil](https://github.com/giampaolo/psutil)
-(BSD-3), [pystray](https://github.com/moses-palmer/pystray) (LGPLv3), [Pillow](https://python-pillow.org/) (MIT-CMU),
-[three.js](https://threejs.org/) (MIT) y las fuentes [Unbounded](https://github.com/googlefonts/unbounded) y
-[Onest](https://github.com/simpals/onest) (SIL Open Font License 1.1).
+Built with [pywebview](https://github.com/r0x0r/pywebview) (BSD-3), [psutil](https://github.com/giampaolo/psutil)
+(BSD-3), [pystray](https://github.com/moses-palmer/pystray) (LGPLv3), [Pillow](https://python-pillow.org/)
+(MIT-CMU), [three.js](https://threejs.org/) (MIT) and the [Unbounded](https://github.com/googlefonts/unbounded)
+and [Onest](https://github.com/simpals/onest) fonts (SIL Open Font License 1.1).
