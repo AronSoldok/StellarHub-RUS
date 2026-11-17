@@ -1,10 +1,15 @@
 /* StellarHub · Autopilot: automatic maintenance routines.
    Starts empty. Each routine = When (triggers) → Only if (conditions) → What it does (actions in order) → Afterwards → Notifications.
-   Saved in the settings (autopilotRoutines, autopilotLog, autopilotNotify). Running is still simulated. */
+   Saved in the settings (autopilotRoutines, autopilotNotify). Inside the app the engine (stellarhub/engine/autopilot.py)
+   runs them for real in the background, also while the window is hidden in the tray: real triggers and conditions,
+   actions through the other engines, its own log. Outside the app (design preview) it stays a sample. */
 'use strict';
 (() => {
 const { $, $$, anim, EASE, ic, esc, fmt1, state } = SH;
 const wait = ms => new Promise(r => setTimeout(r, ms));
+let REAL = false;                        // true inside the app: the Python engine runs everything
+let NA = { t: {}, c: {}, a: {} };        // what this PC/version can't do, with the reason (from the engine)
+let engLog = null; const seenLog = new Set();
 SH.icons.add({
   drag: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/>',
   up: '<path d="m6 15 6-6 6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
@@ -226,6 +231,7 @@ function ensure() {
     R = Array.isArray(st.autopilotRoutines) ? clone(st.autopilotRoutines) : [];
     LOG = (Array.isArray(st.autopilotLog) ? st.autopilotLog : []).map(l => ({ ...l, when: new Date(l.when) }));
   }
+  if (REAL) LOG = engLog || [];
   R.forEach(r => { r.after = { ...AFTERD, ...(r.after || {}) }; r.notify = { ...NOTD, ...(r.notify || {}) };
     [...r.triggers, ...r.conds, ...r.acts].forEach(x => Object.keys(x.p || {}).forEach(k => { const v = x.p[k]; x.p[k] = Array.isArray(v) ? v.map(o => OLD_OPT[o] || o) : (OLD_OPT[v] || v); })); });
   sel = R[0] && R[0].id;
@@ -233,7 +239,7 @@ function ensure() {
 }
 let saveT = 0;
 const save = () => { clearTimeout(saveT); saveT = setTimeout(() => SH.setSetting('autopilotRoutines', clone(R)), 350); };
-const saveLog = () => SH.setSetting('autopilotLog', LOG.slice(0, 100).map(l => ({ ...l, when: l.when.toISOString(), fresh: false })));
+const saveLog = () => REAL || SH.setSetting('autopilotLog', LOG.slice(0, 100).map(l => ({ ...l, when: l.when.toISOString(), fresh: false })));
 const saveNT = () => SH.setSetting('autopilotNotify', { ...NT });
 const cur = () => R.find(r => r.id === sel);
 const colorOf = r => COLORS[(r.color || 0) % COLORS.length];
@@ -260,6 +266,8 @@ function problems(r) {
     if (x.k === 'wifi' && !String(x.p.ssid).trim()) p.push(['t', 'Type the Wi-Fi network name']);
     if (x.k === 'download' && !String(x.p.folder).trim()) p.push(['t', 'Enter the downloads folder']);
   });
+  r.triggers.forEach(x => { if (NA.t[x.k]) p.push(['t', NA.t[x.k]]); });
+  r.acts.forEach(x => { if (NA.a[x.k]) p.push(['a', NA.a[x.k]]); });
   r.conds.forEach(x => { if (x.k === 'days' && !x.p.days.length) p.push(['c', 'Pick at least one day in “Only on certain days”']); if (x.k === 'onWifi' && !String(x.p.ssid).trim()) p.push(['c', 'Type the Wi-Fi network name']); });
   r.acts.forEach(x => {
     if (x.k === 'openApp' && !String(x.p.path).trim()) p.push(['a', 'Enter which app or file to open']);
@@ -468,7 +476,8 @@ function catH(s) {
     const f = items.filter(d => !q || norm(d.t + ' ' + g + ' ' + (d.mod || '')).includes(q)); if (!f.length) return '';
     const open = q || openGroups[s].has(g); const used = new Set(listOf(cur(), s).map(x => x.k));
     return `<div class="cg${open ? ' open' : ''}" data-g="${esc(g)}"><button class="cg-h"><span>${esc(g)}</span><em>${f.length}</em>${ic('chevd')}</button>
-      <div class="cg-b"><div>${f.map(d => `<button class="cg-it" data-add="${d.k}"><span class="cg-ic">${ic(d.ic)}</span><span class="cg-t">${esc(d.t)}${d.admin ? '<i>administrator</i>' : ''}</span>${used.has(d.k) ? '<em>added</em>' : ''}${ic('plus')}</button>`).join('')}</div></div></div>`;
+      <div class="cg-b"><div>${f.map(d => { const na = NA[s][d.k];
+        return `<button class="cg-it${na ? ' na' : ''}" data-add="${d.k}"${na ? ` aria-disabled="true" title="${esc(na)}"` : ''}><span class="cg-ic">${ic(d.ic)}</span><span class="cg-t">${esc(d.t)}${na ? '<i>not available</i>' : d.admin ? '<i>administrator</i>' : ''}</span>${used.has(d.k) ? '<em>added</em>' : ''}${ic(na ? 'info' : 'plus')}</button>`; }).join('')}</div></div></div>`;
   }).join('');
   return html || `<div class="empty cg-none"><b>Nothing matches “${esc(query[s])}”</b>Try another word.</div>`;
 }
@@ -619,6 +628,7 @@ function bindEditor(ed) {
   st.addEventListener('click', e => {
     const x = r();
     const add = e.target.closest('[data-add]'); if (add) {
+      if (NA[step][add.dataset.add]) { SH.toast(NA[step][add.dataset.add]); return; }
       const list = listOf(x, step); list.push(newItem(step, add.dataset.add)); const i = list.length - 1;
       if (list.length === 1 || (step === 'c' && list.length === 2)) drawStage(0); else redrawList(i);
       if (list.length === 1) { const n = $(`#stList .si`, st); if (n) anim(n, [{ opacity: 0, transform: 'translate3d(0,10px,0) scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 440, e: EASE.spring }); }
@@ -688,15 +698,26 @@ function evalCond(x) {
 const fmtDur = s => s < 60 ? `${Math.max(1, Math.round(s))} s` : `${Math.round(s / 60)} min`;
 async function dryRun(r) {
   const box = $('#apDryP', rEl); if (!box) return;
-  const ev = r.conds.map(x => [x, ...evalCond(x)]); const ok = !ev.length || (r.condMode === 'all' ? ev.every(e => e[1]) : ev.some(e => e[1]));
+  let ev, ok, notes;
+  if (REAL) {                      // the engine checks the conditions on this PC right now; nothing runs
+    let d;
+    try { d = await SH.engine('autopilot', 'dry_run', clone(r)); } catch (e) { SH.toast('The dry run failed: ' + e.message); return; }
+    ev = r.conds.map((x, i) => [x, ...((d.conds || [])[i] || [true, ''])]); ok = d.ok;
+    notes = r.acts.map((x, i) => ((d.acts || [])[i] || {}).note || '');
+  } else {
+    ev = r.conds.map(x => [x, ...evalCond(x)]); ok = !ev.length || (r.condMode === 'all' ? ev.every(e => e[1]) : ev.some(e => e[1]));
+    notes = r.acts.map(x => byK.a[x.k].admin && !state.admin ? 'would be skipped: needs administrator' : byK.a[x.k].decide && byK.a[x.k].decide(x.p) ? 'would ask you first' : '');
+  }
   const total = r.acts.reduce((s, x) => s + (x.k === 'wait' ? x.p.min * 60 : (byK.a[x.k].est || 10)), 0);
-  const needsAdmin = r.acts.filter(x => byK.a[x.k].admin);
-  box.innerHTML = `<div class="dry-h"><span class="dry-i">${ic('flask')}</span><div><b>Dry run</b><span>This is how it would go if it fired now. Nothing actually happens.</span></div><button class="iconbtn" data-close aria-label="Close">${ic('x')}</button></div>
+  const needsAdmin = notes.filter(n => /administrator/.test(n));
+  const naT = r.triggers.filter(x => NA.t[x.k]);
+  box.innerHTML = `<div class="dry-h"><span class="dry-i">${ic('flask')}</span><div><b>Dry run</b><span>${REAL ? 'Checked on this PC right now. Nothing actually runs.' : 'This is how it would go if it fired now. Nothing actually happens.'}</span></div><button class="iconbtn" data-close aria-label="Close">${ic('x')}</button></div>
     <div class="dry-b">
-      <div class="dry-s"><span class="dry-k">When</span>${r.triggers.length ? r.triggers.map(x => `<div class="dry-l">${ic(byK.t[x.k].ic)}<span>${esc(cap(sayOf('t', x)))}</span></div>`).join('') : '<div class="dry-l bad">' + ic('alert') + '<span>No time chosen</span></div>'}</div>
+      <div class="dry-s"><span class="dry-k">When</span>${r.triggers.length ? r.triggers.map(x => `<div class="dry-l${NA.t[x.k] ? ' bad' : ''}">${ic(byK.t[x.k].ic)}<span>${esc(cap(sayOf('t', x)))}${NA.t[x.k] ? `<em>${esc(NA.t[x.k])}</em>` : ''}</span></div>`).join('') : '<div class="dry-l bad">' + ic('alert') + '<span>No time chosen</span></div>'}</div>
       <div class="dry-s"><span class="dry-k">Conditions${ev.length > 1 ? (r.condMode === 'all' ? ', all' : ', any') : ''}</span>${ev.length ? ev.map(([x, o, d]) => `<div class="dry-l ${o ? 'ok' : 'bad'}">${ic(o ? 'check' : 'x')}<span>${esc(cap(sayOf('c', x)))}<em>${esc(d)}</em></span></div>`).join('') : '<div class="dry-l ok">' + ic('check') + '<span>No conditions: it always runs</span></div>'}</div>
       <div class="dry-verdict ${ok && r.acts.length ? 'ok' : 'bad'}">${ok ? (r.acts.length ? 'It would run now.' : 'It would run, but it has no actions.') : 'It wouldn’t run now: a condition isn’t met.'}</div>
-      <div class="dry-s"><span class="dry-k">It would do, in this order${r.acts.length ? `, about ${fmtDur(total)}` : ''}</span>${r.acts.map((x, i) => `<div class="dry-l n">${'<em class="dn">' + (i + 1) + '</em>'}<span>${esc(cap(sayOf('a', x)))}${byK.a[x.k].admin && !state.admin ? '<em>would be skipped: needs administrator</em>' : byK.a[x.k].decide && byK.a[x.k].decide(x.p) ? '<em>would ask you first</em>' : ''}</span></div>`).join('') || '<div class="dry-l faint"><span>Nothing yet</span></div>'}</div>
+      <div class="dry-s"><span class="dry-k">It would do, in this order${r.acts.length ? `, about ${fmtDur(total)}` : ''}</span>${r.acts.map((x, i) => `<div class="dry-l n">${'<em class="dn">' + (i + 1) + '</em>'}<span>${esc(cap(sayOf('a', x)))}${notes[i] ? `<em>${esc(notes[i])}</em>` : ''}</span></div>`).join('') || '<div class="dry-l faint"><span>Nothing yet</span></div>'}</div>
+      ${naT.length && naT.length === r.triggers.length ? `<div class="dry-note">${ic('info')}<span>None of its triggers can fire on this PC yet, so it will only run with “Run now”.</span></div>` : ''}
       ${needsAdmin.length && !state.admin ? `<div class="dry-note">${ic('shield')}<span>${needsAdmin.length} ${needsAdmin.length === 1 ? 'action needs' : 'actions need'} administrator mode. Turn it on so they run.</span><button class="btn sec sm" data-admin>Turn on</button></div>` : ''}
     </div>`;
   box.hidden = false;
@@ -711,6 +732,7 @@ async function runNow(r) {
   if (!r.acts.length) { SH.toast('This routine doesn’t do anything yet. Add an action to it.', { action: { label: 'Add', run: () => setStep('a') } }); return; }
   const b = $('#apRun', rEl); const card = () => $(`.ap-card[data-id="${r.id}"]`, rEl);
   if (b) b.disabled = true; card() && card().classList.add('running');
+  if (REAL) { await runReal(r, card); return; }
   const steps = []; let gb = 0, upd = 0;
   for (let i = 0; i < r.acts.length; i++) {
     const x = r.acts[i], d = byK.a[x.k];
@@ -731,6 +753,49 @@ async function runNow(r) {
   if (lEl) drawLog(true); if (mctx) mctx.setBadge('log', LOG.filter(l => l.st === 'warn' || l.st === 'bad').length);
   SH.toast(`“${r.name}” finished.`, { action: { label: 'View the log', run: () => SH.go('autopilot', { tab: 'log' }) } });
 }
+
+/* "Run now" inside the app: the engine runs the routine as a job (live progress); the result lands in its log */
+async function runReal(r, card) {
+  const btn = h => { const bb = $('#apRun', rEl); if (bb) bb.innerHTML = h; };
+  let entry = null, err = null;
+  try {
+    entry = await SH.job('autopilot', 'run', [r.id, true, clone(r), ''], { onProgress: m => {
+      const d = m.data || {}; if (m.kind === 'progress' && d.total) btn(`${ic('clock')}<span class="lbl">Step ${Math.min(d.step + 1, d.total)} of ${d.total}</span>`); } });
+  } catch (e) { err = e; }
+  const bb = $('#apRun', rEl); if (bb) { bb.disabled = false; bb.innerHTML = `${ic('play')}<span class="lbl">Run now</span>`; }
+  card() && card().classList.remove('running');
+  await loadLog(true); refreshCard(r); refreshMeta();
+  if (err) { SH.toast(err.cancelled ? `“${r.name}” was cancelled.` : `“${r.name}” couldn’t run: ${err.message}`); return; }
+  const verb = { ok: 'finished', warn: 'finished with warnings', bad: 'had a problem', skip: 'was skipped' }[entry && entry.st] || 'finished';
+  SH.toast(`“${r.name}” ${verb}.`, { action: { label: 'View the log', run: () => SH.go('autopilot', { tab: 'log' }) } });
+}
+/* the engine's log (real runs, scheduled or manual) */
+async function loadLog(animate) {
+  if (!REAL) return;
+  let l; try { l = await SH.engine('autopilot', 'log', 100); } catch { return; }
+  const first = !seenLog.size;
+  engLog = (l || []).map(x => ({ ...x, when: new Date(x.when), fresh: !first && !seenLog.has(x.id) }));
+  engLog.forEach(x => seenLog.add(x.id));
+  if (R) LOG = engLog;
+  if (lEl && lEl.isConnected) drawLog(animate);
+  if (mctx && LOG) mctx.setBadge('log', LOG.filter(x => x.st === 'warn' || x.st === 'bad').length);
+}
+SH.apiReady.then(a => {
+  REAL = !!a; if (!REAL) return;
+  SH.engine('autopilot', 'capabilities').then(c => { if (c) NA = { t: c.t || {}, c: c.c || {}, a: c.a || {} }; }).catch(() => {});
+  SH.engine('autopilot', 'start').catch(() => {});      // safe if the app already started it
+  loadLog(false);
+});
+SH.on('autopilot', m => {
+  if (!m) return;
+  if (m.kind === 'log') loadLog(true);
+  else if (m.kind === 'pending') SH.setPending(m.key, m.n);
+  else if (m.kind === 'toast') SH.toast(m.text);
+  else if (m.kind === 'widget' && !!m.on !== !!SH.widgetOn) {
+    const sz = SH.widgetSize(state.settings);
+    SH.call('widget_toggle', sz.w, sz.h).then(v => { if (v !== undefined) SH.emit('widget', { on: !!v }); });
+  }
+});
 
 /* ================= Calendar ================= */
 let calOff = 0, cEl = null, calDirty = null;
@@ -825,9 +890,18 @@ function renderLog(el) {
         <div class="lg-n"><b class="big" id="lgU">0</b><span>apps and drivers brought up to date</span></div>
         <div class="lg-n"><b class="big" id="lgW">0</b><span>with warnings or failures</span></div></div>
       <div class="pan lg-by" data-asm><div class="pan-h">By routine</div><div id="lgBy" class="lg-byl"></div></div>
+      <div class="pan lg-cl" data-asm><div class="pan-h">When StellarHub is closed</div>
+        <p>Routines run while StellarHub is open, even hidden in the tray. If you quit it, nothing runs; times missed in the last 12 hours run when it opens again.</p>
+        ${state.settings.startWithWindows ? `<span class="chip ok">${ic('check')}Opens with Windows</span>` : `<button class="btn sec sm" data-autostart>${ic('power')}Open it with Windows</button>`}</div>
     </div></div>`;
   const s = $('.lg-h .seg', el);
   s.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return; $$('button', s).forEach(x => x.classList.toggle('on', x === b)); SH.placeSeg(s); logFilter = b.dataset.v; drawLog(true); });
+  el.addEventListener('click', e => { const b = e.target.closest('[data-autostart]'); if (!b) return;
+    SH.call('set_autostart', true).then(v => {
+      if (v === undefined) { SH.toast('This only works inside the app.'); return; }
+      if (v === false) { SH.toast('Windows did not allow changing automatic startup.'); return; }
+      SH.setSetting('startWithWindows', true); b.outerHTML = `<span class="chip ok">${ic('check')}Opens with Windows</span>`;
+      SH.toast('StellarHub will open hidden in the tray when Windows starts.'); }); });
   $('#lgList', el).addEventListener('click', e => { if (e.target.closest('[data-goto]')) { SH.go('autopilot', { tab: 'routines' }); return; } const h = e.target.closest('.lg-hd'); if (h) h.parentElement.classList.toggle('open'); });
   requestAnimationFrame(() => SH.placeSeg(s, true));
   drawLog(false);
@@ -878,7 +952,7 @@ SH.module({
     if (tab === 'routines' && rEl) { if (R.length && $('#apList', rEl)) { drawList(); refreshMeta(); } else drawRoutines(); }
     if (tab === 'log' && lEl) drawLog(false);
   },
-  enter() { ensure(); if (mctx) mctx.setBadge('log', LOG.filter(l => l.st === 'warn' || l.st === 'bad').length); },
+  enter() { ensure(); if (REAL) loadLog(false); if (mctx) mctx.setBadge('log', LOG.filter(l => l.st === 'warn' || l.st === 'bad').length); },
 });
 SH.actions.add([
   { t: 'Create an automatic routine', go: 'autopilot', tab: 'routines', ic: 'autopilot' },

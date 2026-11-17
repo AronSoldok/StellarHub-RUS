@@ -388,3 +388,16 @@ html[data-int=min] #v-autopilot .ape-art *{animation:none!important}
   #v-autopilot .ape-meta{margin-top:6px}
   #v-autopilot .ape-art{width:96px;height:96px;margin-bottom:12px}
 }
+
+/* catalog items this PC/version can't do (the engine says why) */
+#v-autopilot .cg-it.na{opacity:.5;cursor:help}
+#v-autopilot .cg-it.na:hover{background:transparent}
+#v-autopilot .cg-it.na:hover>svg:last-child{transform:none;color:var(--faint)}
+#v-autopilot .cg-it.na .cg-t i{color:var(--faint)}
+/* log: what happens while StellarHub is closed */
+#v-autopilot .lg-cl{flex:none;display:flex;flex-direction:column;gap:8px}
+#v-autopilot .lg-side .lg-by{min-height:84px}
+#v-autopilot .lg-cl .pan-h{margin-bottom:0}
+#v-autopilot .lg-cl p{margin:0;font-size:12.5px;line-height:1.5;color:var(--mute)}
+#v-autopilot .lg-cl .btn,#v-autopilot .lg-cl .chip{align-self:flex-start;margin-top:2px}
+#v-autopilot .lg-cl .chip svg{width:13px;height:13px}

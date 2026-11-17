@@ -214,3 +214,8 @@ html[data-int=min] #v-tester .sp-spk.play .sp-cone i,html[data-int=min] #v-teste
 #v-tester .cps-stats div{padding:7px 8px;border-radius:10px;background:var(--raise)}
 #v-tester .cps-stats span{display:block;font-size:11px}
 #v-tester .cps-stats b{display:block;font-weight:500;font-size:14px;margin-top:1px}
+
+/* polling rate: current value plus the best one seen */
+#v-tester .ms-stats #msHz{margin-left:auto}
+#v-tester .ms-stats #msHzMax{font-style:normal;font-size:11px;align-self:center}
+#v-tester .ms-stats #msHzMax:empty{display:none}

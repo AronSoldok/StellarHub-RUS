@@ -228,9 +228,14 @@ function renderScreen(el) {
       <div class="sc-tiles">${SCREENS.map((s, i) => `<button class="sc-t" data-i="${i}" style="--bg:${s.bg}"><span class="sw"></span><b>${s.n}</b><i class="sc-ok">${ic('check')}</i></button>`).join('')}</div>
       <div class="sc-n faint" id="scN">Seen 0 of ${SCREENS.length}</div></div>
     <div class="sc-side">
-      <div class="pan" data-asm><h4>Refresh rate</h4><div class="kb-n"><b class="big" id="scHz">–</b><span class="muted">Hz measured</span></div><p class="faint sc-p">Your built-in panel is rated at 165 Hz and the external monitor at 144 Hz. If you get much less, check the refresh rate in Display settings.</p></div>
+      <div class="pan" data-asm><h4>Refresh rate</h4><div class="kb-n"><b class="big" id="scHz">–</b><span class="muted">Hz measured</span></div><p class="faint sc-p" id="scHzP">Measured from how often this window repaints. It should match the refresh rate set in Display settings.</p></div>
       <div class="pan sc-mp" data-asm><h4>Motion clarity</h4><div class="sc-motion"><span id="scBall"></span></div><p class="faint sc-p">The block should move with no trail or stutter.</p></div>
     </div></div>`;
+  SH.engine('system', 'displays').then(ds => {     // what Windows has each screen set to (inside the app only)
+    const p = $('#scHzP', el); if (!p || !Array.isArray(ds) || !ds.length) return;
+    const one = d => `${d.hz} Hz on ${ds.length > 1 ? (d.primary ? 'the main screen' : 'the other screen') + ' ' : ''}(${d.w}×${d.h})`;
+    p.textContent = `Windows has ${ds.length > 1 ? 'these screens' : 'this screen'} set to ${ds.map(one).join(' and ')}. The measured number should match the screen this window is on; if it's much lower, a game, a power plan or a cable may be limiting it.`;
+  }).catch(() => {});
   $('#scGo', el).addEventListener('click', () => openScreen(el, 0));
   $('.sc-tiles', el).addEventListener('click', e => { const t = e.target.closest('.sc-t'); if (t) openScreen(el, +t.dataset.i); });
   scr.el = el;
@@ -471,7 +476,7 @@ function renderMouse(el) {
     <div class="pan ms-area" data-asm id="msArea"><canvas id="msCv"></canvas><div class="ms-hint" id="msHint"><b>Click every button, spin the wheel and move the mouse here</b><span class="muted">Inside this box the side buttons don't go back or forward.</span></div></div>
     <div class="ms-side">
       <div class="pan ms-dia" data-asm>${mouseSVG()}<div class="ms-cnt">${[0, 2, 1, 3, 4].map(b => `<div data-c="${b}"><span class="muted">${BTN[b]}</span><b>0</b></div>`).join('')}<div data-c="wu"><span class="muted">Wheel up</span><b>0</b></div><div data-c="wd"><span class="muted">Wheel down</span><b>0</b></div></div></div>
-      <div class="pan ms-stats" data-asm><div><span class="muted">Polling rate</span><b id="msHz">–</b></div><div><span class="muted">Double clicks</span><b id="msDbl">0</b></div><div class="ms-w" id="msWarn"><span class="faint">No chatter detected.</span></div></div>
+      <div class="pan ms-stats" data-asm><div title="Measured from the time between the mouse's reports while it moves. Move it fast and in circles for the real number."><span class="muted">Polling rate</span><b id="msHz">–</b><em class="faint" id="msHzMax"></em></div><div><span class="muted">Double clicks</span><b id="msDbl">0</b></div><div class="ms-w" id="msWarn"><span class="faint">No chatter detected.</span></div></div>
       <button class="btn sec" id="msReset" data-asm>${ic('reset')}Reset</button></div></div>`;
   ms.el = el; const area = $('#msArea', el);
   const hideHint = () => { const h = $('#msHint', el); if (h && !h.classList.contains('gone')) { h.classList.add('gone'); anim(h, [{ opacity: 1 }, { opacity: 0, transform: 'scale(.96)' }], { d: 240 }); } };
@@ -483,8 +488,8 @@ function renderMouse(el) {
   area.addEventListener('dblclick', () => { ms.dbl++; updMouse(); });
   area.addEventListener('wheel', e => { e.preventDefault(); hideHint(); if (e.deltaY < 0) { ms.wheelUp++; flashW('up'); } else if (e.deltaY > 0) { ms.wheelDown++; flashW('down'); } updMouse(); }, { passive: false });
   area.addEventListener('pointermove', e => { const r = area.getBoundingClientRect(); const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e]; const now = performance.now();
-    evs.forEach(ev => { ms.pts.push({ x: ev.clientX - r.left, y: ev.clientY - r.top, t: now }); ms.evs.push(now); }); ms.dirty = true; });
-  $('#msReset', el).addEventListener('click', () => { Object.keys(ms.count).forEach(k => ms.count[k] = 0); ms.wheelUp = ms.wheelDown = ms.dbl = 0; ms.bounce.clear(); ms.last = {}; updMouse(); });
+    evs.forEach(ev => { ms.pts.push({ x: ev.clientX - r.left, y: ev.clientY - r.top, t: now }); ms.evs.push(ev.timeStamp || now); }); ms.dirty = true; });
+  $('#msReset', el).addEventListener('click', () => { Object.keys(ms.count).forEach(k => ms.count[k] = 0); ms.wheelUp = ms.wheelDown = ms.dbl = 0; ms.hzMax = 0; $('#msHzMax', el).textContent = ''; ms.bounce.clear(); ms.last = {}; updMouse(); });
   /* CPS test: the first click opens a 5 s window; it's measured live and the result stays when it ends */
   const pad = $('#cpsPad', el); cps.el = el;
   pad.addEventListener('pointerenter', () => pad.classList.add('hot'));
@@ -536,6 +541,15 @@ function flash(b) { const p = ms.el && $(`.ms-b[data-b="${b}"]`, ms.el); if (!p)
 function flashW(dir) { const a = $(`.ms-arrow[data-w="${dir}"]`, ms.el); if (!a) return; a.classList.add('hit'); anim(a, [{ opacity: 1, transform: `translateY(${dir === 'up' ? -3 : 3}px)` }, { opacity: .35, transform: 'none' }], { d: 420 }); }
 function ripple(e) { if (isMin()) return; const area = $('#msArea', ms.el); const r = area.getBoundingClientRect(); const d = document.createElement('i'); d.className = 'ms-rip b' + e.button; d.style.left = (e.clientX - r.left) + 'px'; d.style.top = (e.clientY - r.top) + 'px'; area.appendChild(d);
   anim(d, [{ transform: 'translate(-50%,-50%) scale(.2)', opacity: .9 }, { transform: 'translate(-50%,-50%) scale(1)', opacity: 0 }], { d: 600 }).finished.then(() => d.remove()).catch(() => d.remove()); }
+/* polling rate = 1000 / median time between reports, only while the mouse keeps moving (pauses > 40 ms are ignored,
+   otherwise slowing down would look like a slower mouse). Snapped to the usual rates when it's close to one. */
+const RATES = [125, 250, 500, 1000, 2000, 4000, 8000];
+function pollRate(ts) {
+  const iv = []; for (let i = 1; i < ts.length; i++) { const d = ts[i] - ts[i - 1]; if (d > 0 && d < 40) iv.push(d); }
+  if (iv.length < 30) return 0;
+  iv.sort((a, b) => a - b); const hz = 1000 / iv[iv.length >> 1];
+  const near = RATES.find(r => Math.abs(hz - r) / r < .12); return near || Math.round(hz);
+}
 function updMouse() {
   const el = ms.el; if (!el) return;
   const set = (k, v) => { const b = $(`[data-c="${k}"] b`, el); if (b && b.textContent !== String(v)) { b.textContent = v; anim(b, [{ transform: 'scale(1.3)', color: 'var(--accent)' }, { transform: 'none', color: 'var(--ink)' }], { d: 380 }); } };
@@ -544,8 +558,9 @@ function updMouse() {
 }
 tickers.add(() => {
   if (!active('mouse') || !ms.el) return; const now = performance.now();
-  while (ms.evs.length && now - ms.evs[0] > 500) ms.evs.shift();
-  const hz = ms.evs.length > 20 ? Math.round(ms.evs.length * 2) : 0; if (hz !== ms.hz) { ms.hz = hz; $('#msHz', ms.el).textContent = hz ? `~${hz} Hz` : 'move the mouse'; }
+  while (ms.evs.length && now - ms.evs[0] > 1000) ms.evs.shift();
+  const hz = pollRate(ms.evs); if (hz !== ms.hz) { ms.hz = hz; $('#msHz', ms.el).textContent = hz ? `~${SH.fmtInt(hz)} Hz` : 'move the mouse';
+    if (hz > (ms.hzMax || 0)) { ms.hzMax = hz; $('#msHzMax', ms.el).textContent = `best ${SH.fmtInt(hz)} Hz`; } }
   const life = isMin() ? 150 : 700; while (ms.pts.length && now - ms.pts[0].t > life) { ms.pts.shift(); ms.dirty = true; }
   if (!ms.dirty) return; ms.dirty = ms.pts.length > 0;
   const c = $('#msCv', ms.el); const w = c.clientWidth, h = c.clientHeight, d = Math.min(2, devicePixelRatio || 1); if (c.width !== Math.round(w * d)) { c.width = w * d; c.height = h * d; }
