@@ -35,8 +35,14 @@ const apiReady = new Promise(res => {
 });
 async function call(name, ...args) {
   const a = await apiReady;
-  if (!a || typeof a[name] !== 'function') return undefined;
-  try { return await a[name](...args); } catch (e) { console.error(name, e); return undefined; }
+  if (!a) return undefined;
+  /* pywebview can announce the API before all its methods are attached (seen right after relaunching as
+     administrator): wait for the method instead of answering "nothing" to whoever asked first */
+  const api = () => (window.pywebview && window.pywebview.api) || a;
+  for (let i = 0; typeof api()[name] !== 'function' && i < 60; i++) await new Promise(r => setTimeout(r, 100));
+  const target = api();
+  if (typeof target[name] !== 'function') { console.error(`API method missing: ${name}`); return undefined; }
+  try { return await target[name](...args); } catch (e) { console.error(name, e); return undefined; }
 }
 /* UI errors -> app log */
 const reportErr = m => { try { if (window.pywebview && window.pywebview.api && window.pywebview.api.log_js_error) window.pywebview.api.log_js_error(String(m)); } catch {} };

@@ -24,6 +24,42 @@ WEB_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or DATA_DIR, "StellarHub",
 SETTINGS = os.path.join(DATA_DIR, "settings.json")
 
 
+FROZEN = bool(getattr(sys, "frozen", False))  # running as the installed StellarHub.exe
+
+
+def _migrate_store_python_data():
+    """Python from the Microsoft Store keeps %APPDATA% in a private copy (LocalCache, Roaming). When the
+    installed StellarHub.exe starts for the first time and the real folder has no settings, it brings over
+    the settings and the Autopilot log a source run left there, so nothing is lost when switching."""
+    if os.path.exists(SETTINGS):
+        return
+    pkgs = os.path.join(os.environ.get("LOCALAPPDATA") or "", "Packages")
+    try:
+        cands = [os.path.join(pkgs, d, "LocalCache", "Roaming", "StellarHub") for d in os.listdir(pkgs)
+                 if d.startswith("PythonSoftwareFoundation.Python.")]
+    except OSError:
+        return
+    cands = [c for c in cands if os.path.isfile(os.path.join(c, "settings.json"))]
+    if not cands:
+        return
+    src = max(cands, key=lambda c: os.path.getmtime(os.path.join(c, "settings.json")))
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        shutil.copy2(os.path.join(src, "settings.json"), SETTINGS)
+        if os.path.isdir(os.path.join(src, "autopilot")):
+            shutil.copytree(os.path.join(src, "autopilot"), os.path.join(DATA_DIR, "autopilot"), dirs_exist_ok=True)
+    except OSError:
+        pass
+
+
+def _read_settings():
+    try:
+        with open(SETTINGS, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
 def is_admin():
     try:
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
@@ -61,6 +97,16 @@ class Api:
     # ---------- information ----------
     def info(self):
         return {"version": VERSION, "admin": is_admin()}
+
+    def ui_ready(self):
+        """The interface finished its first frame: logs how long the start took, from the process launch."""
+        try:
+            import psutil
+            secs = time.time() - psutil.Process().create_time()
+            print(f"[startup] interface ready in {secs:.2f} s ({'installed' if FROZEN else 'source'}, "
+                  f"{'administrator' if is_admin() else 'normal'})", flush=True)
+        except Exception:
+            pass
 
     # ---------- settings ----------
     def settings_get(self):
@@ -215,9 +261,7 @@ class Api:
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, 0, winreg.KEY_SET_VALUE) as k:
                 if on:
-                    cmd = f'"{sys.executable}" --tray' if getattr(sys, "frozen", False) else \
-                        f'"{_gui_python()}" "{os.path.join(base_dir(), "run.py")}" --tray'
-                    winreg.SetValueEx(k, "StellarHub", 0, winreg.REG_SZ, cmd)
+                    winreg.SetValueEx(k, "StellarHub", 0, winreg.REG_SZ, _autostart_cmd())
                 else:
                     try:
                         winreg.DeleteValue(k, "StellarHub")
@@ -443,6 +487,12 @@ class Api:
     # ---------- about ----------
     def project_stats(self):
         """Bytes of code per language, like GitHub's language bar."""
+        if FROZEN:  # the installed app has no .py files: the build saved the numbers
+            try:
+                with open(os.path.join(base_dir(), "stellarhub", "project_stats.json"), encoding="utf-8") as fh:
+                    return json.load(fh)
+            except (OSError, ValueError):
+                pass
         langs = {".py": "Python", ".js": "JavaScript", ".css": "CSS", ".html": "HTML"}
         out = {}
         root = os.path.join(base_dir(), "stellarhub")
@@ -527,7 +577,12 @@ def refresh_ui_cache():
     """WebView2 keeps the .js/.css in its HTTP cache: after a UI change it would keep showing the old one.
     If any UI file changes, that cache is cleared."""
     h = hashlib.sha1()
-    for root, _dirs, files in sorted(os.walk(UI_DIR)):
+    if FROZEN:  # installed: the UI only changes with a new build, so the version and build time identify it
+        try:
+            h.update(f"{VERSION}|{os.path.getmtime(sys.executable)}".encode())
+        except OSError:
+            h.update(VERSION.encode())
+    for root, _dirs, files in ([] if FROZEN else sorted(os.walk(UI_DIR))):
         for f in sorted(files):
             if f.endswith((".html", ".js", ".css")):
                 p = os.path.join(root, f)
@@ -675,13 +730,95 @@ def _elevate_on_start():
     except (OSError, ValueError):
         return False
     import subprocess
-    for name in (ADMIN_TASK, *LEGACY_ADMIN_TASKS):
-        if subprocess.run(["schtasks", "/run", "/tn", name], capture_output=True, creationflags=0x08000000).returncode == 0:
-            return True
+    if _task_opens_this_copy(ADMIN_TASK) and subprocess.run(
+            ["schtasks", "/run", "/tn", ADMIN_TASK], capture_output=True, creationflags=0x08000000).returncode == 0:
+        return True
+    # no task, or it opens another copy (e.g. the source version before installing): ask Windows once;
+    # the elevated copy then points the task at itself
     exe, args = _launch_cmd("--no-elevate")
     if ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, args, base_dir(), 1) > 32:
         return True
     return False  # the user said no: stay in normal mode
+
+
+def _task_opens_this_copy(name):
+    """True if the scheduled task exists and launches this same program (the exe, or run.py from source)."""
+    import re
+    import subprocess
+    try:
+        r = subprocess.run(["schtasks", "/query", "/tn", name, "/xml"], capture_output=True, timeout=10,
+                           creationflags=0x08000000)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if r.returncode != 0:
+        return False
+    raw = r.stdout
+    xml = raw.decode("utf-16", "replace") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("mbcs", "replace")
+    exe, _args = _launch_cmd()
+    cmd = re.search(r"<Command>(.*?)</Command>", xml, re.S)
+    arg = re.search(r"<Arguments>(.*?)</Arguments>", xml, re.S)
+
+    def norm(t):
+        return os.path.normcase(t.replace("&quot;", '"').strip().strip('"'))
+    if not cmd or norm(cmd.group(1)) != norm(exe):
+        return False
+    return FROZEN or (arg is not None and norm(os.path.join(base_dir(), "run.py")) in norm(arg.group(1)))
+
+
+def _autostart_cmd():
+    exe, args = _launch_cmd("--tray")
+    return f'"{exe}" {args}'
+
+
+def _sync_launch_entries():
+    """After installing (or moving) StellarHub, the "open with Windows" entry must open this copy."""
+    if not _read_settings().get("startWithWindows"):
+        return
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
+                            winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+            try:
+                cur = winreg.QueryValueEx(k, "StellarHub")[0]
+            except FileNotFoundError:
+                cur = None
+            if cur != _autostart_cmd():
+                winreg.SetValueEx(k, "StellarHub", 0, winreg.REG_SZ, _autostart_cmd())
+    except OSError:
+        pass
+
+
+def _quit_running():
+    """--quit: asks the running copy to close (installer and uninstaller) and waits until it is gone."""
+    import socket
+    try:
+        with socket.create_connection(("127.0.0.1", SINGLE_PORT), timeout=1.5) as s:
+            s.sendall(b"quit")
+            s.settimeout(3)
+            if s.recv(8) != b"bye":
+                return
+    except OSError:
+        return
+    for _ in range(80):  # up to 8 s
+        time.sleep(0.1)
+        try:
+            socket.create_connection(("127.0.0.1", SINGLE_PORT), timeout=0.2).close()
+        except OSError:
+            return
+
+
+def _uninstall_cleanup():
+    """--uninstall-cleanup: removes what StellarHub registered in Windows outside its own folder."""
+    _delete_admin_task()
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
+                            winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+            cur = winreg.QueryValueEx(k, "StellarHub")[0]
+            if os.path.normcase(sys.executable) in os.path.normcase(cur):
+                winreg.DeleteValue(k, "StellarHub")
+    except OSError:
+        pass
 
 
 SINGLE_PORT = 47821  # single instance: a second copy asks the first one to show itself, then exits
@@ -711,8 +848,12 @@ def _listen_single(api):
             try:
                 conn, _ = srv.accept()
                 with conn:
-                    if conn.recv(16).startswith(b"show"):
+                    msg = conn.recv(16)
+                    if msg.startswith(b"show"):
                         api.show_main()
+                    elif msg.startswith(b"quit"):  # the installer closes the running copy before updating it
+                        conn.sendall(b"bye")
+                        threading.Timer(0.05, api.quit).start()
             except OSError:
                 break
     threading.Thread(target=loop, daemon=True, name="single").start()
@@ -734,12 +875,19 @@ def _wait_for_previous():
 
 
 def main():
+    if "--quit" in sys.argv:
+        return _quit_running()
+    if "--uninstall-cleanup" in sys.argv:
+        return _uninstall_cleanup()
     _log_to_file()
+    if FROZEN:
+        _migrate_store_python_data()
     _wait_for_previous()
     if _already_running():
         return
     if _elevate_on_start():
         return
+    threading.Thread(target=_sync_launch_entries, daemon=True).start()
     if is_admin():
         try:
             with open(SETTINGS, encoding="utf-8") as fh:
@@ -807,3 +955,11 @@ def main():
                   private_mode=False, storage_path=WEB_DIR)
     if api._tray is not None:
         api._tray.stop()
+    # The window is gone and settings are saved as they change. Background scans still running in thread pools
+    # (winget, PowerShell...) would keep the process alive until they finish, so end it now.
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    os._exit(0)

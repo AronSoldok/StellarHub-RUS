@@ -16,8 +16,13 @@ function setMax(max) {
 }
 SH.on('win', d => setMax(d && d.max));
 SH.apiReady.then(async a => {
-  const st = a && await SH.call('win_state');
-  if (!st || !st.frameless) return;
+  if (!a) return;
+  /* right after an elevated relaunch the API can answer late: ask again instead of giving up, and since the
+     app window is always frameless, show the buttons even if it never answers */
+  let st = null;
+  for (let i = 0; i < 12 && !st; i++) { st = await SH.call('win_state').catch(() => null); if (!st) await new Promise(r => setTimeout(r, 250)); }
+  st = st || { frameless: true, max: false };
+  if (!st.frameless) return;
   document.body.classList.add('frameless'); setMax(st.max);
   top.addEventListener('mousedown', e => { if (e.button !== 0 || e.detail > 1 || e.target.closest(NOT_DRAG)) return; SH.call('win_drag'); });
   top.addEventListener('dblclick', e => { if (e.target.closest(NOT_DRAG)) return; SH.call('win_toggle_max'); });

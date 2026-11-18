@@ -10,10 +10,9 @@ import hashlib
 import heapq
 import json
 import os
-import queue
-import stat as _stat
 import string
 import subprocess
+import sys
 import threading
 import time
 from ctypes import wintypes
@@ -746,6 +745,8 @@ def _protected(path):
     roots += [os.path.normcase(os.path.join(pd, "Microsoft")), os.path.normcase(os.path.join(pd, "StellarHub"))]
     app = os.path.normcase(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     roots.append(app)
+    if getattr(sys, "frozen", False):  # installed: the folder that holds StellarHub.exe
+        roots.append(os.path.normcase(os.path.dirname(sys.executable)))
     for r in roots:
         if p == r or p.startswith(r + os.sep):
             return "It's inside a folder StellarHub never touches."

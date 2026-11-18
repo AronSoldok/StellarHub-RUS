@@ -613,6 +613,7 @@ SH.boot = async () => {
   anim(dock, [{ opacity: 0, transform: 'translateX(-50%) translate3d(0,30px,0) scale(.9)' }, { opacity: 1, transform: 'translateX(-50%) translate3d(0,0,0) scale(1)' }], { d: 800, delay: 900, e: EASE.spring });
   if (!state.admin && S().adminHints) setTimeout(() => showNote(), 4200);
   SH.emit('boot');
+  SH.booted = true; requestAnimationFrame(() => SH.call('ui_ready'));  /* startup time goes to the log */
   /* test routes: #drivers/all opens that tab, #drivers/* walks through all of them, #home=bento forces a Home view */
   const h = decodeURIComponent(location.hash.slice(1));
   const hv = h.match(/^home=(\w+)$/); if (hv) setTimeout(() => SH.setSetting('homeVariant', hv[1]), 50);

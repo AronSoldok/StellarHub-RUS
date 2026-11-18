@@ -37,7 +37,10 @@ def _exe(name):
 
 
 def _python():
-    """The user's Python (not pythonw): the same one StellarHub runs on."""
+    """The user's Python (not pythonw): the same one StellarHub runs on or, in the installed app (which carries
+    its own private Python), the one the user has installed."""
+    if getattr(sys, "frozen", False):
+        return _exe("py") or _exe("python") or "python"
     exe = sys.executable
     if exe.lower().endswith("pythonw.exe"):
         cand = exe[:-11] + "python.exe"
