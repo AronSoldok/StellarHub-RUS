@@ -277,29 +277,11 @@ def delete_on_reboot(path):
         return False
 
 
-def create_restore_point(description):
-    """Create a restore point bypassing the one-per-24-hours limit (and put the limit back as it was)."""
-    key = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
-    hk = winreg.HKEY_LOCAL_MACHINE
-    old = registry.get_value(hk, key, "SystemRestorePointCreationFrequency")
-    changed = False
-    try:
-        with winreg.CreateKeyEx(hk, key, 0, winreg.KEY_SET_VALUE | registry.V64) as k:
-            winreg.SetValueEx(k, "SystemRestorePointCreationFrequency", 0, winreg.REG_DWORD, 0)
-            changed = True
-    except OSError:
-        pass
-    desc = description.replace("'", "")[:60]
-    code, out = powershell(f"Enable-ComputerRestore -Drive $env:SystemDrive -ErrorAction SilentlyContinue; "
-                           f"Checkpoint-Computer -Description '{desc}' -RestorePointType APPLICATION_UNINSTALL "
-                           f"-ErrorAction Stop", timeout=300)
-    if changed:
-        try:
-            with winreg.OpenKey(hk, key, 0, winreg.KEY_SET_VALUE | registry.V64) as k:
-                if old is None:
-                    winreg.DeleteValue(k, "SystemRestorePointCreationFrequency")
-                else:
-                    winreg.SetValueEx(k, "SystemRestorePointCreationFrequency", 0, winreg.REG_DWORD, old)
-        except OSError:
-            pass
-    return code == 0, out.strip()
+def create_restore_point(description, kind="APPLICATION_UNINSTALL"):
+    """Creates a restore point. Kept for its callers (Program Remover, Super Optimizer, Autopilot): it now goes
+    through the shared helper in engine/backups.py, which lifts the once-a-day limit safely (with a lock and
+    crash recovery), never turns protection on behind the user's back, and checks a point really appeared.
+    Returns (ok, message), the message already in the interface language and saying why when it fails."""
+    from .. import backups
+    r = backups.create_restore_point(description, kind=kind)
+    return bool(r.get("ok")), r.get("msg") or r.get("detail") or ""

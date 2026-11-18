@@ -248,12 +248,10 @@ Say @{ step='end' }
 
 
 def _restore_point(desc):
-    desc = str(desc).replace("'", "''")  # it goes inside a single-quoted PowerShell string (translations may have apostrophes)
-    out = ps_json(f"""
-try {{ Enable-ComputerRestore -Drive "$env:SystemDrive\\" -ErrorAction SilentlyContinue
-  Checkpoint-Computer -Description '{desc}' -RestorePointType MODIFY_SETTINGS -ErrorAction Stop
-  [pscustomobject]@{{ ok=$true }} }} catch {{ [pscustomobject]@{{ ok=$false; msg=$_.Exception.Message }} }}""", timeout=240) or {}
-    return out
+    """The shared helper (engine/backups.py): lifts the 24-hour limit just for this one, checks that it really
+    appeared and says why not -> {ok, reason, detail, msg}."""
+    from .backups import create_restore_point
+    return create_restore_point(desc, kind="DEVICE_DRIVER_INSTALL")
 
 
 def install(job, ids, restore_point=True):
@@ -269,7 +267,7 @@ def install(job, ids, restore_point=True):
         job.progress(.02, tr("Creating a restore point"), step="rp", phase="run", force=True)
         rp = _restore_point(tr("StellarHub: before installing drivers"))
         job.progress(.08, tr("Restore point"), step="rp", phase="done" if rp.get("ok") else "skip",
-                     msg=None if rp.get("ok") else tr("Windows did not create a new one (it only allows one every 24 hours, or it is turned off)."), force=True)
+                     reason=rp.get("reason"), msg=None if rp.get("ok") else rp.get("msg"), force=True)
     results, reboot = {}, False
     n = len(ids)
 
