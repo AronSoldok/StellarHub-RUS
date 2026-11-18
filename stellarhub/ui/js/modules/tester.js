@@ -94,7 +94,7 @@ function kbLayout(fmt, lang) {
   }
   return { keys: K, W, H, count: new Set(K.map(k => k.code).filter(c => c !== 'Fn')).size };
 }
-const kb = { capturing: false, tested: new Set(), down: new Map(), lastUp: {}, maxRoll: 0, chatter: new Set(), stuck: new Set(), escT: 0, presses: 0, layout: null, detected: null, sugNum: false,
+const kb = { capturing: false, tested: new Set(), down: new Map(), lastUp: {}, ev: {}, chatN: {}, maxRoll: 0, chatter: new Set(), stuck: new Set(), escT: 0, presses: 0, layout: null, detected: null, sugNum: false,
   missing: new Set(), marking: false, autoT: {} };
 const kbFmt = () => state.settings.testerKbFormat || 'laptop';
 /* Keys this keyboard doesn't have: they don't count toward the total. Remembered per layout (setting
@@ -170,7 +170,7 @@ function renderKeyboard(el) {
   $('#kbSugNo', el).addEventListener('click', () => { kb.sugNum = true; hideSug(el); });
   $('#kbStart', el).addEventListener('click', () => setCapture(el, true));
   $('#kbStop', el).addEventListener('click', () => setCapture(el, false));
-  $('#kbReset', el).addEventListener('click', () => { kb.tested.clear(); kb.down.clear(); kb.chatter.clear(); kb.stuck.clear(); kb.maxRoll = 0; kb.presses = 0; $$('.k', el).forEach(k => k.classList.remove('done', 'down', 'warn')); updKb(el); SH.toast(t('Keyboard test reset.')); });
+  $('#kbReset', el).addEventListener('click', () => { kb.tested.clear(); kb.down.clear(); kb.chatter.clear(); kb.chatN = {}; kb.ev = {}; kb.stuck.clear(); kb.maxRoll = 0; kb.presses = 0; $$('.k', el).forEach(k => k.classList.remove('done', 'down', 'warn')); updKb(el); SH.toast(t('Keyboard test reset.')); });
   kbDetect(el);
 }
 function toggleMissing(code) {
@@ -202,6 +202,7 @@ function setCapture(el, on) {
   $('#kbStop', el).hidden = !on;
 }
 const keyEls = code => kb.el ? $$(`.k[data-code="${code}"]`, kb.el) : [];
+const keyName = c => { const k = keyEls(c)[0]; const l = k && k.textContent.trim(); return l && l.length <= 12 ? l : String(c).replace(/^(Key|Digit)/, ''); };
 function updKb(el) {
   if (!el || !kb.layout) return; const n = kbDoneN(), tot = kbTotal(), nEl = $('#kbN', el);
   if (+nEl.textContent !== n) { nEl.textContent = n; anim(nEl, [{ transform: 'translateY(-4px)', opacity: .5 }, { transform: 'none', opacity: 1 }], { d: 220 }); }
@@ -209,7 +210,8 @@ function updKb(el) {
   const miss = [...kbCodes()].filter(c => kb.missing.has(c)).length, mEl = $('#kbMissN', el);
   mEl.hidden = !miss; mEl.textContent = miss === 1 ? t('{n} key marked as missing', { n: miss }) : t('{n} keys marked as missing', { n: miss });
   $('#kbBar', el).style.transform = `scaleX(${(tot ? Math.min(1, n / tot) : 0).toFixed(3)})`; $('#kbRoll', el).textContent = kb.maxRoll; $('#kbPress', el).textContent = SH.fmtInt(kb.presses);
-  const w = [...[...kb.stuck].map(c => `<div class="chip warn">${ic('alert')}${t('{key} has been held for over 5 s', { key: esc(c) })}</div>`), ...[...kb.chatter].map(c => `<div class="chip bad">${ic('alert')}${t('{key}: possible chatter (very fast double press)', { key: esc(c) })}</div>`)];
+  const w = [...[...kb.stuck].map(c => `<div class="chip warn">${ic('alert')}${t('{key} has been held for over 5 s', { key: esc(keyName(c)) })}</div>`)];
+  if (kb.chatter.size) w.push(`<div class="chip bad" title="${esc(t('The key sent a second press a few milliseconds after a very short one, more than once, without you pressing it again. Usually a worn or dirty switch.'))}">${ic('alert')}<span>${kb.chatter.size === 1 ? t('{key}: possible chatter', { key: `<kbd>${esc(keyName([...kb.chatter][0]))}</kbd>` }) : t('Possible chatter: {keys}', { keys: [...kb.chatter].map(c => `<kbd>${esc(keyName(c))}</kbd>`).join(' ') })}</span></div>`);
   $('#kbWarn', el).innerHTML = w.length ? w.join('') : `<span class="faint">${t('Nothing odd so far.')}</span>`;
 }
 /* Keys whose keyup may never arrive: Win opens Start (the page loses focus), Print Screen is taken by Windows.
@@ -241,7 +243,11 @@ addEventListener('keydown', e => {
   if (!kb.capturing || !active('keyboard')) return;
   e.preventDefault(); e.stopImmediatePropagation();
   const code = e.code || e.key; if (e.repeat) return;
-  const now = performance.now(); if (kb.lastUp[code] && now - kb.lastUp[code] < 35) kb.chatter.add(code);
+  const now = performance.now(), ts = e.timeStamp || now, pv = kb.ev[code];
+  if (pv && pv.up && ts - pv.up < 30 && pv.up - pv.down < 40 && kb.down.size < 2 && !kb.chatter.has(code)) {
+    kb.chatN[code] = (kb.chatN[code] || 0) + 1; if (kb.chatN[code] >= 2) kb.chatter.add(code);
+  }
+  kb.ev[code] = { down: ts, up: 0 };
   kb.down.set(code, now); kb.presses++; kb.maxRoll = Math.max(kb.maxRoll, kb.down.size);
   if (code.startsWith('Numpad') && kbFmt() !== 'full' && kbFmt() !== 'laptopnum' && !kb.sugNum) showSug(kb.el);
   if (kb.missing.has(code)) toggleMissing(code);    // pressed, so the keyboard does have it
@@ -257,6 +263,7 @@ addEventListener('keyup', e => {
   if (!kb.capturing || !active('keyboard')) return;
   e.preventDefault(); e.stopImmediatePropagation();
   const code = e.code || e.key;
+  if (kb.ev[code]) kb.ev[code].up = e.timeStamp || performance.now();
   if (AUTO.has(code) && !kb.down.has(code) && !kb.autoT[code]) { virtualPress(code, e); updKb(kb.el); return; }
   releaseKey(code);
   if (code === 'Escape') { kb.escT = 0; const r = $('.esc-ring', kb.el); if (r) r.style.transform = 'scaleX(0)'; }

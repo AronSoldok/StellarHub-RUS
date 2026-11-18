@@ -50,23 +50,35 @@ def _python():
     return exe
 
 
-def _stream(cmd, on_text=None, job=None, timeout=None, env=None):
+def _stream(cmd, on_text=None, job=None, timeout=None, env=None, on_tick=None):
     """Runs a command and hands over the text in pieces split on \\r and \\n (winget draws its bars with \\r).
-    Returns (code, output). If the job is cancelled, kills the process."""
+    Returns (code, output). If the job is cancelled, or the timeout passes, kills the process.
+
+    The pipe is read on its own thread and the command's END is what ends the wait, not the end of the pipe: an
+    installer that winget starts can leave a process running (an update service, the app itself) that inherited
+    the pipe, so the pipe may never close. on_tick(elapsed, quiet) runs about once a second."""
+    import queue
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                          creationflags=NO_WINDOW, env=env)
+    q = queue.Queue()
+
+    def reader():
+        try:
+            while True:
+                ch = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(1)
+                if not ch:
+                    break
+                q.put(ch)
+        except (OSError, ValueError):
+            pass
+        q.put(None)
+    threading.Thread(target=reader, daemon=True).start()
     out, buf = [], b""
-    t0 = time.monotonic()
-    while True:
-        if job is not None and job.cancelled:
-            p.kill()
-            break
-        if timeout and time.monotonic() - t0 > timeout:
-            p.kill()
-            break
-        ch = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(1)
-        if not ch:
-            break
+    t0 = last = tick = time.monotonic()
+    ended = None  # when the command itself exited
+
+    def feed(ch):
+        nonlocal buf
         buf += ch
         parts = re.split(rb"[\r\n]", buf)
         buf = parts.pop()
@@ -75,6 +87,31 @@ def _stream(cmd, on_text=None, job=None, timeout=None, env=None):
             out.append(s)
             if on_text and s.strip():
                 on_text(s)
+    while True:
+        now = time.monotonic()
+        if (job is not None and job.cancelled) or (timeout and now - t0 > timeout):
+            p.kill()
+            break
+        try:
+            ch = q.get(timeout=.25)
+        except queue.Empty:
+            ch = b""
+        if ch is None:
+            break  # the pipe closed: everything was read
+        now = time.monotonic()
+        if ch:
+            feed(ch)
+            last = now
+        if ended is None and p.poll() is not None:
+            ended = now
+        if ended is not None and q.empty() and now - ended > 1.5:
+            break  # the command is over and someone else still holds the pipe open
+        if on_tick and now - tick >= 1:
+            tick = now
+            try:
+                on_tick(now - t0, now - last)
+            except Exception:
+                pass
     if buf:
         s = buf.decode("utf-8", "replace")
         out.append(s)
@@ -85,6 +122,15 @@ def _stream(cmd, on_text=None, job=None, timeout=None, env=None):
     except subprocess.TimeoutExpired:
         p.kill()
     return p.returncode, "\n".join(out)
+
+
+def consent_prompt_open():
+    """True while Windows shows (or waits to show) an administrator permission prompt (consent.exe)."""
+    try:
+        import psutil
+        return any((pr.info.get("name") or "").lower() == "consent.exe" for pr in psutil.process_iter(["name"]))
+    except Exception:
+        return False
 
 
 def _winget(args, timeout=180):

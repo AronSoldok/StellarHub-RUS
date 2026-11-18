@@ -263,26 +263,62 @@ async function undo(r, area) {
 const undoToast = (label, r, area) => SH.toast(label, { action: { label: t('Undo'), run: () => undo(r, area) } });
 
 /* ================= Overview ================= */
-const RING = AREAS;
-function ringSVG() {
-  const R = 92, p = ang => [(110 + R * Math.cos(ang)).toFixed(2), (110 + R * Math.sin(ang)).toFixed(2)];
-  const seg = 360 / RING.length;
-  const segs = RING.map((a, i) => { const [x0, y0] = p((-90 + i * seg + 3) * Math.PI / 180), [x1, y1] = p((-90 + i * seg + seg - 3) * Math.PI / 180); return `M${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1}`; });
-  const L = (R * (seg - 6) * Math.PI / 180).toFixed(1);
-  return `<svg viewBox="0 0 220 220" class="pv-ring">
-    <defs><linearGradient id="pvSweep" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--accent2)" stop-opacity="0"/><stop offset="1" style="stop-color:var(--accent2)" stop-opacity=".3"/></linearGradient></defs>
-    <circle cx="110" cy="110" r="104" class="tick"/><g class="sweep"><path d="M110 110 L110 12 A98 98 0 0 1 180 40 Z" fill="url(#pvSweep)"/></g>
-    ${segs.map(d => `<path d="${d}" class="bg"/>`).join('')}
-    ${segs.map((d, i) => `<path d="${d}" class="fg" data-seg="${RING[i]}" style="stroke-dasharray:${L};stroke-dashoffset:${L}" data-l="${L}"/>`).join('')}
-    <circle cx="110" cy="110" r="70" class="core"/></svg>`;
+/* The overview's centerpiece is a radar (Super Optimizer has a score ring; this one must not look like it):
+   one sector per area, a slow sweep, and a blip per finding that pings when the sweep passes over it. The worse
+   the finding, the closer to the center. The score is a segmented gauge under it. */
+const RC = 120, RR = [38, 66, 94, 112];
+const SECT = 360 / AREAS.length;
+const polar = (deg, r) => { const a = (deg - 90) * Math.PI / 180; return [+(RC + r * Math.cos(a)).toFixed(2), +(RC + r * Math.sin(a)).toFixed(2)]; };
+const wedge = (a0, a1, r) => { const [x0, y0] = polar(a0, r), [x1, y1] = polar(a1, r); return `M${RC} ${RC}L${x0} ${y0}A${r} ${r} 0 0 1 ${x1} ${y1}Z`; };
+const sweepMs = () => { const f = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--f')) || 1; return 4200 * f + 1400; };
+function radarSVG() {
+  return `<svg viewBox="0 0 240 240" class="pv-radar" aria-hidden="true">
+    <defs><linearGradient id="pvSw" gradientUnits="userSpaceOnUse" x1="${polar(0, 112)[0]}" y1="${polar(0, 112)[1]}" x2="${polar(48, 112)[0]}" y2="${polar(48, 112)[1]}">
+      <stop offset="0" style="stop-color:var(--accent2)" stop-opacity="0"/><stop offset="1" style="stop-color:var(--accent2)" stop-opacity=".34"/></linearGradient>
+      <radialGradient id="pvRg"><stop offset="0" style="stop-color:var(--accent2)" stop-opacity=".09"/><stop offset="1" style="stop-color:var(--accent2)" stop-opacity="0"/></radialGradient></defs>
+    <circle cx="${RC}" cy="${RC}" r="${RR[3]}" fill="url(#pvRg)"/>
+    ${AREAS.map((a, i) => `<path class="sec" data-sec="${a}" d="${wedge(i * SECT + 1.5, (i + 1) * SECT - 1.5, RR[3])}"/>`).join('')}
+    ${RR.map((r, i) => `<circle cx="${RC}" cy="${RC}" r="${r}" class="rg${i === 3 ? ' out' : ''}"/>`).join('')}
+    ${AREAS.map((a, i) => { const [x, y] = polar(i * SECT, RR[3]); return `<line x1="${RC}" y1="${RC}" x2="${x}" y2="${y}" class="sp"/>`; }).join('')}
+    <circle cx="${RC}" cy="${RC}" r="117" class="tick"/>
+    <g class="sweep"><path d="${wedge(0, 48, 112)}" fill="url(#pvSw)"/><line x1="${RC}" y1="${RC}" x2="${polar(48, 112)[0]}" y2="${polar(48, 112)[1]}" class="edge"/></g>
+    <g class="blips"></g>
+    <circle cx="${RC}" cy="${RC}" r="3" class="hub"/></svg>
+    ${AREAS.map((a, i) => { const [x, y] = polar(i * SECT + SECT / 2, 129); return `<button class="pv-rl" data-sec="${a}" data-gotab="${a}" style="left:${(x / 240 * 100).toFixed(2)}%;top:${(y / 240 * 100).toFixed(2)}%" title="${esc(AREA_N[a])}" aria-label="${esc(AREA_N[a])}">${ic(AREA_IC[a])}</button>`; }).join('')}`;
 }
+/* where each finding sits: its area's sector, spread evenly; bad near the center, info near the edge */
+function blipsFor() {
+  const R = { bad: 30, warn: 58, info: 86 };
+  return AREAS.flatMap((a, i) => {
+    const fs = has(a) ? sortF(((D[a] && D[a].findings) || []).filter(f => !String(f.id).startsWith('inuse-'))) : [];
+    return fs.slice(0, 6).map((f, j, l) => ({ a, f, deg: i * SECT + SECT * (j + 1) / (l.length + 1), r: (R[f.sev] || 86) + (j % 2 ? 7 : 0) }));
+  });
+}
+function paintBlips() {
+  const g = ovEl && $('.pv-radar .blips', ovEl); if (!g) return;
+  const bl = blipsFor(), sig = bl.map(b => b.f.id + b.f.sev).join('|'); if (g.dataset.sig === sig) return; g.dataset.sig = sig;
+  /* each ping is timed so it fires when the sweep's edge reaches the blip */
+  const P = sweepMs(), sw = $('.pv-radar .sweep', ovEl), a0 = sw && sw.getAnimations()[0], cur = a0 ? (+a0.currentTime || 0) % P : 0;
+  g.innerHTML = bl.map((b, k) => { const [x, y] = polar(b.deg, b.r), hit = ((b.deg - 48 + 720) % 360) / 360 * P, d = ((hit - cur) % P + P) % P;
+    return `<g class="blip ${b.f.sev}" data-gotab="${b.f.tab || b.a}" style="--k:${k}"><title>${esc(b.f.title)}</title><circle cx="${x}" cy="${y}" r="10" class="halo" style="animation-delay:${Math.round(d)}ms;animation-duration:${Math.round(P)}ms;transform-origin:${x}px ${y}px"/><circle cx="${x}" cy="${y}" r="4.2" class="dot" style="transform-origin:${x}px ${y}px"/></g>`; }).join('');
+}
+function startSweep() {
+  const sw = ovEl && $('.pv-radar .sweep', ovEl); if (!sw) return;
+  sw.getAnimations().forEach(a => a.cancel());
+  if (state.settings.intensity === 'min') return;
+  sw.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: sweepMs(), iterations: Infinity });
+  const g = $('.pv-radar .blips', ovEl); if (g) { delete g.dataset.sig; paintBlips(); }
+}
+/* the score as a gauge of 20 cells */
+const GAUGE_N = 20;
+const gaugeHTML = () => `<div class="pv-gauge" id="pvGauge">${Array.from({ length: GAUGE_N }, () => '<i></i>').join('')}</div>`;
 const LIVE_CAPS = [['webcam', 'camera', t('Camera')], ['microphone', 'mic', t('Microphone')], ['location', 'pvpin', t('Location')]];
 function liveHTML() {
   const caps = D.permissions ? D.permissions.caps : null;
   return LIVE_CAPS.map(([id, icn, n]) => {
     const c = caps && caps.find(x => x.id === id); const act = c ? c.apps.filter(a => a.active) : [];
     const sub = !caps ? '<span class="sk" style="display:block;height:8px;width:60%;margin-top:6px"></span>' : act.length ? esc(t('In use by {app}', { app: act.map(a => a.name).join(', ') })) : c && c.user === 'Deny' ? t('Blocked for all apps') : t('Not in use');
-    return `<button class="pv-live${act.length ? ' on' : ''}" data-cap="${id}"><span class="pv-li">${ic(icn)}${act.length ? '<i class="pv-pulse"></i>' : ''}</span><span class="pv-lt"><b>${n}</b><span>${sub}</span></span></button>`;
+    return `<button class="pv-live${act.length ? ' on' : ''}" data-cap="${id}" title="${esc(n)}"><span class="pv-li">${ic(icn)}${act.length ? '<i class="pv-pulse"></i>' : ''}</span><span class="pv-lt"><b>${n}</b><span>${sub}</span></span></button>`;
   }).join('');
 }
 function findingRow(f) {
@@ -304,10 +340,11 @@ function renderOverview(el, ctx) {
   ovEl = el; el.classList.add('fill');
   el.innerHTML = `<div class="pv-ov">
     <div class="pan pv-ovl" data-asm>
-      <div class="pv-rw">${ringSVG()}<div class="pv-rc"><b id="pvScore">0</b><span id="pvScoreL">${t('checking…')}</span></div></div>
+      <div class="pv-lives" id="pvLive">${liveHTML()}</div>
+      <div class="pv-rw">${radarSVG()}</div>
+      <div class="pv-sc"><b id="pvScore">0</b><span><em id="pvScoreL">${t('checking…')}</em>${gaugeHTML()}</span></div>
       <div class="pv-st" id="pvSt"></div><div class="pv-sub muted" id="pvSub"></div>
       <button class="btn pri lg pv-cta" id="pvFixAll" disabled>${ic('sparkle')}<span>${t('Fix what is safe')}</span></button>
-      <div class="pv-lives" id="pvLive">${liveHTML()}</div>
     </div>
     <div class="pan pv-ovr" data-asm><div id="pvRight"></div></div></div>`;
   el.addEventListener('click', async e => {
@@ -326,24 +363,26 @@ function renderOverview(el, ctx) {
     if (e.target.closest('#pvPlanGo')) { runPlan(); return; }
     const ck = e.target.closest('.pv-plan .check'); if (ck && !ck.disabled) ck.classList.toggle('on');
   });
-  paintOverview(true);
-  on(a => { if (AREAS.includes(a) || a === 'live') { if (ovMode === 'list') paintOverview(false); else paintRing(); const lv = $('#pvLive', el); if (lv) lv.innerHTML = liveHTML(); } });
+  paintOverview(true); startSweep();
+  on(a => { if (AREAS.includes(a) || a === 'live') { if (ovMode === 'list') paintOverview(false); else paintRadar(); const lv = $('#pvLive', el); if (lv) lv.innerHTML = liveHTML(); } });
   rendered.overview = () => paintOverview(false);
 }
-function paintRing() {
+function paintRadar() {
   if (!ovEl) return;
-  RING.forEach(a => { const p = $(`.fg[data-seg="${a}"]`, ovEl); if (!p) return; const to = has(a) ? p.dataset.l * (1 - fill(a)) : +p.dataset.l;
-    if (+p.style.strokeDashoffset !== +to) { anim(p, [{ strokeDashoffset: getComputedStyle(p).strokeDashoffset }, { strokeDashoffset: to }], { d: 900 }); p.style.strokeDashoffset = to; }
-    p.classList.toggle('bad', has(a) && tone(a) === 'bad'); p.classList.toggle('warn', has(a) && tone(a) === 'warn'); });
-  const done = AREAS.filter(has).length, ring = $('.pv-ring', ovEl);
-  ring.classList.toggle('scanning', AREAS.some(loading) || done < AREAS.length);
+  AREAS.forEach(a => { const tn = has(a) ? tone(a) : 'pend';
+    [$(`.pv-radar .sec[data-sec="${a}"]`, ovEl), $(`.pv-rl[data-sec="${a}"]`, ovEl)].forEach(el => { if (el) el.dataset.t = tn; }); });
+  const done = AREAS.filter(has).length, rd = $('.pv-radar', ovEl);
+  rd.classList.toggle('scanning', AREAS.some(loading) || done < AREAS.length);
+  paintBlips();
   const sc = $('#pvScore', ovEl); const target = done ? score() : 0;
   if (+sc.dataset.v !== target) SH.countUp(sc, target, 700);
-  $('#pvScoreL', ovEl).textContent = done === AREAS.length ? t('out of 100') : t('checking…');
+  $('#pvScoreL', ovEl).textContent = done === AREAS.length ? t('Protection level, out of 100') : t('checking…');
+  const lit = done === AREAS.length ? Math.round(target / (100 / GAUGE_N)) : 0, tn = target >= 75 ? 'ok' : target >= 55 ? 'warn' : 'bad';
+  $$('#pvGauge i', ovEl).forEach((c, k) => { const on = k < lit; if (c.classList.contains('on') !== on || c.dataset.t !== tn) { c.style.transitionDelay = `${(on ? k : GAUGE_N - k) * 22}ms`; c.classList.toggle('on', on); c.dataset.t = tn; } });
 }
 function paintOverview(first) {
   if (!ovEl) return;
-  paintRing();
+  paintRadar();
   const st = ovState(); $('#pvSt', ovEl).textContent = st.title; $('#pvSub', ovEl).textContent = st.sub;
   const btn = $('#pvFixAll', ovEl), nfix = (st.fixes || []).length; btn.disabled = !nfix; $('span', btn).textContent = nfix ? t('Fix what is safe ({n})', { n: nfix }) : t('Fix what is safe');
   const right = $('#pvRight', ovEl);
@@ -797,7 +836,7 @@ SH.module({
   enter() { start(); liveTick(); netTick(); badges(); },
   leave() { clearTimeout(liveTimer); clearTimeout(netTimer); },
   enterTab(tab, el) {
-    if (tab === 'overview' && el) { const r = $('.pv-ring', el); if (r) anim(r, [{ transform: 'rotate(-24deg) scale(.94)', opacity: .5 }, { transform: 'none', opacity: 1 }], { d: 620, e: EASE.spring }); if (rendered.overview) rendered.overview(); }
+    if (tab === 'overview' && el) { const r = $('.pv-radar', el); if (r) anim(r, [{ transform: 'scale(.9)', opacity: .4 }, { transform: 'none', opacity: 1 }], { d: 620, e: EASE.spring }); if (rendered.overview) rendered.overview(); startSweep(); }
     if (tab === 'network' && REAL && TS.network && NOW() - TS.network > 4) load('network');
     if (tab === 'permissions' && REAL && TS.permissions && NOW() - TS.permissions > 20) load('permissions');
   },

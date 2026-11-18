@@ -1,4 +1,4 @@
-/* StellarHub · Hangar */
+/* StellarHub · App Hangar */
 #v-hangar .sp{flex:1}
 #v-hangar .pan>h4{flex-wrap:wrap;row-gap:2px}
 #v-hangar .hg-spin{width:13px;height:13px;flex:none;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:hgspin calc(800ms + 400ms*(1 - var(--f))) linear infinite;opacity:.8}

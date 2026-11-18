@@ -1,4 +1,4 @@
-"""Hangar: catalog integrity, installed matching, winget search parsing, icons, kits, history and the install queue.
+"""App Hangar: catalog integrity, installed matching, winget search parsing, icons, kits, history and the install queue.
 They never install anything: the queue runs on a fake winget (hangar.RUNNER) or on the built-in dry run."""
 import io
 import json

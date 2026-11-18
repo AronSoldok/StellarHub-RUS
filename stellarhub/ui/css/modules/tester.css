@@ -39,14 +39,19 @@
 #v-tester .kb-cover b{font:500 19px var(--display);letter-spacing:-.02em}
 #v-tester .kb-cover span{color:var(--mute);font-size:12.5px;margin-bottom:8px}
 #v-tester .kb-side{display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto}
-#v-tester .kb-wp{flex:1 0 auto;min-height:96px;display:flex;flex-direction:column}
+#v-tester .kb-side>*{flex-shrink:0}
+#v-tester .kb-side>.kb-wp{flex:1 1 0;min-height:110px;display:flex;flex-direction:column}
 #v-tester .kb-stats{display:flex;flex-direction:column;gap:12px}
 #v-tester .kb-stats div{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12.5px}
 #v-tester .kb-stats b{font-weight:500;font-size:14px;text-align:right}
-#v-tester .kb-warn{display:flex;flex-direction:column;gap:6px;font-size:12.5px;overflow:auto;min-height:0}
+#v-tester .kb-warn{flex:1;display:flex;flex-direction:column;gap:6px;font-size:12.5px;overflow:auto;min-height:0}
 #v-tester .kb-warn .chip,#v-tester .ms-w .chip{height:auto;min-height:26px;padding:4px 10px;white-space:normal;border-radius:10px}
 #v-tester .chip svg{width:14px;height:14px}
 #v-tester .kb-acts{display:flex;gap:8px}
+#v-tester .kb-warn .chip{align-items:flex-start}
+#v-tester .kb-warn .chip>svg{margin-top:3px;flex:none}
+#v-tester .kb-warn .chip>span{flex:1;min-width:0;line-height:1.75}
+#v-tester .kb-warn kbd{display:inline-block;min-width:18px;margin:1px 0;padding:0 5px;border-radius:5px;background:color-mix(in oklab,var(--ink) 10%,transparent);font:500 11.5px var(--text);text-align:center}
 
 /* ---------- screen ---------- */
 #v-tester .sc{display:grid;grid-template-columns:1fr 320px;gap:14px;height:100%;min-height:0}

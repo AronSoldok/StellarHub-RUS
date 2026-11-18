@@ -1,4 +1,4 @@
-/* StellarHub · Hangar: pick the apps you want and install them all at once with winget (like Ninite or winstall).
+/* StellarHub · App Hangar: pick the apps you want and install them all at once with winget (like Ninite or winstall).
    Inside the app everything is REAL (stellarhub/engine/hangar.py): what is installed, winget search, icons, installs.
    Outside the app (browser, design tests) the same screens run on sample data and the queue is simulated. */
 'use strict';
@@ -401,7 +401,7 @@ function renderCatalog(el) {
 function clearQuery(el) { const inp = $('.hg-search input', el); inp.value = ''; S.q = ''; $('[data-qx]', el).hidden = true; if (S.ws.job) S.ws.job.cancel(); S.ws = { q: '', items: null, busy: false, err: null, job: null, more: 0 }; renderList(true); inp.focus(); }
 function noWinget(el) {
   const box = $('.hg-nowg', el); if (!box) return;
-  box.innerHTML = S.winget ? '' : `<div class="hg-warn">${ic('alert')}<span>${t("winget isn't available on this PC, so Hangar can't install apps. Install or update App Installer from the Microsoft Store, then come back.")}</span><button class="btn sm sec" data-url="https://apps.microsoft.com/detail/9nblggh4nns1">${ic('external')}${t('Open the Store')}</button></div>`;
+  box.innerHTML = S.winget ? '' : `<div class="hg-warn">${ic('alert')}<span>${t("winget isn't available on this PC, so App Hangar can't install apps. Install or update App Installer from the Microsoft Store, then come back.")}</span><button class="btn sm sec" data-url="https://apps.microsoft.com/detail/9nblggh4nns1">${ic('external')}${t('Open the Store')}</button></div>`;
 }
 function railHTML() {
   const cnt = c => APPS.filter(a => a.cat === c).length;
@@ -637,12 +637,13 @@ async function runQueueReal() {
     const job = SH.job(ID, 'install', [[plain(cur.a)], { scope: cur.o.scope, skipInstalled: cur.o.skip, run: cur.run }], { onProgress: m => {
       const s = m.data && m.data.items && m.data.items[0]; if (!s) return;
       const st = s.st === 'queued' ? 'down' : s.st; if (s.mb) cur.mb = s.mb; cur.p = s.p || 0;
+      if ((s.note || null) !== (cur.note || null)) { cur.note = s.note || null; cur.noteAt = Date.now() - (s.quiet || 0) * 1000; cur.st = st; updQRow(cur); clearInterval(cur.noteTimer); if (cur.note) cur.noteTimer = setInterval(() => { if (cur.note) updQRow(cur, true); else clearInterval(cur.noteTimer); }, 20000); return; }
       if (st !== cur.st && ['down', 'inst'].includes(st)) { cur.st = st; updQRow(cur); } else updQRow(cur, true);
     }, onLog: lines => { const l = lines.filter(x => x && !/^[\s\-\\|/█▒]+$/.test(x)).pop(); if (l) cur.last = l; } });
     cur.job = job;
     try {
       const res = await job; const s = (res && res.items && res.items[0]) || { st: 'fail', msg: t('No answer from the engine') };
-      cur.st = s.st === 'queued' ? 'fail' : s.st; cur.msg = s.msg; if (s.mb) cur.mb = s.mb; if (res && res.reboot) Q.reboot = true;
+      cur.st = s.st === 'queued' ? 'fail' : s.st; cur.msg = s.msg; cur.note = null; clearInterval(cur.noteTimer); if (s.mb) cur.mb = s.mb; if (res && res.reboot) Q.reboot = true;
     } catch (e) { cur.st = e.cancelled ? 'cancel' : 'fail'; cur.msg = e.cancelled ? null : e.message; }
     if (cur.cancelAfter && cur.st !== 'done') cur.st = 'cancel';
     onItemEnd(cur);
@@ -700,6 +701,9 @@ function retryFailed() {
 const QST = { queued: t('Waiting'), down: t('Downloading'), inst: t('Installing'), done: t('Installed'), skip: t('Already installed'), fail: t('Error'), cancel: t('Cancelled') };
 const mbTxt = v => v == null || isNaN(v) ? '' : v >= 1024 ? fmt1(v / 1024) + ' GB' : (v < 10 ? fmt1(v) : Math.round(v)) + ' MB';
 function qStateText(q) {
+  if (q.note === 'uac' && (q.st === 'down' || q.st === 'inst')) return t('Windows is asking for permission: look for the flashing shield in the taskbar');
+  if (q.note === 'quiet' && (q.st === 'down' || q.st === 'inst'))
+    return t('{state} · no news for {min} min', { state: q.st === 'inst' ? t('Installing') : t('Downloading'), min: Math.max(1, Math.round((Date.now() - (q.noteAt || Date.now())) / 60000)) });
   if (q.st === 'down') return q.mb ? t('Downloading, {got} of {total}', { got: mbTxt(q.mb * q.p), total: mbTxt(q.mb) }) : q.p ? t('Downloading, {pct}%', { pct: Math.round(q.p * 100) }) : t('Getting ready…');
   if (q.st === 'inst') return q.cancelAfter ? t('Installing; will stop when it finishes') : t('Installing…');
   if (q.st === 'fail') return esc(q.msg || t('Error'));
@@ -936,7 +940,7 @@ function parseCode(s) {
 }
 function shareDialog(k) {
   const code = kitCode(k);
-  const d = dialog(`<h3>${t('Share “{name}”', { name: esc(k.name) })}</h3><p class="muted">${t('Paste this code in Hangar on another PC (Kits, Import) to get the same apps.')}</p>
+  const d = dialog(`<h3>${t('Share “{name}”', { name: esc(k.name) })}</h3><p class="muted">${t('Paste this code in App Hangar on another PC (Kits, Import) to get the same apps.')}</p>
     <div class="hg-code"><code>${esc(code)}</code><button class="btn sm sec" data-copy>${ic('copy')}${t('Copy')}</button></div>
     <div class="hg-dbtns"><button class="btn ghost" data-kexp>${ic('download')}${t('Export as a file')}</button><span class="sp"></span><button class="btn sec" data-no>${t('Done')}</button></div>`,
   async (e, close) => {
@@ -955,7 +959,7 @@ async function exportKit(k) {
     return;
   }
   const blob = new Blob([JSON.stringify({ format: 'stellarhub-hangar-kit', version: 1, ...payload }, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (k.name || 'Hangar kit').replace(/[<>:"/\\|?*]+/g, '') + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (k.name || 'App Hangar kit').replace(/[<>:"/\\|?*]+/g, '') + '.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 function importDialog() {
   const d = dialog(`<h3>${t('Import a kit')}</h3><p class="muted">${t('Paste a code someone shared with you, or open a kit file.')}</p>
@@ -964,7 +968,7 @@ function importDialog() {
     <input type="file" accept=".json,application/json" hidden data-fin>`,
   async (e, close, root) => {
     const err = m => { const p = $('.hg-ierr', root); p.textContent = m; p.hidden = false; anim(p, [{ opacity: 0, transform: 'translate3d(0,-4px,0)' }, { opacity: 1, transform: 'none' }], { d: 260 }); };
-    if (e.target.closest('[data-yes]')) { const k = parseCode($('input', root).value); if (!k) { err(t("That doesn't look like a Hangar code.")); return; } close(); imported(k); return; }
+    if (e.target.closest('[data-yes]')) { const k = parseCode($('input', root).value); if (!k) { err(t("That doesn't look like an App Hangar code.")); return; } close(); imported(k); return; }
     if (e.target.closest('[data-kfile]')) {
       if (REAL) { let r; try { r = await SH.engine(ID, 'import_kit'); } catch (er) { err(er.message); return; } if (!r) return; if (r.error) { err(r.error); return; } close(); imported({ name: r.name, apps: r.apps.map(appOf) }); return; }
       $('[data-fin]', root).click();
@@ -975,7 +979,7 @@ function importDialog() {
   $('[data-fin]', d.el).addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return;
     try { const j = JSON.parse(await f.text()); const apps = (Array.isArray(j) ? j : j.apps || []).map(x => typeof x === 'string' ? { id: x } : x).filter(x => x && ID_RE.test(String(x.id || ''))).map(appOf);
       if (!apps.length) throw new Error('empty'); d.close(); imported({ name: String(j.name || '').slice(0, 60), apps }); }
-    catch { const p = $('.hg-ierr', d.el); p.textContent = t("That file isn't a Hangar kit."); p.hidden = false; } });
+    catch { const p = $('.hg-ierr', d.el); p.textContent = t("That file isn't an App Hangar kit."); p.hidden = false; } });
 }
 function imported(k) {
   const saved = saveKit(k.name || t('Imported kit'), k.apps);
@@ -1013,8 +1017,8 @@ function fillHistory(el, animate) {
       <span class="sp"></span><button class="btn sm ghost" data-rkit="${esc(r.run)}">${ic('plus')}${t('Save as a kit')}</button><button class="btn sm sec" data-rretry="${esc(r.run)}">${ic('refresh')}${c.fail ? t('Retry failed') : t('Install again')}</button></div>
       <div class="hg-ritems">${items.map(x => `<span class="hg-hi st-${esc(x.st)}" title="${esc(x.msg || '')}">${icon(appOf(x), 'xs')}<span>${esc(x.name || x.id)}</span>${x.st === 'fail' ? ic('alert') : x.st === 'skip' ? ic('minus') : ic('check')}</span>`).join('')}</div>
       ${items.filter(x => x.st === 'fail' && x.msg).map(x => `<p class="hg-rerr">${ic('alert')}<b>${esc(x.name || x.id)}</b><span>${esc(x.msg)}</span></p>`).join('')}</div>`; }).join('')
-    : `<div class="pan hg-hempty"><span class="hg-ei lg">${ic('clock')}</span><b>${t('Nothing installed with Hangar yet')}</b><span class="muted">${S.histErr ? t("Couldn't read the history: {error}", { error: esc(S.histErr) }) : t('Every batch you install shows up here, with what worked and what didn’t.')}</span><button class="btn sec" data-gocat>${ic('grid')}${t('Open the catalog')}</button></div>`;
-  side.innerHTML = `<h4>${t('History')}</h4><div class="hg-hbig"><div class="big"><span class="hg-hn">0</span></div><span class="muted">${ok === 1 ? t('app installed with Hangar') : t('apps installed with Hangar')}</span></div>
+    : `<div class="pan hg-hempty"><span class="hg-ei lg">${ic('clock')}</span><b>${t('Nothing installed with App Hangar yet')}</b><span class="muted">${S.histErr ? t("Couldn't read the history: {error}", { error: esc(S.histErr) }) : t('Every batch you install shows up here, with what worked and what didn’t.')}</span><button class="btn sec" data-gocat>${ic('grid')}${t('Open the catalog')}</button></div>`;
+  side.innerHTML = `<h4>${t('History')}</h4><div class="hg-hbig"><div class="big"><span class="hg-hn">0</span></div><span class="muted">${ok === 1 ? t('app installed with App Hangar') : t('apps installed with App Hangar')}</span></div>
     <div class="hg-hrows">${[[t('Batches'), runs.length], [t('Failed'), all.filter(x => x.st === 'fail').length], [t('Last batch'), runs[0] ? fdate((runs[0].at || 0) * 1000) : '—']].map(([l, v]) => `<div><span class="muted">${l}</span><b>${esc(String(v))}</b></div>`).join('')}</div>
     <p class="faint hg-hnote">${t('The history stays on this PC.')}</p>${runs.length ? `<button class="btn sm ghost" data-hclear>${ic('trash')}${t('Clear the history')}</button>` : ''}`;
   SH.countUp($('.hg-hn', side), ok, 700);
@@ -1056,6 +1060,6 @@ SH.module({
 SH.actions.add([
   { t: t('Install several apps at once'), go: ID, tab: 'catalog', ic: ID },
   { t: t('Set up a new PC with a kit'), go: ID, tab: 'kits', ic: 'package' },
-  { t: t('See what Hangar installed'), go: ID, tab: 'history', ic: 'clock' },
+  { t: t('See what App Hangar installed'), go: ID, tab: 'history', ic: 'clock' },
 ]);
 })();

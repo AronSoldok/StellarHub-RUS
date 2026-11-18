@@ -1,8 +1,8 @@
-"""Hangar engine: pick apps and install them all at once with winget (like Ninite or winstall), for real.
+"""App Hangar engine: pick apps and install them all at once with winget (like Ninite or winstall), for real.
 
 - The curated catalog lives in the interface (ui/js/modules/hangar.js); the engine only ever gets winget ids.
 - What is installed: `winget list` (read-only), matched by id and, for names without a version, by name. The
-  result is kept on disk so reopening Hangar is instant.
+  result is kept on disk so reopening App Hangar is instant.
 - Search: `winget search` (read-only), for apps that are not in the catalog.
 - Icons: fetched once per package, normalized to a crisp 64 px PNG and cached on disk (<data>/hangar/icons).
   Sources, in order: the URL the catalog gives, winstall's icon API (keyed by winget id), UniGetUI's icon database
@@ -36,7 +36,7 @@ STORE_RE = re.compile(r"^[0-9A-Z]{12}$")  # Microsoft Store product ids (9NKSQGP
 UA = "StellarHub/0.2 (Windows app; icon cache)"
 KIT_FORMAT = "stellarhub-hangar-kit"
 
-# winget return codes Hangar treats specially (the rest come from the Program Updater's table)
+# winget return codes App Hangar treats specially (the rest come from the Program Updater's table)
 NO_APPLICABLE = "0x8A150010"      # no installer fits (also: the scope asked for isn't offered)
 ALREADY = "0x8A150061"            # --no-upgrade and the package is installed
 UP_TO_DATE = {"0x8A15002B", "0x8A15004F"}
@@ -479,19 +479,20 @@ def install_command(it, opts, scope=True):
 
 def _install_one(job, it, opts, report):
     """(state, message, extra) with state: done | skip | fail | cancel."""
-    state = {"phase": "down", "mb": None}
+    state = {"phase": "down", "mb": None, "note": None}
 
     def on_text(s):
         m = re.search(r"([\d.,]+)\s*(KB|MB|GB)\s*/\s*([\d.,]+)\s*(KB|MB|GB)", s)
         if m:
             got = float(m.group(1).replace(",", ".")) * U._SIZE[m.group(2)]
             tot = float(m.group(3).replace(",", ".")) * U._SIZE[m.group(4)]
-            state["mb"] = tot
-            report("down", got / tot if tot else 0, mb=tot)
+            state["mb"], state["p"] = tot, (got / tot if tot else 0)
+            report("down", state["p"], mb=tot)
             return
         m = re.search(r"(\d{1,3})\s*%", s)
         if m and state["phase"] == "down":
-            report("down", int(m.group(1)) / 100, mb=state["mb"])
+            state["p"] = int(m.group(1)) / 100
+            report("down", state["p"], mb=state["mb"])
             return
         low = s.lower()
         # progress words in the languages winget prints (it follows the Windows display language)
@@ -501,9 +502,18 @@ def _install_one(job, it, opts, report):
             report("inst", 1, mb=state["mb"])
         job.log(s)
 
+    def on_tick(elapsed, quiet):
+        # say what is really going on when nothing moves: Windows waiting for the user's permission (its prompt
+        # may sit flashing in the taskbar), or a download or installer that has gone quiet
+        note = "uac" if quiet > 2 and U.consent_prompt_open() else ("quiet" if quiet > 90 else None)
+        if note != state["note"]:
+            state["note"] = note
+            report(state["phase"], 1 if state["phase"] == "inst" else state.get("p", 0), mb=state["mb"], note=note, quiet=quiet)
+
     run = _runner(opts)
+    kw = {"on_tick": on_tick} if run is U._stream else {}
     cmd = install_command(it, opts)
-    code, out = run(cmd, on_text, job=job, timeout=3600)
+    code, out = run(cmd, on_text, job=job, timeout=3600, **kw)
     note = None
     if not job.cancelled and "--scope" in cmd and _hexc(code) == NO_APPLICABLE:
         # no installer for that scope: install it the only way the package offers
@@ -511,7 +521,7 @@ def _install_one(job, it, opts, report):
         state["phase"] = "down"
         report("down", 0)
         note = tr("This app only installs for all users.") if opts.get("scope") == "user" else tr("This app only installs for your account.")
-        code, out = run(install_command(it, opts, scope=False), on_text, job=job, timeout=3600)
+        code, out = run(install_command(it, opts, scope=False), on_text, job=job, timeout=3600, **kw)
     if job.cancelled:
         return "cancel", tr("Cancelled"), {}
     hexc = _hexc(code)
@@ -538,7 +548,7 @@ def install(job, items, opts=None):
     Progress: data.items[i] = {st, p, mb, msg}."""
     opts = dict(opts or {})
     items = [it for it in (items or []) if isinstance(it, dict) and ID_RE.match(str(it.get("id") or ""))]
-    states = [{"st": "queued", "p": 0, "mb": None, "msg": None} for _ in items]
+    states = [{"st": "queued", "p": 0, "mb": None, "msg": None, "note": None} for _ in items]
     job.data["items"] = states
     reboot = False
     run_id = str(opts.get("run") or int(time.time() * 1000))[:40]
@@ -550,8 +560,10 @@ def install(job, items, opts=None):
             break
         cur = states[i]
 
-        def report(phase, p, mb=None, cur=cur, i=i, it=it):
+        def report(phase, p, mb=None, note=False, quiet=None, cur=cur, i=i, it=it):
             cur["st"], cur["p"] = phase, max(0, min(1, p))
+            if note is not False:  # None clears it
+                cur["note"], cur["quiet"] = note, round(quiet or 0)
             if mb:
                 cur["mb"] = round(mb, 1)
             done = sum(1 for s in states if s["st"] in ("done", "skip", "fail", "cancel"))
@@ -561,7 +573,7 @@ def install(job, items, opts=None):
             st, msg, extra = _install_one(job, it, opts, report)
         except Exception as e:
             st, msg, extra = "fail", str(e)[:160], {}
-        cur["st"], cur["msg"] = st, msg
+        cur["st"], cur["msg"], cur["note"] = st, msg, None
         if extra.get("mb"):
             cur["mb"] = round(extra["mb"], 1)
         if st == "done":
@@ -666,8 +678,8 @@ def export_kit(kit):
         return {"error": tr("The kit is empty.")}
     try:
         w, webview = _window()
-        safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "", k["name"] or "Hangar kit").strip() or "Hangar kit"
-        r = w.create_file_dialog(webview.SAVE_DIALOG, save_filename=f"{safe}.json", file_types=(tr("Hangar kit") + " (*.json)",))
+        safe = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "", k["name"] or "App Hangar kit").strip() or "App Hangar kit"
+        r = w.create_file_dialog(webview.SAVE_DIALOG, save_filename=f"{safe}.json", file_types=(tr("App Hangar kit") + " (*.json)",))
     except Exception:
         return None
     if not r:
@@ -683,7 +695,7 @@ def import_kit():
     """Open dialog, then reads a kit file. The kit, None if cancelled, or {error}."""
     try:
         w, webview = _window()
-        r = w.create_file_dialog(webview.OPEN_DIALOG, file_types=(tr("Hangar kit") + " (*.json)",))
+        r = w.create_file_dialog(webview.OPEN_DIALOG, file_types=(tr("App Hangar kit") + " (*.json)",))
     except Exception:
         return None
     if not r:
@@ -693,4 +705,4 @@ def import_kit():
             k = clean_kit(json.load(fh))
     except (OSError, ValueError):
         k = None
-    return k or {"error": tr("That file isn't a Hangar kit.")}
+    return k or {"error": tr("That file isn't an App Hangar kit.")}

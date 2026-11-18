@@ -47,3 +47,26 @@ class SilentSwitches(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StreamEnds(unittest.TestCase):
+    """winget can start an installer that leaves a process holding the output pipe (Foxit's update service):
+    the read must end when the command ends, not when the pipe closes."""
+
+    def test_returns_when_command_exits_even_if_a_child_keeps_the_pipe(self):
+        import sys
+        import time
+        code = ("import subprocess,sys;print('Starting package install...',flush=True);"
+                "subprocess.Popen([sys.executable,'-c','import time;time.sleep(25)']);print('Successfully installed',flush=True)")
+        t = time.monotonic()
+        rc, out = u._stream([sys.executable, "-c", code])
+        self.assertLess(time.monotonic() - t, 10)
+        self.assertEqual(rc, 0)
+        self.assertIn("Successfully installed", out)
+
+    def test_timeout_kills(self):
+        import sys
+        import time
+        t = time.monotonic()
+        u._stream([sys.executable, "-c", "import time;time.sleep(30)"], timeout=2)
+        self.assertLess(time.monotonic() - t, 8)
