@@ -9,6 +9,7 @@ import threading
 import time
 
 from . import VERSION
+from .i18n import tr
 
 APP_ID = "StellarHub.App"
 BG = "#060A14"
@@ -128,7 +129,22 @@ class Api:
             with open(tmp, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, ensure_ascii=False, indent=2)
             os.replace(tmp, SETTINGS)
+        if "language" in changes:
+            self._language_changed(changes["language"])
         return True
+
+    def _language_changed(self, pref):
+        """New interface language: the engine and tray follow, and the widget reloads in the new language
+        (the main window reloads itself)."""
+        from . import i18n
+        i18n.set_language(pref)
+        if self._tray is not None and hasattr(self._tray, "rebuild"):
+            try:
+                self._tray.rebuild()
+            except Exception:
+                pass
+        if self._widget is not None:
+            self._js(f"try{{localStorage.setItem('sh.lang', {json.dumps(pref or 'auto')})}}catch(e){{}};location.reload()", self._widget)
 
     # ---------- custom window frame ----------
     def win_drag(self):
@@ -205,7 +221,7 @@ class Api:
             self._tele_refresh()
             if not self._told_tray:
                 self._told_tray = True
-                self._tray.notify("StellarHub is still running in the tray. Open it from here, or right-click > Quit to exit.")
+                self._tray.notify(tr("StellarHub is still running in the tray. Open it from here, or right-click > Quit to exit."))
             return "hidden"
         self.quit()
         return "quit"
@@ -286,7 +302,7 @@ class Api:
         except Exception:
             pass
         self._widget = webview.create_window(
-            "StellarHub widget", url=os.path.join(UI_DIR, "widget.html"), js_api=self,
+            tr("StellarHub widget"), url=os.path.join(UI_DIR, "widget.html"), js_api=self,
             width=w, height=h, x=x, y=y, frameless=True, easy_drag=True, on_top=True, min_size=(120, 30),
             resizable=False, background_color=BG, focus=False,
         )
@@ -534,7 +550,7 @@ class Api:
     def export_settings(self):
         import webview
         r = self._window.create_file_dialog(webview.SAVE_DIALOG, save_filename="StellarHub-settings.json",
-                                            file_types=("StellarHub settings (*.json)",))
+                                            file_types=(tr("StellarHub settings") + " (*.json)",))
         if not r:
             return None
         path = r if isinstance(r, str) else r[0]
@@ -544,7 +560,7 @@ class Api:
 
     def import_settings(self):
         import webview
-        r = self._window.create_file_dialog(webview.OPEN_DIALOG, file_types=("StellarHub settings (*.json)",))
+        r = self._window.create_file_dialog(webview.OPEN_DIALOG, file_types=(tr("StellarHub settings") + " (*.json)",))
         if not r:
             return None
         try:
@@ -702,8 +718,8 @@ def _ensure_admin_task():
     """Creates (or updates) the scheduled task that opens StellarHub elevated without the UAC prompt."""
     import subprocess
     exe, args = _launch_cmd("--from-task")
-    tr = f'"{exe}" {args}'
-    r = subprocess.run(["schtasks", "/create", "/tn", ADMIN_TASK, "/tr", tr, "/sc", "once", "/st", "00:00",
+    task_cmd = f'"{exe}" {args}'
+    r = subprocess.run(["schtasks", "/create", "/tn", ADMIN_TASK, "/tr", task_cmd, "/sc", "once", "/st", "00:00",
                         "/sd", "01/01/2000", "/rl", "highest", "/it", "/f"],
                        capture_output=True, text=True, creationflags=0x08000000)
     if r.returncode == 0:  # replace tasks left by earlier versions under another name
@@ -807,6 +823,48 @@ def _quit_running():
             return
 
 
+SETUP_KEYS = {"language": str, "startWithWindows": bool, "alwaysAdmin": bool, "widgetWasOpen": bool}
+
+
+def _cli_setup(pairs):
+    """--setup key=value ...: the choices made in the installer, written to this user's settings.
+    The installer runs it as the user who installs (not elevated), so it lands in their profile.
+    Only the keys in SETUP_KEYS are accepted; anything else is ignored."""
+    changes = {}
+    for p in pairs:
+        k, sep, v = p.partition("=")
+        kind = SETUP_KEYS.get(k)
+        if not sep or kind is None:
+            continue
+        changes[k] = v.strip().lower() in ("1", "true", "yes", "on") if kind is bool else v.strip()[:16]
+    if not changes:
+        return
+    data = _read_settings()
+    data.update(changes)
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        tmp = SETTINGS + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, SETTINGS)
+    except OSError:
+        return
+    if "startWithWindows" in changes:
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
+                                winreg.KEY_SET_VALUE) as k:
+                if changes["startWithWindows"]:
+                    winreg.SetValueEx(k, "StellarHub", 0, winreg.REG_SZ, _autostart_cmd())
+                else:
+                    try:
+                        winreg.DeleteValue(k, "StellarHub")
+                    except FileNotFoundError:
+                        pass
+        except OSError:
+            pass
+
+
 def _uninstall_cleanup():
     """--uninstall-cleanup: removes what StellarHub registered in Windows outside its own folder."""
     _delete_admin_task()
@@ -879,9 +937,16 @@ def main():
         return _quit_running()
     if "--uninstall-cleanup" in sys.argv:
         return _uninstall_cleanup()
+    if "--setup" in sys.argv:
+        return _cli_setup(sys.argv[sys.argv.index("--setup") + 1:])
+    if "--admin-task" in sys.argv:
+        on = sys.argv[sys.argv.index("--admin-task") + 1:][:1] == ["on"]
+        return _ensure_admin_task() if on else _delete_admin_task()
     _log_to_file()
     if FROZEN:
         _migrate_store_python_data()
+    from . import i18n
+    i18n.set_language(os.environ.get("STELLARHUB_LANG") or _read_settings().get("language"))
     _wait_for_previous()
     if _already_running():
         return
@@ -902,7 +967,7 @@ def main():
     import webview
 
     api = Api()
-    title = "StellarHub" + ("  (administrator)" if is_admin() else "")
+    title = tr("StellarHub (administrator)") if is_admin() else "StellarHub"
     from .chrome import Chrome
 
     start_hidden = "--tray" in sys.argv

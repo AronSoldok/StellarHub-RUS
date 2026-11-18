@@ -7,6 +7,7 @@ import os
 import re
 import winreg
 
+from ...i18n import tr
 from . import paths, registry
 from .paths import is_within, kf, norm_path
 
@@ -121,28 +122,28 @@ class Context:
         """Return (block_reason | None, is_personal)."""
         n = norm_path(path)
         if not n or not os.path.isabs(n) or len(n) <= 3:
-            return "Drive root or invalid path", False
+            return tr("Drive root or invalid path"), False
         for p in self.protected:
             if is_within(p, n):
-                return ("Protected system folder" if p == n else
-                        "Contains a protected system folder"), False
+                return (tr("Protected system folder") if p == n else
+                        tr("Contains a protected system folder")), False
         for f in self.forbidden:
             if is_within(n, f) and not any(is_within(n, e) for e in self.exceptions):
-                return "Protected Windows area", False
+                return tr("Protected Windows area"), False
             if is_within(f, n):
-                return "Contains a protected Windows area", False
+                return tr("Contains a protected Windows area"), False
         for loc, name in self.others:
             # A) deleting this would take another installed program with it: always blocked
             if is_within(loc, n):
-                return f"Contains “{name}”, which is still installed", False
+                return tr("Contains “{name}”, which is still installed", name=name), False
             # B) it is inside another program
             if is_within(n, loc):
                 # Inside another program: only allowed if it is the target program's nested folder (e.g. a game inside Steam)
                 if not (self.target_loc and is_within(self.target_loc, loc) and is_within(n, self.target_loc)):
-                    return f"Belongs to “{name}”, which is still installed", False
+                    return tr("Belongs to “{name}”, which is still installed", name=name), False
         for dll, count in self.shared_dlls.items():
             if count > 1 and is_within(dll, n):
-                return "Contains files shared with other programs (SharedDLLs)", False
+                return tr("Contains files shared with other programs (SharedDLLs)"), False
         personal = any(is_within(n, r) for r in self.personal)
         desk = kf("Desktop")
         if desk and is_within(n, desk) and os.path.isdir(path):
@@ -185,7 +186,7 @@ def reg_rule(ref):
     parts = p.split("\\") if p else []
     is_val = ref.value is not None
     if len(parts) < 2 and not is_val:
-        return "Registry root key"
+        return tr("Registry root key")
     # values that can be removed one by one
     if is_val:
         if re.fullmatch(_CV + r"\\(run|runonce|runonceex)", p):
@@ -203,7 +204,7 @@ def reg_rule(ref):
             return None
         if p.startswith("software\\") and len(parts) >= 3 and parts[1] not in _SW_BLOCK:
             return None
-        return "Value in a protected registry area"
+        return tr("Value in a protected registry area")
     # keys
     if re.fullmatch(_CV + r"\\uninstall\\[^\\]+", p) or re.fullmatch(_CV + r"\\app paths\\[^\\]+", p):
         return None
@@ -224,18 +225,18 @@ def reg_rule(ref):
         if len(rest) == 1 and head and not head.startswith(".") and head not in _CLASSES_BLOCK \
                 and not head.startswith("windows.") and not head.startswith("microsoft."):
             return None
-        return "Protected registry area (Classes)"
+        return tr("Protected registry area (Classes)")
     if p.startswith("software\\"):
         sub = parts[1] if parts[1] != "wow6432node" else (parts[2] if len(parts) > 2 else "")
         depth = len(parts) - (1 if parts[1] == "wow6432node" else 0)
         if not sub or sub in _SW_BLOCK:
-            return "Protected registry area"
+            return tr("Protected registry area")
         if sub == "appdatalow":
             return None if len(parts) >= 4 and parts[2] == "software" and parts[3] not in _SW_BLOCK else \
-                "Protected registry area"
+                tr("Protected registry area")
         if depth >= 2:
             return None
-    return "Protected registry area"
+    return tr("Protected registry area")
 
 
 # ================================================================ services
@@ -259,18 +260,18 @@ def service_info(name):
 def service_rule(name, info=None):
     info = info or service_info(name)
     if name.lower() in _CRITICAL_SVC:
-        return "Essential Windows service"
+        return tr("Essential Windows service")
     typ, start = info.get("type"), info.get("start")
     if typ is None and start is None:
         return None  # no longer exists: the key is a leftover
     if isinstance(typ, int) and typ & 0x0F:
-        return "System driver: only its official uninstaller can remove it"
+        return tr("System driver: only its official uninstaller can remove it")
     if isinstance(start, int) and start <= 1:
-        return "Loads when Windows starts: deleting it could stop Windows from booting"
+        return tr("Loads when Windows starts: deleting it could stop Windows from booting")
     img = norm_path(_image_path(info.get("image", "")))
     win = norm_path(kf("Windows"))
     if img and win and is_within(img, win):
-        return "Service hosted in Windows"
+        return tr("Service hosted in Windows")
     return None
 
 

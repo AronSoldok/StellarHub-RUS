@@ -17,6 +17,8 @@ import threading
 import time
 from ctypes import wintypes
 
+from ..i18n import tr
+
 EXPORTS = {"drives", "pick_folder", "view", "info", "types", "largest", "compare", "reveal", "trash", "restore", "can_delete"}
 JOBS = {"scan", "duplicates"}
 
@@ -143,8 +145,9 @@ def drives():
 
 def pick_folder():
     """Windows dialog to pick a folder (on top of the app)."""
+    title = tr("Choose the folder you want to scan").replace("'", "''")   # inside a single-quoted PowerShell string
     ps = ("Add-Type -AssemblyName System.Windows.Forms; $o=New-Object System.Windows.Forms.Form -Property @{TopMost=$true;ShowInTaskbar=$false};"
-          "$f=New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description='Choose the folder you want to scan';"
+          f"$f=New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description='{title}';"
           "$f.UseDescriptionForTitle=$true; if($f.ShowDialog($o) -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8; $f.SelectedPath}")
     r = subprocess.run(["powershell.exe", "-NoProfile", "-STA", "-Command", ps], capture_output=True, creationflags=NO_WINDOW)
     p = r.stdout.decode("utf-8", "replace").strip()
@@ -175,7 +178,7 @@ def scan(job, target="C:\\", threads=8):
     if len(target) == 2 and target[1] == ":":
         target += "\\"
     if not os.path.isdir(target):
-        raise ValueError(f"The folder {target} doesn't exist")
+        raise ValueError(tr("The folder {target} doesn't exist", target=target))
     with _lock:
         _cur["scan"] = None   # free the previous scan's memory before starting another
     s = Scan(target)
@@ -200,7 +203,7 @@ def scan(job, target="C:\\", threads=8):
             s.exts, s.big, s.fidx = {}, [], {}
     if s.method != "mft":
         _scan_folders(job, s, target, whole_drive, threads, t0)
-    job.progress(.995, "Sorting…", force=True, files=s.files, bytes=s.bytes, method=s.method)
+    job.progress(.995, tr("Sorting…"), force=True, files=s.files, bytes=s.bytes, method=s.method)
     _finish(s)
     s.secs = round(time.monotonic() - t0, 1)
     s.when = time.time()
@@ -217,7 +220,7 @@ def _scan_mft(job, s, t0):
 
     def prog(frac, recs):
         el = time.monotonic() - t0
-        job.progress(min(.9, frac * .9), "Reading the file table", files=recs, bytes=int(expect * frac),
+        job.progress(min(.9, frac * .9), tr("Reading the file table"), files=recs, bytes=int(expect * frac),
                      rate=round(recs / max(.1, el)), secs=round(el, 1), exact=True, method="mft", unit="entries")
 
     try:
@@ -227,7 +230,7 @@ def _scan_mft(job, s, t0):
         return False
     if m is None:
         job.stop()
-    job.progress(.92, "Building the folder tree", force=True, method="mft", unit="entries")
+    job.progress(.92, tr("Building the folder tree"), force=True, method="mft", unit="entries")
     n, fl, par, size, alloc, mt, ex = m["n"], m["flags"], m["parent"], m["size"], m["alloc"], m["mtime"], m["ext"]
     names, exts = m["names"], m["exts"]
     used_named_dir = ntfs.F_USED | ntfs.F_NAMED | ntfs.F_DIR
@@ -305,7 +308,7 @@ def _scan_mft(job, s, t0):
         if r & 0x3FFFF == 0:
             if job.cancelled:
                 job.stop()
-            job.progress(.92 + .06 * r / n, "Building the folder tree", files=files, method="mft", unit="entries")
+            job.progress(.92 + .06 * r / n, tr("Building the folder tree"), files=files, method="mft", unit="entries")
     for i, (b, c) in enumerate(ext_acc):
         if c:
             s.exts[exts[i]] = [b, c, ext_type[i]]
@@ -477,7 +480,7 @@ def _finish(s):
 def _get():
     s = _cur["scan"]
     if s is None:
-        raise RuntimeError("There is no scan yet")
+        raise RuntimeError(tr("There is no scan yet"))
     return s
 
 
@@ -526,10 +529,10 @@ def _node(d, depth, min_bytes, max_kids):
             kids.append({"id": x[0], "name": x[1], "size": x[2], "mtime": int(x[3] * 1000), "ext": x[4], "type": ftype(x[1], x[4])})
         else:
             cats = x[2]
-            kids.append({"id": -d.id, "name": f"{x[1]} small file{'s' if x[1] != 1 else ''}",
+            kids.append({"id": -d.id, "name": tr("{n} small files", n=x[1]) if x[1] != 1 else tr("1 small file"),
                          "size": x[0], "fc": x[1], "ext": "", "type": _dom(cats), "group": True, "mtime": int(d.mtime * 1000)})
     if rest > 0:
-        kids.append({"id": -(10_000_000 + d.id), "name": "Other smaller items", "size": rest, "fc": rest_n,
+        kids.append({"id": -(10_000_000 + d.id), "name": tr("Other smaller items"), "size": rest, "fc": rest_n,
                      "ext": "", "type": _dom(rest_cats), "group": True, "mtime": int(d.mtime * 1000)})
     out["kids"] = kids
     return out
@@ -540,7 +543,7 @@ def view(node_id=None, depth=3, max_kids=70):
     s = _get()
     d = s.index.get(int(node_id)) if node_id else s.root
     if d is None:
-        raise KeyError("That folder is no longer in the scan")
+        raise KeyError(tr("That folder is no longer in the scan"))
     min_bytes = max(1, int(d.size * 0.0012))
     return _node(d, int(depth), min_bytes, int(max_kids))
 
@@ -561,7 +564,7 @@ def types():
         b = by.setdefault(ty, {"type": ty, "size": 0, "count": 0, "exts": []})
         b["size"] += size
         b["count"] += n
-        b["exts"].append([ext or "(no extension)", size])
+        b["exts"].append([ext or tr("(no extension)"), size])
     out = sorted(by.values(), key=lambda b: b["size"], reverse=True)
     for b in out:
         b["exts"] = sorted(b["exts"], key=lambda x: x[1], reverse=True)[:6]
@@ -749,21 +752,21 @@ def _protected(path):
         roots.append(os.path.normcase(os.path.dirname(sys.executable)))
     for r in roots:
         if p == r or p.startswith(r + os.sep):
-            return "It's inside a folder StellarHub never touches."
+            return tr("It's inside a folder StellarHub never touches.")
     for pf in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramW6432")):
         if pf and (p == os.path.normcase(pf) or os.path.dirname(p) == os.path.normcase(pf)):
-            return "It's a program folder: uninstall it from Program Remover."
+            return tr("It's a program folder: uninstall it from Program Remover.")
     if os.path.basename(p) in SYS_NAMES:
-        return "It's a Windows file (virtual memory or hibernation)."
+        return tr("It's a Windows file (virtual memory or hibernation).")
     drive, rest = os.path.splitdrive(p)
     if rest in ("", "\\"):
-        return "It's the root of a drive."
+        return tr("It's the root of a drive.")
     try:
         from .removal import paths as rp
         home = os.path.normcase(os.path.expanduser("~"))
         if p in (home, os.path.normcase(rp.kf("Documents") or ""), os.path.normcase(rp.kf("Desktop") or ""),
                  os.path.normcase(rp.kf("Downloads") or "")):
-            return "It's one of the main folders of your profile."
+            return tr("It's one of the main folders of your profile.")
     except Exception:
         pass
     return None
@@ -798,7 +801,7 @@ def trash(path):
     if why:
         return {"ok": False, "error": why}
     if not os.path.exists(path):
-        return {"ok": False, "error": "It no longer exists."}
+        return {"ok": False, "error": tr("It no longer exists.")}
     size = 0
     try:
         size = os.path.getsize(path) if os.path.isfile(path) else 0
@@ -810,7 +813,7 @@ def trash(path):
     op.fFlags = 0x0040 | 0x0010 | 0x0004 | 0x0400  # ALLOWUNDO | NOCONFIRMATION | SILENT | NOERRORUI
     r = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
     if r != 0 or op.fAnyOperationsAborted or os.path.exists(path):
-        return {"ok": False, "error": "Windows couldn't move it to the Recycle Bin (is it open, or does it need admin permissions?)."}
+        return {"ok": False, "error": tr("Windows couldn't move it to the Recycle Bin (is it open, or does it need admin permissions?).")}
     s = _cur["scan"]
     if s is not None:
         _forget(s, path)
@@ -870,9 +873,9 @@ def restore(path):
     except OSError:
         pass
     if not best:
-        return {"ok": False, "error": "It's not in the Recycle Bin. You can look for it in the Windows Recycle Bin."}
+        return {"ok": False, "error": tr("It's not in the Recycle Bin. You can look for it in the Windows Recycle Bin.")}
     if os.path.exists(path):
-        return {"ok": False, "error": "There's already another file with that name in its place."}
+        return {"ok": False, "error": tr("There's already another file with that name in its place.")}
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         os.replace(best[1], path)
@@ -881,5 +884,5 @@ def restore(path):
         except OSError:
             pass
     except OSError:
-        return {"ok": False, "error": "Couldn't restore it from here: open it from the Windows Recycle Bin."}
+        return {"ok": False, "error": tr("Couldn't restore it from here: open it from the Windows Recycle Bin.")}
     return {"ok": True}

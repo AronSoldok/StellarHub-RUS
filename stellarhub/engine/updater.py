@@ -18,6 +18,7 @@ import time
 import winreg
 from concurrent.futures import ThreadPoolExecutor
 
+from ..i18n import tr
 from .ps import ps_json, NO_WINDOW
 
 EXPORTS = {"status", "notes", "pin", "unpin", "set_pause", "store_auto", "set_store_auto", "icon_for"}
@@ -247,7 +248,7 @@ def scan_apps(job):
     """Read-only: what winget can update and what is installed outside winget."""
     if not _exe("winget"):
         return {"winget": False}
-    job.progress(.05, "Asking winget what's new…")
+    job.progress(.05, tr("Asking winget what's new…"))
     pool = ThreadPoolExecutor(4)
     f_up = pool.submit(lambda: parse_table(_winget(["upgrade", "--include-unknown"], timeout=240) or ""))
     f_ls = pool.submit(lambda: parse_table(_winget(["list"], timeout=240) or ""))
@@ -255,7 +256,7 @@ def scan_apps(job):
     f_prog = pool.submit(_programs)
     ups = f_up.result()
     job.check()
-    job.progress(.45, f"{len(ups)} updates found. Reading what's installed…")
+    job.progress(.45, tr("{n} updates found. Reading what's installed…", n=len(ups)))
     installed = f_ls.result()
     pins = f_pin.result()
     f_prog.result()
@@ -276,8 +277,8 @@ def scan_apps(job):
                       "from": "unknown" if unk else ver, "unknownVersion": unk, "optional": unk,
                       "to": u["available"], "source": u.get("source") or "",
                       "cat": _category(u), "mb": None, "admin": False, "reboot": False,
-                      "notes": ["winget can't read the installed version, so updating reinstalls the latest one. "
-                                "That's why it isn't included in Update all."] if unk else [],
+                      "notes": [tr("winget can't read the installed version, so updating reinstalls the latest one. "
+                                   "That's why it isn't included in Update all.")] if unk else [],
                       "pinned": u["id"] in pins, "user": bool((p or {}).get("user")), "_p": p})
     # outside winget: registry programs (ARP) that winget can't update
     unknown, store_ok, rt_ok, dev_ok = [], [], [], []
@@ -305,7 +306,7 @@ def scan_apps(job):
     wv = _webview2()
     if wv and not any("webview2" in x["name"].lower() for x in rt_ok + [i for i in items if i["cat"] == "runtimes"]):
         rt_ok.append({"name": "WebView2 Runtime", "ver": wv, "pub": "Microsoft", "id": "Microsoft.EdgeWebView2Runtime"})
-    job.progress(.6, "Getting each program's icon…")
+    job.progress(.6, tr("Getting each program's icon…"))
     todo = [x for x in items + unknown if x.get("_p")]
     done = [0]
 
@@ -313,7 +314,7 @@ def scan_apps(job):
         x["icon"] = _icon(x["_p"])
         done[0] += 1
         if done[0] % 4 == 0:
-            job.progress(.6 + .38 * done[0] / max(1, len(todo)), "Getting each program's icon…")
+            job.progress(.6 + .38 * done[0] / max(1, len(todo)), tr("Getting each program's icon…"))
     list(ThreadPoolExecutor(6).map(ic, todo))
     for x in items + unknown:
         x.pop("_p", None)
@@ -410,14 +411,14 @@ def _wu_cat(u):
 
 def scan_windows(job):
     """Read-only: a real Windows Update search (takes 20-60 s), history, pause, restart and antivirus."""
-    job.progress(.1, "Searching Windows Update…")
+    job.progress(.1, tr("Searching Windows Update…"))
     stop = threading.Event()
 
     def tick():  # the Windows search reports no progress: creep forward slowly so it looks alive
         p = .1
         while not stop.wait(1.0):
             p = min(.9, p + (.9 - p) * .06)
-            job.progress(p, "Searching Windows Update…")
+            job.progress(p, tr("Searching Windows Update…"))
     threading.Thread(target=tick, daemon=True).start()
     try:
         r = ps_json(_WU_SCAN, timeout=300) or {}
@@ -507,7 +508,7 @@ def scan_dev(job):
     """Read-only: outdated pip packages (from the user's Python), global npm packages and versions."""
     out = {"python": None, "pip": [], "node": None, "npm": [], "git": None, "tools": []}
     py = _python()
-    job.progress(.1, "Asking pip…")
+    job.progress(.1, tr("Asking pip…"))
     try:
         r = subprocess.run([py, "--version"], capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW)
         out["python"] = (r.stdout or r.stderr).strip().replace("Python ", "")
@@ -517,7 +518,7 @@ def scan_dev(job):
     except Exception as e:
         out["pipError"] = str(e)[:200]
     job.check()
-    job.progress(.6, "Asking npm…")
+    job.progress(.6, tr("Asking npm…"))
     node = _exe("node")
     if node:
         try:
@@ -528,7 +529,7 @@ def scan_dev(job):
             out["npm"] = [[n, d.get("current", ""), d.get("latest", "")] for n, d in data.items()]
         except Exception as e:
             out["npmError"] = str(e)[:200]
-    job.progress(.85, "Checking the other tools…")
+    job.progress(.85, tr("Checking the other tools…"))
     for name, cmd, rx in (("Git", ["git", "--version"], r"(\d+\.\d+\.\d+(?:\.windows\.\d+)?)"),
                           ("PowerShell 7", ["pwsh", "--version"], r"(\d+\.\d+\.\d+)"),
                           ("WSL", ["wsl", "--version"], r"(\d+\.\d+\.\d+(?:\.\d+)?)"),
@@ -586,18 +587,20 @@ def _winget_upgrade(job, it, report):
         job.log(s)
     code, out = _stream(cmd, on_text, job=job, timeout=3600)
     if job.cancelled:
-        return "cancel", "Cancelled"
+        return "cancel", tr("Cancelled")
     # success text in English and Spanish
     if code == 0 or re.search(r"Successfully installed|Instalado correctamente|se instaló correctamente", out, re.I):
         return "done", None
     hexc = f"0x{code & 0xFFFFFFFF:08X}" if code is not None else "?"
     if hexc in WINGET_REBOOT_OK:
-        return "done", "Installed. Restart the PC to finish.", True
+        return "done", tr("Installed. Restart the PC to finish."), True
     tail = [ln for ln in out.splitlines() if ln.strip()][-1:] or [""]
-    return "fail", WINGET_CODES.get(hexc, f"The installer returned {hexc}. {tail[0][:120]}")
+    if hexc in WINGET_CODES:
+        return "fail", tr(WINGET_CODES[hexc])
+    return "fail", tr("The installer returned {code}.", code=hexc) + (" " + tail[0][:120] if tail[0].strip() else "")
 
 
-# winget return codes, from the official table:
+# winget return codes, from the official table (English keys; translated with tr() where they are shown):
 # https://github.com/microsoft/winget-cli/blob/master/doc/windows/package-manager/winget/returnCodes.md
 WINGET_REBOOT_OK = {"0x8A150109", "0x8A15010B"}  # installed, a restart finishes it / Windows will restart
 WINGET_CODES = {
@@ -640,9 +643,9 @@ Write-Output ("RESULT|{0}|{1}" -f $res.ResultCode, [int]$res.RebootRequired)
 
 def _wu_install(job, it, report):
     if not _admin():
-        return "admin", "Needs admin mode"
+        return "admin", tr("Needs admin mode")
     script = _WU_INSTALL % it["uid"].replace("'", "")
-    res = {"st": "fail", "msg": "Windows Update didn't respond."}
+    res = {"st": "fail", "msg": tr("Windows Update didn't respond.")}
 
     def on_text(s):
         if s.startswith("PHASE|"):
@@ -650,17 +653,17 @@ def _wu_install(job, it, report):
         elif s.startswith("RESULT|"):
             parts = s.split("|")
             if parts[1] == "none":
-                res.update(st="fail", msg="It's no longer available.")
+                res.update(st="fail", msg=tr("It's no longer available."))
             else:
                 ok = parts[1] in ("2", "3")
-                res.update(st="done" if ok else "fail", msg=None if ok else f"Windows Update returned code {parts[1]}.",
+                res.update(st="done" if ok else "fail", msg=None if ok else tr("Windows Update returned code {code}.", code=parts[1]),
                            reboot=len(parts) > 2 and parts[2] == "1")
         else:
             job.log(s)
     _stream(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
             on_text, job=job, timeout=7200)
     if job.cancelled:
-        return "cancel", "Cancelled"
+        return "cancel", tr("Cancelled")
     return res["st"], res.get("msg"), res.get("reboot")
 
 
@@ -672,15 +675,15 @@ def _pkg_install(job, it, report):
     report("inst", 0.3)
     code, out = _stream(cmd, job.log, job=job, timeout=3600)
     if job.cancelled:
-        return "cancel", "Cancelled"
-    return ("done", None) if code == 0 else ("fail", ([ln for ln in out.splitlines() if ln.strip()] or ["Failed"])[-1][:160])
+        return "cancel", tr("Cancelled")
+    return ("done", None) if code == 0 else ("fail", ([ln for ln in out.splitlines() if ln.strip()] or [tr("Failed")])[-1][:160])
 
 
 def _defender_update(job, it, report):
     report("down", .3)
     code, out = _stream(["powershell.exe", "-NoProfile", "-Command", "Update-MpSignature -ErrorAction Stop; 'ok'"],
                         job.log, job=job, timeout=900)
-    return ("done", None) if "ok" in out else ("fail", "Defender isn't active or couldn't be updated.")
+    return ("done", None) if "ok" in out else ("fail", tr("Defender isn't active or couldn't be updated."))
 
 
 def install(job, items):

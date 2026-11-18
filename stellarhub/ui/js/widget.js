@@ -4,26 +4,27 @@
 'use strict';
 (() => {
 const { $, $$, anim, EASE, ic, state } = SH;
+const t = SH.t;
 /* what Windows does not provide (e.g. CPU temperature without admin) arrives as null: shown as "—", never 0 */
 const ok = x => x !== null && x !== undefined;
 const R = (x, f = Math.round) => ok(x) ? f(x) : '—';
 /* names for the small version's hover: short (fits in the bar) and full (Windows tooltip) */
-const NAMES = { cpu: ['CPU', 'Processor usage'], cpuTemp: ['CPU °C', 'Processor temperature'], gpu: ['GPU', 'Graphics card usage'],
-  gpuTemp: ['GPU °C', 'Graphics card temperature'], gpuPower: ['GPU W', 'Graphics card power draw'], ram: ['RAM', 'Memory in use'],
-  vram: ['VRAM', 'Video memory in use'], down: ['Down', 'Download speed'], up: ['Up', 'Upload speed'],
-  ping: ['Ping', 'Connection latency'], disk: ['Disk', 'Disk activity (read + write)'] };
+const NAMES = { cpu: ['CPU', t('Processor usage')], cpuTemp: ['CPU °C', t('Processor temperature')], gpu: ['GPU', t('Graphics card usage')],
+  gpuTemp: ['GPU °C', t('Graphics card temperature')], gpuPower: ['GPU W', t('Graphics card power draw')], ram: ['RAM', t('Memory in use')],
+  vram: ['VRAM', t('Video memory in use')], down: [t('Down'), t('Download speed')], up: [t('Up'), t('Upload speed')],
+  ping: ['Ping', t('Connection latency')], disk: [t('Disk'), t('Disk activity (read + write)')] };
 const STATS = {
   cpu: { n: 'CPU', ic: 'cpu', h: 'cpu', max: 100, val: v => [R(v.cpu), '%'], hot: v => v.cpu > 90 },
-  cpuTemp: { n: 'CPU temp.', ic: 'temp', h: 'cpuTemp', max: 100, val: v => [R(v.cpuTemp), '°C'], hot: v => v.cpuTemp > 88 },
+  cpuTemp: { n: t('CPU temp.'), ic: 'temp', h: 'cpuTemp', max: 100, val: v => [R(v.cpuTemp), '°C'], hot: v => v.cpuTemp > 88 },
   gpu: { n: 'GPU', ic: 'gpu', h: 'gpu', max: 100, val: v => [R(v.gpu), '%'], hot: v => v.gpu > 95 },
-  gpuTemp: { n: 'GPU temp.', ic: 'temp', h: 'gpuTemp', max: 100, val: v => [R(v.gpuTemp), '°C'], hot: v => v.gpuTemp > 84 },
-  gpuPower: { n: 'GPU power', ic: 'bolt', h: 'gpuPower', max: 120, val: v => [R(v.gpuPower), 'W'], hot: () => false },
+  gpuTemp: { n: t('GPU temp.'), ic: 'temp', h: 'gpuTemp', max: 100, val: v => [R(v.gpuTemp), '°C'], hot: v => v.gpuTemp > 84 },
+  gpuPower: { n: SH.tc('widget', 'GPU power'), ic: 'bolt', h: 'gpuPower', max: 120, val: v => [R(v.gpuPower), 'W'], hot: () => false },
   ram: { n: 'RAM', ic: 'ram', h: 'ram', max: 16, val: v => [R(v.ram, SH.fmt1), 'GB'], hot: v => v.ram / v.ramTotal > .9 },
   vram: { n: 'VRAM', ic: 'layers', h: 'vram', max: 8, val: v => [R(v.vram, SH.fmt1), 'GB'], hot: () => false },
-  down: { n: 'Download', ic: 'download', h: 'down', max: 0, val: v => [R(v.down, SH.fmt1), 'Mb/s'], hot: () => false },
-  up: { n: 'Upload', ic: 'upload', h: 'up', max: 0, val: v => [R(v.up, SH.fmt1), 'Mb/s'], hot: () => false },
-  ping: { n: 'Latency', ic: 'globe', h: 'ping', max: 0, val: v => [R(v.ping), 'ms'], hot: v => v.ping > 80 },
-  disk: { n: 'Disk', ic: 'ssd', h: 'diskRead', max: 0, val: v => [ok(v.diskRead) ? Math.round(v.diskRead + v.diskWrite) : '—', 'MB/s'], hot: () => false },
+  down: { n: SH.tc('widget', 'Download'), ic: 'download', h: 'down', max: 0, val: v => [R(v.down, SH.fmt1), 'Mb/s'], hot: () => false },
+  up: { n: t('Upload'), ic: 'upload', h: 'up', max: 0, val: v => [R(v.up, SH.fmt1), 'Mb/s'], hot: () => false },
+  ping: { n: t('Latency'), ic: 'globe', h: 'ping', max: 0, val: v => [R(v.ping), 'ms'], hot: v => v.ping > 80 },
+  disk: { n: t('Disk'), ic: 'ssd', h: 'diskRead', max: 0, val: v => [ok(v.diskRead) ? Math.round(v.diskRead + v.diskWrite) : '—', 'MB/s'], hot: () => false },
 };
 SH.WIDGET_STATS = STATS;
 const DEF = { widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetLayout: 'grid', widgetMode: 'full' };
@@ -48,7 +49,7 @@ function build(conf) {
   const keys = st.widgetStats.filter(k => STATS[k]);
   const mini = st.widgetMode === 'mini';
   const w = $('#w'); w.className = 'w pywebview-drag-region ' + (mini ? 'M-mini' : 'L-' + (st.widgetLayout || 'grid'));
-  const sb = $('#sizeBtn'); sb.title = mini ? 'Large version' : 'Small version';
+  const sb = $('#sizeBtn'); sb.title = mini ? t('Large version') : t('Small version');
   sb.innerHTML = mini ? '<svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-6 6M4 20l6-6"/></svg>' : '<svg class="i" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l6-6M10 14l-6 6"/></svg>';
   let dot = $('.dot', w); if (mini && !dot) { dot = document.createElement('span'); dot.className = 'dot pywebview-drag-region'; w.prepend(dot); } else if (!mini && dot) dot.remove();
   const nm = k => NAMES[k] || [STATS[k].n, STATS[k].n];
@@ -59,8 +60,35 @@ function build(conf) {
   rows = keys.map(k => { const el = $(`.c[data-k="${k}"]`); const c = $('canvas', el); return { k, s: STATS[k], el, v: $('.v', el), c, ctx: c.getContext('2d') }; });
   rows.forEach((r, i) => anim(r.el, [{ opacity: 0, transform: 'translate3d(0,8px,0) scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: 60 + i * 45, e: EASE.spring }));
   paint(SH.tele.v);
+  requestAnimationFrame(fit);
   return st;
 }
+/* fits the content to the window the user sized: whole stats only, never cut in half */
+function fit() {
+  const w = $('#w'), box = $('#rows'); if (!rows.length || !box) return;
+  rows.forEach(r => { r.el.hidden = false; });
+  w.classList.remove('compact'); box.style.gridTemplateColumns = '';
+  if (w.classList.contains('M-mini')) {
+    const avail = box.clientWidth + .5; let used = 0;
+    rows.forEach((r, i) => { const need = r.el.offsetWidth + (i ? 12 : 0); if (i && used + need > avail) r.el.hidden = true; else used += need; });
+  } else {
+    const W = box.clientWidth, H = box.clientHeight, n = rows.length, gap = 6;
+    let show = n;
+    if (w.classList.contains('L-grid')) {
+      const cols = Math.max(1, Math.min(n, Math.floor((W + gap) / (128 + gap))));
+      box.style.gridTemplateColumns = `repeat(${cols},1fr)`;
+      const lines = Math.ceil(n / cols), cell = (H - (lines - 1) * gap) / lines;
+      if (cell < 54) w.classList.add('compact');
+      if (cell < 34) show = Math.max(1, Math.floor((H + gap) / (34 + gap))) * cols;
+    } else if (w.classList.contains('L-row')) {
+      show = Math.max(1, Math.floor((W + gap) / (86 + gap)));
+      if (H < 96) w.classList.add('compact');
+    } else show = Math.max(1, Math.floor((H + 2) / 32));
+    rows.forEach((r, i) => { r.el.hidden = i >= show; });
+  }
+  paint(SH.tele.v);
+}
+new ResizeObserver(() => requestAnimationFrame(fit)).observe(document.getElementById('w'));
 function draw(r) {
   if (!r.c.offsetParent) return; // small version: no charts
   const box = r.c.getBoundingClientRect(); const w = Math.max(10, box.width), h = Math.max(10, box.height);
@@ -81,7 +109,7 @@ function fitWindow(st) {
     /* a size the user chose by dragging the edges wins over the automatic one (per mode) */
     const saved = st['widgetSize_' + (st.widgetMode === 'mini' ? 'mini' : 'full')];
     if (st.widgetMode === 'mini') {
-      const need = Math.ceil(12 + 7 + 10 + $('#rows').scrollWidth + 10 + $('.hd').scrollWidth + 8);
+      const need = Math.ceil(12 + 7 + 10 + $('#rows').scrollWidth + 14);
       SH.call('widget_resize', saved ? Math.max(need, saved[0]) : need, 38);
     } else if (saved) SH.call('widget_resize', saved[0], saved[1]);
     else { const sz = SH.widgetSize(st); SH.call('widget_resize', sz.w, sz.h); }

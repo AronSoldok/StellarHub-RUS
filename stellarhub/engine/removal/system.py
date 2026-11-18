@@ -8,6 +8,7 @@ import winreg
 import xml.etree.ElementTree as ET
 from ctypes import wintypes
 
+from ...i18n import tr
 from . import paths, registry, safety
 
 NOWIN = 0x08000000
@@ -27,7 +28,7 @@ def run(args, timeout=120, **kw):
                            creationflags=NOWIN, timeout=timeout, **kw)
         return r.returncode, (r.stdout or "") + (r.stderr or "")
     except subprocess.TimeoutExpired:
-        return -1, "Timed out"
+        return -1, tr("Timed out")
     except OSError as e:
         return -1, str(e)
 

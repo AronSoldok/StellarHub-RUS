@@ -141,6 +141,8 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-th span:nth-child(4){width:150px}
 #v-updater .u-unknown{padding:14px 8px 8px}
 #v-updater .u-unknown>h4{padding:0 10px}
+/* panel titles with a subtitle: longer translations move the subtitle to its own line instead of squeezing the title */
+#v-updater .pan>h4{flex-wrap:wrap;row-gap:2px}
 
 /* Windows */
 #v-updater .u-wstat{display:flex;align-items:center;gap:14px;margin-bottom:14px}

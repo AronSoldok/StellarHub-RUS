@@ -7,36 +7,37 @@ const T = SH.tele, v = () => T.v, dash = '—';
 const f = (k, fn = x => Math.round(x), suf = '') => T.has(k) ? fn(T.v[k]) + suf : dash;
 const comp = id => SH.PC.components.find(x => x.id === id) || { name: id, title: '', rows: [] };
 const upt = s => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h >= 48 ? `${Math.floor(h / 24)} d ${h % 24} h` : `${h} h ${m} min`; };
+const t = SH.t;
 const CFG = {
-  cpu: { big: () => [f('cpu'), '% usage'], chart: { key: 'cpu', max: 100, label: 'Usage over the last minute' },
-    stats: () => [['Frequency', f('cpuFreq', fmt1, ' GHz')], ['Temperature', T.has('cpuTemp') ? f('cpuTemp', undefined, ' °C') : (state.admin ? 'not available' : 'admin mode only')],
-      ['Processes', f('procs', fmtInt)], ['Busy threads', (v().threads || []).filter(t => t > .5).length + ' of ' + (v().threads || []).length]],
-    actions: [['View in Live Monitor', 'monitor', 'cpu', 'monitor'], ['What is using it', 'monitor', 'processes', 'list']] },
-  gpu: { big: () => [f('gpu'), '% usage'], chart: { key: 'gpu', max: 100, label: 'Usage over the last minute' },
-    stats: () => [['Temperature', f('gpuTemp', undefined, ' °C')], ['Power draw', f('gpuPower', undefined, ' W')], ['Video memory', T.has('vram') ? `${fmt1(v().vram)} of ${v().vramTotal || '–'} GB` : dash], ['Clock', f('gpuClock', fmt1, ' GHz')]],
-    actions: [['Check for a new driver', 'drivers', 'updates', 'drivers'], ['View in Live Monitor', 'monitor', 'gpu', 'monitor']] },
-  ram: { big: () => [f('ram', fmt1), `of ${Math.round(v().ramTotal || 0)} GB in use`], chart: { key: 'ram', max: () => v().ramTotal || 16, label: 'Usage over the last minute' },
-    stats: () => [['In use', T.has('ram') ? Math.round(v().ram / (v().ramTotal || 1) * 100) + '%' : dash], ['Committed', f('ramCommit', fmt1, ' GB')], ['Cached', f('ramCache', fmt1, ' GB')],
-      ['Slots', comp('ram').slots ? `${comp('ram').modules} of ${comp('ram').slots} used` : dash]],
-    actions: [['What is using the memory', 'monitor', 'processes', 'list'], ['View in Live Monitor', 'monitor', 'memory', 'monitor']] },
-  ssd: { big: () => [T.has('diskTotal') ? Math.round(v().diskTotal - v().diskUsed) : dash, `GB free of ${v().diskTotal || '–'} on C:`], chart: { key: 'diskRead', label: 'Reads over the last minute (MB/s)' },
-    stats: () => [['Used', T.has('diskUsed') ? Math.round(v().diskUsed / v().diskTotal * 100) + '%' : dash], ['Read', f('diskRead', fmtInt, ' MB/s')], ['Write', f('diskWrite', fmtInt, ' MB/s')], ['Activity', T.has('diskRead') ? (v().diskRead + v().diskWrite > 50 ? 'high' : 'low') : dash]],
-    actions: [['See what takes up space', 'storage', 'map', 'storage'], ['Free up space', 'optimizer', 'clean', 'broom']] },
-  display: { wide: true, actions: [['Test the screen', 'tester', 'screen', 'display'], ['View graphics', 'monitor', 'gpu', 'monitor']] },
-  battery: { big: () => [f('battery'), v().charging ? '% and charging' : '% charge'],
-    stats: () => [['Health', f('batteryHealth', undefined, '%')], ['Power', T.has('batteryPower') ? (v().batteryPower > 0 ? '+' : '') + fmt1(v().batteryPower) + ' W' : dash],
-      ['Time left', T.has('batterySecs') ? upt(v().batterySecs) : (v().charging ? 'plugged in' : dash)], ['Status', v().charging ? 'Plugged in' : 'On battery']],
-    meter: () => ({ label: 'Capacity it keeps', v: (v().batteryHealth || 0) / 100 }),
-    actions: [['View the battery', 'monitor', 'battery', 'battery']] },
-  wifi: { big: () => [f('down', fmt1), 'Mb/s down'], chart: { key: 'down', label: 'Download over the last minute' },
-    stats: () => [['Upload', f('up', fmt1, ' Mb/s')], ['Latency', f('ping', undefined, ' ms')], ['Wi-Fi signal', f('wifiSignal', undefined, '%')], ['Link', (comp('wifi').rows.find(r => r[0] === 'Link') || [, dash])[1]]],
-    actions: [['View the network', 'monitor', 'network', 'monitor']] },
-  audio: { big: () => [String(1 + ((comp('audio').rows[0] || [, ''])[1].split(',').filter(x => x.trim() && x.trim() !== '–').length)), 'audio devices'],
+  cpu: { big: () => [f('cpu'), t('% usage')], chart: { key: 'cpu', max: 100, label: t('Usage over the last minute') },
+    stats: () => [[t('Frequency'), f('cpuFreq', fmt1, ' GHz')], [t('Temperature'), T.has('cpuTemp') ? f('cpuTemp', undefined, ' °C') : (state.admin ? t('not available') : t('admin mode only'))],
+      [t('Processes'), f('procs', fmtInt)], [t('Busy threads'), t('{n} of {total}', { n: (v().threads || []).filter(x => x > .5).length, total: (v().threads || []).length })]],
+    actions: [[t('View in Live Monitor'), 'monitor', 'cpu', 'monitor'], [t('What is using it'), 'monitor', 'processes', 'list']] },
+  gpu: { big: () => [f('gpu'), t('% usage')], chart: { key: 'gpu', max: 100, label: t('Usage over the last minute') },
+    stats: () => [[t('Temperature'), f('gpuTemp', undefined, ' °C')], [t('Power draw'), f('gpuPower', undefined, ' W')], [t('Video memory'), T.has('vram') ? t('{used} of {total} GB', { used: fmt1(v().vram), total: v().vramTotal || '–' }) : dash], [t('Clock'), f('gpuClock', fmt1, ' GHz')]],
+    actions: [[t('Check for a new driver'), 'drivers', 'updates', 'drivers'], [t('View in Live Monitor'), 'monitor', 'gpu', 'monitor']] },
+  ram: { big: () => [f('ram', fmt1), t('of {n} GB in use', { n: Math.round(v().ramTotal || 0) })], chart: { key: 'ram', max: () => v().ramTotal || 16, label: t('Usage over the last minute') },
+    stats: () => [[t('In use'), T.has('ram') ? Math.round(v().ram / (v().ramTotal || 1) * 100) + '%' : dash], [t('Committed'), f('ramCommit', fmt1, ' GB')], [t('Cached'), f('ramCache', fmt1, ' GB')],
+      [t('Slots'), comp('ram').slots ? t('{n} of {total} used', { n: comp('ram').modules, total: comp('ram').slots }) : dash]],
+    actions: [[t('What is using the memory'), 'monitor', 'processes', 'list'], [t('View in Live Monitor'), 'monitor', 'memory', 'monitor']] },
+  ssd: { big: () => [T.has('diskTotal') ? Math.round(v().diskTotal - v().diskUsed) : dash, t('GB free of {n} on C:', { n: v().diskTotal || '–' })], chart: { key: 'diskRead', label: t('Reads over the last minute (MB/s)') },
+    stats: () => [[t('Used'), T.has('diskUsed') ? Math.round(v().diskUsed / v().diskTotal * 100) + '%' : dash], [t('Read'), f('diskRead', fmtInt, ' MB/s')], [t('Write'), f('diskWrite', fmtInt, ' MB/s')], [t('Activity'), T.has('diskRead') ? (v().diskRead + v().diskWrite > 50 ? t('high') : t('low')) : dash]],
+    actions: [[t('See what takes up space'), 'storage', 'map', 'storage'], [t('Free up space'), 'optimizer', 'clean', 'broom']] },
+  display: { wide: true, actions: [[t('Test the screen'), 'tester', 'screen', 'display'], [t('View graphics'), 'monitor', 'gpu', 'monitor']] },
+  battery: { big: () => [f('battery'), v().charging ? t('% and charging') : t('% charge')],
+    stats: () => [[t('Health'), f('batteryHealth', undefined, '%')], [t('Power'), T.has('batteryPower') ? (v().batteryPower > 0 ? '+' : '') + fmt1(v().batteryPower) + ' W' : dash],
+      [t('Time left'), T.has('batterySecs') ? upt(v().batterySecs) : (v().charging ? t('plugged in') : dash)], [t('Status'), v().charging ? SH.tc('battery', 'Plugged in') : SH.tc('battery', 'On battery')]],
+    meter: () => ({ label: t('Capacity it keeps'), v: (v().batteryHealth || 0) / 100 }),
+    actions: [[t('View the battery'), 'monitor', 'battery', 'battery']] },
+  wifi: { big: () => [f('down', fmt1), t('Mb/s down')], chart: { key: 'down', label: t('Download over the last minute') },
+    stats: () => [[t('Upload'), f('up', fmt1, ' Mb/s')], [t('Latency'), f('ping', undefined, ' ms')], [t('Wi-Fi signal'), f('wifiSignal', undefined, '%')], [t('Link'), (comp('wifi').rows.find(r => r[0] === 'Link') || [, dash])[1]]],
+    actions: [[t('View the network'), 'monitor', 'network', 'monitor']] },
+  audio: { big: () => [String(1 + ((comp('audio').rows[0] || [, ''])[1].split(',').filter(x => x.trim() && x.trim() !== '–').length)), t('audio devices')],
     list: () => [comp('audio').title, ...((comp('audio').rows[0] || [, ''])[1].split(',').map(s => s.trim()).filter(s => s && s !== '–'))].map(n => ['speaker', n, '']),
-    actions: [['Test the speakers', 'tester', 'speakers', 'speaker'], ['Test the microphone', 'tester', 'mic', 'mic']] },
+    actions: [[t('Test the speakers'), 'tester', 'speakers', 'speaker'], [t('Test the microphone'), 'tester', 'mic', 'mic']] },
   sys: { big: () => [(SH.PC.os || '').replace(/^Windows \d+ \w+ ?/, '') || SH.PC.os, SH.PC.os],
-    stats: () => [['Build', (comp('sys').rows.find(r => r[0] === 'Build') || [, dash])[1]], ['BIOS', SH.PC.bios || dash], ['Uptime', T.has('uptime') ? upt(v().uptime) : dash], ['Type', SH.PC.typeName || dash]],
-    actions: [['Check for updates', 'updater', 'windows', 'windows'], ['Repair Windows', 'optimizer', 'repair', 'wrench']] },
+    stats: () => [[t('Build'), (comp('sys').rows.find(r => r[0] === 'Build') || [, dash])[1]], ['BIOS', SH.PC.bios || dash], [t('Uptime'), T.has('uptime') ? upt(v().uptime) : dash], [t('Type'), SH.PC.typeName || dash]],
+    actions: [[t('Check for updates'), 'updater', 'windows', 'windows'], [t('Repair Windows'), 'optimizer', 'repair', 'wrench']] },
 };
 const ICON = { sys: 'windows', wifi: 'wifi', ssd: 'ssd' };
 
@@ -56,11 +57,11 @@ async function displaysHTML() {
   const named = disp.map((d, i) => { const m = (i === internalIdx ? mons.find(x => x.internal) : mons.filter(x => !x.internal)[i > internalIdx && internalIdx >= 0 ? i - 1 : i]) || mons[i] || {}; return { ...d, ...m, idx: i }; });
   const maxW = Math.max(...named.map(d => d.w));
   return `<div class="cs-screens">${named.map(d => {
-    const scale = .55 + .45 * d.w / maxW; const name = [d.vendor, d.name || d.code].filter(Boolean).join(' ') || (d.internal ? 'Laptop screen' : 'Monitor');
+    const scale = .55 + .45 * d.w / maxW; const name = [d.vendor, d.name || d.code].filter(Boolean).join(' ') || (d.internal ? t('Laptop screen') : t('Monitor'));
     return `<figure class="cs-scr${d.internal ? ' internal' : ''}" style="--s:${scale};--ar:${d.w}/${d.h}" data-idx="${d.idx}">
-      <div class="frame"><img alt="" data-thumb="${d.idx}"><span class="live">live</span></div>${d.internal ? '<div class="base"></div>' : '<div class="stand"></div>'}
-      <figcaption><b>${esc(d.internal ? 'Laptop screen' : 'External monitor')}</b><span>${esc(name)}${d.inches ? `, ${d.inches}"` : ''}</span>
-      <span>${d.w} × ${d.h}${d.hz ? `, ${d.hz} Hz` : ''}${d.primary ? ', primary' : ''}</span></figcaption></figure>`;
+      <div class="frame"><img alt="" data-thumb="${d.idx}"><span class="live">${t('live')}</span></div>${d.internal ? '<div class="base"></div>' : '<div class="stand"></div>'}
+      <figcaption><b>${esc(d.internal ? t('Laptop screen') : t('External monitor'))}</b><span>${esc(name)}${d.inches ? `, ${d.inches}"` : ''}</span>
+      <span>${[`${d.w} × ${d.h}`, d.hz ? `${d.hz} Hz` : '', d.primary ? t('primary') : ''].filter(Boolean).join(', ')}</span></figcaption></figure>`;
   }).join('')}</div>`;
 }
 async function refreshThumbs() {
@@ -81,11 +82,11 @@ async function html(id) {
         ${k.meter ? `<div class="cs-meter"><div><span>${k.meter().label}</span><b>${T.has('batteryHealth') ? Math.round(k.meter().v * 100) + ' %' : dash}</b></div><div class="bar ok"><span style="transform:scaleX(0)"></span></div></div>` : ''}
         ${k.list ? `<div class="cs-list">${k.list().map(([i, a, b]) => `<div><span class="ri">${ic(i)}</span><span><b>${esc(a)}</b>${b ? `<small>${esc(b)}</small>` : ''}</span></div>`).join('')}</div>` : ''}`;
   return `<header class="cs-h"><span class="cs-ic">${ic(ICON[id] || id)}</span><div class="cs-t"><span>${esc(c.name)}</span><h2>${esc(c.title)}</h2></div>
-      <button class="iconbtn cs-x" aria-label="Close">${ic('x')}</button></header>
+      <button class="iconbtn cs-x" aria-label="${t('Close')}">${ic('x')}</button></header>
     <div class="cs-b${k.wide ? ' wide' : ''}">
       <div class="cs-l">${left}</div>
-      <div class="cs-r"><h4>Specs</h4><dl>${rows.map(([a, b]) => `<dt>${esc(a)}</dt><dd>${esc(b)}</dd>`).join('')}</dl>
-        <div class="cs-acts">${(k.actions || []).map(([t, m, tab, i], n) => `<button class="btn ${n ? 'sec' : 'pri'}" data-m="${m}" data-tab="${tab}">${ic(i)}${esc(t)}</button>`).join('')}</div></div>
+      <div class="cs-r"><h4>${t('Specs')}</h4><dl>${rows.map(([a, b]) => `<dt>${esc(t(a))}</dt><dd>${esc(b)}</dd>`).join('')}</dl>
+        <div class="cs-acts">${(k.actions || []).map(([label, m, tab, i], n) => `<button class="btn ${n ? 'sec' : 'pri'}" data-m="${m}" data-tab="${tab}">${ic(i)}${esc(label)}</button>`).join('')}</div></div>
     </div>`;
 }
 function update() {

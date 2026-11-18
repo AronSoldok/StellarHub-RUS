@@ -15,6 +15,7 @@ from ctypes import wintypes
 
 import psutil
 
+from ..i18n import tr
 from .ps import ps_json
 
 EXPORTS = {"processes", "end_process", "open_location", "disks", "network", "public_ip", "dns_test", "set_dns",
@@ -463,11 +464,11 @@ def set_dns(alias, mode):
         cmds = [["netsh", "interface", "ipv4", "set", "dnsservers", f"name={alias}", "source=static", f"address={a}", "validate=no"],
                 ["netsh", "interface", "ipv4", "add", "dnsservers", f"name={alias}", f"address={b}", "index=2", "validate=no"]]
     else:
-        return {"ok": False, "error": "unknown mode"}
+        return {"ok": False, "error": tr("Unknown DNS mode.")}
     for c in cmds:
         r = subprocess.run(c, capture_output=True, timeout=15, creationflags=NO_WINDOW)
         if r.returncode != 0:
-            return {"ok": False, "error": r.stdout.decode("cp850", "replace").strip() or "netsh failed"}
+            return {"ok": False, "error": r.stdout.decode("cp850", "replace").strip() or tr("netsh failed.")}
     subprocess.run(["ipconfig", "/flushdns"], capture_output=True, timeout=10, creationflags=NO_WINDOW)
     return {"ok": True}
 
@@ -522,6 +523,7 @@ def battery_report():
 
 
 # ======================================================================================= health
+# device problem codes and System log events explained in plain words (English keys; translated with tr() when sent)
 CM_CODES = {1: "Not configured correctly", 3: "The driver is damaged or the system is low on memory", 10: "Could not start",
             12: "Not enough free resources", 14: "Needs a restart", 18: "The driver needs to be reinstalled",
             19: "Registry configuration is damaged", 22: "Disabled", 24: "Not present or not working properly",
@@ -567,7 +569,8 @@ $fast = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manage
     if isinstance(errs, dict):
         errs = [errs]
     for e in errs:
-        e["why"] = CM_CODES.get(e.get("code"), f"Error code {e.get('code')}")
+        c = e.get("code")
+        e["why"] = tr(CM_CODES[c]) if c in CM_CODES else tr("Error code {code}", code=c)
     evs = r.get("events") or []
     if isinstance(evs, dict):
         evs = [evs]
@@ -579,7 +582,7 @@ $fast = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manage
             g["count"] += 1
             continue
         e["count"] = 1
-        e["help"] = EVENT_HELP.get(k)
+        e["help"] = tr(EVENT_HELP[k]) if k in EVENT_HELP else None
         grouped[k] = e
     cls = r.get("classes") or []
     if isinstance(cls, dict):

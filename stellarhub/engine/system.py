@@ -1,5 +1,10 @@
 """Real PC information: model, type, components, displays and the Home figures.
-pc_info() answers instantly with what was saved last time and refreshes in the background."""
+pc_info() answers instantly with what was saved last time and refreshes in the background.
+
+Languages: the saved copy (pcinfo.json) is language-neutral. Sentences are stored in English, and the ones built from
+data as {"tr": "English {x}", "kw": {...}}; _localize() translates them each time the UI asks, so changing the
+language never needs a new measurement. Row labels (rows[i][0]) stay in English on purpose: the interface looks rows
+up by them and translates them where it shows them (they are marked with N_ so they reach the dictionaries)."""
 import ctypes
 import json
 import os
@@ -10,6 +15,7 @@ from ctypes import wintypes
 
 import psutil
 
+from ..i18n import tc, tr
 from .ps import ps_json
 
 EXPORTS = {"pc_info", "pc_info_fresh", "displays", "screen_thumb", "counts", "health"}
@@ -33,7 +39,7 @@ $av = @(Get-CimInstance -Namespace root\SecurityCenter2 AntiVirusProduct -ErrorA
 }""", timeout=40) or {}
     return r
 
-CACHE_VERSION = 2  # bump when labels or fields change, so an old cache is not shown
+CACHE_VERSION = 3  # bump when labels or fields change, so an old cache is not shown
 _CACHE = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "pcinfo.json")
 _lock = threading.Lock()
 _mem = None
@@ -53,6 +59,46 @@ PNP_VENDORS = {
     "AOU": "AOC", "HKC": "HKC", "CSW": "CSOT", "KOS": "KOORUI", "XMI": "Xiaomi", "HSD": "HannStar", "ENC": "Eizo", "NEC": "NEC",
 }
 GB = 1024 ** 3
+
+
+def N_(text):
+    """Marks a row label for the dictionaries; it stays in English here and is translated where it is shown."""
+    return text
+
+
+def _T(text, ctx=None, **kw):
+    """A sentence to translate when the info is sent to the UI (see _localize); ctx as in i18n.tc."""
+    d = {"tr": text}
+    if ctx:
+        d["ctx"] = ctx
+    if kw:
+        d["kw"] = kw
+    return d
+
+
+def _tv(x):
+    if isinstance(x, dict) and "tr" in x:
+        kw = x.get("kw") or {}
+        return tc(x["ctx"], x["tr"], **kw) if x.get("ctx") else tr(x["tr"], **kw)
+    return x
+
+
+def _localize(info):
+    """A copy of the info with its texts in the interface language (the saved copy stays neutral)."""
+    if not info:
+        return info
+    out = dict(info)
+    out["model"] = _tv(info.get("model"))
+    out["typeName"] = tr(info["typeName"]) if info.get("typeName") else info.get("typeName")
+    comps = []
+    for c in info.get("components") or []:
+        c = dict(c)
+        c["name"] = tr(c["name"]) if c.get("name") else c.get("name")
+        c["title"] = _tv(c.get("title"))
+        c["rows"] = [[r[0], _tv(r[1])] for r in c.get("rows") or []]
+        comps.append(c)
+    out["components"] = comps
+    return out
 
 
 def _virtual(maker, model):
@@ -199,7 +245,7 @@ def _build():
     ptype, pname = CHASSIS.get(ch, ("laptop" if r.get("pcType") == 2 else "desktop",
                                     "Laptop" if r.get("pcType") == 2 else "Desktop"))
     if _virtual(maker, model):
-        ptype, pname = "virtual", "Virtual machine"
+        ptype, pname = "virtual", "Virtual machine"  # typeName: translated in _localize
     nice = family if family and family.lower() not in ("to be filled by o.e.m.", "default string", "") else model
     BRANDS = {"asustek": "ASUS", "hewlett-packard": "HP", "hp": "HP", "lenovo": "Lenovo", "dell": "Dell", "acer": "Acer",
               "micro-star": "MSI", "msi": "MSI", "gigabyte": "Gigabyte", "samsung": "Samsung", "microsoft": "Microsoft",
@@ -240,39 +286,42 @@ def _build():
     batt = psutil.sensors_battery()
     comps = []
     comps.append({"id": "cpu", "name": "Processor", "title": _clean(cpu.get("name", "")),
-                  "rows": [["Cores", str(cpu.get("cores", "–"))], ["Threads", str(cpu.get("threads", "–"))],
-                           ["Base clock", f"{(cpu.get('maxMhz') or 0) / 1000:.1f} GHz"],
-                           ["L3 cache", f"{round((cpu.get('l3') or 0) / 1024)} MB"]]})
+                  "rows": [[N_("Cores"), str(cpu.get("cores", "–"))], [N_("Threads"), str(cpu.get("threads", "–"))],
+                           [N_("Base clock"), f"{(cpu.get('maxMhz') or 0) / 1000:.1f} GHz"],
+                           [N_("L3 cache"), f"{round((cpu.get('l3') or 0) / 1024)} MB"]]})
     if dgpu:
         vr = _gpu_vram(dgpu["name"])
         comps.append({"id": "gpu", "name": "Graphics", "title": _clean(dgpu["name"]),
-                      "rows": ([["Memory", f"{vr} GB"]] if vr else []) + ([["Integrated", _clean(igpu["name"])]] if igpu else []) +
-                              [["Driver", dgpu.get("driver") or "–"]], "vram": vr})
+                      "rows": ([[N_("Memory"), f"{vr} GB"]] if vr else []) + ([[N_("Integrated"), _clean(igpu["name"])]] if igpu else []) +
+                              [[N_("Driver"), dgpu.get("driver") or "–"]], "vram": vr})
     comps.append({"id": "ram", "name": "Memory", "title": f"{round(ram_total / GB)} GB {ram_type}".strip(),
-                  "rows": [["Speed", f"{ram_speed} MT/s" if ram_speed else "–"],
-                           ["Manufacturer", (rams[0].get("maker") or "–").strip() if rams else "–"],
-                           ["Modules", f"{len(rams)} of {slots} slots" + (", free slots available" if slots > len(rams) else "")]],
+                  "rows": [[N_("Speed"), f"{ram_speed} MT/s" if ram_speed else "–"],
+                           [N_("Manufacturer"), (rams[0].get("maker") or "–").strip() if rams else "–"],
+                           [N_("Modules"), _T("{n} of {slots} slots, free slots available" if slots > len(rams) else "{n} of {slots} slots",
+                                              n=len(rams), slots=slots)]],
                   "slots": slots, "modules": len(rams)})
-    comps.append({"id": "ssd", "name": "Storage", "title": f"{sysd.get('name', 'Disk')} {round((sysd.get('size') or 0) / 1e12, 1):g} TB",
-                  "rows": [["Type", f"{sysd.get('media', '')} {sysd.get('bus', '')}".strip() or "–"],
-                           ["Used on C:", f"{round(du.used / GB)} GB"], ["Free on C:", f"{round(du.free / GB)} GB"],
-                           ["Disks", str(len(disks))]], "bar": round(du.used / du.total, 3)})
+    tb = f"{round((sysd.get('size') or 0) / 1e12, 1):g}"
+    comps.append({"id": "ssd", "name": "Storage", "title": f"{sysd['name']} {tb} TB" if sysd.get("name") else _T("Disk {size} TB", size=tb),
+                  "rows": [[N_("Type"), f"{sysd.get('media', '')} {sysd.get('bus', '')}".strip() or "–"],
+                           [N_("Used on C:"), f"{round(du.used / GB)} GB"], [N_("Free on C:"), f"{round(du.free / GB)} GB"],
+                           [N_("Disks"), str(len(disks))]], "bar": round(du.used / du.total, 3)})
     if mons:
-        main = next((m for m in mons if m["internal"]), mons[0])
-        comps.append({"id": "display", "name": "Displays", "title": f"{len(mons)} display{'s' if len(mons) > 1 else ''}",
-                      "rows": [[("Internal" if m["internal"] else "External"), " ".join(x for x in (m["vendor"], m["name"] or m["code"], f'{m["inches"]}"' if m["inches"] else "") if x)] for m in mons],
+        comps.append({"id": "display", "name": "Displays", "title": _T("{n} displays" if len(mons) > 1 else "{n} display", n=len(mons)),
+                      "rows": [[(N_("Internal") if m["internal"] else N_("External")), " ".join(x for x in (m["vendor"], m["name"] or m["code"], f'{m["inches"]}"' if m["inches"] else "") if x)] for m in mons],
                       "monitors": mons})
     if batt is not None:
-        comps.append({"id": "battery", "name": "Battery", "title": f"{round(batt.percent)}%" + (", charging" if batt.power_plugged else ""),
-                      "rows": [["Status", "Plugged in" if batt.power_plugged else "On battery"]]})
+        comps.append({"id": "battery", "name": "Battery",
+                      "title": _T("{pct}%, charging", pct=round(batt.percent)) if batt.power_plugged else f"{round(batt.percent)}%",
+                      "rows": [[N_("Status"), _T("Plugged in" if batt.power_plugged else "On battery", ctx="battery")]]})
     if net:
-        comps.append({"id": "wifi", "name": "Network", "title": net.get("name", "Network"), "rows": [["Link", net.get("speed", "–")], ["Type", net.get("media", "–")]]})
+        comps.append({"id": "wifi", "name": "Network", "title": net.get("name") or _T("Network"),
+                      "rows": [[N_("Link"), net.get("speed", "–")], [N_("Type"), net.get("media", "–")]]})
     if audio:
-        comps.append({"id": "audio", "name": "Audio", "title": audio[0], "rows": [["Others", ", ".join(audio[1:3]) or "–"]]})
+        comps.append({"id": "audio", "name": "Audio", "title": audio[0], "rows": [[N_("Others"), ", ".join(audio[1:3]) or "–"]]})
     comps.append({"id": "sys", "name": "System", "title": os_full,
-                  "rows": [["Build", f"{r.get('build', '')}.{r.get('ubr', '')}".strip(".")], ["BIOS", r.get("bios") or "–"],
-                           ["Motherboard", r.get("board") or "–"]]})
-    return {"model": nice or model or "This PC", "code": code, "type": ptype, "typeName": pname, "maker": maker,
+                  "rows": [[N_("Build"), f"{r.get('build', '')}.{r.get('ubr', '')}".strip(".")], [N_("BIOS"), r.get("bios") or "–"],
+                           [N_("Motherboard"), r.get("board") or "–"]]})
+    return {"model": nice or model or _T("This PC"), "code": code, "type": ptype, "typeName": pname, "maker": maker,
             "os": os_full, "build": str(r.get("build", "")), "bios": r.get("bios", ""), "components": comps,
             "facts": {"drivers": None, "programs": _programs_count(), "freeC": round(du.free / GB)}, "ts": time.time(), "v": CACHE_VERSION}
 
@@ -296,14 +345,14 @@ def pc_info_fresh():
             pass
         _mem = info
         _save(info)
-        return info
+        return _localize(info)
 
 
 def pc_info():
     """What was saved (instantly), refreshed in the background; the first time it waits for the measurement."""
     global _mem
     if _mem:
-        return _mem
+        return _localize(_mem)
     try:
         with open(_CACHE, encoding="utf-8") as fh:
             cached = json.load(fh)
@@ -311,6 +360,6 @@ def pc_info():
             return pc_info_fresh()
         _mem = cached
         threading.Thread(target=pc_info_fresh, daemon=True).start()
-        return _mem
+        return _localize(_mem)
     except (OSError, ValueError):
         return pc_info_fresh()

@@ -4,6 +4,7 @@
 'use strict';
 (() => {
 const { $, $$, state, Spring, EASE, anim, tickers, ic, esc, fmt1, fmtInt } = SH;
+const T = SH.t; // translations (t is used for other things in this file)
 const ID = 'storage';
 const wp = s => esc(s).replace(/\\/g, '\\<wbr>'); // paths: only break after each backslash
 const MB = 1024 ** 2, GB = 1024 ** 3;
@@ -16,22 +17,22 @@ SH.icons.add({
 
 /* ---------------- file types ---------------- */
 const TYPES = {
-  game: { n: 'Game data', c: '#FF7A66', ext: ['vpk', 'pak', 'bin', 'bank'] },
-  exe: { n: 'Programs and libraries', c: '#6FA8FF', ext: ['exe', 'dll', 'sys', 'mui', 'pyd'] },
-  video: { n: 'Video', c: '#F4C26B', ext: ['mp4', 'mkv', 'mov'] },
-  vm: { n: 'Virtual disks', c: '#9ED6FF', ext: ['vdi', 'vhdx', 'iso'] },
-  audio: { n: 'Audio and samples', c: '#7FE0B4', ext: ['wav', 'flac', 'mp3', 'ncw', 'nki'] },
-  ai: { n: 'AI models', c: '#E0E57A', ext: ['gguf', 'safetensors'] },
-  cache: { n: 'Cache and temp files', c: '#8E9BB3', ext: ['tmp', 'cache', 'db', 'dat', 'log', 'ldb'] },
-  plugin: { n: 'Audio plugins', c: '#5FD3C6', ext: ['vst3', 'clap'] },
-  inst: { n: 'Installers', c: '#D98E73', ext: ['msi', 'cab', 'msu'] },
-  archive: { n: 'Archives', c: '#FFB27A', ext: ['zip', '7z', 'rar'] },
-  image: { n: 'Images', c: '#FF9ECF', ext: ['jpg', 'png', 'psd'] },
-  doc: { n: 'Documents', c: '#C9D4E8', ext: ['pdf', 'docx', 'xlsx', 'md'] },
-  code: { n: 'Code', c: '#A8D672', ext: ['py', 'js', 'ts', 'json', 'pyc', 'manifest'] },
-  system: { n: 'System files', c: '#7C8AA5', ext: [] },
-  other: { n: 'Other', c: '#B9A88C', ext: [] },
-  free: { n: 'Free space', c: '#1C2436', ext: [] },
+  game: { n: T('Game data'), c: '#FF7A66', ext: ['vpk', 'pak', 'bin', 'bank'] },
+  exe: { n: T('Programs and libraries'), c: '#6FA8FF', ext: ['exe', 'dll', 'sys', 'mui', 'pyd'] },
+  video: { n: T('Video'), c: '#F4C26B', ext: ['mp4', 'mkv', 'mov'] },
+  vm: { n: T('Virtual disks'), c: '#9ED6FF', ext: ['vdi', 'vhdx', 'iso'] },
+  audio: { n: T('Audio and samples'), c: '#7FE0B4', ext: ['wav', 'flac', 'mp3', 'ncw', 'nki'] },
+  ai: { n: T('AI models'), c: '#E0E57A', ext: ['gguf', 'safetensors'] },
+  cache: { n: T('Cache and temp files'), c: '#8E9BB3', ext: ['tmp', 'cache', 'db', 'dat', 'log', 'ldb'] },
+  plugin: { n: T('Audio plugins'), c: '#5FD3C6', ext: ['vst3', 'clap'] },
+  inst: { n: T('Installers'), c: '#D98E73', ext: ['msi', 'cab', 'msu'] },
+  archive: { n: T('Archives'), c: '#FFB27A', ext: ['zip', '7z', 'rar'] },
+  image: { n: T('Images'), c: '#FF9ECF', ext: ['jpg', 'png', 'psd'] },
+  doc: { n: T('Documents'), c: '#C9D4E8', ext: ['pdf', 'docx', 'xlsx', 'md'] },
+  code: { n: T('Code'), c: '#A8D672', ext: ['py', 'js', 'ts', 'json', 'pyc', 'manifest'] },
+  system: { n: T('System files'), c: '#7C8AA5', ext: [] },
+  other: { n: T('Other'), c: '#B9A88C', ext: [] },
+  free: { n: T('Free space'), c: '#1C2436', ext: [] },
 };
 const EXT2T = {}; for (const [k, t] of Object.entries(TYPES)) t.ext.forEach(e => EXT2T[e] = k);
 const T_ = t => TYPES[t] || TYPES.other;
@@ -226,7 +227,9 @@ const API = {
   },
 };
 const isWholeDrive = () => !ST.real || !ST.info || /^[A-Za-z]:\\?$/.test(ST.info.target);
-const targetName = () => { if (!ST.real || !ST.info) return 'Drive C:'; const t = ST.info.target; return isWholeDrive() ? `Drive ${t.slice(0, 2)}` : t.split('\\').filter(Boolean).pop(); };
+/* short name: "C:" for a whole drive, the folder's name otherwise; targetName() says "Drive C:" for a drive */
+const targetShort = () => { if (!ST.real || !ST.info) return 'C:'; const t = ST.info.target; return isWholeDrive() ? t.slice(0, 2) : t.split('\\').filter(Boolean).pop(); };
+const targetName = () => isWholeDrive() ? T('Drive {d}', { d: targetShort() }) : targetShort();
 const pathOf = n => {
   if (n && n.path) return n.path;
   const p = []; let x = n; while (x) { p.unshift(x.name); x = x.parent; }
@@ -236,8 +239,8 @@ const pathOf = n => {
 const isAnc = (a, n) => { for (let x = n; x; x = x.parent) if (x === a) return true; return false; };
 const typeOf = n => n.dir ? n.dom : n.type;
 const fmtB = b => SH.fmtBytes(b);
-const pct = v => (v * 100 < 0.1 ? '<0.1' : fmt1(v * 100)) + '%';
-const fmtDate = t => new Date(t).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+const pct = v => (v * 100 < 0.1 ? '<' + fmt1(.1) : fmt1(v * 100)) + '%';
+const fmtDate = t => new Date(t).toLocaleDateString(SH.i18n.locale, { day: 'numeric', month: 'short', year: 'numeric' });
 
 /* ---------------- treemap ---------------- */
 const TM = { cv: null, ctx: null, dpr: 1, vp: { x: 0, y: 0, w: 0, h: 0 }, root: null, cur: null, leaves: [], rects: new Map(), tops: [], hover: null, hoverTop: null, sel: null,
@@ -256,7 +259,7 @@ function squarify(items, r, cb) {
   }
 }
 /* the drive's free space as one more block (only at the root of a whole drive, if the switch is on) */
-const FREE = { id: -999, name: 'Free space', size: 0, type: 'free', free: true, fc: 0, mtime: 0 };
+const FREE = { id: -999, name: T('Free space'), size: 0, type: 'free', free: true, fc: 0, mtime: 0 };
 const showFree = () => state.settings.storageShowFree !== false && isWholeDrive();
 function layout(root, vp) {
   const leaves = [], rects = new Map(), tops = [];
@@ -336,7 +339,7 @@ function draw(now) {
     ctx.font = '500 12px Onest, system-ui'; ctx.textBaseline = 'middle';
     for (const t of TM.tops) {
       if ((!t.n.dir && !t.n.free) || t.r.w < 96 || t.r.h < 40) continue;
-      const label = t.n.free ? 'Free' : t.n.name, sz = fmtB(t.n.size);
+      const label = t.n.free ? T('Free') : t.n.name, sz = fmtB(t.n.size);
       const w1 = ctx.measureText(label).width, w2 = ctx.measureText(sz).width;
       const maxW = t.r.w - 16; if (maxW < 40) continue;
       const tw = Math.min(maxW, w1 + w2 + 26);
@@ -422,20 +425,20 @@ function renderMap(el) {
   el.classList.add('fill');
   el.innerHTML = `<div class="st-map">
     <div class="st-mainc">
-      <div class="st-bar" data-asm><nav class="st-crumbs" aria-label="Path"></nav><span class="sp"></span><span class="faint st-hint">Click a folder to open it. Scroll back to go up.</span>
-        <button class="st-free${state.settings.storageShowFree !== false ? ' on' : ''}" data-free title="Show the drive's free space on the map"><span class="st-fsw"></span>Free space</button>
-        <button class="btn sm ghost" data-up>${ic('up')}Up one level</button></div>
+      <div class="st-bar" data-asm><nav class="st-crumbs" aria-label="${T('Path')}"></nav><span class="sp"></span><span class="faint st-hint">${T('Click a folder to open it. Scroll back to go up.')}</span>
+        <button class="st-free${state.settings.storageShowFree !== false ? ' on' : ''}" data-free title="${T("Show the drive's free space on the map")}"><span class="st-fsw"></span>${T('Free space')}</button>
+        <button class="btn sm ghost" data-up>${ic('up')}${T('Up one level')}</button></div>
       <div class="st-cvw pan" data-asm data-nofade><canvas></canvas><div class="st-tip"></div>
         <div class="st-scan"><div class="st-sbox">
           <div class="st-dial"><svg class="st-ring" viewBox="-14 -14 148 148"><circle cx="60" cy="60" r="54" class="bg"/><circle cx="60" cy="60" r="54" class="fg"/></svg>
-            <div class="st-sv"><b class="st-sn">0</b><span>files read</span></div></div>
-          <div class="st-sp faint">Preparing the scan…</div><div class="st-ss muted">&nbsp;</div>
-          <button class="btn sm ghost st-cancel" data-cancel>${ic('x')}Cancel</button></div></div>
+            <div class="st-sv"><b class="st-sn">0</b><span>${T('files read')}</span></div></div>
+          <div class="st-sp faint">${T('Preparing the scan…')}</div><div class="st-ss muted">&nbsp;</div>
+          <button class="btn sm ghost st-cancel" data-cancel>${ic('x')}${T('Cancel')}</button></div></div>
       </div>
     </div>
     <aside class="st-side">
       <div class="pan st-info" data-asm></div>
-      <div class="pan st-legend" data-asm><h4>File types <em>click to highlight</em></h4><div class="st-leg"></div></div>
+      <div class="pan st-legend" data-asm><h4>${T('File types')} <em>${T('click to highlight')}</em></h4><div class="st-leg"></div></div>
     </aside></div>`;
   const wrap = $('.st-cvw', el); TM.cv = $('canvas', wrap); TM.ctx = TM.cv.getContext('2d'); TM.tipEl = $('.st-tip', wrap);
   /* size WITHOUT transforms (clientWidth): getBoundingClientRect includes the scale of camera moves
@@ -486,10 +489,10 @@ function hoverAt(x, y) {
   TM.hover = hit; TM.hoverTop = top; TM.dirty = true;
   if (hit && hit.free) {
     const dk = API.disk();
-    tip.innerHTML = `<b>Free space</b><span class="faint">What's still unused on the drive</span><span><i style="background:#3A4660"></i>${fmtB(hit.size)}, ${pct(hit.size / dk.total)} of the drive</span>`;
+    tip.innerHTML = `<b>${T('Free space')}</b><span class="faint">${T("What's still unused on the drive")}</span><span><i style="background:#3A4660"></i>${T('{size}, {pct} of the drive', { size: fmtB(hit.size), pct: pct(hit.size / dk.total) })}</span>`;
   } else if (hit) {
     const t = typeOf(hit);
-    tip.innerHTML = `<b>${esc(hit.name)}</b><span class="faint">${wp(pathOf(hit.parent || hit))}</span><span><i style="background:${T_(t).c}"></i>${fmtB(hit.size)}, ${pct(hit.size / TM.cur.size)} of ${esc(TM.cur === TM.root ? targetName() : TM.cur.name)}</span>`;
+    tip.innerHTML = `<b>${esc(hit.name)}</b><span class="faint">${wp(pathOf(hit.parent || hit))}</span><span><i style="background:${T_(t).c}"></i>${T('{size}, {pct} of {name}', { size: fmtB(hit.size), pct: pct(hit.size / TM.cur.size), name: esc(TM.cur === TM.root ? targetName() : TM.cur.name) })}</span>`;
   }
   renderInfo();
 }
@@ -497,12 +500,13 @@ function renderCrumbs(animate) {
   const box = $(`#v-${ID} .st-crumbs`); if (!box || !TM.cur) return;
   const chain = []; for (let x = TM.cur; x; x = x.parent) chain.unshift(x);
   const prev = box.childElementCount;
-  box.innerHTML = chain.map((n, i) => `${i ? `<span class="st-cs">${ic('chev')}</span>` : ''}<button data-crumb="${n.id}"${i === chain.length - 1 ? ' class="on" aria-current="true"' : ''}>${i === 0 ? ic('drive') : ''}${esc(i === 0 ? targetName().replace(/^Drive /, '') : n.name)}</button>`).join('');
+  box.innerHTML = chain.map((n, i) => `${i ? `<span class="st-cs">${ic('chev')}</span>` : ''}<button data-crumb="${n.id}"${i === chain.length - 1 ? ' class="on" aria-current="true"' : ''}>${i === 0 ? ic('drive') : ''}${esc(i === 0 ? targetShort() : n.name)}</button>`).join('');
   if (animate) $$('button, .st-cs', box).forEach((b, i) => { if (i * 1 >= prev - 1) anim(b, [{ opacity: 0, transform: 'translate3d(-8px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 340, delay: Math.max(0, i - prev + 1) * 40, e: EASE.spring }); });
   const up = $(`#v-${ID} [data-up]`); if (up) up.disabled = !TM.cur.parent;
 }
-const whenText = ms => { if (!ms) return 'today, 09:12'; const d = new Date(ms); const today = new Date().toDateString() === d.toDateString();
-  return (today ? 'today, ' : d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) + ', ') + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }); };
+const whenText = ms => { if (!ms) return T('today, {time}', { time: '09:12' }); const d = new Date(ms); const today = new Date().toDateString() === d.toDateString();
+  const time = d.toLocaleTimeString(SH.i18n.locale, { hour: '2-digit', minute: '2-digit' });
+  return today ? T('today, {time}', { time }) : T('{date}, {time}', { date: d.toLocaleDateString(SH.i18n.locale, { day: 'numeric', month: 'short' }), time }); };
 function renderInfo() {
   const box = $(`#v-${ID} .st-info`); if (!box || !TM.ready) return;
   let n = TM.hover || TM.sel || TM.cur; if (n.free) n = TM.cur;
@@ -512,29 +516,29 @@ function renderInfo() {
   if (n === TM.cur && !n.parent) {
     const I = ST.info;
     box.innerHTML = (disk.whole
-      ? `<h4>${esc(targetName())}</h4><div class="st-ib"><div class="big">${fmt1(disk.used / GB)}<small>GB used</small></div><span class="muted">of ${fmtInt(disk.total / GB)} GB. ${fmtInt(disk.free / GB)} GB free.</span></div>
+      ? `<h4>${esc(targetName())}</h4><div class="st-ib"><div class="big">${fmt1(disk.used / GB)}<small>${T('GB used')}</small></div><span class="muted">${T('of {total} GB. {free} GB free.', { total: fmtInt(disk.total / GB), free: fmtInt(disk.free / GB) })}</span></div>
       <div class="st-used"><span style="--v:${(disk.used / disk.total).toFixed(4)}"></span></div>`
-      : `<h4>Scanned folder</h4><div class="st-ih"><span class="st-it" style="--c:${T_(n.dom).c}">${ic('folder')}</span><div><b>${esc(targetName())}</b><span class="faint">${wp(I ? I.target : '')}</span></div></div>
-      <div class="st-ib"><div class="big">${fmtB(n.size).replace(/ (\w+)$/, '<small>$1</small>')}</div><span class="muted">${pct(n.size / disk.total)} of the drive, which has ${fmtInt(disk.free / GB)} GB free.</span></div>`)
-      + `<dl class="st-dl"><dt>Files</dt><dd>${fmtInt(n.fc)}</dd><dt>Folders</dt><dd>${fmtInt(n.dirs)}</dd><dt>Scanned</dt><dd>${whenText(I && I.when)}${I ? `, in ${fmt1(I.secs)} s` : ''}</dd>
-      ${I && I.method ? `<dt>Read from</dt><dd title="${I.method === 'mft' ? 'The NTFS master file table was read directly (admin mode): every file in seconds. Hard links count once.' : 'Every folder was listed one by one. Admin mode on an NTFS drive reads the file table instead, which is much faster.'}">${I.method === 'mft' ? 'NTFS file table' : 'Folder scan'}</dd>` : ''}
-      <dt>Sizes</dt><dd title="The map uses each file's real size, as Explorer shows it under Size. Space on disk can differ: small files fill whole clusters, compressed and sparse files take less.">File size${I && I.alloc ? ` · ${fmt1(I.alloc / GB)} GB on disk` : ''}</dd>
-      ${I && I.errors ? `<dt>No access</dt><dd title="${I.admin ? 'Folders Windows won\'t let even an administrator read.' : 'Admin mode can read more system folders.'}">${fmtInt(I.errors)} folders</dd>` : ''}</dl>`;
+      : `<h4>${T('Scanned folder')}</h4><div class="st-ih"><span class="st-it" style="--c:${T_(n.dom).c}">${ic('folder')}</span><div><b>${esc(targetName())}</b><span class="faint">${wp(I ? I.target : '')}</span></div></div>
+      <div class="st-ib"><div class="big">${fmtB(n.size).replace(/ (\w+)$/, '<small>$1</small>')}</div><span class="muted">${T('{pct} of the drive, which has {free} GB free.', { pct: pct(n.size / disk.total), free: fmtInt(disk.free / GB) })}</span></div>`)
+      + `<dl class="st-dl"><dt>${T('Files')}</dt><dd>${fmtInt(n.fc)}</dd><dt>${T('Folders')}</dt><dd>${fmtInt(n.dirs)}</dd><dt>${T('Scanned')}</dt><dd>${I ? T('{when}, in {secs} s', { when: whenText(I.when), secs: fmt1(I.secs) }) : whenText()}</dd>
+      ${I && I.method ? `<dt>${T('Read from')}</dt><dd title="${I.method === 'mft' ? T('The NTFS master file table was read directly (admin mode): every file in seconds. Hard links count once.') : T('Every folder was listed one by one. Admin mode on an NTFS drive reads the file table instead, which is much faster.')}">${I.method === 'mft' ? T('NTFS file table') : T('Folder scan')}</dd>` : ''}
+      <dt>${T('Sizes')}</dt><dd title="${T("The map uses each file's real size, as Explorer shows it under Size. Space on disk can differ: small files fill whole clusters, compressed and sparse files take less.")}">${T('File size')}${I && I.alloc ? ` · ${T('{n} GB on disk', { n: fmt1(I.alloc / GB) })}` : ''}</dd>
+      ${I && I.errors ? `<dt>${T('No access')}</dt><dd title="${I.admin ? T("Folders Windows won't let even an administrator read.") : T('Admin mode can read more system folders.')}">${T('{n} folders', { n: fmtInt(I.errors) })}</dd>` : ''}</dl>`;
   } else {
     const t = typeOf(n); const base = n === TM.cur ? (n.parent || n) : TM.cur;
-    box.innerHTML = `<h4>${n === TM.cur ? 'Current folder' : n.dir ? 'Folder' : n.group ? 'Several files' : 'File'}</h4>
+    box.innerHTML = `<h4>${n === TM.cur ? T('Current folder') : n.dir ? T('Folder') : n.group ? T('Several files') : T('File')}</h4>
       <div class="st-ih"><span class="st-it" style="--c:${T_(t).c}">${ic(n.dir ? 'folder' : 'file')}</span><div><b>${esc(n.name)}</b><span class="faint">${wp(pathOf(n.parent || n))}</span></div></div>
-      <div class="st-ib"><div class="big">${fmtB(n.size).replace(/ (\w+)$/, '<small>$1</small>')}</div><span class="muted">${base !== n && !(base === TM.root && disk.whole) ? `${pct(n.size / base.size)} of ${esc(base === TM.root ? targetName() : base.name)}, ` : ''}${pct(n.size / disk.total)} of the drive</span></div>
+      <div class="st-ib"><div class="big">${fmtB(n.size).replace(/ (\w+)$/, '<small>$1</small>')}</div><span class="muted">${base !== n && !(base === TM.root && disk.whole) ? T('{pct} of {name}, {dpct} of the drive', { pct: pct(n.size / base.size), name: esc(base === TM.root ? targetName() : base.name), dpct: pct(n.size / disk.total) }) : T('{pct} of the drive', { pct: pct(n.size / disk.total) })}</span></div>
       <div class="bar" style="margin:10px 0 2px"><span style="transform:scaleX(${Math.max(.004, n.size / base.size).toFixed(4)});background:${T_(t).c}"></span></div>
-      <dl class="st-dl">${n.dir || n.group ? `<dt>Files</dt><dd>${fmtInt(n.fc)}</dd><dt>Mostly</dt><dd>${T_(n.dir ? n.dom : t).n.toLowerCase()}</dd>` : `<dt>Type</dt><dd>${T_(t).n}</dd>`}<dt>Modified</dt><dd>${n.mtime ? fmtDate(n.mtime) : '—'}</dd></dl>
-      <div class="st-ia">${n.dir && n !== TM.cur ? `<button class="btn sm sec" data-info="enter">${ic('zoom')}Zoom in</button>` : ''}<button class="btn sm ghost" data-info="open">${ic('folder')}Show in Explorer</button>${n.dir ? `<button class="btn sm ghost" data-info="tree">${ic('list')}View in Folders</button>` : ''}</div>`;
+      <dl class="st-dl">${n.dir || n.group ? `<dt>${T('Files')}</dt><dd>${fmtInt(n.fc)}</dd><dt>${T('Mostly')}</dt><dd>${T_(n.dir ? n.dom : t).n}</dd>` : `<dt>${T('Type')}</dt><dd>${T_(t).n}</dd>`}<dt>${T('Modified')}</dt><dd>${n.mtime ? fmtDate(n.mtime) : '—'}</dd></dl>
+      <div class="st-ia">${n.dir && n !== TM.cur ? `<button class="btn sm sec" data-info="enter">${ic('zoom')}${T('Zoom in')}</button>` : ''}<button class="btn sm ghost" data-info="open">${ic('folder')}${T('Show in Explorer')}</button>${n.dir ? `<button class="btn sm ghost" data-info="tree">${ic('list')}${T('View in Folders')}</button>` : ''}</div>`;
     TM.infoNode = n;
   }
   anim(box.children[1] || box, [{ opacity: .4, transform: 'translate3d(0,3px,0)' }, { opacity: 1, transform: 'none' }], { d: 200 });
 }
 async function reveal(path) {
-  if (ST.real) { try { if (await SH.engine('storage', 'reveal', path)) return; } catch (e) { console.error(e); } SH.toast('Not found: it may no longer exist.'); return; }
-  SH.toast(`Would show ${path} in Explorer.`);
+  if (ST.real) { try { if (await SH.engine('storage', 'reveal', path)) return; } catch (e) { console.error(e); } SH.toast(T('Not found: it may no longer exist.')); return; }
+  SH.toast(T('Would show {path} in Explorer.', { path }));
 }
 function infoAction(a) {
   const n = TM.infoNode || TM.cur;
@@ -575,24 +579,24 @@ async function runScan() {
   if (sc) {
     sc.classList.remove('done'); sc.classList.add('busy');
     $$('.st-dial, .st-sp, .st-ss, .st-cancel', sc).forEach(x => { x.getAnimations().forEach(a => a.cancel()); });
-    $('.st-sn', sc).textContent = '0'; setPathText($('.st-sp', sc), 'Preparing the scan…'); $('.st-ss', sc).innerHTML = '&nbsp;';
+    $('.st-sn', sc).textContent = '0'; setPathText($('.st-sp', sc), T('Preparing the scan…')); $('.st-ss', sc).innerHTML = '&nbsp;';
     anim(sc, [{ opacity: 0, transform: 'scale(.94)', filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
   }
   const wasReady = TM.ready;
   if (TM.ready) { TM.ready = false; TM.dirty = true; }
   const fg = sc && $('.fg', sc); const C = 2 * Math.PI * 54; if (fg) fg.style.strokeDasharray = `0 ${C}`;
   let last = 0, lastT = performance.now(), shown = 0, t;
-  const spEl = sc && $('.st-sp', sc), unitEl = sc && $('.st-sv span', sc); if (unitEl) unitEl.textContent = 'files read';
+  const spEl = sc && $('.st-sp', sc), unitEl = sc && $('.st-sv span', sc); if (unitEl) unitEl.textContent = T('files read');
   try {
     t = await API.scan(p => {
       if (!sc) return;
       $('.st-sn', sc).textContent = fmtInt(p.files); setPathText(spEl, p.path || ' ');
-      if (unitEl && p.unit) { const u = p.unit === 'entries' ? 'entries read' : 'files read'; if (unitEl.textContent !== u) unitEl.textContent = u; }
+      if (unitEl && p.unit) { const u = p.unit === 'entries' ? T('entries read') : T('files read'); if (unitEl.textContent !== u) unitEl.textContent = u; }
       const now = performance.now();
       if (now - lastT > 500) {
         /* 3 significant digits, so the speed line doesn't flicker on every update */
         const r = p.rate || (p.files - last) / ((now - lastT) / 1000), m = Math.pow(10, Math.max(0, Math.floor(Math.log10(Math.max(1, r))) - 2));
-        $('.st-ss', sc).textContent = p.method === 'mft' ? `${fmtInt(Math.round(r / m) * m)} entries per second · reading the NTFS file table` : `${fmtInt(Math.round(r / m) * m)} files per second`;
+        $('.st-ss', sc).textContent = p.method === 'mft' ? T('{n} entries per second · reading the NTFS file table', { n: fmtInt(Math.round(r / m) * m) }) : T('{n} files per second', { n: fmtInt(Math.round(r / m) * m) });
         last = p.files; lastT = now;
       }
       shown = Math.max(shown, p.frac || 0); if (fg) fg.style.strokeDasharray = `${(C * shown).toFixed(1)} ${C}`;
@@ -601,10 +605,10 @@ async function runScan() {
     TM.scanning = false; if (sc) sc.classList.remove('busy');
     if (e && e.cancelled) {
       if (wasReady && TM.root) { TM.ready = true; relayout(); if (sc) anim(sc, [{ opacity: 1 }, { opacity: 0 }], { d: 260 }).finished.then(() => sc.classList.add('done')).catch(() => {}); }
-      else if (sc) { setPathText($('.st-sp', sc), 'Scan cancelled.'); $('.st-ss', sc).textContent = 'Press Scan to start again.'; }
-      SH.toast('Scan cancelled.'); return;
+      else if (sc) { setPathText($('.st-sp', sc), T('Scan cancelled.')); $('.st-ss', sc).textContent = T('Press Scan to start again.'); }
+      SH.toast(T('Scan cancelled.')); return;
     }
-    if (sc) { setPathText($('.st-sp', sc), 'Couldn\'t scan.'); $('.st-ss', sc).textContent = (e && e.message) || ''; }
+    if (sc) { setPathText($('.st-sp', sc), T("Couldn't scan.")); $('.st-ss', sc).textContent = (e && e.message) || ''; }
     console.error(e); return;
   }
   if (fg) fg.style.strokeDasharray = `${C} ${C}`;
@@ -614,7 +618,7 @@ async function runScan() {
   const lb = $(`#v-${ID} .st-leg`); if (lb) lb.dataset.k = '';
   if (sc) {
     sc.classList.remove('busy');
-    $('.st-ss', sc).textContent = `${fmtInt(t.fc)} files in ${fmtInt(t.dirs)} folders`;
+    $('.st-ss', sc).textContent = T('{files} files in {dirs} folders', { files: fmtInt(t.fc), dirs: fmtInt(t.dirs) });
     const dial = $('.st-dial', sc), rest = $$('.st-sp, .st-ss, .st-cancel', sc);
     rest.forEach(x => anim(x, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(0,6px,0)' }], { d: 260, delay: 160 }));
     anim(dial, [{ transform: 'scale(1)', opacity: 1, filter: 'blur(0px)' }, { transform: 'scale(.5)', opacity: 0, filter: 'blur(6px)' }], { d: 520, delay: 220, e: EASE.io });
@@ -633,14 +637,14 @@ let treeTarget = null; const openSet = new Set();
 const needScan = () => ST.real && !TREE;
 function scanFirst(el, what) {
   el.classList.add('fill');
-  el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi">${ic('storage')}</span><b>Scan a drive first</b><span class="muted">${what}</span>
-    <button class="btn pri" data-goscan>${ic('search')}Scan ${esc((ST.target || 'C:\\').replace(/\\$/, ''))}</button></div>`;
+  el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi">${ic('storage')}</span><b>${T('Scan a drive first')}</b><span class="muted">${what}</span>
+    <button class="btn pri" data-goscan>${ic('search')}${T('Scan {target}', { target: esc((ST.target || 'C:\\').replace(/\\$/, '')) })}</button></div>`;
   if (!el.dataset.b) { el.dataset.b = 1; el.addEventListener('click', e => { if (e.target.closest('[data-goscan]') && ctxRef) { ctxRef.setTab('map'); setTimeout(() => runScan(), 260); } }); }
 }
 function trow(n, depth, base) {
   const t = typeOf(n); const frac = base ? n.size / base : 0;
   return `<div class="st-tr${n.dir ? '' : ' file'}${n.group ? ' grp' : ''}" data-id="${n.id}" style="--d:${depth}">
-    <span class="st-nmc">${n.dir ? `<button class="st-tw" data-tw="${n.id}" aria-label="Expand">${ic('chev')}</button>` : '<span class="st-tw"></span>'}<span class="st-ic" style="--c:${T_(t).c}">${ic(n.dir ? 'folder' : n.group ? 'layers' : 'file')}</span><span class="st-nm">${esc(depth === 0 ? targetName() : n.name)}</span></span>
+    <span class="st-nmc">${n.dir ? `<button class="st-tw" data-tw="${n.id}" aria-label="${T('Expand')}">${ic('chev')}</button>` : '<span class="st-tw"></span>'}<span class="st-ic" style="--c:${T_(t).c}">${ic(n.dir ? 'folder' : n.group ? 'layers' : 'file')}</span><span class="st-nm">${esc(depth === 0 ? targetName() : n.name)}</span></span>
     <span class="st-sz">${fmtB(n.size)}</span>
     <span class="st-pc"><span class="bar"><span style="--v:${Math.max(.003, frac).toFixed(4)};background:${T_(t).c}"></span></span><em>${pct(frac)}</em></span>
     <span class="st-fc">${n.dir || n.group ? fmtInt(n.fc) : ''}</span><span class="st-dt">${n.mtime ? fmtDate(n.mtime) : ''}</span></div>${n.dir ? `<div class="st-kids" data-kids="${n.id}"><div></div></div>` : ''}`;
@@ -648,7 +652,7 @@ function trow(n, depth, base) {
 function fillKids(n, depth) {
   const box = $(`#v-${ID} [data-kids="${n.id}"] > div`); if (!box || box.dataset.f) return box; box.dataset.f = 1;
   const shown = n.kids.filter(k => k.size > 0).slice(0, 80); const rest = n.kids.length - shown.length;
-  box.innerHTML = shown.map(k => trow(k, depth + 1, n.size)).join('') + (rest > 0 ? `<div class="st-tr more" style="--d:${depth + 1}"><span class="st-nmc"><span class="st-tw"></span><span class="faint">and ${rest} smaller items</span></span></div>` : '');
+  box.innerHTML = shown.map(k => trow(k, depth + 1, n.size)).join('') + (rest > 0 ? `<div class="st-tr more" style="--d:${depth + 1}"><span class="st-nmc"><span class="st-tw"></span><span class="faint">${T('and {n} smaller items', { n: fmtInt(rest) })}</span></span></div>` : '');
   return box;
 }
 async function toggleTree(id, force) {
@@ -665,12 +669,12 @@ async function toggleTree(id, force) {
   } else { row.classList.remove('open'); kids.classList.remove('open'); openSet.delete(id); }
 }
 function renderTree(el) {
-  if (needScan()) return scanFirst(el, 'The folder tree comes from the scan: size, files and date of every folder.');
+  if (needScan()) return scanFirst(el, T('The folder tree comes from the scan: size, files and date of every folder.'));
   const t = tree(); openSet.clear();
   el.classList.add('fill');
   el.innerHTML = `<div class="pan st-tree st-fp" data-asm>
-      <div class="st-ph"><div class="st-pht"><b>${esc(targetName())}</b><span class="muted">${fmtB(t.size)} in ${fmtInt(t.fc)} files. Sorted by size.</span></div><span class="sp"></span><button class="btn sm ghost" data-collapse>${ic('minus')}Collapse all</button></div>
-      <div class="tbl-head st-th"><span>Name</span><span>Size</span><span>Share of its folder</span><span>Files</span><span>Modified</span></div>
+      <div class="st-ph"><div class="st-pht"><b>${esc(targetName())}</b><span class="muted">${T('{size} in {n} files. Sorted by size.', { size: fmtB(t.size), n: fmtInt(t.fc) })}</span></div><span class="sp"></span><button class="btn sm ghost" data-collapse>${ic('minus')}${T('Collapse all')}</button></div>
+      <div class="tbl-head st-th"><span>${T('Name')}</span><span>${T('Size')}</span><span>${T('Share of its folder')}</span><span>${T('Files')}</span><span>${T('Modified')}</span></div>
       <div class="st-tbody st-scroll">${trow(t, 0, t.size)}</div></div>`;
   const root = $('.st-tr', el); root.classList.add('in');
   toggleTree(t.id, true);
@@ -699,13 +703,13 @@ async function typesData() {
   return Object.entries(by).map(([k, b]) => [k, { ...b, n: Math.round(b.n * (['vm', 'ai', 'system', 'inst', 'archive'].includes(k) ? 1 : ['video', 'game'].includes(k) ? fFactor * .08 : fFactor)) }]);
 }
 async function renderTypes(el) {
-  if (needScan()) return scanFirst(el, 'See how much space each file type takes: videos, games, programs, caches…');
+  if (needScan()) return scanFirst(el, T('See how much space each file type takes: videos, games, programs, caches…'));
   el.classList.add('fill'); el.innerHTML = '<div class="sk" style="height:60px;margin-bottom:14px"></div><div class="sk" style="height:300px"></div>';
   const list = (await typesData()).filter(x => x[1].size > 0).sort((a, b) => b[1].size - a[1].size); const max = list[0] ? list[0][1].size : 1;
   const tot = list.reduce((a, x) => a + x[1].size, 0);
-  el.innerHTML = `<div class="st-tywrap"><div class="pan st-stack" data-asm><h4>How ${esc(targetName().replace(/^Drive/, 'drive'))} is split up <em>${fmtB(tot)} in ${list.length} types</em></h4>
+  el.innerHTML = `<div class="st-tywrap"><div class="pan st-stack" data-asm><h4>${isWholeDrive() ? T('How drive {d} is split up', { d: esc(targetShort()) }) : T('How {name} is split up', { name: esc(targetShort()) })} <em>${T('{size} in {n} types', { size: fmtB(tot), n: list.length })}</em></h4>
       <div class="st-sbar">${list.map(([k, b]) => `<button data-ty="${k}" style="flex:${b.size};background:${T_(k).c}" title="${T_(k).n}, ${fmtB(b.size)}"></button>`).join('')}</div></div>
-    <div class="pan st-types st-fp" data-asm><div class="tbl-head st-tyh"><span>Type</span><span>Extensions</span><span>Size</span><span>Files</span><span></span></div>
+    <div class="pan st-types st-fp" data-asm><div class="tbl-head st-tyh"><span>${T('Type')}</span><span>${T('Extensions')}</span><span>${T('Size')}</span><span>${T('Files')}</span><span></span></div>
       <div class="st-scroll">${list.map(([k, b]) => `<button class="st-ty" data-ty="${k}"><span class="st-sw" style="background:${T_(k).c}"></span><b>${T_(k).n}</b>
         <span class="faint st-ex">${Object.entries(b.ext).sort((x, y) => y[1] - x[1]).slice(0, 4).map(([e]) => e.startsWith('(') ? e : '.' + e).join(' ')}</span>
         <span class="st-tsz">${fmtB(b.size)}</span><span class="st-tn">${fmtInt(b.n)}</span>
@@ -714,7 +718,7 @@ async function renderTypes(el) {
   const sb = $('.st-sbar', el); anim(sb, [{ clipPath: 'inset(0 100% 0 0 round 8px)' }, { clipPath: 'inset(0 0 0 0 round 8px)' }], { d: 900, delay: 150 });
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
   if (el.dataset.b) return; el.dataset.b = 1;
-  el.addEventListener('click', e => { const b = e.target.closest('[data-ty]'); if (!b) return; TM.hiLock = b.dataset.ty; TM.dirty = true; if (ctxRef) ctxRef.setTab('map'); setTimeout(markLegend, 50); SH.toast(`${T_(b.dataset.ty).n} highlighted on the map.`, { action: { label: 'Clear', run: () => { TM.hiLock = null; TM.dirty = true; markLegend(); } } }); });
+  el.addEventListener('click', e => { const b = e.target.closest('[data-ty]'); if (!b) return; TM.hiLock = b.dataset.ty; TM.dirty = true; if (ctxRef) ctxRef.setTab('map'); setTimeout(markLegend, 50); SH.toast(T('{type} highlighted on the map.', { type: T_(b.dataset.ty).n }), { action: { label: T('Clear highlight'), run: () => { TM.hiLock = null; TM.dirty = true; markLegend(); } } }); });
 }
 
 /* ---------------- Largest ---------------- */
@@ -733,7 +737,7 @@ function bigList() {
   if (BIG.q) l = l.filter(n => n.name.toLowerCase().includes(BIG.q) || folderOf(n).toLowerCase().includes(BIG.q));
   l = l.slice();
   if (BIG.sort === 'size') l.sort((a, b) => b.size - a.size);
-  if (BIG.sort === 'name') l.sort((a, b) => a.name.localeCompare(b.name, 'en'));
+  if (BIG.sort === 'name') l.sort((a, b) => a.name.localeCompare(b.name, SH.i18n.locale));
   if (BIG.sort === 'date') l.sort((a, b) => b.mtime - a.mtime);
   return l.slice(0, 200);
 }
@@ -742,13 +746,13 @@ function bigRow(n) {
   return `<div class="st-br" data-big="${n.id}"><span class="st-bt" style="--c:${T_(t).c}">${esc(n.ext || '·')}</span>
     <div class="st-bn"><b>${esc(n.name)}</b><span class="faint">${wp(folderOf(n))}</span></div>
     <span class="st-bs">${fmtB(n.size)}</span><span class="st-bd faint">${n.mtime ? fmtDate(n.mtime) : ''}</span>
-    <span class="st-ba"><button class="iconbtn" data-bopen="${n.id}" title="Show in Explorer">${ic('folder')}</button><button class="iconbtn" data-btrash="${n.id}" title="Send to the Recycle Bin">${ic('trash')}</button></span></div>`;
+    <span class="st-ba"><button class="iconbtn" data-bopen="${n.id}" title="${T('Show in Explorer')}">${ic('folder')}</button><button class="iconbtn" data-btrash="${n.id}" title="${T('Send to the Recycle Bin')}">${ic('trash')}</button></span></div>`;
 }
 /* confirmation inside the row itself: no browser dialogs */
 function askInRow(row, text, yesLabel) {
   return new Promise(res => {
     const box = $('.st-ba', row); const prev = box.innerHTML;
-    box.innerHTML = `<span class="st-ask"><span>${esc(text)}</span><button class="btn sm danger" data-yes>${esc(yesLabel)}</button><button class="btn sm ghost" data-no>No</button></span>`;
+    box.innerHTML = `<span class="st-ask"><span>${esc(text)}</span><button class="btn sm danger" data-yes>${esc(yesLabel)}</button><button class="btn sm ghost" data-no>${T('No')}</button></span>`;
     anim($('.st-ask', box), [{ opacity: 0, transform: 'translate3d(10px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 260, e: EASE.spring });
     const done = v => { box.removeEventListener('click', on, true); if (!v) box.innerHTML = prev; res(v); };
     const on = e => { if (e.target.closest('[data-yes]')) { e.stopPropagation(); done(true); } else if (e.target.closest('[data-no]')) { e.stopPropagation(); done(false); } };
@@ -763,20 +767,20 @@ async function toTrash(path) {
 }
 async function fromTrash(path) { if (!ST.real) return { ok: true }; return SH.engine('storage', 'restore', path); }
 async function renderBig(el) {
-  if (needScan()) return scanFirst(el, 'Your largest files show up here, so you can decide what you don\'t need.');
+  if (needScan()) return scanFirst(el, T("Your largest files show up here, so you can decide what you don't need."));
   el.classList.add('fill');
   el.innerHTML = `<div class="pan st-big st-fp" data-asm>
-      <div class="st-ph"><label class="field st-bq">${ic('search')}<input placeholder="Filter by name or folder" spellcheck="false"></label>
-        <div class="seg st-bsort"><span class="ind"></span><button data-s="size" class="on">Size</button><button data-s="name">Name</button><button data-s="date">Date</button></div>
+      <div class="st-ph"><label class="field st-bq">${ic('search')}<input placeholder="${T('Filter by name or folder')}" spellcheck="false"></label>
+        <div class="seg st-bsort"><span class="ind"></span><button data-s="size" class="on">${T('Size')}</button><button data-s="name">${T('Name')}</button><button data-s="date">${T('Date')}</button></div>
         <span class="sp"></span><span class="muted st-btot"></span></div>
-      <div class="tbl-head st-bh"><span></span><span>File</span><span>Size</span><span>Modified</span><span></span></div>
+      <div class="tbl-head st-bh"><span></span><span>${T('File')}</span><span>${T('Size')}</span><span>${T('Modified')}</span><span></span></div>
       <div class="st-blist st-scroll"><div class="sk" style="height:46px;margin:6px"></div><div class="sk" style="height:46px;margin:6px"></div></div></div>`;
   BIG.sort = 'size'; BIG.q = '';
   requestAnimationFrame(() => SH.placeSeg($('.st-bsort', el), true));
   BIG.items = await bigItems();
   const list = $('.st-blist', el);
-  const total = () => { const l = bigList(); $('.st-btot', el).textContent = `${l.length} files, ${fmtB(l.reduce((a, n) => a + n.size, 0))}`; };
-  const paint = () => { const l = bigList(); list.innerHTML = l.map(bigRow).join('') || '<div class="empty"><b>Nothing matches</b>Try another word.</div>'; total(); };
+  const total = () => { const l = bigList(); $('.st-btot', el).textContent = T('{n} files, {size}', { n: fmtInt(l.length), size: fmtB(l.reduce((a, n) => a + n.size, 0)) }); };
+  const paint = () => { const l = bigList(); list.innerHTML = l.map(bigRow).join('') || `<div class="empty"><b>${T('Nothing matches')}</b>${T('Try another word.')}</div>`; total(); };
   el._paint = paint;
   paint(); $$('.st-br', list).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: Math.min(i, 14) * 25, e: EASE.spring }));
   if (el.dataset.b) return; el.dataset.b = 1;
@@ -787,20 +791,20 @@ async function renderBig(el) {
     const o = e.target.closest('[data-bopen]'); if (o) { const n = BIG.items.find(x => x.id === +o.dataset.bopen); if (n) reveal(fullPath(n)); return; }
     const tr = e.target.closest('[data-btrash]'); if (!tr) return;
     const id = +tr.dataset.btrash; const n = BIG.items.find(x => x.id === id); const row = tr.closest('.st-br'); if (!n || !row) return;
-    if (!await askInRow(row, 'Recycle it?', 'Recycle')) return;
+    if (!await askInRow(row, T('Recycle it?'), T('Recycle'))) return;
     const path = fullPath(n); const r = await toTrash(path);
-    if (!r || !r.ok) { SH.toast((r && r.error) || 'Couldn\'t send it to the Recycle Bin.'); const b = $('.st-ba', row); if (b) b.innerHTML = $('.st-ba', document.createRange().createContextualFragment(bigRow(n))).innerHTML; return; }
+    if (!r || !r.ok) { SH.toast((r && r.error) || T("Couldn't send it to the Recycle Bin.")); const b = $('.st-ba', row); if (b) b.innerHTML = $('.st-ba', document.createRange().createContextualFragment(bigRow(n))).innerHTML; return; }
     BIG.removed.add(id); const h = row.offsetHeight;
     anim(row, [{ opacity: 1, transform: 'none', height: h + 'px' }, { opacity: 0, transform: 'translate3d(30px,0,0)', height: h + 'px', offset: .5 }, { opacity: 0, transform: 'translate3d(30px,0,0)', height: '0px', paddingTop: '0px', paddingBottom: '0px' }], { d: 440 })
       .finished.then(() => { row.remove(); total2(); }).catch(() => {});
-    SH.logActivity(`${n.name} sent to the Recycle Bin`, { sub: fmtB(n.size) + ' freed', ic: 'trash', go: ID, tab: 'largest' });
-    SH.toast(`${n.name} sent to the Recycle Bin.`, { action: { label: 'Undo', run: async () => {
-      const rr = await fromTrash(path); if (!rr || !rr.ok) { SH.toast((rr && rr.error) || 'Couldn\'t restore it.'); return; }
+    SH.logActivity(T('{name} sent to the Recycle Bin', { name: n.name }), { sub: T('{size} freed', { size: fmtB(n.size) }), ic: 'trash', go: ID, tab: 'largest' });
+    SH.toast(T('{name} sent to the Recycle Bin.', { name: n.name }), { action: { label: T('Undo'), run: async () => {
+      const rr = await fromTrash(path); if (!rr || !rr.ok) { SH.toast((rr && rr.error) || T("Couldn't restore it.")); return; }
       BIG.removed.delete(id); const l = $('.st-blist', el); const before = new Map($$('.st-br', l).map(r => [r.dataset.big, r.getBoundingClientRect().top])); el._paint();
       const nr = $(`.st-br[data-big="${id}"]`, l); $$('.st-br', l).forEach(r => { const b = before.get(r.dataset.big); if (b !== undefined) { const dy = b - r.getBoundingClientRect().top; if (dy) anim(r, [{ transform: `translate3d(0,${dy}px,0)` }, { transform: 'none' }], { d: 420, e: EASE.spring }); } });
       if (nr) anim(nr, [{ opacity: 0, transform: 'scale(.96)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 420, delay: 120, e: EASE.spring }); } } });
   });
-  function total2() { const l = bigList(); const t = $('.st-btot', el); if (t) t.textContent = `${l.length} files, ${fmtB(l.reduce((a, n) => a + n.size, 0))}`; }
+  function total2() { const l = bigList(); const t = $('.st-btot', el); if (t) t.textContent = T('{n} files, {size}', { n: fmtInt(l.length), size: fmtB(l.reduce((a, n) => a + n.size, 0)) }); }
 }
 function flipSort(list) {
   const before = new Map($$('.st-br', list).map(r => [r.dataset.big, r.getBoundingClientRect().top]));
@@ -826,14 +830,14 @@ const dupType = d => d.type || EXT2T[d.ext] || 'other';
 const dupFree = () => DUPS.filter(d => !d.done).reduce((a, d) => a + d.size * (d.copies.length - 1), 0);
 const DUPMIN = { v: 1 };
 async function renderDups(el) {
-  if (needScan()) return scanFirst(el, 'Finds repeated files by comparing their content, not just the name.');
+  if (needScan()) return scanFirst(el, T('Finds repeated files by comparing their content, not just the name.'));
   el.classList.add('fill');
   if (ST.real && !ST.dups) {
-    el.innerHTML = `<div class="pan st-first st-dfind" data-asm><span class="st-fi">${ic('copy')}</span><b>Find duplicate files</b>
-      <span class="muted">Compares by size, then by a hash of the start and end, and finally by the full content. It skips Windows and the Recycle Bin.</span>
-      <div class="seg st-dmin"><span class="ind"></span>${[[1, 'From 1 MB'], [10, 'From 10 MB'], [100, 'From 100 MB']].map(([v, l]) => `<button data-min="${v}"${DUPMIN.v === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div>
-      <button class="btn pri" data-dfind>${ic('search')}Find</button>
-      <div class="st-dprog" hidden><div class="bar"><span style="transform:scaleX(0)"></span></div><span class="faint st-dpt">&nbsp;</span><button class="btn sm ghost" data-dstop>${ic('x')}Cancel</button></div></div>`;
+    el.innerHTML = `<div class="pan st-first st-dfind" data-asm><span class="st-fi">${ic('copy')}</span><b>${T('Find duplicate files')}</b>
+      <span class="muted">${T('Compares by size, then by a hash of the start and end, and finally by the full content. It skips Windows and the Recycle Bin.')}</span>
+      <div class="seg st-dmin"><span class="ind"></span>${[1, 10, 100].map(v => [v, T('From {n} MB', { n: v })]).map(([v, l]) => `<button data-min="${v}"${DUPMIN.v === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div>
+      <button class="btn pri" data-dfind>${ic('search')}${T('Find')}</button>
+      <div class="st-dprog" hidden><div class="bar"><span style="transform:scaleX(0)"></span></div><span class="faint st-dpt">&nbsp;</span><button class="btn sm ghost" data-dstop>${ic('x')}${T('Cancel')}</button></div></div>`;
     requestAnimationFrame(() => SH.placeSeg($('.st-dmin', el), true));
     if (!el.dataset.bf) { el.dataset.bf = 1; el.addEventListener('click', dupFindClick); }
     if (ST.dupJob) showDupProgress(el);
@@ -841,27 +845,27 @@ async function renderDups(el) {
   }
   DUPS = ST.real ? ST.dups.groups.map((g, i) => ({ id: i, name: g.name, size: g.size, ext: g.ext, type: g.type, keep: 0, done: false,
     copies: g.copies.map(c => [c.dir, c.mtime ? fmtDate(c.mtime) : '', c.path]) }))
-    : DUPS_MOCK.map((d, i) => ({ ...d, id: i, keep: 0, done: false }));
-  if (!DUPS.length) { el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi ok">${ic('check')}</span><b>No duplicate files</b><span class="muted">Nothing from ${DUPMIN.v} MB up is duplicated. Nice.</span><button class="btn sec" data-dagain>${ic('updater')}Search again</button></div>`; bindDups(el); return; }
+    : DUPS_MOCK.map((d, i) => ({ ...d, id: i, keep: 0, done: false, copies: d.copies.map(c => [c[0], fmtDate(Date.parse(c[1]))]) }));
+  if (!DUPS.length) { el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi ok">${ic('check')}</span><b>${T('No duplicate files')}</b><span class="muted">${T('Nothing from {n} MB up is duplicated. Nice.', { n: DUPMIN.v })}</span><button class="btn sec" data-dagain>${ic('updater')}${T('Search again')}</button></div>`; bindDups(el); return; }
   const mxd = Math.max(...DUPS.map(d => d.size * (d.copies.length - 1)));
   el.innerHTML = `<div class="st-dup">
-    <aside class="pan st-dsum" data-asm><h4>Duplicate files${ST.real ? `<em><button class="btn sm ghost" data-dagain>${ic('updater')}Search again</button></em>` : ''}</h4>
-      <div class="big"><span class="st-dfree">0</span><small>GB you can free up</small></div><p class="muted st-dsub"></p>
+    <aside class="pan st-dsum" data-asm><h4>${T('Duplicate files')}${ST.real ? `<em><button class="btn sm ghost" data-dagain>${ic('updater')}${T('Search again')}</button></em>` : ''}</h4>
+      <div class="big"><span class="st-dfree">0</span><small>${T('GB you can free up')}</small></div><p class="muted st-dsub"></p>
       <div class="st-dbars st-scroll">${DUPS.map(d => `<button class="st-dbr" data-dgo="${d.id}"><span class="st-dbn"><span>${esc(d.name)}</span><b>${fmtB(d.size * (d.copies.length - 1))}</b></span><span class="bar"><span style="transform:scaleX(${(d.size * (d.copies.length - 1) / mxd).toFixed(4)});background:${T_(dupType(d)).c}"></span></span></button>`).join('')}</div>
-      <button class="btn danger" data-dall>${ic('trash')}Delete all copies</button></aside>
+      <button class="btn danger" data-dall>${ic('trash')}${T('Delete all copies')}</button></aside>
     <div class="st-dgroups st-scroll">${DUPS.map(d => `<div class="pan st-dg${d.id < 2 ? ' open' : ''}" data-dg="${d.id}" data-asm>
       <button class="st-dgh" data-dt="${d.id}"><span class="st-bt" style="--c:${T_(dupType(d)).c}">${esc(d.ext || '·')}</span>
-        <div class="st-bn"><b>${esc(d.name)}</b><span class="faint">${d.copies.length} copies of ${fmtB(d.size)}</span></div>
-        <span class="chip acc">Frees ${fmtB(d.size * (d.copies.length - 1))}</span><span class="st-dch">${ic('chevd')}</span></button>
-      <div class="st-dbody"><div><div class="st-dcs">${d.copies.map((c, j) => `<button class="st-dc${j === d.keep ? ' keep' : ''}" data-dk="${d.id}:${j}"><span class="st-radio"></span><span class="st-dp">${wp(c[0])}</span><span class="faint">${c[1]}</span><span class="st-dkl">${j === d.keep ? 'Keep' : 'Delete'}</span></button>`).join('')}</div>
-        <div class="st-dfoot"><span class="faint">Pick which one to keep. The others go to the Recycle Bin.</span><button class="btn sm sec" data-dclean="${d.id}">Delete the other copies</button></div></div></div>
+        <div class="st-bn"><b>${esc(d.name)}</b><span class="faint">${T('{n} copies of {size}', { n: d.copies.length, size: fmtB(d.size) })}</span></div>
+        <span class="chip acc">${T('Frees {size}', { size: fmtB(d.size * (d.copies.length - 1)) })}</span><span class="st-dch">${ic('chevd')}</span></button>
+      <div class="st-dbody"><div><div class="st-dcs">${d.copies.map((c, j) => `<button class="st-dc${j === d.keep ? ' keep' : ''}" data-dk="${d.id}:${j}"><span class="st-radio"></span><span class="st-dp">${wp(c[0])}</span><span class="faint">${c[1]}</span><span class="st-dkl">${j === d.keep ? T('Keep') : T('Delete')}</span></button>`).join('')}</div>
+        <div class="st-dfoot"><span class="faint">${T('Pick which one to keep. The others go to the Recycle Bin.')}</span><button class="btn sm sec" data-dclean="${d.id}">${T('Delete the other copies')}</button></div></div></div>
     </div>`).join('')}</div></div>`;
   SH.assemble(el, 40);
   updDups(el); bindDups(el);
 }
 function updDups(el, d = 900) {
   const f = dupFree(); const el2 = $('.st-dfree', el); if (!el2) return; SH.countUp(el2, +(f / GB).toFixed(1), d, 1);
-  const left = DUPS.filter(x => !x.done); $('.st-dsub', el).textContent = left.length ? `${left.reduce((a, x) => a + x.copies.length - 1, 0)} duplicate copies in ${left.length} groups. Compared by content, not just by name.` : 'No duplicate files left.';
+  const left = DUPS.filter(x => !x.done); $('.st-dsub', el).textContent = left.length ? T('{n} duplicate copies in {groups} groups. Compared by content, not just by name.', { n: left.reduce((a, x) => a + x.copies.length - 1, 0), groups: left.length }) : T('No duplicate files left.');
   $('[data-dall]', el).disabled = !left.length;
 }
 function bindDups(el) {
@@ -873,11 +877,11 @@ function bindDups(el) {
       g.scrollIntoView({ block: 'nearest', behavior: state.settings.intensity === 'min' ? 'auto' : 'smooth' }); g.classList.add('flash'); setTimeout(() => g.classList.remove('flash'), 1400); return; }
     const tg = e.target.closest('[data-dt]'); if (tg) { const g = tg.closest('.st-dg'); g.classList.toggle('open'); if (g.classList.contains('open')) $$('.st-dc', g).forEach((c, i) => anim(c, [{ opacity: 0, transform: 'translate3d(0,-6px,0)' }, { opacity: 1, transform: 'none' }], { d: 300, delay: 60 + i * 30 })); return; }
     const k = e.target.closest('[data-dk]'); if (k) { const [gid, j] = k.dataset.dk.split(':').map(Number); const d = DUPS[gid]; d.keep = j;
-      $$(`[data-dk^="${gid}:"]`, el).forEach(b => { const on = b.dataset.dk === `${gid}:${j}`; b.classList.toggle('keep', on); $('.st-dkl', b).textContent = on ? 'Keep' : 'Delete'; });
+      $$(`[data-dk^="${gid}:"]`, el).forEach(b => { const on = b.dataset.dk === `${gid}:${j}`; b.classList.toggle('keep', on); $('.st-dkl', b).textContent = on ? T('Keep') : T('Delete'); });
       anim($('.st-radio', k), [{ transform: 'scale(.6)' }, { transform: 'scale(1)' }], { d: 320, e: EASE.spring }); return; }
     const c = e.target.closest('[data-dclean]'); if (c) { const btn = c; btn.disabled = true; await cleanGroups([DUPS[+c.dataset.dclean]], el); btn.disabled = false; return; }
     const all = e.target.closest('[data-dall]'); if (all) {
-      if (all.dataset.sure !== '1') { all.dataset.sure = '1'; const old = all.innerHTML; all.innerHTML = `${ic('alert')}Press again to confirm`; setTimeout(() => { all.dataset.sure = ''; all.innerHTML = old; }, 4000); return; }
+      if (all.dataset.sure !== '1') { all.dataset.sure = '1'; const old = all.innerHTML; all.innerHTML = `${ic('alert')}${T('Press again to confirm')}`; setTimeout(() => { all.dataset.sure = ''; all.innerHTML = old; }, 4000); return; }
       all.dataset.sure = ''; all.disabled = true; await cleanGroups(DUPS.filter(d => !d.done), el); }
   });
 }
@@ -888,14 +892,14 @@ function dupFindClick(e) {
   if (!e.target.closest('[data-dfind]') || ST.dupJob) return;
   ST.dupJob = SH.job('storage', 'duplicates', [DUPMIN.v], { onProgress: m => { ST.dupProg = m; paintDupProg(); } });
   showDupProgress(el);
-  ST.dupJob.then(r => { ST.dups = r; ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (r.wasted) SH.toast(`${fmtB(r.wasted)} in duplicate files.`); })
-    .catch(err => { ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (!err.cancelled) SH.toast('Couldn\'t finish the search: ' + err.message); });
+  ST.dupJob.then(r => { ST.dups = r; ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (r.wasted) SH.toast(T('{size} in duplicate files.', { size: fmtB(r.wasted) })); })
+    .catch(err => { ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (!err.cancelled) SH.toast(T("Couldn't finish the search: {error}", { error: err.message })); });
 }
 function showDupProgress(el) { const p = $('.st-dprog', el); if (!p) return; p.hidden = false; $('[data-dfind]', el).disabled = true; anim(p, [{ opacity: 0, transform: 'translate3d(0,6px,0)' }, { opacity: 1, transform: 'none' }], { d: 300 }); paintDupProg(); }
 function paintDupProg() {
   const m = ST.dupProg; const el = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (!m || !el) return;
   const b = $('.st-dprog .bar>span', el); if (b) b.style.transform = `scaleX(${(m.pct || 0).toFixed(4)})`;
-  const t = $('.st-dpt', el); if (t) t.textContent = `${Math.round((m.pct || 0) * 100)}%, ${m.data && m.data.groups || 0} groups found. ${m.text ? m.text.split('\\').pop() : ''}`;
+  const t = $('.st-dpt', el); if (t) t.textContent = T('{pct}%, {n} groups found. {file}', { pct: Math.round((m.pct || 0) * 100), n: m.data && m.data.groups || 0, file: m.text ? m.text.split('\\').pop() : '' });
 }
 async function cleanGroups(groups, el) {
   if (!groups.length) return;
@@ -912,13 +916,13 @@ async function cleanGroups(groups, el) {
     }
   }
   updDups(el, 500);
-  if (failed.length) SH.toast(`${failed.length} ${failed.length > 1 ? 'copies' : 'copy'} couldn't be moved: ${failed.find(Boolean) || 'in use'}`);
+  if (failed.length) { const why = failed.find(Boolean) || T('in use'); SH.toast(failed.length > 1 ? T("{n} copies couldn't be moved: {why}", { n: failed.length, why }) : T("1 copy couldn't be moved: {why}", { why })); }
   if (!moved.length) return;
-  SH.logActivity('Duplicate copies sent to the Recycle Bin', { sub: `${fmtB(freed)} freed`, ic: 'copy', go: ID, tab: 'duplicates' });
-  SH.toast(`${fmtB(freed)} sent to the Recycle Bin.`, { ms: 7000, action: { label: 'Undo', run: async () => {
+  SH.logActivity(T('Duplicate copies sent to the Recycle Bin'), { sub: T('{size} freed', { size: fmtB(freed) }), ic: 'copy', go: ID, tab: 'duplicates' });
+  SH.toast(T('{size} sent to the Recycle Bin.', { size: fmtB(freed) }), { ms: 7000, action: { label: T('Undo'), run: async () => {
     let back = 0; for (const p of moved) { const r = await fromTrash(p); if (r && r.ok) back++; }
     groups.forEach(d => { d.done = false; const b = $(`[data-dgo="${d.id}"]`, el); if (b) b.classList.remove('done'); const g = $(`[data-dg="${d.id}"]`, el); if (g) { g.style.display = ''; g.getAnimations().forEach(a => a.cancel()); anim(g, [{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 400, e: EASE.spring }); } });
-    updDups(el, 500); if (back < moved.length) SH.toast(`Restored ${back} of ${moved.length}. The rest are in the Recycle Bin.`);
+    updDups(el, 500); if (back < moved.length) SH.toast(T('Restored {n} of {total}. The rest are in the Recycle Bin.', { n: back, total: moved.length }));
   } } });
 }
 
@@ -932,16 +936,16 @@ const CMP_MOCK = {
   newbig: [['sha256-ff82381e2bea.gguf', 7.1, U + '.ollama\\models\\blobs', '2026-11-12'], ['Match 2026-11-14 22-40.mp4', 1.4, U + 'Videos\\Medal', '2026-11-14'], ['Project_v856.zip', 1.2, U + 'Documents', '2026-11-17'],
     ['nvidia_driver_617.42.exe', .9, U + 'Downloads', '2026-11-11'], ['Kontakt 8 Factory Library 2.nicnt', .8, 'C:\\Program Files\\Native Instruments', '2026-11-13']].map(([n, g, d, t]) => [d + '\\' + n, g * GB, Date.parse(t) / 1000]),
 };
-const dshort = ms => new Date(ms).toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+const dshort = ms => new Date(ms).toLocaleDateString(SH.i18n.locale, { day: 'numeric', month: 'short' });
 async function renderCompare(el) {
-  if (needScan()) return scanFirst(el, 'Every scan is saved. With two, you\'ll see which folders grew and which large files are new.');
+  if (needScan()) return scanFirst(el, T("Every scan is saved. With two, you'll see which folders grew and which large files are new."));
   el.classList.add('fill');
   const D = ST.real ? (ST.cmp !== undefined ? ST.cmp : (ST.cmp = await SH.engine('storage', 'compare'))) : CMP_MOCK;
   const hist = (D.history || []).map(([w, s]) => [dshort(w * 1000), Math.round(s / GB)]);
   if (!D.prev) {
-    el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi">${ic('grow')}</span><b>This is the first scan of ${esc(targetName().replace(/^Drive /, ''))}</b>
-      <span class="muted">It's saved. When you scan again (in a few days, or after installing or downloading things) you'll see here which folders grew, which shrank and which large files are new.</span>
-      ${hist.length ? `<span class="faint">${fmtInt(hist[hist.length - 1][1])} GB are in use right now.</span>` : ''}</div>`;
+    el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi">${ic('grow')}</span><b>${T('This is the first scan of {name}', { name: esc(targetShort()) })}</b>
+      <span class="muted">${T("It's saved. When you scan again (in a few days, or after installing or downloading things) you'll see here which folders grew, which shrank and which large files are new.")}</span>
+      ${hist.length ? `<span class="faint">${T('{n} GB are in use right now.', { n: fmtInt(hist[hist.length - 1][1]) })}</span>` : ''}</div>`;
     SH.assemble(el, 40); return;
   }
   const CH = D.changes.map(([p, b, f]) => [p, b / GB, f]); const mx = Math.max(.01, ...CH.map(c => Math.abs(c[1])));
@@ -954,17 +958,17 @@ async function renderCompare(el) {
   el.innerHTML = `<div class="st-cmp">
     <div class="st-cl">
       <div class="pan st-diff st-fp" data-asm>
-        <div class="st-ph st-cph"><div class="big">${dg >= 0 ? '+' : '−'}${fmt1(Math.abs(dg))}<small>GB since ${dshort(D.prev)}</small></div><p class="muted">${fmtInt(Math.abs(D.dfiles))} ${D.dfiles >= 0 ? 'more' : 'fewer'} files than in the previous scan. Biggest changes first.</p></div>
-        <div class="tbl-head st-dh"><span>Folder</span><span class="st-axis"><span>Shrank</span><span>Grew</span></span><span>Change</span></div>
+        <div class="st-ph st-cph"><div class="big">${dg >= 0 ? '+' : '−'}${fmt1(Math.abs(dg))}<small>${T('GB since {date}', { date: dshort(D.prev) })}</small></div><p class="muted">${D.dfiles >= 0 ? T('{n} more files than in the previous scan. Biggest changes first.', { n: fmtInt(Math.abs(D.dfiles)) }) : T('{n} fewer files than in the previous scan. Biggest changes first.', { n: fmtInt(Math.abs(D.dfiles)) })}</p></div>
+        <div class="tbl-head st-dh"><span>${T('Folder')}</span><span class="st-axis"><span>${T('Shrank')}</span><span>${T('Grew')}</span></span><span>${T('Change')}</span></div>
         <div class="st-scroll">${CH.length ? CH.map(([p, d, f]) => `<div class="st-dr"><div class="st-bn"><b>${esc(p.split('\\').filter(Boolean).pop())}</b><span class="faint">${wp(p)}</span></div>
           <span class="st-dv"><span class="${d > 0 ? 'up' : 'down'}" style="--v:${(Math.abs(d) / mx).toFixed(4)}"></span></span>
-          <span class="st-dn ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${fmt1(Math.abs(d))} GB<small>${f >= 0 ? '+' : '−'}${fmtInt(Math.abs(f))} files</small></span></div>`).join('') : '<div class="empty"><b>Almost nothing changed</b>No folder changed by more than 64 MB.</div>'}</div></div>
+          <span class="st-dn ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${fmt1(Math.abs(d))} GB<small>${T('{n} files', { n: (f >= 0 ? '+' : '−') + fmtInt(Math.abs(f)) })}</small></span></div>`).join('') : `<div class="empty"><b>${T('Almost nothing changed')}</b>${T('No folder changed by more than 64 MB.')}</div>`}</div></div>
     </div>
     <div class="st-cr">
-      <div class="pan st-hist" data-asm><h4>Space used <em>${H.length} scans</em></h4>
+      <div class="pan st-hist" data-asm><h4>${T('Space used')} <em>${T('{n} scans', { n: H.length })}</em></h4>
         <svg viewBox="0 0 ${W} ${HH}" class="st-spark"><path class="area" d="${path} L${px(H.length - 1)},${HH} L${px(0)},${HH} Z"/><path class="ln" d="${path}"/>${H.map(([, v], i) => `<circle cx="${px(i)}" cy="${py(v)}" r="${i === H.length - 1 ? 4 : 2.5}"/>`).join('')}</svg>
         <div class="st-hx">${H.slice(-6).map(([d, v]) => `<span><b>${v}</b>${d}</span>`).join('')}</div></div>
-      <div class="pan st-new st-fp" data-asm><h4>New large files <em>${NB.length} since the last scan</em></h4><div class="rows st-scroll">${NB.length ? NB.map(([n, g, p, d]) => `<div class="row"><span class="st-bt" style="--c:${T_(EXT2T[n.split('.').pop().toLowerCase()] || 'other').c}">${esc(n.includes('.') ? n.split('.').pop() : '·')}</span><div class="rt"><b>${esc(n)}</b><span>${wp(p)}, ${d}</span></div><span class="st-bs">${fmt1(g)} GB</span></div>`).join('') : '<div class="empty"><b>None</b>No new file over 300 MB showed up.</div>'}</div></div>
+      <div class="pan st-new st-fp" data-asm><h4>${T('New large files')} <em>${T('{n} since the last scan', { n: NB.length })}</em></h4><div class="rows st-scroll">${NB.length ? NB.map(([n, g, p, d]) => `<div class="row"><span class="st-bt" style="--c:${T_(EXT2T[n.split('.').pop().toLowerCase()] || 'other').c}">${esc(n.includes('.') ? n.split('.').pop() : '·')}</span><div class="rt"><b>${esc(n)}</b><span>${wp(p)}, ${d}</span></div><span class="st-bs">${fmt1(g)} GB</span></div>`).join('') : `<div class="empty"><b>${T('None')}</b>${T('No new file over 300 MB showed up.')}</div>`}</div></div>
     </div></div>`;
   SH.assemble(el, 40);
   const ln = $('.st-spark .ln', el); const L = ln.getTotalLength(); ln.style.strokeDasharray = `${L} ${L}`; anim(ln, [{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { d: 1200, delay: 200 });
@@ -978,9 +982,9 @@ let actEl = null;
 function drivesHTML() {
   const ds = ST.real ? ST.drives : [{ root: 'C:\\', letter: 'C:', total: 953 * GB, free: 361 * GB, system: true }];
   const custom = ST.target && !/^[A-Za-z]:\\$/.test(ST.target);
-  return `<div class="seg st-drv"><span class="ind"></span>${ds.map(d => `<button data-drv="${esc(d.root)}"${!custom && ST.target === d.root || (!ST.real && d.system) ? ' class="on"' : ''} title="${fmtB(d.free)} free of ${fmtB(d.total)}${d.label ? ', ' + esc(d.label) : ''}">${ic('drive')}${esc(d.letter)} ${fmtInt(d.total / GB)} GB</button>`).join('')}
-    <button data-drv="pick"${custom ? ' class="on"' : ''} title="${custom ? esc(ST.target) : 'Choose a folder'}">${ic('folder')}${custom ? esc(ST.target.split('\\').filter(Boolean).pop()) : 'Other folder'}</button></div>
-    <button class="btn pri" data-scan>${ic('search')}Scan</button>`;
+  return `<div class="seg st-drv"><span class="ind"></span>${ds.map(d => `<button data-drv="${esc(d.root)}"${!custom && ST.target === d.root || (!ST.real && d.system) ? ' class="on"' : ''} title="${T('{free} free of {total}', { free: fmtB(d.free), total: fmtB(d.total) })}${d.label ? ', ' + esc(d.label) : ''}">${ic('drive')}${esc(d.letter)} ${fmtInt(d.total / GB)} GB</button>`).join('')}
+    <button data-drv="pick"${custom ? ' class="on"' : ''} title="${custom ? esc(ST.target) : T('Choose a folder')}">${ic('folder')}${custom ? esc(ST.target.split('\\').filter(Boolean).pop()) : T('Other folder')}</button></div>
+    <button class="btn pri" data-scan>${ic('search')}${T('Scan')}</button>`;
 }
 function paintActions() { if (!actEl) return; actEl.innerHTML = drivesHTML(); requestAnimationFrame(() => SH.placeSeg($('.st-drv', actEl), true)); }
 async function refreshDrives() { try { ST.drives = await SH.engine('storage', 'drives') || ST.drives; } catch (e) { console.error(e); } }
@@ -999,7 +1003,7 @@ SH.module({
       if (e.target.closest('[data-scan]')) { if (TM.scanning) return; if (curTab !== 'map') ctx.setTab('map'); setTimeout(() => runScan().then(() => { if (ST.real) rerenderOthers(); }), curTab === 'map' ? 0 : 260); return; }
       const b = e.target.closest('[data-drv]'); if (!b || TM.scanning) return;
       if (b.dataset.drv === 'pick') {
-        if (!await isReal()) { SH.toast('Choosing a folder only works inside the app.'); return; }
+        if (!await isReal()) { SH.toast(T('Choosing a folder only works inside the app.')); return; }
         const p = await SH.engine('storage', 'pick_folder'); if (!p) return;
         ST.target = p;
       } else { if (ST.target === b.dataset.drv && b.classList.contains('on')) return; ST.target = b.dataset.drv; }
@@ -1019,9 +1023,9 @@ SH.module({
   enter() { const v = $(`#v-${ID} .subnav .on`); curTab = v ? v.dataset.tab : 'map'; },
 });
 SH.actions.add([
-  { t: 'View the largest files on the drive', go: ID, tab: 'largest', ic: 'file' },
-  { t: 'What has grown on the drive since the last scan', go: ID, tab: 'compare', ic: 'grow' },
-  { t: 'View the drive by file type', go: ID, tab: 'types', ic: 'grid' },
-  { t: 'Explore the drive\'s folders', go: ID, tab: 'tree', ic: 'folder' },
+  { t: T('View the largest files on the drive'), go: ID, tab: 'largest', ic: 'file' },
+  { t: T('What has grown on the drive since the last scan'), go: ID, tab: 'compare', ic: 'grow' },
+  { t: T('View the drive by file type'), go: ID, tab: 'types', ic: 'grid' },
+  { t: T("Explore the drive's folders"), go: ID, tab: 'tree', ic: 'folder' },
 ]);
 })();

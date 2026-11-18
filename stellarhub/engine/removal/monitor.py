@@ -8,6 +8,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 
+from ...i18n import tr
 from . import paths, registry, safety, system
 from .paths import is_within, norm_path
 from .registry import V32, V64, RegRef
@@ -111,7 +112,7 @@ def start(name):
     os.makedirs(d, exist_ok=True)
     with open(os.path.join(d, "before.json"), "w", encoding="utf-8") as f:
         json.dump(snap, f)
-    meta = {"id": mid, "name": name or "Watched install", "started": time.time(), "status": "running"}
+    meta = {"id": mid, "name": name or tr("Watched install"), "started": time.time(), "status": "running"}
     with open(os.path.join(d, "meta.json"), "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False)
     return meta
@@ -147,7 +148,7 @@ def stop(mid):
         ref = RegRef.from_str(k)
         if ref.path.lower().startswith(r"system\currentcontrolset\services"):
             items.append({"kind": "service", "target": ref.path.rsplit("\\", 1)[-1],
-                          "display": f"Servicio: {ref.path.rsplit(chr(92), 1)[-1]}"})
+                          "display": f"Service: {ref.path.rsplit(chr(92), 1)[-1]}"})
         else:
             items.append({"kind": "regkey", "target": k, "display": ref.display()})
     for v in new_vals:
@@ -253,7 +254,13 @@ def trace_items(mid, programs=()):
             blocked = safety.service_rule(it["target"])
         if not exists:
             continue
-        out.append({**it, "id": f"t{n}", "score": 100, "reasons": ["Created during the watched install"],
+        # trace.json keeps English labels; services, rules and tasks are shown in the current language
+        disp = {"service": lambda: tr("Service: {name}", name=it["target"]),
+                "fwrule": lambda: tr("Firewall: {name}", name=it["target"]),
+                "task": lambda: tr("Task: {path}", path=it["target"])}.get(k)
+        if disp:
+            it = {**it, "display": disp()}
+        out.append({**it, "id": f"t{n}", "score": 100, "reasons": [tr("Created during the watched install")],
                     "blocked": blocked, "personal": personal, "size": size, "level": "safe",
                     "selected": not blocked and not personal,
                     "group": "Blocked for safety" if blocked else ("Personal data" if personal else

@@ -81,6 +81,8 @@ const TILES = [
 const dash = '<span class="na">—</span>';
 const nil = x => x == null || Number.isNaN(x);
 const comp = id => SH.PC.components.find(x => x.id === id);
+/* "a and b" / "a, b and c" in the interface language */
+const andList = a => a.length < 2 ? a.join('') : SH.t('{a} and {b}', { a: a.slice(0, -1).join(', '), b: a[a.length - 1] });
 const rowv = (id, label) => ((comp(id) || {}).rows || []).find(r => r[0] === label)?.[1] || '';
 /* short titles built from the real data (the full one stays in the tooltip) */
 function shortTitle(t, c) {
@@ -88,8 +90,9 @@ function shortTitle(t, c) {
   switch (t.area) {
     case 'ram': return title;
     case 'ssd': { const w = title.split(/\s+/).filter(x => !/[-_]/.test(x) && !/^\d+(\.\d+)?$/.test(x) && x !== 'TB' && x.toUpperCase() !== 'PC'); const cap = (title.match(/(\d+(?:[.,]\d+)?)\s*TB/) || [])[0]; return [w.slice(0, 2).join(' '), cap].filter(Boolean).join(', '); }
-    case 'dsp': { const m = c.monitors || []; return m.length > 1 ? `${m.length} displays` : (m[0] ? [m[0].inches ? m[0].inches + '"' : '', m[0].internal ? 'laptop screen' : 'external'].filter(Boolean).join(' ') : title); }
-    case 'bat': return title.replace(/,\s*(salud|health).*$/i, '');
+    case 'dsp': { const m = c.monitors || []; if (m.length > 1) return SH.t('{n} displays', { n: m.length }); if (!m[0]) return title;
+      return m[0].inches ? (m[0].internal ? SH.t('{n}" laptop screen', { n: m[0].inches }) : SH.t('{n}" external', { n: m[0].inches })) : (m[0].internal ? SH.t('laptop screen') : SH.t('external')); }
+    case 'bat': return SH.PC.real ? title : title.split(/[,，]/)[0]; // the sample title adds the health after a comma
     case 'wif': return /6E/i.test(title) ? 'Wi-Fi 6E' : /wi-?fi ?7|BE\d/i.test(title) ? 'Wi-Fi 7' : /wi-?fi ?6|AX\d/i.test(title) ? 'Wi-Fi 6' : /wi-?fi|wireless|802\.11/i.test(title) ? 'Wi-Fi' : /ethernet|gbe|lan/i.test(title) ? 'Ethernet' : title.split(/\s+/).slice(0, 2).join(' ');
     case 'aud': return title.replace(/\(R\)|\(TM\)/g, '').replace(/High Definition Audio/i, 'HD Audio').replace(/Dispositivo de audio|USB Audio Device/i, 'Audio').trim();
     case 'sys': return (SH.PC.os || title).replace(/\s+\d{2}H\d$/, '');
@@ -121,16 +124,16 @@ function layout(list) {
 }
 function liveHTML(area) {
   switch (area) {
-    case 'gpu': return `<div class="nums"><div><b class="n" data-l="gpu">–</b><small>% usage</small></div><div><b data-l="gtemp">–</b><small>°C</small></div><div><b data-l="gpow">–</b><small>W</small></div></div>
-      <div class="lbar"><span>Video memory</span><em data-l="vram">–</em></div><div class="bar"><span data-b="vram"></span></div>`;
-    case 'cpu': return `<div class="nums"><div><b class="n" data-l="cpu">–</b><small>% usage</small></div><div><b data-l="freq">–</b><small>GHz</small></div><div><b data-l="ctemp">–</b><small>°C</small></div></div>`;
-    case 'ram': return `<div class="lbar"><span><b data-l="ram">–</b> of <span data-l="ramt">–</span> GB</span></div><div class="bar"><span data-b="ram"></span></div>`;
-    case 'ssd': return `<div class="lbar"><span><b data-l="free">–</b> GB free</span></div><div class="bar acc"><span data-b="disk"></span></div>`;
-    case 'dsp': return `<div class="lbar"><span data-l="dsp">${esc(((comp('display') || {}).rows || []).map(r => r[1]).join(' and ') || '—')}</span></div>`;
-    case 'bat': return `<div class="lbar"><span>Health <b data-l="bath">–</b></span></div>`;
+    case 'gpu': return `<div class="nums"><div><b class="n" data-l="gpu">–</b><small>${SH.t('% usage')}</small></div><div><b data-l="gtemp">–</b><small>°C</small></div><div><b data-l="gpow">–</b><small>W</small></div></div>
+      <div class="lbar"><span>${SH.t('Video memory')}</span><em data-l="vram">–</em></div><div class="bar"><span data-b="vram"></span></div>`;
+    case 'cpu': return `<div class="nums"><div><b class="n" data-l="cpu">–</b><small>${SH.t('% usage')}</small></div><div><b data-l="freq">–</b><small>GHz</small></div><div><b data-l="ctemp">–</b><small>°C</small></div></div>`;
+    case 'ram': return `<div class="lbar"><span>${SH.t('{used} of {total} GB', { used: '<b data-l="ram">–</b>', total: '<span data-l="ramt">–</span>' })}</span></div><div class="bar"><span data-b="ram"></span></div>`;
+    case 'ssd': return `<div class="lbar"><span>${SH.t('{n} GB free', { n: '<b data-l="free">–</b>' })}</span></div><div class="bar acc"><span data-b="disk"></span></div>`;
+    case 'dsp': return `<div class="lbar"><span data-l="dsp">${esc(andList(((comp('display') || {}).rows || []).map(r => r[1])) || '—')}</span></div>`;
+    case 'bat': return `<div class="lbar"><span>${SH.t('Health {n}', { n: '<b data-l="bath">–</b>' })}</span></div>`;
     case 'wif': return `<div class="lbar"><span><b data-l="down">–</b> Mb/s</span></div>`;
-    case 'aud': { const n = 1 + (rowv('audio', 'Others').split(',').filter(x => x.trim() && x.trim() !== '–').length); return `<div class="lbar"><span>${n} device${n > 1 ? 's' : ''}</span></div>`; }
-    case 'sys': return `<div class="lbar"><span>Up <b data-l="up">–</b></span></div>`;
+    case 'aud': { const n = 1 + (rowv('audio', 'Others').split(',').filter(x => x.trim() && x.trim() !== '–').length); return `<div class="lbar"><span>${n > 1 ? SH.t('{n} devices', { n }) : SH.t('{n} device', { n })}</span></div>`; }
+    case 'sys': return `<div class="lbar"><span>${SH.t('Up {time}', { time: '<b data-l="up">–</b>' })}</span></div>`;
   }
   return '';
 }
@@ -195,9 +198,9 @@ function read() {
   /* null = Windows does not provide this stat: "—", never 0 */
   const set = (k, x, f = Math.round) => { const e = $(`[data-l="${k}"]`, root); if (!e) return; const t = nil(x) ? '—' : f(x); if (e.textContent !== String(t)) e.textContent = t; e.classList.toggle('na', nil(x)); };
   set('gpu', v.gpu); set('gtemp', v.gpuTemp); set('gpow', v.gpuPower);
-  const ve = $('[data-l="vram"]', root); if (ve) ve.textContent = nil(v.vram) ? '—' : `${fmt1(v.vram)} of ${v.vramTotal || '–'} GB`;
+  const ve = $('[data-l="vram"]', root); if (ve) ve.textContent = nil(v.vram) ? '—' : SH.t('{used} of {total} GB', { used: fmt1(v.vram), total: v.vramTotal || '–' });
   set('cpu', v.cpu); set('freq', v.cpuFreq, fmt1); set('ctemp', v.cpuTemp);
-  const ct = $('[data-l="ctemp"]', root); if (ct) ct.parentElement.title = nil(v.cpuTemp) ? (SH.state.admin ? 'Windows does not report this processor\'s temperature' : 'The CPU temperature is only visible in administrator mode') : '';
+  const ct = $('[data-l="ctemp"]', root); if (ct) ct.parentElement.title = nil(v.cpuTemp) ? (SH.state.admin ? SH.t('Windows does not report this processor\'s temperature') : SH.t('The CPU temperature is only visible in administrator mode')) : '';
   set('ram', v.ram, fmt1); set('ramt', v.ramTotal, x => Math.round(x)); set('free', nil(v.diskTotal) ? null : v.diskTotal - v.diskUsed);
   set('down', v.down, fmt1); set('up', v.uptime, uptime); set('bat', v.battery); set('bath', nil(v.batteryHealth) ? null : v.batteryHealth, x => x + ' %');
   bars.vram.t = (v.vram || 0) / (v.vramTotal || 8); bars.ram.t = (v.ram || 0) / (v.ramTotal || 1); bars.disk.t = (v.diskUsed || 0) / (v.diskTotal || 1);
@@ -220,8 +223,8 @@ function unmount() {
 }
 
 SH.homeVariant({
-  id: 'bento', name: 'Mosaic', short: 'Mosaic',
-  desc: 'One tile per component, with its live stat.',
+  id: 'bento', name: SH.t('Mosaic'), short: SH.t('Mosaic'),
+  desc: SH.t('One tile per component, with its live stat.'),
   mount, unmount, resize() {}, onReturn() { intro(true); },
 });
 })();

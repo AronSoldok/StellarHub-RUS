@@ -7,6 +7,7 @@ import os
 import re
 import time
 
+from ...i18n import tr
 from . import index, paths, registry, safety
 from . import programs as progmod
 from .paths import is_within, kf, norm_name, norm_path
@@ -134,6 +135,7 @@ class Identity:
         # tokens that also identify OTHER installed programs -> not usable
         # (FabFilter Pro-C 2 and Pro-C 3 share "pro-c": neither of them can claim it)
         self.shared = {}
+        self.shared_note = {}  # token -> the other program that has the identical full name
         mine = set(self.tokens)
         self.foreign_locs = []
         for o in all_programs:
@@ -171,7 +173,8 @@ class Identity:
             if t in self.shared and t != full:
                 del self.tokens[t]
             elif t in self.shared:  # the identical full name in two entries: very weak
-                self.tokens[t] = (60, self.tokens[t][1] + ", shared with “" + self.shared[t] + "”")
+                self.tokens[t] = (60, self.tokens[t][1])
+                self.shared_note[t] = self.shared[t]
 
     def match(self, entry_name, in_vendor=False):
         """(points, reason) if the name matches, otherwise None."""
@@ -184,17 +187,24 @@ class Identity:
         n = norm_name(stem)
         if not n:
             return None
+        # token reasons are English keys (compared above); they are translated here, when shown
+        tok, other = n, False
         hit = self.tokens.get(n)
         if not hit:
-            hit2 = self.tokens.get(norm_name(strip_version(stem)))
+            tok = norm_name(strip_version(stem))
+            hit2 = self.tokens.get(tok)
             if hit2:
-                hit = (hit2[0] - 4, hit2[1] + " (another version)")
+                hit, other = (hit2[0] - 4, hit2[1]), True
         if not hit:
             return None
-        pts, why = hit
+        pts, why = hit[0], tr(hit[1])
+        if tok in self.shared_note:
+            why = tr("{why}, shared with “{name}”", why=why, name=self.shared_note[tok])
+        if other:
+            why = tr("{why} (another version)", why=why)
         if (len(n) < 5 or n in COMMON) and not in_vendor:
             pts -= 30
-            why += ", short or generic name"
+            why = tr("{why}, short or generic name", why=why)
         if in_vendor:
             pts = min(pts + 10, 95)
         return pts, why
@@ -313,12 +323,13 @@ class Scanner:
     def scan_dir(self, root, vendor_depth=True, label="", bonus=0):
         if not root or not os.path.isdir(root):
             return
+        label = f" · {label}" if label else ""
         for e, full, is_dir in self._entries(root):
             m = self.id.match(e)
             if m and bonus and m[0] >= 70:
                 m = (min(m[0] + bonus, 95), m[1])
             if m:
-                self.add("folder" if is_dir else "file", full, m[0], f"Name matches ({m[1]}){label}")
+                self.add("folder" if is_dir else "file", full, m[0], tr("Name matches ({why})", why=m[1]) + label)
             elif is_dir and vendor_depth and self.id.is_vendor(e):
                 self.vendor_dirs.add(full)
                 for e2 in self._listdir(full):
@@ -326,7 +337,7 @@ class Scanner:
                     if m2:
                         f2 = os.path.join(full, e2)
                         self.add("folder" if os.path.isdir(f2) else "file", f2, m2[0],
-                                 f"Inside the vendor's folder ({m2[1]}){label}")
+                                 tr("Inside the vendor's folder ({why})", why=m2[1]) + label)
 
     def scan_files(self):
         k = paths.known_folders()
@@ -337,13 +348,13 @@ class Scanner:
         for loc in self.id.location_paths:
             if os.path.exists(loc):
                 if self.id.vendor_location:
-                    self.add("folder", loc, 90, "Product folder inside the vendor's install folder",
+                    self.add("folder", loc, 90, tr("Product folder inside the vendor's install folder"),
                              extra={"is_location": True})
                 elif self.p.get("location_inferred"):
-                    self.add("folder", loc, 80, "Folder deduced from the icon or the uninstaller",
+                    self.add("folder", loc, 80, tr("Folder deduced from the icon or the uninstaller"),
                              extra={"is_location": True})
                 else:
-                    self.add("folder", loc, 100, "The program's install folder", extra={"is_location": True})
+                    self.add("folder", loc, 100, tr("The program's install folder"), extra={"is_location": True})
         if self.id.vendor_location:
             self.vendor_dirs.add(self.id.vendor_location)
         # uninstaller files outside the folder (Inno: unins000.exe + .dat)
@@ -352,7 +363,7 @@ class Scanner:
                 self.p.get("kind") == "inno":
             for f in (u, u[:-4] + ".dat", u[:-4] + ".msg"):
                 if os.path.isfile(f):
-                    self.add("file", f, 95, "The program's uninstaller")
+                    self.add("file", f, 95, tr("The program's uninstaller"))
         roots = [pf, pf86, cf, cf86, k.get("ProgramData"), local, roam, k.get("LocalAppDataLow"),
                  os.path.join(local, "Programs") if local else None, k.get("UserProgramFiles")]
         for r in roots:
@@ -364,41 +375,41 @@ class Scanner:
                   os.path.join(pf, "VSTPlugins") if pf else None, os.path.join(pf, "Steinberg", "VSTPlugins") if pf else None,
                   os.path.join(pf86, "VSTPlugins") if pf86 else None, os.path.join(pf86, "Steinberg", "VSTPlugins") if pf86 else None,
                   os.path.join(cf86, "VST3") if cf86 else None]:
-            self.scan_dir(r, label=" · audio plugin", bonus=10)
+            self.scan_dir(r, label=tr("audio plugin"), bonus=10)
         # temp files
-        self.scan_dir(k.get("Temp"), vendor_depth=False, label=" · temp file")
+        self.scan_dir(k.get("Temp"), vendor_depth=False, label=tr("temp file"))
         # personal data (never preselected)
         for r in (k.get("Documents"), k.get("SavedGames")):
-            self.scan_dir(r, label=" · user data")
+            self.scan_dir(r, label=tr("user data"))
         # WinGet folders
         if local:
             wg = os.path.join(local, "Microsoft", "WinGet", "Packages")
             kn = norm_name(self.p.get("keyname", "").split("_")[0])
             for e in self._listdir(wg):
                 if kn and norm_name(e.split("_")[0]) == kn:
-                    self.add("folder", os.path.join(wg, e), 95, "The program's WinGet package")
+                    self.add("folder", os.path.join(wg, e), 95, tr("The program's WinGet package"))
         # Store: app data
         if self.p.get("source") == "store" and self.p.get("family") and local:
             d = os.path.join(local, "Packages", self.p["family"])
             if os.path.isdir(d):
-                self.add("folder", d, 95, "Store app data", extra={"store_data": True})
+                self.add("folder", d, 95, tr("Store app data"), extra={"store_data": True})
 
     def scan_shortcuts(self):
         k = paths.known_folders()
         roots = [k.get("Programs"), k.get("CommonPrograms")]
         for r in roots:
-            self.scan_dir(r, label=" · Start menu")
+            self.scan_dir(r, label=tr("Start menu"))
         for f, info in index.shortcut_files():
             tgt = info.get("target", "")
             if self.id.refs_location(tgt) or self.id.refs_location(info.get("workdir")):
-                self.add("file", f, 95, "Shortcut pointing to the program", group="Shortcuts")
+                self.add("file", f, 95, tr("Shortcut pointing to the program"), group="Shortcuts")
             elif tgt and os.path.isabs(tgt) and not os.path.exists(tgt) and not tgt.lower().startswith(
                     ("http", "steam:", "com.epicgames")) and self.id.match(os.path.basename(f)):
-                self.add("file", f, 90, "Broken shortcut with the program's name", group="Shortcuts")
+                self.add("file", f, 90, tr("Broken shortcut with the program's name"), group="Shortcuts")
             else:
                 m = self.id.match(os.path.basename(f))
                 if m:
-                    self.add("file", f, m[0], f"Shortcut with the program's name ({m[1]})",
+                    self.add("file", f, m[0], tr("Shortcut with the program's name ({why})", why=m[1]),
                              group="Shortcuts")
         # Start menu folders left empty after removing their shortcuts
         for r in roots:
@@ -408,7 +419,7 @@ class Scanner:
                     inner = [os.path.join(dp, f) for dp, _, fn in os.walk(d) for f in fn
                              if f.lower() != "desktop.ini"]
                     if inner and all(f"file:{x.lower()}" in self.items for x in inner):
-                        self.add("folder", d, 92, "Start menu folder with only the program's shortcuts",
+                        self.add("folder", d, 92, tr("Start menu folder with only the program's shortcuts"),
                                  group="Shortcuts")
 
     # ---------------------------------------------------------- registry
@@ -423,7 +434,7 @@ class Scanner:
             for sub in registry.subkeys(registry.HIVES[hive], base, view):
                 m = self.id.match(sub)
                 if m:
-                    self._reg_add(RegRef(hive, f"{base}\\{sub}", view), m[0], f"Key with the program's name ({m[1]})")
+                    self._reg_add(RegRef(hive, f"{base}\\{sub}", view), m[0], tr("Key with the program's name ({why})", why=m[1]))
                 elif self.id.is_vendor(sub):
                     vend = f"{base}\\{sub}"
                     children = registry.subkeys(registry.HIVES[hive], vend, view)
@@ -433,9 +444,9 @@ class Scanner:
                         if m2:
                             hits += 1
                             self._reg_add(RegRef(hive, f"{vend}\\{s2}", view), m2[0],
-                                          f"Product key inside the vendor's key ({m2[1]})")
+                                          tr("Product key inside the vendor's key ({why})", why=m2[1]))
                     if children and hits == len(children) and not registry.values(registry.HIVES[hive], vend, view):
-                        self._reg_add(RegRef(hive, vend, view), 60, "Vendor key that would be left empty")
+                        self._reg_add(RegRef(hive, vend, view), 60, tr("Vendor key that would be left empty"))
 
     def scan_registry_refs(self):
         p = self.p
@@ -443,20 +454,20 @@ class Scanner:
         if p.get("key"):
             ref = RegRef.from_str(p["key"])
             if registry.key_exists(ref):
-                self.add("regkey", ref.to_str(), 100, "The program's uninstall entry",
+                self.add("regkey", ref.to_str(), 100, tr("The program's uninstall entry"),
                          display=ref.display(), group="Registry", extra={"is_uninstall_key": True})
         others = {o.get("id") for o in self.all if o.get("id") != p.get("id")}
         for hive, view, kn, path, vals in index.uninstall_entries():
             if f"{hive}|{view}|{kn}" in others or f"{hive}|{view}|{kn}" == p.get("id"):
                 continue
             if any(self.id.refs_location(vals.get(x)) for x in ("InstallLocation", "UninstallString", "DisplayIcon")):
-                self._reg_add(RegRef(hive, path, view), 90, "Hidden uninstall entry pointing to the program")
+                self._reg_add(RegRef(hive, path, view), 90, tr("Hidden uninstall entry pointing to the program"))
         # App Paths
         for hive, view, path, sub, default, extra_path in index.app_paths():
             if self.id.refs_location(default) or self.id.refs_location(extra_path):
-                self._reg_add(RegRef(hive, path, view), 95, "Executable path registration (App Paths)")
+                self._reg_add(RegRef(hive, path, view), 95, tr("Executable path registration (App Paths)"))
             elif sub.lower() in self.id.exes:
-                self._reg_add(RegRef(hive, path, view), 75, "App Paths entry with the executable's name")
+                self._reg_add(RegRef(hive, path, view), 75, tr("App Paths entry with the executable's name"))
         # Run / RunOnce + StartupApproved
         approved = index.startup_approved()
         for hive, base, view, name, data in index.run_values():
@@ -466,53 +477,54 @@ class Scanner:
                 m = self.id.match(name)
                 score = m[0] if m else 0
             if score >= LEVELS["advanced"]:
-                self._reg_add(RegRef(hive, base, view, name), min(score, 95), "Starts with Windows", group="Startup")
+                self._reg_add(RegRef(hive, base, view, name), min(score, 95), tr("Starts with Windows"), group="Startup")
                 for shive, sbase, sname, _ in approved.get(name.lower(), []):
                     if shive == hive:
-                        self._reg_add(RegRef(shive, sbase, 0, sname), min(score, 90), "The program's startup state",
+                        self._reg_add(RegRef(shive, sbase, 0, sname), min(score, 90), tr("The program's startup state"),
                                       group="Startup")
         # services
         for s in index.services():
             score = 0
             if self.id.refs_location(s["exe"]) or self.id.refs_location(s["image"]):
-                score, why = 95, "Service that runs one of the program's files"
+                score, why = 95, tr("Service that runs one of the program's files")
             else:
                 m = self.id.match(s["name"]) or self.id.match(s["display"])
                 win = kf("Windows")
                 if m and m[0] >= 80 and not (win and is_within(s["exe"], win)):
-                    score, why = min(m[0], 85), f"Service with the program's name ({m[1]})"
+                    score, why = min(m[0], 85), tr("Service with the program's name ({why})", why=m[1])
             if score:
-                self.add("service", s["name"], score, why, display=f"Service: {s['display']} ({s['name']})",
+                self.add("service", s["name"], score, why, display=tr("Service: {name} ({id})", name=s["display"], id=s["name"]),
                          group="Services and tasks", extra={"service": s})
         # scheduled tasks
         for t in index.tasks():
             if t["path"].lower().startswith("\\microsoft\\"):
                 continue
             if any(self.id.refs_location(c) or self.id.refs_location(a) for c, a in t["commands"]):
-                score, why = 95, "Scheduled task that runs the program"
+                score, why = 95, tr("Scheduled task that runs the program")
             else:
                 m = self.id.match(t["name"].split("_{")[0].split("-S-1-5")[0])
                 if not m:
                     continue
-                score, why = min(m[0], 85), f"Task with the program's name ({m[1]})"
-            self.add("task", t["path"], score, why, display=f"Task: {t['path']}", group="Services and tasks")
+                score, why = min(m[0], 85), tr("Task with the program's name ({why})", why=m[1])
+            self.add("task", t["path"], score, why, display=tr("Task: {path}", path=t["path"]), group="Services and tasks")
         # SharedDLLs with a count of 1 inside the folder
         for view, base, name, data in index.shared_dlls():
             if self.id.refs_location(name) and str(data) in ("0", "1"):
-                self._reg_add(RegRef("HKLM", base, view, name), 92, "Shared file counter (only this program uses it)")
+                self._reg_add(RegRef("HKLM", base, view, name), 92, tr("Shared file counter (only this program uses it)"))
         # firewall rules
         for name, data in index.firewall_rules():
             m = re.search(r"\|App=([^|]+)", str(data))
             if m and self.id.refs_location(m.group(1)):
                 nm = re.search(r"\|Name=([^|]+)", str(data))
-                self.add("fwrule", name, 95, "Firewall rule for the program",
-                         display=f"Firewall: {nm.group(1) if nm else name}", group="Services and tasks",
+                self.add("fwrule", name, 95, tr("Firewall rule for the program"),
+                         display=tr("Firewall: {name}", name=nm.group(1) if nm else name), group="Services and tasks",
                          extra={"fw_data": str(data)})
         # PATH entries
         for scope, entry in index.env_paths():
             if self.id.refs_location(entry):
-                self.add("envpath", f"{scope}|{entry}", 95, "PATH entry inside the program's folder",
-                         display=f"PATH ({'user' if scope == 'user' else 'system'}): {entry}", group="Registry")
+                self.add("envpath", f"{scope}|{entry}", 95, tr("PATH entry inside the program's folder"),
+                         display=tr("PATH (user): {entry}", entry=entry) if scope == "user" else
+                         tr("PATH (system): {entry}", entry=entry), group="Registry")
         # Windows Installer registration
         code = p.get("msi_code")
         if code and not progmod.msi_installed(code):
@@ -523,7 +535,7 @@ class Scanner:
                             RegRef("HKCU", rf"Software\Microsoft\Installer\Products\{packed}"),
                             RegRef("HKLM", rf"SOFTWARE\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\{packed}", V64)):
                     if registry.key_exists(ref):
-                        self._reg_add(ref, 95, "Windows Installer registration of a product that is already uninstalled")
+                        self._reg_add(ref, 95, tr("Windows Installer registration of a product that is already uninstalled"))
 
     def scan_classes(self):
         """ProgIDs, CLSIDs and associations pointing to the program (moderate level or higher)."""
@@ -534,19 +546,19 @@ class Scanner:
         for hive, base, sub, cmd, icon in cl["progids"]:
             if self.id.refs_location(cmd) or self.id.refs_location(icon):
                 progids.add(sub.lower())
-                self._reg_add(RegRef(hive, f"{base}\\{sub}"), 90, "File type registered by the program")
+                self._reg_add(RegRef(hive, f"{base}\\{sub}"), 90, tr("File type registered by the program"))
         for hive, exe in cl["apps"]:
             if exe in self.id.exes:
                 base = r"SOFTWARE\Classes" if hive == "HKLM" else r"Software\Classes"
                 self._reg_add(RegRef(hive, rf"{base}\Applications\{exe}"), 85,
-                              "App registration for “Open with”")
+                              tr("App registration for “Open with”"))
         for hive, cp, server in cl["clsids"]:
             if self.id.refs_location(server):
-                self._reg_add(RegRef(hive, cp), 92, "The program's COM component")
+                self._reg_add(RegRef(hive, cp), 92, tr("The program's COM component"))
         for hive, base, ext, name in cl["openwith"]:
             if name.lower() in progids:
                 self._reg_add(RegRef(hive, rf"{base}\{ext}\OpenWithProgids", 0, name), 90,
-                              f"{ext} file association")
+                              tr("{ext} file association", ext=ext))
 
     # ---------------------------------------------------------- final
     def finish(self):
@@ -556,7 +568,7 @@ class Scanner:
         for vd in self.vendor_dirs:
             inner = self._listdir(vd)
             if inner and all(any(k.endswith(os.path.join(vd, e).lower()) for k in self.items) for e in inner):
-                self.add("folder", vd, 60, "Vendor folder that would be left empty")
+                self.add("folder", vd, 60, tr("Vendor folder that would be left empty"))
         items = list(self.items.values())
         # drop what is already contained in another item with equal or higher confidence
         paths_sel = sorted([i for i in items if i["kind"] == "folder"], key=lambda i: len(i["target"]))
@@ -587,10 +599,10 @@ class Scanner:
                 if not os.path.lexists(it["target"]):
                     continue
                 if paths.is_reparse_point(it["target"]):
-                    it["reasons"].append("It is a link: only the link will be removed, not its contents")
+                    it["reasons"].append(tr("It is a link: only the link will be removed, not its contents"))
                 if not blocked and it["kind"] == "folder" and _is_game_library(it["target"]):
                     personal = True
-                    it["reasons"].append("Contains a game library")
+                    it["reasons"].append(tr("Contains a game library"))
                 it["size"] = paths.path_size(it["target"]) if not blocked else 0
             elif it["kind"] in ("regkey", "regvalue"):
                 blocked = safety.reg_rule(RegRef.from_str(it["target"]))
@@ -598,12 +610,12 @@ class Scanner:
                 blocked = safety.service_rule(it["target"], {k: it["service"][k] for k in ("type", "start", "image")})
                 it.pop("service", None)
             elif it["kind"] == "task" and it["target"].lower().startswith("\\microsoft\\"):
-                blocked = "Microsoft task"
+                blocked = tr("Microsoft task")
             installed_part = self.still_installed and (it.get("is_location") or it.get("is_uninstall_key"))
             if installed_part:
-                it["reasons"].append("The program is still installed: check this only if you know it is broken")
+                it["reasons"].append(tr("The program is still installed: check this only if you know it is broken"))
             if personal:
-                it["reasons"].append("Contains your data (projects, presets, saves…)")
+                it["reasons"].append(tr("Contains your data (projects, presets, saves…)"))
             it.update({
                 "id": f"i{n}", "blocked": blocked, "personal": personal,
                 "level": next(l for l in LEVEL_ORDER if it["score"] >= LEVELS[l]),

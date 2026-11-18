@@ -11,7 +11,7 @@ function setMax(max) {
   b.innerHTML = max
     ? '<svg class="i" viewBox="0 0 24 24"><rect x="7" y="9" width="10" height="10" rx="1.6"/><path d="M10 9V6.6A1.6 1.6 0 0 1 11.6 5H17.4A1.6 1.6 0 0 1 19 6.6v5.8A1.6 1.6 0 0 1 17.4 14H17"/></svg>'
     : '<svg class="i" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.8"/></svg>';
-  b.setAttribute('aria-label', max ? 'Restore' : 'Maximize'); b.title = b.getAttribute('aria-label');
+  b.setAttribute('aria-label', max ? SH.t('Restore') : SH.t('Maximize')); b.title = b.getAttribute('aria-label');
   anim($('svg', b), [{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { d: 260, e: EASE.spring });
 }
 SH.on('win', d => setMax(d && d.max));

@@ -16,6 +16,7 @@ import subprocess
 import threading
 import time
 
+from ..i18n import tr
 from .jobs import Cancelled
 from .ps import ps_json, run, NO_WINDOW
 
@@ -82,7 +83,7 @@ def _ps_job(job, script, timeout=900):
             raise Cancelled()
         if time.monotonic() - t0 > timeout:
             p.kill()
-            raise TimeoutError("Windows Update did not respond in time")
+            raise TimeoutError(tr("Windows Update did not respond in time."))
     return (out.get("o") or b"").decode("utf-8", "replace"), (out.get("e") or b"").decode("utf-8", "replace")
 
 
@@ -164,12 +165,12 @@ def _match(update, drivers):
 
 def search(job):
     """Asks Windows Update which drivers are available for this PC (read-only)."""
-    job.progress(.05, "Connecting to Windows Update", phase=0, force=True)
+    job.progress(.05, tr("Connecting to Windows Update"), phase=0, force=True)
     drivers = []
     t = threading.Thread(target=lambda: drivers.extend(list_drivers()), daemon=True)
     t.start()
-    phases = ["Requesting the driver catalog for your PC", "Waiting for Windows Update to respond",
-              "Comparing with your installed drivers"]
+    phases = [tr("Requesting the driver catalog for your PC"), tr("Waiting for Windows Update to respond"),
+              tr("Comparing with your installed drivers")]
     done = {}
 
     def run_search():
@@ -187,18 +188,18 @@ def search(job):
         ph = min(len(phases) - 1, int(el // 6))
         if ph != i or el < 2:
             i = ph
-        job.progress(min(.85, .1 + el / 90), phases[i] if el > 1 else "Connecting to Windows Update", phase=i + 1, secs=int(el))
+        job.progress(min(.85, .1 + el / 90), phases[i] if el > 1 else tr("Connecting to Windows Update"), phase=i + 1, secs=int(el))
     if "err" in done:
         if isinstance(done["err"], Cancelled):
             raise done["err"]
-        raise RuntimeError(f"Windows Update did not respond: {done['err']}")
+        raise RuntimeError(tr("Windows Update did not respond: {error}", error=done["err"]))
     out, err = done.get("out", ("", ""))
     data = _json_lines(out)
     ups = data[0] if data and isinstance(data[0], list) else (data if data and isinstance(data[0], dict) else [])
     if not data and err.strip():
-        raise RuntimeError("Windows Update returned an error: " + err.strip().splitlines()[-1][:300])
+        raise RuntimeError(tr("Windows Update returned an error: {error}", error=err.strip().splitlines()[-1][:300]))
     t.join(60)
-    job.progress(.92, "Comparing with your installed drivers", phase=3)
+    job.progress(.92, tr("Comparing with your installed drivers"), phase=3)
     res = []
     for u in ups:
         d = _match(u, drivers)
@@ -209,7 +210,7 @@ def search(job):
                                  "provider": d["provider"], "instance": d["instance"]} if d else None)})
     payload = {"at": time.time(), "updates": res}
     _save_json(LAST, payload)
-    job.progress(1, "Done", phase=4)
+    job.progress(1, tr("Done"), phase=4)
     return payload
 
 
@@ -247,6 +248,7 @@ Say @{ step='end' }
 
 
 def _restore_point(desc):
+    desc = str(desc).replace("'", "''")  # it goes inside a single-quoted PowerShell string (translations may have apostrophes)
     out = ps_json(f"""
 try {{ Enable-ComputerRestore -Drive "$env:SystemDrive\\" -ErrorAction SilentlyContinue
   Checkpoint-Computer -Description '{desc}' -RestorePointType MODIFY_SETTINGS -ErrorAction Stop
@@ -264,10 +266,10 @@ def install(job, ids, restore_point=True):
         return {"results": [], "reboot": False}
     rp = {"ok": None}
     if restore_point:
-        job.progress(.02, "Creating a restore point", step="rp", phase="run", force=True)
-        rp = _restore_point("StellarHub: before installing drivers")
-        job.progress(.08, "Restore point", step="rp", phase="done" if rp.get("ok") else "skip",
-                     msg=None if rp.get("ok") else "Windows did not create a new one (it only allows one every 24 hours, or it is turned off).", force=True)
+        job.progress(.02, tr("Creating a restore point"), step="rp", phase="run", force=True)
+        rp = _restore_point(tr("StellarHub: before installing drivers"))
+        job.progress(.08, tr("Restore point"), step="rp", phase="done" if rp.get("ok") else "skip",
+                     msg=None if rp.get("ok") else tr("Windows did not create a new one (it only allows one every 24 hours, or it is turned off)."), force=True)
     results, reboot = {}, False
     n = len(ids)
 
@@ -278,17 +280,18 @@ def install(job, ids, restore_point=True):
             k = list(results).index(uid) if uid in results else len(results)
             if st == "download":
                 results.setdefault(uid, {"id": uid, "ok": False})
-                job.progress(.1 + .9 * (k / n), "Downloading", step=uid, phase="download", force=True)
+                job.progress(.1 + .9 * (k / n), tr("Downloading"), step=uid, phase="download", force=True)
             elif st == "install":
-                job.progress(.1 + .9 * ((k + .6) / n), "Installing", step=uid, phase="install", force=True)
+                job.progress(.1 + .9 * ((k + .6) / n), tr("Installing"), step=uid, phase="install", force=True)
             elif st in ("done", "error"):
                 r = results.setdefault(uid, {"id": uid})
-                r.update(ok=bool(m.get("ok")), code=m.get("code"), msg=m.get("msg"), reboot=bool(m.get("reboot")), hresult=m.get("hresult"))
+                msg = m.get("msg")  # "The download failed" from the script, or a Windows exception message (left as is)
+                r.update(ok=bool(m.get("ok")), code=m.get("code"), msg=tr(msg) if msg else msg, reboot=bool(m.get("reboot")), hresult=m.get("hresult"))
                 reboot = reboot or r["reboot"]
-                job.progress(.1 + .9 * ((k + 1) / n), "Done" if r["ok"] else "Failed", step=uid, phase="done" if r["ok"] else "error",
+                job.progress(.1 + .9 * ((k + 1) / n), tr("Done") if r["ok"] else tr("Failed"), step=uid, phase="done" if r["ok"] else "error",
                              result=r, force=True)
             elif st == "none":
-                job.progress(1, "Those drivers are no longer available", force=True)
+                job.progress(1, tr("Those drivers are no longer available"), force=True)
     script = _INSTALL.replace("__IDS__", json.dumps(ids))
     code, _ = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
                    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; " + script],
@@ -304,7 +307,7 @@ def install(job, ids, restore_point=True):
 
 
 def restart(seconds=60):
-    subprocess.run(["shutdown", "/r", "/t", str(int(seconds)), "/c", "StellarHub is restarting the PC to finish installing drivers."],
+    subprocess.run(["shutdown", "/r", "/t", str(int(seconds)), "/c", tr("StellarHub is restarting the PC to finish installing drivers.")],
                    creationflags=NO_WINDOW)
     return True
 
@@ -315,6 +318,7 @@ def cancel_restart():
 
 
 # ================= problems =================
+# Device Manager problem codes in plain words (English keys; translated with tr() when they are sent)
 CODES = {
     1: "It is not configured correctly.", 3: "The driver is damaged or the system is low on memory.", 10: "The device cannot start.",
     12: "It cannot find enough free resources.", 14: "The PC needs a restart for it to work.", 18: "Its drivers need to be reinstalled.",
@@ -344,7 +348,7 @@ def problems():
         c = e.get("code")
         if c in (45,):
             continue
-        errs.append({**e, "why": CODES.get(c, f"Windows reports code {c}."), "disabled": c == 22})
+        errs.append({**e, "why": tr(CODES[c]) if c in CODES else tr("Windows reports code {code}.", code=c), "disabled": c == 22})
     ghosts = sorted((r.get("ghosts") or []), key=lambda g: g.get("last") or "", reverse=True)
     return {"errors": [e for e in errs if not e["disabled"]], "disabled": [e for e in errs if e["disabled"]], "ghosts": ghosts,
             "at": time.time()}
@@ -396,7 +400,7 @@ def history():
         name = parts[0] if len(parts) >= 3 else t
         res.append({"date": e.get("date"), "title": t, "name": name, "cls": parts[1] if len(parts) >= 3 else "",
                     "ver": _ver_from_title(t), "ok": e.get("code") in (2, 3), "code": e.get("code"),
-                    "err": None if e.get("code") in (2, 3) else f"Windows Update returned 0x{e.get('hr')}"})
+                    "err": None if e.get("code") in (2, 3) else tr("Windows Update returned 0x{code}", code=e.get("hr"))})
     return res
 
 
@@ -489,7 +493,7 @@ def export(job, folder=None):
             if inf.lower() not in seen:
                 seen.add(inf.lower())
                 job.progress(len(seen) / total, line.strip()[:160], n=len(seen), total=total)
-    job.progress(0, "Preparing the backup", n=0, total=total, force=True)
+    job.progress(0, tr("Preparing the backup"), n=0, total=total, force=True)
     code, out = run(["pnputil", "/export-driver", "*", dest], on_line=on_line, encoding="cp1252", job=job, timeout=3600)
     job.check()
     n, size = _dir_stats(dest)
@@ -502,7 +506,7 @@ def export(job, folder=None):
             os.rmdir(dest)
         except OSError:
             pass
-        return {"ok": False, "msg": out.strip().splitlines()[-1] if out.strip() else "pnputil did not export anything"}
+        return {"ok": False, "msg": out.strip().splitlines()[-1] if out.strip() else tr("pnputil did not export anything.")}
     return {"ok": True, "path": dest, "count": n, "gb": round(size / 1024 ** 3, 2)}
 
 
@@ -511,7 +515,7 @@ def restore_backup(job, path):
     if need:
         return need
     if not path or not os.path.isdir(path):
-        return {"ok": False, "msg": "The backup folder no longer exists."}
+        return {"ok": False, "msg": tr("The backup folder no longer exists.")}
     total = max(1, _dir_stats(path)[0])
     done = [0]
 
@@ -529,7 +533,7 @@ def delete_backup(job, path):
     """Sends the backup to the Recycle Bin (it can be recovered from there)."""
     known = {b["path"] for b in backups()}
     if path not in known:
-        return {"ok": False, "msg": "That folder is not a StellarHub backup."}
+        return {"ok": False, "msg": tr("That folder is not a StellarHub backup.")}
     from ctypes import wintypes
 
     class SHFILEOPSTRUCTW(ctypes.Structure):
@@ -584,20 +588,20 @@ def rollback(job, instance_id, inf, hwid):
     if need:
         return need
     if not re.fullmatch(r"oem\d+\.inf", str(inf), re.I):
-        return {"ok": False, "msg": "You can only go back to manufacturer drivers stored on this PC."}
+        return {"ok": False, "msg": tr("You can only go back to manufacturer drivers stored on this PC.")}
     path = os.path.join(INF_DIR, inf)
     if not os.path.isfile(path):
-        return {"ok": False, "msg": "That driver is no longer on this PC."}
-    job.progress(.1, "Creating a restore point", force=True)
-    rp = _restore_point("StellarHub: before rolling back a driver")
-    job.progress(.4, "Installing the previous version", force=True)
+        return {"ok": False, "msg": tr("That driver is no longer on this PC.")}
+    job.progress(.1, tr("Creating a restore point"), force=True)
+    rp = _restore_point(tr("StellarHub: before rolling back a driver"))
+    job.progress(.4, tr("Installing the previous version"), force=True)
     reboot = ctypes.c_int(0)
     newdev = ctypes.windll.newdev
     newdev.UpdateDriverForPlugAndPlayDevicesW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_int)]
     ok = newdev.UpdateDriverForPlugAndPlayDevicesW(None, str(hwid), path, 1, ctypes.byref(reboot))  # INSTALLFLAG_FORCE
     err = ctypes.GetLastError()
     _cache["at"] = 0
-    return {"ok": bool(ok), "reboot": bool(reboot.value), "restorePoint": rp, "msg": None if ok else f"Windows returned error {err}."}
+    return {"ok": bool(ok), "reboot": bool(reboot.value), "restorePoint": rp, "msg": None if ok else tr("Windows returned error {code}.", code=err)}
 
 
 # ================= DriverStore: old copies of the same driver =================
@@ -676,7 +680,7 @@ def store_packages(fresh=False):
     if not current:
         # without the inventory usage cannot be double-checked: offer nothing rather than guess
         return {"supported": True, "packages": len(root.findall("Driver")), "old": [], "mb": 0,
-                "msg": "The driver inventory could not be read."}
+                "msg": tr("The driver inventory could not be read.")}
     groups = {}
     for d in root.findall("Driver"):
         inf = (d.get("DriverName") or "").lower()
@@ -717,18 +721,18 @@ def delete_packages(job, infs):
     if need:
         return need
     asked = [str(i).lower() for i in (infs or []) if re.fullmatch(r"oem\d+\.inf", str(i), re.I)]
-    job.progress(0, "Checking which packages are still unused", force=True)
+    job.progress(0, tr("Checking which packages are still unused"), force=True)
     data = store_packages(fresh=True)
     allowed = {o["inf"]: o for o in data.get("old", [])}
     todo = [i for i in asked if i in allowed]
     results = []
     for k, inf in enumerate(todo):
         job.check()
-        job.progress(k / max(1, len(todo)), f"Removing {allowed[inf]['name']} {allowed[inf]['version']}", n=k, total=len(todo))
+        job.progress(k / max(1, len(todo)), tr("Removing {name} {version}", name=allowed[inf]["name"], version=allowed[inf]["version"]), n=k, total=len(todo))
         code, out = run(["pnputil", "/delete-driver", inf], encoding="cp1252", job=job, timeout=300)
         lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
-        results.append({"inf": inf, "ok": code == 0, "msg": "" if code == 0 else (lines[-1] if lines else f"pnputil exit code {code}")})
-    job.progress(1, "Done", n=len(todo), total=len(todo), force=True)
+        results.append({"inf": inf, "ok": code == 0, "msg": "" if code == 0 else (lines[-1] if lines else tr("pnputil exit code {code}", code=code))})
+    job.progress(1, tr("Done"), n=len(todo), total=len(todo), force=True)
     _store.update(data=None, at=0)
     freed = sum(allowed[r["inf"]]["mb"] for r in results if r["ok"])
     return {"ok": any(r["ok"] for r in results) or not todo, "results": results,

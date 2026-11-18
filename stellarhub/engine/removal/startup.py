@@ -10,6 +10,7 @@ import time
 import winreg
 from concurrent.futures import ThreadPoolExecutor
 
+from ...i18n import tr
 from . import index, paths, registry, safety, shortcuts, system
 from .registry import V32, V64, RegRef
 
@@ -64,11 +65,11 @@ def list_entries():
             exe = safety.image_path(str(data))
             out.append({"id": f"run|{hive}|{view}|{name}", "type": "run", "name": name, "command": str(data),
                         "exe": exe, "enabled": _approved(hive, sa, name),
-                        "where": "Registry (current user)" if hive == "HKCU" else
-                                 f"Registry (all users{', 32-bit' if view == V32 else ''})"})
+                        "where": tr("Registry (current user)") if hive == "HKCU" else
+                                 tr("Registry (all users, 32-bit)") if view == V32 else tr("Registry (all users)")})
     # Startup folders
-    for folder, hive, label in ((paths.kf("Startup"), "HKCU", "Startup folder (current user)"),
-                                (paths.kf("CommonStartup"), "HKLM", "Startup folder (all users)")):
+    for folder, hive, label in ((paths.kf("Startup"), "HKCU", tr("Startup folder (current user)")),
+                                (paths.kf("CommonStartup"), "HKLM", tr("Startup folder (all users)"))):
         if not folder or not os.path.isdir(folder):
             continue
         for f in os.listdir(folder):
@@ -84,7 +85,7 @@ def list_entries():
             continue
         cmd = t["commands"][0] if t["commands"] else ("", "")
         out.append({"id": f"task|{t['path']}", "type": "task", "name": t["name"], "command": f"{cmd[0]} {cmd[1]}".strip(),
-                    "exe": cmd[0], "enabled": t["enabled"], "where": "Scheduled task"})
+                    "exe": cmd[0], "enabled": t["enabled"], "where": tr("Scheduled task")})
     # third-party automatic services
     win = paths.kf("Windows")
     for s in index.services():
@@ -93,7 +94,7 @@ def list_entries():
         if win and paths.is_within(s["exe"], win):
             continue
         out.append({"id": f"service|{s['name']}", "type": "service", "name": s["display"], "command": s["image"],
-                    "exe": s["exe"], "enabled": True, "where": "Automatic service",
+                    "exe": s["exe"], "enabled": True, "where": tr("Automatic service"),
                     "locked": safety.service_rule(s["name"]) is not None})
     def finish(e):
         e["company"] = file_company(e["exe"]) if e.get("exe") and os.path.isfile(e["exe"]) else ""
@@ -137,5 +138,5 @@ def removal_item(entry_id):
         _, full = rest.split("|", 1)
         return {"kind": "file", "target": full, "display": full}
     if kind == "task":
-        return {"kind": "task", "target": rest, "display": f"Task: {rest}"}
-    raise ValueError("Services can only be disabled from here")
+        return {"kind": "task", "target": rest, "display": tr("Task: {path}", path=rest)}
+    raise ValueError(tr("Services can only be disabled from here"))

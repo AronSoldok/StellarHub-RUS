@@ -95,7 +95,7 @@ function buildModule(m) {
   let s = $('#v-' + m.id);
   if (!s) { s = document.createElement('section'); s.className = 'view'; s.id = 'v-' + m.id; s.dataset.view = m.id; views.appendChild(s); }
   const def = registry.modules[m.id] || {}; const tabs = tabsOf(m);
-  const sample = !(m.real || def.real) ? '<span class="chip warn" title="Not connected to the real engine yet: what you see is sample data and does not reflect your PC">Sample data</span>' : '';
+  const sample = !(m.real || def.real) ? `<span class="chip warn" title="${SH.t('Not connected to the real engine yet: what you see is sample data and does not reflect your PC')}">${SH.t('Sample data')}</span>` : '';
   s.innerHTML = `<div class="mod"><header class="mhead" data-asm><div class="ttl"><h1>${esc(def.name || m.name)}${sample}</h1><p>${esc(def.desc || m.desc || '')}</p></div><div class="acts"></div></header>
     ${tabs.length > 1 ? `<nav class="subnav" data-asm role="tablist"><span class="ind"></span>${tabs.map((t, i) => `<button role="tab" data-tab="${t.id}"${i === 0 ? ' class="on"' : ''}>${esc(t.name)}<span class="bd" hidden></span></button>`).join('')}</nav>` : ''}
     <div class="tabs">${tabs.map((t, i) => `<div class="tab${i === 0 ? ' on' : ''}" data-tab="${t.id}" role="tabpanel"></div>`).join('')}</div></div>`;
@@ -117,7 +117,7 @@ function renderTab(mid, tabId) {
   const ms = modState[mid]; const el = $(`#v-${mid} .tab[data-tab="${tabId}"]`); if (!el || ms.rendered.has(tabId)) return el;
   ms.rendered.add(tabId);
   const def = registry.modules[mid];
-  if (def && def.renderTab) { try { def.renderTab(tabId, el, ctxFor(modById(mid))); } catch (e) { console.error(e); el.innerHTML = `<div class="empty"><b>This tab failed to load</b>${esc(e.message)}</div>`; } }
+  if (def && def.renderTab) { try { def.renderTab(tabId, el, ctxFor(modById(mid))); } catch (e) { console.error(e); el.innerHTML = `<div class="empty"><b>${SH.t('This tab failed to load')}</b>${esc(e.message)}</div>`; } }
   else el.innerHTML = skeletonFor(tabId.length);
   return el;
 }
@@ -234,34 +234,36 @@ function go(name, opts = {}) {
 SH.go = go;
 const COMP_TAB = { cpu: 'cpu', gpu: 'gpu', ram: 'memory', ssd: 'disks', wifi: 'network', battery: 'battery', display: 'overview', audio: 'overview', sys: 'health' };
 SH.openComponent = id => go('monitor', { tab: COMP_TAB[id] || 'overview' });
-$('#brand').addEventListener('click', () => go('home'));
+$('#brand').addEventListener('click', () => go('home')); $('#brand').title = SH.t('Go Home');
 
 /* ================= command palette ================= */
 const BUILTIN = [
-  { t: 'Check for new drivers', go: 'drivers', tab: 'updates', ic: 'drivers' },
-  { t: 'Back up your drivers', go: 'drivers', tab: 'backup', ic: 'download' },
-  { t: 'Uninstall a program', go: 'remover', tab: 'programs', ic: 'remover' },
-  { t: 'Restore something from quarantine', go: 'remover', tab: 'quarantine', ic: 'restore' },
-  { t: 'Update all programs', go: 'updater', tab: 'overview', ic: 'updater' },
-  { t: 'Check for Windows updates', go: 'updater', tab: 'windows', ic: 'windows' },
-  { t: 'What is taking up drive C:', go: 'storage', tab: 'map', ic: 'storage' },
-  { t: 'Find duplicate files', go: 'storage', tab: 'duplicates', ic: 'copy' },
-  { t: 'Clean temporary files', go: 'optimizer', tab: 'clean', ic: 'broom' },
-  { t: 'Speed up Windows startup', go: 'optimizer', tab: 'startup', ic: 'bolt' },
-  { t: 'Repair Windows', go: 'optimizer', tab: 'repair', ic: 'wrench' },
-  { t: 'Check the GPU temperature', go: 'monitor', tab: 'gpu', ic: 'temp' },
-  { t: 'See which programs use the most memory', go: 'monitor', tab: 'processes', ic: 'ram' },
-  { t: 'Battery health', go: 'monitor', tab: 'battery', ic: 'battery' },
-  { t: 'Test the keyboard', go: 'tester', tab: 'keyboard', ic: 'keyboard' },
-  { t: 'Look for dead pixels', go: 'tester', tab: 'screen', ic: 'display' },
-  { t: 'Create an automatic routine', go: 'autopilot', tab: 'routines', ic: 'autopilot' },
-  { t: 'Turn on administrator mode', go: 'admin', ic: 'shield' },
-  { t: 'Change the theme and colors', go: 'settings', section: 'look', ic: 'palette' },
-  { t: 'Change the interface size', go: 'settings', section: 'look', ic: 'sliders' },
-  { t: 'Change the animation intensity', go: 'settings', section: 'motion', ic: 'sparkle' },
-  { t: 'Change the Home view', go: 'settings', section: 'home', ic: 'layers' },
-  { t: 'Check for StellarHub updates', go: 'settings', section: 'updates', ic: 'download' },
+  { t: SH.t('Check for new drivers'), go: 'drivers', tab: 'updates', ic: 'drivers' },
+  { t: SH.t('Back up your drivers'), go: 'drivers', tab: 'backup', ic: 'download' },
+  { t: SH.t('Uninstall a program'), go: 'remover', tab: 'programs', ic: 'remover' },
+  { t: SH.t('Restore something from quarantine'), go: 'remover', tab: 'quarantine', ic: 'restore' },
+  { t: SH.t('Update all programs'), go: 'updater', tab: 'overview', ic: 'updater' },
+  { t: SH.t('Check for Windows updates'), go: 'updater', tab: 'windows', ic: 'windows' },
+  { t: SH.t('What is taking up drive C:'), go: 'storage', tab: 'map', ic: 'storage' },
+  { t: SH.t('Find duplicate files'), go: 'storage', tab: 'duplicates', ic: 'copy' },
+  { t: SH.t('Clean temporary files'), go: 'optimizer', tab: 'clean', ic: 'broom' },
+  { t: SH.t('Speed up Windows startup'), go: 'optimizer', tab: 'startup', ic: 'bolt' },
+  { t: SH.t('Repair Windows'), go: 'optimizer', tab: 'repair', ic: 'wrench' },
+  { t: SH.t('Check the GPU temperature'), go: 'monitor', tab: 'gpu', ic: 'temp' },
+  { t: SH.t('See which programs use the most memory'), go: 'monitor', tab: 'processes', ic: 'ram' },
+  { t: SH.t('Battery health'), go: 'monitor', tab: 'battery', ic: 'battery' },
+  { t: SH.t('Test the keyboard'), go: 'tester', tab: 'keyboard', ic: 'keyboard' },
+  { t: SH.t('Look for dead pixels'), go: 'tester', tab: 'screen', ic: 'display' },
+  { t: SH.t('Create an automatic routine'), go: 'autopilot', tab: 'routines', ic: 'autopilot' },
+  { t: SH.t('Turn on administrator mode'), go: 'admin', ic: 'shield' },
+  { t: SH.t('Change the theme and colors'), go: 'settings', section: 'look', ic: 'palette' },
+  { t: SH.t('Change the interface size'), go: 'settings', section: 'look', ic: 'sliders' },
+  { t: SH.t('Change the animation intensity'), go: 'settings', section: 'motion', ic: 'sparkle' },
+  { t: SH.t('Change the Home view'), go: 'settings', section: 'home', ic: 'layers' },
+  { t: SH.t('Check for StellarHub updates'), go: 'settings', section: 'updates', ic: 'download' },
 ];
+/* g is the group id (compared below); its name is translated when shown */
+const GROUP = { Modules: SH.t('Modules'), Sections: SH.t('Sections'), Actions: SH.t('Actions') };
 function paletteItems() {
   const list = [];
   MODS.forEach(m => list.push({ t: m.name, go: m.id, ic: m.icon, g: 'Modules' }));
@@ -275,10 +277,10 @@ function renderPal(q) {
   const n = norm(q.trim()); const all = paletteItems();
   palList = n ? all.filter(i => n.split(/\s+/).every(w => norm(i.t + ' ' + (i.path || '')).includes(w))) : all.filter(i => i.g !== 'Sections');
   palList = palList.slice(0, 40); palIdx = 0; const res = $('#palRes');
-  if (!palList.length) { res.innerHTML = `<div class="empty">Nothing matches “${esc(q)}”. Try “drivers”, “disk” or “clean”.</div>`; return; }
+  if (!palList.length) { res.innerHTML = `<div class="empty">${SH.t('Nothing matches “{q}”. Try “drivers”, “disk” or “clean”.', { q: esc(q) })}</div>`; return; }
   let html = '<div class="hl" id="palHl"></div>', g = '';
-  palList.forEach((it, i) => { if (it.g !== g) { g = it.g; html += `<div class="grp">${g}</div>`; }
-    html += `<button class="it" data-i="${i}"><span class="ic">${ic(it.ic)}</span>${it.path ? `<span class="path">${esc(it.path)}</span>` : ''}${esc(it.t)}<small>${it.g === 'Actions' ? 'Run' : 'Open'}</small></button>`; });
+  palList.forEach((it, i) => { if (it.g !== g) { g = it.g; html += `<div class="grp">${GROUP[g] || g}</div>`; }
+    html += `<button class="it" data-i="${i}"><span class="ic">${ic(it.ic)}</span>${it.path ? `<span class="path">${esc(it.path)}</span>` : ''}${esc(it.t)}<small>${it.g === 'Actions' ? SH.t('Run') : SH.t('Open')}</small></button>`; });
   res.innerHTML = html;
   $$('.it', res).forEach((el, i) => anim(el, [{ opacity: 0, transform: 'translate3d(0,6px,0)' }, { opacity: 1, transform: 'translate3d(0,0,0)' }], { d: 260, delay: Math.min(i, 8) * 22 }));
   setPalIdx(0, true);
@@ -311,104 +313,123 @@ function runItem(it) { if (!it) return; closePal(); setTimeout(() => { if (it.ru
 SH.openPalette = openPal;
 
 /* ================= settings ================= */
-const ACCENTS = [['#FF7A66', '#9ED6FF', 'Coral and ice'], ['#9ED6FF', '#FF9E7A', 'Ice and coral'], ['#F4C26B', '#8FD3E8', 'Amber'], ['#7FE0B4', '#FFB08A', 'Mint'], ['#FF8FB1', '#A6E3FF', 'Pink'], ['#C9D4E8', '#FF7A66', 'Silver']];
+const ACCENTS = [['#FF7A66', '#9ED6FF', SH.t('Coral and ice')], ['#9ED6FF', '#FF9E7A', SH.t('Ice and coral')], ['#F4C26B', '#8FD3E8', SH.t('Amber')], ['#7FE0B4', '#FFB08A', SH.t('Mint')], ['#FF8FB1', '#A6E3FF', SH.t('Pink')], ['#C9D4E8', '#FF7A66', SH.t('Silver')]];
 const ZOOMS = [['1', '100 %'], ['1.1', '110 %'], ['1.15', '115 %'], ['1.25', '125 %'], ['1.4', '140 %']];
-const SECTIONS = [['look', 'Appearance', 'palette'], ['background', 'Background', 'sparkle'], ['motion', 'Animation', 'play'], ['home', 'Home', 'home'], ['widget', 'Widget', 'monitor'], ['general', 'General', 'sliders'], ['tools', 'Tools', 'wrench'], ['data', 'Data', 'folder'], ['keys', 'Shortcuts', 'keyboard'], ['admin', 'Administrator', 'shield'], ['updates', 'Updates', 'download'], ['about', 'About', 'info']];
+/* language picker: flags drawn as small SVGs (no emoji, which Windows shows as letters) */
+const STAR = (cx, cy, r, rot = 0) => { let d = ''; for (let i = 0; i < 10; i++) { const a = rot - Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .4 : r; d += (i ? 'L' : 'M') + (cx + rr * Math.cos(a)).toFixed(2) + ' ' + (cy + rr * Math.sin(a)).toFixed(2); } return d + 'Z'; };
+const FLAGS = {
+  en: () => { let s = ''; for (let i = 0; i < 7; i++) s += `<rect y="${(i * 20 / 7).toFixed(2)}" width="30" height="${(20 / 7).toFixed(2)}" fill="${i % 2 ? '#fff' : '#B22234'}"/>`;
+    s += '<rect width="13" height="11.43" fill="#3C3B6E"/>'; for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) s += `<circle cx="${1.6 + c * 2.45}" cy="${1.6 + r * 2.7}" r=".55" fill="#fff"/>`; return s; },
+  es: () => '<rect width="30" height="20" fill="#AA151B"/><rect y="5" width="30" height="10" fill="#F1BF00"/>',
+  pt: () => '<rect width="30" height="20" fill="#009C3B"/><path d="M3 10 15 2.6 27 10 15 17.4Z" fill="#FFDF00"/><circle cx="15" cy="10" r="4.6" fill="#002776"/><path d="M10.6 8.9c3-.9 6.2-.6 8.9.8" stroke="#fff" stroke-width=".9" fill="none"/>',
+  it: () => '<rect width="10" height="20" fill="#009246"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#CE2B37"/>',
+  fr: () => '<rect width="10" height="20" fill="#0055A4"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#EF4135"/>',
+  zh: () => `<rect width="30" height="20" fill="#EE1C25"/><path d="${STAR(5.5, 5.5, 3.2)}" fill="#FFDE00"/>${[[11, 2.2, .6], [13, 4.4, 1.2], [13, 7.4, .2], [11, 9.4, .9]].map(([x, y, r]) => `<path d="${STAR(x, y, 1.05, r)}" fill="#FFDE00"/>`).join('')}`,
+};
+const flag = code => code === 'auto' ? `<span class="flag auto">${ic('globe')}</span>` : `<span class="flag"><svg viewBox="0 0 30 20" aria-hidden="true">${FLAGS[code]()}</svg></span>`;
+function langPicker() {
+  const L = SH.i18n, cur = S().language || 'auto';
+  const sys = L.LANGS.find(l => l[0] === L.systemLang()) || L.LANGS[0];
+  const tiles = [['auto', SH.t('Automatic'), SH.t('Same as Windows: {lang}', { lang: sys[1] })], ...L.LANGS.map(([c, own, eng]) => [c, own, SH.t(eng)])];
+  return `<div class="langs">${tiles.map(([c, a, b]) => `<button class="lang${c === cur ? ' on' : ''}" data-lang="${c}">${flag(c)}<span><b>${a}</b><small>${b}</small></span>${ic('check')}</button>`).join('')}</div>`;
+}
+const SECTIONS = [['look', SH.t('Appearance'), 'palette'], ['background', SH.t('Background'), 'sparkle'], ['motion', SH.t('Animation'), 'play'], ['home', SH.t('Home'), 'home'], ['widget', SH.t('Widget'), 'monitor'], ['general', SH.t('General'), 'sliders'], ['tools', SH.t('Tools'), 'wrench'], ['data', SH.t('Data'), 'folder'], ['keys', SH.t('Shortcuts'), 'keyboard'], ['admin', SH.t('Administrator'), 'shield'], ['updates', SH.t('Updates'), 'download'], ['about', SH.t('About'), 'info']];
 const seg = (key, opts) => `<div class="seg" data-key="${key}"><span class="ind"></span>${opts.map(([v, l]) => `<button data-v="${v}"${String(S()[key]) === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div>`;
 const tog = (key, label, sub) => `<div class="set inline"><div class="lbl"><div>${label}${sub ? `<span>${sub}</span>` : ''}</div></div><button class="toggle${S()[key] ? ' on' : ''}" data-key="${key}" aria-label="${label}"><i></i></button></div>`;
 /* slider: live value, saved on release */
 const rng = (key, label, sub, min, max, step, fmt) => `<div class="set"><div class="lbl"><div>${label}${sub ? `<span>${sub}</span>` : ''}</div><b class="rv" data-rv="${key}">${fmt(S()[key])}</b></div>
   <input type="range" class="rng" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${S()[key]}" style="--p:${(S()[key] - min) / (max - min) * 100}%"></div>`;
-const RNG_FMT = { starCount: v => v == 0 ? 'none' : v, starSpeed: v => SH.fmt1(v) + '×', starBright: v => Math.round(v * 100) + '%', nebula: v => Math.round(v * 100) + '%', animSpeed: v => SH.fmt1(v) + '×', panelAlpha: v => Math.round(v * 100) + '%' };
-const TOOLS = [['devmgmt', 'Device Manager', 'drivers'], ['services', 'Services', 'sliders'], ['eventvwr', 'Event Viewer', 'list'], ['taskschd', 'Task Scheduler', 'calendar'],
-  ['diskmgmt', 'Disk Management', 'ssd'], ['taskmgr', 'Task Manager', 'monitor'], ['resmon', 'Resource Monitor', 'monitor'], ['msinfo32', 'System Information', 'info'],
-  ['msconfig', 'System Configuration', 'gear'], ['regedit', 'Registry Editor', 'code'], ['sysdm', 'System Properties', 'windows'], ['perf', 'Visual effects', 'sparkle'],
-  ['powercfg', 'Power Options', 'power'], ['ncpa', 'Network Connections', 'wifi'], ['appwiz', 'Programs and Features', 'package'], ['control', 'Control Panel', 'grid'],
-  ['cleanmgr', 'Disk Cleanup', 'broom'], ['dfrgui', 'Optimize Drives', 'storage'], ['rstrui', 'System Restore', 'restore'], ['cmd', 'Command Prompt', 'code'], ['powershell', 'PowerShell', 'code']];
-const INT_HINT = { max: 'Everything moves: stars, camera flights and full transitions.', normal: 'Shorter animations and slower stars.', min: 'Brief transitions. The stars stand still.' };
+const RNG_FMT = { starCount: v => v == 0 ? SH.t('none') : SH.fmtInt(v), starSpeed: v => SH.fmt1(v) + '×', starBright: v => Math.round(v * 100) + '%', nebula: v => Math.round(v * 100) + '%', animSpeed: v => SH.fmt1(v) + '×', panelAlpha: v => Math.round(v * 100) + '%' };
+const TOOLS = [['devmgmt', SH.t('Device Manager'), 'drivers'], ['services', SH.t('Services'), 'sliders'], ['eventvwr', SH.t('Event Viewer'), 'list'], ['taskschd', SH.t('Task Scheduler'), 'calendar'],
+  ['diskmgmt', SH.t('Disk Management'), 'ssd'], ['taskmgr', SH.t('Task Manager'), 'monitor'], ['resmon', SH.t('Resource Monitor'), 'monitor'], ['msinfo32', SH.t('System Information'), 'info'],
+  ['msconfig', SH.t('System Configuration'), 'gear'], ['regedit', SH.t('Registry Editor'), 'code'], ['sysdm', SH.t('System Properties'), 'windows'], ['perf', SH.t('Visual effects'), 'sparkle'],
+  ['powercfg', SH.t('Power Options'), 'power'], ['ncpa', SH.t('Network Connections'), 'wifi'], ['appwiz', SH.t('Programs and Features'), 'package'], ['control', SH.t('Control Panel'), 'grid'],
+  ['cleanmgr', SH.t('Disk Cleanup'), 'broom'], ['dfrgui', SH.t('Optimize Drives'), 'storage'], ['rstrui', SH.t('System Restore'), 'restore'], ['cmd', SH.t('Command Prompt'), 'code'], ['powershell', 'PowerShell', 'code']];
+const INT_HINT = { max: SH.t('Everything moves: stars, camera flights and full transitions.'), normal: SH.t('Shorter animations and slower stars.'), min: SH.t('Brief transitions. The stars stand still.') };
 function sectionHTML(id) {
-  const st = S();
+  const st = S(), t = SH.t;
   switch (id) {
-    case 'look': return `<h3>Appearance</h3><p>How StellarHub looks.</p>
-      <div class="set"><div class="lbl">Theme</div>${seg('theme', [['deep', 'Deep space'], ['dusk', 'Dusk'], ['eclipse', 'Eclipse']])}</div>
-      <div class="set"><div class="lbl">Colors</div><div class="sw-row" id="swatches">${ACCENTS.map(([a, b, n]) => `<button class="swatch${st.accent === a && st.accent2 === b ? ' on' : ''}" style="--s:${a};--s2:${b}" data-a="${a}" data-b="${b}" aria-label="${n}" title="${n}"></button>`).join('')}
-        <button class="swatch custom${ACCENTS.some(([a, b]) => st.accent === a && st.accent2 === b) ? '' : ' on'}" id="swCustom" style="--s:${st.accent};--s2:${st.accent2}" aria-label="Custom colors" title="Custom colors"><span>${ic('plus')}</span></button></div>
-        <div class="cpick-row" id="cpickRow"${ACCENTS.some(([a, b]) => st.accent === a && st.accent2 === b) ? ' hidden' : ''}><span>Primary</span><input type="color" data-color="accent" value="${st.accent}" aria-label="Primary color"><span>Secondary</span><input type="color" data-color="accent2" value="${st.accent2}" aria-label="Secondary color"></div></div>
-      <div class="set"><div class="lbl"><div>Interface size<span>Automatic picks the one that best fits your screen (${Math.round(autoZoom * 100)}%).</span></div><button class="btn sm sec" data-act="autozoom">${ic('sparkle')}Automatic</button></div>${seg('zoom', ZOOMS)}</div>
-      <div class="set"><div class="lbl">Density</div>${seg('density', [['comfortable', 'Comfortable'], ['compact', 'Compact']])}</div>
-      <div class="set"><div class="lbl">Corners</div>${seg('corners', [['soft', 'Very round'], ['mid', 'Round'], ['sharp', 'Square']])}</div>
-      ${rng('panelAlpha', 'Solid panels', 'Raise it so the stars show less behind the panels.', 1, 2, .05, RNG_FMT.panelAlpha)}`;
-    case 'background': return `<h3>Background</h3><p>The space behind everything.</p>
-      ${tog('stars', 'Stardust', 'The animated background.')}
-      ${rng('starCount', 'Number of stars', '', 0, 900, 10, RNG_FMT.starCount)}
-      ${rng('starSpeed', 'Drift speed', 'How fast they move.', 0, 4, .1, RNG_FMT.starSpeed)}
-      ${rng('starBright', 'Brightness', '', .2, 2, .05, RNG_FMT.starBright)}
-      ${tog('twinkle', 'Twinkle', 'The stars twinkle softly.')}
-      ${tog('shooting', 'Shooting stars', 'Every now and then one goes by.')}
-      ${rng('nebula', 'Nebula', 'The colored glow in the corners.', 0, 2, .05, RNG_FMT.nebula)}`;
-    case 'motion': return `<h3>Animation</h3><p>How much the interface moves.</p>
-      <div class="set"><div class="lbl">Intensity</div>${seg('intensity', [['max', 'Maximum'], ['normal', 'Normal'], ['min', 'Minimum']])}<div class="hint" id="intHint">${INT_HINT[st.intensity]}</div></div>
-      ${rng('animSpeed', 'Speed', 'Lower means slower, more cinematic animations.', .5, 2, .1, RNG_FMT.animSpeed)}
-      ${tog('camera', 'Camera flights', 'The zoom that flies through the scene when you switch modules.')}
-      ${tog('parallax', 'Mouse depth', 'The layers shift slightly as you move the mouse.')}
-      ${tog('countUp', 'Counting numbers', 'Figures count up to their value when they appear.')}`;
-    case 'home': return `<h3>Home</h3><p>What you see when you open StellarHub.</p>
-      <div class="set"><div class="lbl">PC view</div><div class="vcards" id="vcards">${variantCards()}</div></div>
-      <div class="set"><div class="lbl"><div>When the app opens<span>Where you start each time.</span></div></div>${seg('startView', [['home', 'Home'], ['monitor', 'Live Monitor'], ['last', 'Where I left off']])}</div>
-      ${tog('quickActions', 'Quick actions', 'The buttons in the Home header.')}`;
+    case 'look': return `<h3>${t('Appearance')}</h3><p>${t('How StellarHub looks.')}</p>
+      <div class="set"><div class="lbl">${t('Theme')}</div>${seg('theme', [['deep', t('Deep space')], ['dusk', t('Dusk')], ['eclipse', t('Eclipse')]])}</div>
+      <div class="set"><div class="lbl">${t('Colors')}</div><div class="sw-row" id="swatches">${ACCENTS.map(([a, b, n]) => `<button class="swatch${st.accent === a && st.accent2 === b ? ' on' : ''}" style="--s:${a};--s2:${b}" data-a="${a}" data-b="${b}" aria-label="${n}" title="${n}"></button>`).join('')}
+        <button class="swatch custom${ACCENTS.some(([a, b]) => st.accent === a && st.accent2 === b) ? '' : ' on'}" id="swCustom" style="--s:${st.accent};--s2:${st.accent2}" aria-label="${t('Custom colors')}" title="${t('Custom colors')}"><span>${ic('plus')}</span></button></div>
+        <div class="cpick-row" id="cpickRow"${ACCENTS.some(([a, b]) => st.accent === a && st.accent2 === b) ? ' hidden' : ''}><span>${t('Primary')}</span><input type="color" data-color="accent" value="${st.accent}" aria-label="${t('Primary color')}"><span>${t('Secondary')}</span><input type="color" data-color="accent2" value="${st.accent2}" aria-label="${t('Secondary color')}"></div></div>
+      <div class="set"><div class="lbl"><div>${t('Interface size')}<span>${t('Automatic picks the one that best fits your screen ({pct}%).', { pct: Math.round(autoZoom * 100) })}</span></div><button class="btn sm sec" data-act="autozoom">${ic('sparkle')}${t('Automatic')}</button></div>${seg('zoom', ZOOMS)}</div>
+      <div class="set"><div class="lbl">${t('Density')}</div>${seg('density', [['comfortable', t('Comfortable')], ['compact', t('Compact')]])}</div>
+      <div class="set"><div class="lbl">${t('Corners')}</div>${seg('corners', [['soft', t('Very round')], ['mid', t('Round')], ['sharp', t('Square')]])}</div>
+      ${rng('panelAlpha', t('Solid panels'), t('Raise it so the stars show less behind the panels.'), 1, 2, .05, RNG_FMT.panelAlpha)}`;
+    case 'background': return `<h3>${t('Background')}</h3><p>${t('The space behind everything.')}</p>
+      ${tog('stars', t('Stardust'), t('The animated background.'))}
+      ${rng('starCount', t('Number of stars'), '', 0, 900, 10, RNG_FMT.starCount)}
+      ${rng('starSpeed', t('Drift speed'), t('How fast they move.'), 0, 4, .1, RNG_FMT.starSpeed)}
+      ${rng('starBright', t('Brightness'), '', .2, 2, .05, RNG_FMT.starBright)}
+      ${tog('twinkle', t('Twinkle'), t('The stars twinkle softly.'))}
+      ${tog('shooting', t('Shooting stars'), t('Every now and then one goes by.'))}
+      ${rng('nebula', t('Nebula'), t('The colored glow in the corners.'), 0, 2, .05, RNG_FMT.nebula)}`;
+    case 'motion': return `<h3>${t('Animation')}</h3><p>${t('How much the interface moves.')}</p>
+      <div class="set"><div class="lbl">${t('Intensity')}</div>${seg('intensity', [['max', t('Maximum')], ['normal', t('Normal')], ['min', t('Minimum')]])}<div class="hint" id="intHint">${INT_HINT[st.intensity]}</div></div>
+      ${rng('animSpeed', t('Speed'), t('Lower means slower, more cinematic animations.'), .5, 2, .1, RNG_FMT.animSpeed)}
+      ${tog('camera', t('Camera flights'), t('The zoom that flies through the scene when you switch modules.'))}
+      ${tog('parallax', t('Mouse depth'), t('The layers shift slightly as you move the mouse.'))}
+      ${tog('countUp', t('Counting numbers'), t('Figures count up to their value when they appear.'))}`;
+    case 'home': return `<h3>${t('Home')}</h3><p>${t('What you see when you open StellarHub.')}</p>
+      <div class="set"><div class="lbl">${t('PC view')}</div><div class="vcards" id="vcards">${variantCards()}</div></div>
+      <div class="set"><div class="lbl"><div>${t('When the app opens')}<span>${t('Where you start each time.')}</span></div></div>${seg('startView', [['home', t('Home')], ['monitor', t('Live Monitor')], ['last', t('Where I left off')]])}</div>
+      ${tog('quickActions', t('Quick actions'), t('The buttons in the Home header.'))}`;
     case 'widget': {
-      const W = [['cpu', 'CPU usage'], ['cpuTemp', 'CPU temperature'], ['gpu', 'GPU usage'], ['gpuTemp', 'GPU temperature'], ['gpuPower', 'GPU power draw'], ['ram', 'Memory'], ['vram', 'Video memory'], ['down', 'Download'], ['up', 'Upload'], ['ping', 'Latency'], ['disk', 'Disk activity']];
+      const W = [['cpu', t('CPU usage')], ['cpuTemp', t('CPU temperature')], ['gpu', t('GPU usage')], ['gpuTemp', t('GPU temperature')], ['gpuPower', t('GPU power draw')], ['ram', t('Memory')], ['vram', t('Video memory')], ['down', t('Download')], ['up', t('Upload')], ['ping', t('Latency')], ['disk', t('Disk activity')]];
       const on = st.widgetStats;
-      return `<h3>Widget</h3><p>A small always-on-top window with the stats you choose. Drag it wherever you like. Changes apply instantly.</p>
-      <div class="set inline"><div class="lbl"><div>Widget<span>Also from Home, the top bar and the tray.</span></div></div><button class="toggle${SH.widgetOn ? ' on' : ''}" data-act="widget" aria-label="Widget"><i></i></button></div>
-      <div class="set"><div class="lbl"><div>Size<span>Small is a thin bar with the numbers; large adds charts. You can also switch it from the widget itself.</span></div></div>${seg('widgetMode', [['mini', 'Small'], ['full', 'Large']])}</div>
-      <div class="set"><div class="lbl">Large layout</div>${seg('widgetLayout', [['grid', 'Grid'], ['row', 'Row'], ['list', 'List']])}</div>
-      <div class="set"><div class="lbl">What it shows</div>
+      return `<h3>${t('Widget')}</h3><p>${t('A small always-on-top window with the stats you choose. Drag it wherever you like. Changes apply instantly.')}</p>
+      <div class="set inline"><div class="lbl"><div>${t('Widget')}<span>${t('Also from Home, the top bar and the tray.')}</span></div></div><button class="toggle${SH.widgetOn ? ' on' : ''}" data-act="widget" aria-label="${t('Widget')}"><i></i></button></div>
+      <div class="set"><div class="lbl"><div>${t('Size')}<span>${t('Small is a thin bar with the numbers; large adds charts. You can also switch it from the widget itself.')}</span></div></div>${seg('widgetMode', [['mini', t('Small')], ['full', t('Large')]])}</div>
+      <div class="set"><div class="lbl">${t('Large layout')}</div>${seg('widgetLayout', [['grid', t('Grid')], ['row', t('Row')], ['list', t('List')]])}</div>
+      <div class="set"><div class="lbl">${t('What it shows')}</div>
         ${W.map(([k, n]) => `<div class="set inline" style="padding:8px 0;border:0"><div class="lbl">${n}</div><button class="toggle${on.includes(k) ? ' on' : ''}" data-wstat="${k}" aria-label="${n}"><i></i></button></div>`).join('')}</div>
-      ${tog('widgetOnStart', 'Always open it when StellarHub starts', 'If this is off, it only opens if it was open last time.')}`;
+      <p class="set-note">${t('It opens with StellarHub if you left it open last time, and stays closed if you closed it.')}</p>`;
     }
-    case 'general': return `<h3>General</h3><p>How the app behaves.</p>
-      ${tog('startWithWindows', 'Open when Windows starts', 'Starts hidden in the tray, with no window.')}
-      ${tog('trayOnClose', 'Close to the tray', 'The X hides the window; StellarHub keeps running in the tray. To quit: right-click the icon > Quit.')}
-      ${tog('sounds', 'Sounds', 'A soft sound when long tasks finish.')}
-      ${tog('confirmDanger', 'Confirm anything that cannot be undone', 'Everything else always has an undo button.')}
-      <div class="set"><div class="lbl"><div>Live data refresh rate<span>Faster is smoother; slower uses less power.</span></div></div>${seg('teleRate', [['500', 'Fast'], ['1000', 'Normal'], ['2000', 'Saver']])}</div>`;
-    case 'tools': return `<h3>Windows tools</h3><p>The system tools that are usually hidden away, one click away.</p>
+    case 'general': return `<h3>${t('General')}</h3><p>${t('How the app behaves.')}</p>
+      <div class="set"><div class="lbl"><div>${t('Language')}<span>${t('The whole app, the widget and the tray menu.')}</span></div></div>${langPicker()}</div>
+      ${tog('startWithWindows', t('Open when Windows starts'), t('Starts hidden in the tray, with no window.'))}
+      ${tog('trayOnClose', t('Close to the tray'), t('The X hides the window; StellarHub keeps running in the tray. To quit: right-click the icon > Quit.'))}
+      ${tog('sounds', t('Sounds'), t('A soft sound when long tasks finish.'))}
+      ${tog('confirmDanger', t('Confirm anything that cannot be undone'), t('Everything else always has an undo button.'))}
+      <div class="set"><div class="lbl"><div>${t('Live data refresh rate')}<span>${t('Faster is smoother; slower uses less power.')}</span></div></div>${seg('teleRate', [['500', t('Fast')], ['1000', t('Normal')], ['2000', t('Saver')]])}</div>`;
+    case 'tools': return `<h3>${t('Windows tools')}</h3><p>${t('The system tools that are usually hidden away, one click away.')}</p>
       <div class="tools">${TOOLS.map(([k, n, i]) => `<button class="tool" data-tool="${k}"><span class="ti">${ic(i)}</span>${n}</button>`).join('')}</div>`;
-    case 'data': return `<h3>Data</h3><p>Your settings and the data StellarHub keeps on this PC.</p>
-      <div class="set inline"><div class="lbl"><div>Export settings<span>A .json file to take them to another PC.</span></div></div><button class="btn sec" data-act="export">${ic('upload')}Export</button></div>
-      <div class="set inline"><div class="lbl"><div>Import settings<span>From a file you exported before.</span></div></div><button class="btn sec" data-act="import">${ic('download')}Import</button></div>
-      <div class="set inline"><div class="lbl"><div>Data folder<span>Settings, logs and quarantine.</span></div></div><button class="btn sec" data-act="datadir">${ic('folder')}Open</button></div>
-      <div class="set inline"><div class="lbl"><div>Reset settings<span>Puts everything back the way it came. You can undo it.</span></div></div><button class="btn danger" data-act="reset">Reset</button></div>`;
-    case 'keys': return `<h3>Shortcuts</h3><p>To get around without the mouse.</p>
-      <div class="keys">${[['Ctrl K', 'Search for a tool or action'], ['Ctrl ,', 'Open settings'], ['Ctrl 1 to 9', 'Go to a module'], ['Alt ← / Alt →', 'Back and forward'], ['Mouse side buttons', 'Back and forward'], ['Esc', 'Close or go back Home'], ['Double-click the top bar', 'Maximize or restore']].map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>`;
-    case 'admin': return `<h3>Administrator</h3><p>Installing drivers, cleaning system files and repairing Windows need administrator rights. Without them, StellarHub runs in limited mode.</p>
-      <div class="set inline"><div class="lbl"><div>Status<span>${state.admin ? 'StellarHub is running as administrator.' : 'You are in normal mode right now.'}</span></div></div>${state.admin ? '<span class="chip ok">Administrator</span>' : '<button class="btn pri" data-act="admin">Turn on</button>'}</div>
-      ${tog('alwaysAdmin', 'Always open as administrator', 'Turns on when you grant permission. Windows will not ask again at every start (a scheduled task is used).')}
-      ${tog('adminHints', 'Suggest administrator mode', 'A subtle hint when a feature needs it.')}`;
-    case 'updates': return `<h3>Updates</h3><p>StellarHub updates itself from its GitHub repository.</p>
-      <div class="set inline"><div class="lbl"><div>Installed version<span>StellarHub ${state.version}</span></div></div><button class="btn sec" data-act="checkupd">${ic('updater')}Check now</button></div>
-      ${tog('autoUpdate', 'Check for updates automatically', 'When the app opens and once a day.')}`;
+    case 'data': return `<h3>${t('Data')}</h3><p>${t('Your settings and the data StellarHub keeps on this PC.')}</p>
+      <div class="set inline"><div class="lbl"><div>${t('Export settings')}<span>${t('A .json file to take them to another PC.')}</span></div></div><button class="btn sec" data-act="export">${ic('upload')}${t('Export')}</button></div>
+      <div class="set inline"><div class="lbl"><div>${t('Import settings')}<span>${t('From a file you exported before.')}</span></div></div><button class="btn sec" data-act="import">${ic('download')}${t('Import')}</button></div>
+      <div class="set inline"><div class="lbl"><div>${t('Data folder')}<span>${t('Settings, logs and quarantine.')}</span></div></div><button class="btn sec" data-act="datadir">${ic('folder')}${t('Open')}</button></div>
+      <div class="set inline"><div class="lbl"><div>${t('Reset settings')}<span>${t('Puts everything back the way it came. You can undo it.')}</span></div></div><button class="btn danger" data-act="reset">${t('Reset')}</button></div>`;
+    case 'keys': return `<h3>${t('Shortcuts')}</h3><p>${t('To get around without the mouse.')}</p>
+      <div class="keys">${[['Ctrl K', t('Search for a tool or action')], ['Ctrl ,', t('Open settings')], [t('Ctrl 1 to 9'), t('Go to a module')], ['Alt ← / Alt →', t('Back and forward')], [t('Mouse side buttons'), t('Back and forward')], ['Esc', t('Close or go back Home')], [t('Double-click the top bar'), t('Maximize or restore')]].map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>`;
+    case 'admin': return `<h3>${t('Administrator')}</h3><p>${t('Installing drivers, cleaning system files and repairing Windows need administrator rights. Without them, StellarHub runs in limited mode.')}</p>
+      <div class="set inline"><div class="lbl"><div>${t('Status')}<span>${state.admin ? t('StellarHub is running as administrator.') : t('You are in normal mode right now.')}</span></div></div>${state.admin ? `<span class="chip ok">${t('Administrator')}</span>` : `<button class="btn pri" data-act="admin">${t('Turn on')}</button>`}</div>
+      ${tog('alwaysAdmin', t('Always open as administrator'), t('Windows asks once when you turn it on; after that StellarHub opens as administrator without asking (like other tools, it uses a scheduled task).'))}
+      ${tog('adminHints', t('Suggest administrator mode'), t('A subtle hint when a feature needs it.'))}`;
+    case 'updates': return `<h3>${t('Updates')}</h3><p>${t('StellarHub updates itself from its GitHub repository.')}</p>
+      <div class="set inline"><div class="lbl"><div>${t('Installed version')}<span>StellarHub ${state.version}</span></div></div><button class="btn sec" data-act="checkupd">${ic('updater')}${t('Check now')}</button></div>
+      ${tog('autoUpdate', t('Check for updates automatically'), t('When the app opens and once a day.'))}`;
     case 'about': return `<div class="about-h"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.4"/><circle cx="20.2" cy="8.3" r="1.5" style="fill:var(--accent2)"/></svg>
-        <div><h3>StellarHub</h3><p>Version ${state.version}. The control center for your PC.</p></div></div>
-      <div class="set inline"><div class="lbl"><div>Created by<span>Esteban Arosemena and Claude</span></div></div></div>
-      <div class="set inline"><div class="lbl"><div>Source code<span>Free software under the GNU GPLv3 license. github.com/estebanarosemena/StellarHub</span></div></div><button class="btn sec" data-act="github">${ic('external')}Open in GitHub</button></div>
-      <div class="set"><div class="lbl"><div>Languages<span>How much code there is in each.</span></div></div><div id="langs" class="langs"><div class="sk" style="height:10px"></div></div></div>
-      <div class="set inline"><div class="lbl"><div>Built with<span>Python, pywebview and WebView2; three.js for the 3D model; Unbounded and Onest fonts.</span></div></div></div>
-      <div class="set inline"><div class="lbl"><div>This PC<span>${esc(SH.PC.model)}, ${esc(SH.PC.os)}</span></div></div></div>`;
+        <div><h3>StellarHub</h3><p>${t('Version {v}. The control center for your PC.', { v: state.version })}</p></div></div>
+      <div class="set inline"><div class="lbl"><div>${t('Created by')}<span>${t('Esteban Arosemena and Claude')}</span></div></div></div>
+      <div class="set inline"><div class="lbl"><div>${t('Source code')}<span>${t('Free software under the GNU GPLv3 license.')} github.com/estebanarosemena/StellarHub</span></div></div><button class="btn sec" data-act="github">${ic('external')}${t('Open in GitHub')}</button></div>
+      <div class="set"><div class="lbl"><div>${t('Languages')}<span>${t('How much code there is in each.')}</span></div></div><div id="langs" class="langs"><div class="sk" style="height:10px"></div></div></div>
+      <div class="set inline"><div class="lbl"><div>${t('Built with')}<span>${t('Python, pywebview and WebView2; three.js for the 3D model; Unbounded and Onest fonts.')}</span></div></div></div>
+      <div class="set inline"><div class="lbl"><div>${t('This PC')}<span>${esc(SH.PC.model)}, ${esc(SH.PC.os)}</span></div></div></div>`;
   }
   return '';
 }
 function variantCards() {
   const vs = Object.values(registry.variants);
-  if (!vs.length) return '<div class="muted">No views installed yet.</div>';
+  if (!vs.length) return `<div class="muted">${SH.t('No views installed yet.')}</div>`;
   return vs.map(v => `<button class="vcard${S().homeVariant === v.id ? ' on' : ''}" data-variant="${v.id}"><b>${esc(v.name)}</b><span>${esc(v.desc || '')}</span></button>`).join('');
 }
 SH.on('variant:registered', () => { const c = $('#vcards'); if (c) c.innerHTML = variantCards(); });
 let secOn = 'look'; const secInd = new Spring(0, 380, 30);
 const sheet = $('#sheet');
-sheet.innerHTML = `<nav><h2>Settings</h2><span class="ind" id="secInd"></span>${SECTIONS.map(([id, n, i]) => `<button data-sec="${id}"${id === secOn ? ' class="on"' : ''}>${ic(i)}${n}</button>`).join('')}<div class="ver">StellarHub ${state.version}</div></nav>
-  <div class="body" id="setBody"></div><button class="iconbtn x" data-close aria-label="Close">${ic('x')}</button>`;
+sheet.innerHTML = `<nav><h2>${SH.t('Settings')}</h2><span class="ind" id="secInd"></span>${SECTIONS.map(([id, n, i]) => `<button data-sec="${id}"${id === secOn ? ' class="on"' : ''}>${ic(i)}${n}</button>`).join('')}<div class="ver">StellarHub ${state.version}</div></nav>
+  <div class="body" id="setBody"></div><button class="iconbtn x" data-close aria-label="${SH.t('Close')}">${ic('x')}</button>`;
 function showSection(id, first) {
   secOn = id; $$('nav [data-sec]', sheet).forEach(b => b.classList.toggle('on', b.dataset.sec === id));
   const b = $(`nav [data-sec="${id}"]`, sheet); secInd.t = b.offsetTop; if (first) secInd.set(secInd.t);
@@ -423,7 +444,7 @@ sheet.addEventListener('click', e => {
   const sb = e.target.closest('.seg button'); if (sb) { const s = sb.parentElement; if (sb.classList.contains('on')) return; $$('button', s).forEach(x => x.classList.toggle('on', x === sb)); placeSeg(s); applySetting(s.dataset.key, sb.dataset.v); return; }
   const ws = e.target.closest('.toggle[data-wstat]'); if (ws) {
     ws.classList.toggle('on'); const list = $$('.toggle[data-wstat]', sheet).filter(x => x.classList.contains('on')).map(x => x.dataset.wstat);
-    if (!list.length) { ws.classList.add('on'); toast('The widget needs at least one stat.'); return; }
+    if (!list.length) { ws.classList.add('on'); toast(SH.t('The widget needs at least one stat.')); return; }
     SH.setSetting('widgetStats', list); return;
   }
   const t = e.target.closest('.toggle[data-key]'); if (t) { t.classList.toggle('on'); applySetting(t.dataset.key, t.classList.contains('on')); return; }
@@ -434,28 +455,29 @@ sheet.addEventListener('click', e => {
   }
   const sw = e.target.closest('.swatch'); if (sw) { $$('.swatch', sheet).forEach(x => x.classList.toggle('on', x === sw)); SH.setSetting('accent', sw.dataset.a); SH.setSetting('accent2', sw.dataset.b); applyLook(); return; }
   const vc = e.target.closest('[data-variant]'); if (vc) { $$('[data-variant]', sheet).forEach(x => x.classList.toggle('on', x === vc)); applySetting('homeVariant', vc.dataset.variant); return; }
-  const tool = e.target.closest('[data-tool]'); if (tool) { SH.call('run_tool', tool.dataset.tool).then(r => r === undefined ? toast('This only works inside the app.') : !r && toast('Windows could not open that tool.')); return; }
+  const lb = e.target.closest('[data-lang]'); if (lb) { setLanguage(lb.dataset.lang, lb); return; }
+  const tool = e.target.closest('[data-tool]'); if (tool) { SH.call('run_tool', tool.dataset.tool).then(r => r === undefined ? toast(SH.t('This only works inside the app.')) : !r && toast(SH.t('Windows could not open that tool.'))); return; }
   const act = e.target.closest('[data-act]'); if (act) runAct(act.dataset.act);
 });
 async function runAct(a) {
   if (a === 'admin') askAdmin(true);
-  else if (a === 'checkupd') toast('You are on the latest version.');
+  else if (a === 'checkupd') toast(SH.t('You are on the latest version.'));
   else if (a === 'github') { if (await SH.call('open_url', 'https://github.com/estebanarosemena/StellarHub') === undefined) window.open('https://github.com/estebanarosemena/StellarHub'); }
   else if (a === 'autozoom') {
     const v = String(autoZoom); const s = $('.seg[data-key="zoom"]', sheet);
     if (s) { $$('button', s).forEach(x => x.classList.toggle('on', x.dataset.v === v)); placeSeg(s); }
-    SH.setSetting('zoom', v); applyZoom(); toast(`Automatic size: ${Math.round(autoZoom * 100)}%.`);
+    SH.setSetting('zoom', v); applyZoom(); toast(SH.t('Automatic size: {pct}%.', { pct: Math.round(autoZoom * 100) }));
   }
   else if (a === 'widget' && SH.toggleWidget) SH.toggleWidget();
-  else if (a === 'datadir') { if (await SH.call('open_data_dir') === undefined) toast('This only works inside the app.'); }
-  else if (a === 'export') { const p = await SH.call('export_settings'); if (p) toast('Settings exported.'); }
+  else if (a === 'datadir') { if (await SH.call('open_data_dir') === undefined) toast(SH.t('This only works inside the app.')); }
+  else if (a === 'export') { const p = await SH.call('export_settings'); if (p) toast(SH.t('Settings exported.')); }
   else if (a === 'import') {
-    const d = await SH.call('import_settings'); if (d === false) toast('That file has no valid settings.');
-    else if (d) { Object.assign(state.settings, d); applyAll(); showSection(secOn); toast('Settings imported.'); }
+    const d = await SH.call('import_settings'); if (d === false) toast(SH.t('That file has no valid settings.'));
+    else if (d) { Object.assign(state.settings, d); applyAll(); showSection(secOn); toast(SH.t('Settings imported.')); }
   } else if (a === 'reset') {
     const old = { ...state.settings }; await SH.call('reset_settings'); try { localStorage.removeItem('sh.settings'); } catch {}
     Object.keys(state.settings).forEach(k => delete state.settings[k]); Object.assign(state.settings, SH.DEFAULTS); applyAll(); showSection(secOn);
-    toast('Settings reset.', { action: { label: 'Undo', run: async () => { await SH.call('settings_set', old); Object.assign(state.settings, old); applyAll(); showSection(secOn); } }, ms: 7000 });
+    toast(SH.t('Settings reset.'), { action: { label: SH.t('Undo'), run: async () => { await SH.call('settings_set', old); Object.assign(state.settings, old); applyAll(); showSection(secOn); } }, ms: 7000 });
   }
 }
 sheet.addEventListener('input', e => {
@@ -475,15 +497,30 @@ function placeSeg(s, snap) {
   ind.dataset.x = x;
 }
 SH.placeSeg = placeSeg;
+/* a new language: save it, then reload the interface in it with a soft fade (the widget and the tray follow) */
+async function setLanguage(code, btn) {
+  const L = SH.i18n; if ((S().language || 'auto') === code) return;
+  $$('.lang', sheet).forEach(x => x.classList.toggle('on', x === btn));
+  state.settings.language = code; L.remember(code);
+  await SH.call('settings_set', { language: code });
+  if (L.resolve(code) === L.lang) return;
+  try { sessionStorage.setItem('sh.reopenSettings', 'general'); } catch {}
+  anim(document.body, [{ opacity: 1 }, { opacity: 0 }], { d: 220 }).finished.then(() => location.reload(), () => location.reload());
+}
 function applySetting(key, val) {
   if (key === 'zoom' || key === 'theme' || key === 'density' || key === 'language' || key === 'intensity') { SH.setSetting(key, val); }
   else SH.setSetting(key, val);
   if (key === 'intensity') { applyLook(); const h = $('#intHint'); if (h) { h.textContent = INT_HINT[val]; anim(h, [{ opacity: 0, transform: 'translate3d(0,4px,0)' }, { opacity: 1, transform: 'none' }], { d: 260 }); } }
   if (['theme', 'density', 'corners', 'twinkle', 'shooting', 'quickActions', 'countUp'].includes(key)) applyLook();
   if (key === 'zoom') applyZoom();
-  if (key === 'startWithWindows') SH.call('set_autostart', !!val).then(r => { if (r === false) toast('Windows did not allow changing automatic startup.'); });
+  if (key === 'startWithWindows') SH.call('set_autostart', !!val).then(r => { if (r === false) toast(SH.t('Windows did not allow changing automatic startup.')); });
   if (key === 'teleRate' && SH.tele.setRate) SH.tele.setRate(+val);
-  if (key === 'alwaysAdmin') SH.call('set_always_admin', !!val).then(r => { if (r === false) toast('Could not set up starting as administrator.'); });
+  /* turning it on in normal mode asks Windows once, right now (the elevated copy then sets up the task, and
+     from then on it opens as administrator without asking); turning it off removes the task */
+  if (key === 'alwaysAdmin') {
+    if (val && !state.admin) askAdmin(true);
+    else SH.call('set_always_admin', !!val).then(r => { if (r === false) toast(SH.t('Could not set up starting as administrator.')); });
+  }
 }
 let autoZoom = 1;
 function computeAutoZoom() { const w = screen.width; autoZoom = w >= 1880 ? 1.25 : w >= 1680 ? 1.15 : w >= 1480 ? 1.1 : 1; }
@@ -517,7 +554,7 @@ $$('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target.clos
 const note = $('#adminNote'); let noteShown = false, lastHint = 0;
 function showNote(reason) {
   if (state.admin || noteShown) return; noteShown = true; lastHint = Date.now();
-  $('#noteReason').textContent = reason || 'to install drivers, clean system files and repair Windows. Without it, StellarHub runs in limited mode.';
+  $('#noteReason').textContent = SH.t(reason || 'to install drivers, clean system files and repair Windows. Without it, StellarHub runs in limited mode.');
   note.classList.add('on');
   anim(note, [{ opacity: 0, transform: 'translate3d(0,-8px,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'translate3d(0,0,0) scale(1)', filter: 'blur(0px)' }], { d: 420, e: EASE.spring });
 }
@@ -527,21 +564,21 @@ function hideNote() {
   if ($('#noteNever').classList.contains('on')) SH.setSetting('adminHints', false);
 }
 /* modules call this before anything that needs elevation: it suggests without nagging (at most once every 10 min) */
-SH.requireAdmin = reason => { if (state.admin) return true; if (S().adminHints && Date.now() - lastHint > 600000) showNote(reason); else toast('This needs administrator mode.', { action: { label: 'Turn on', run: () => askAdmin(true) } }); return false; };
+SH.requireAdmin = reason => { if (state.admin) return true; if (S().adminHints && Date.now() - lastHint > 600000) showNote(reason); else toast(SH.t('This needs administrator mode.'), { action: { label: SH.t('Turn on'), run: () => askAdmin(true) } }); return false; };
 async function askAdmin(direct) {
   if (state.admin) return; if (!direct && !noteShown) { showNote(); return; }
   hideNote();
   /* the permission becomes permanent (it can be turned off in Settings > Administrator) */
   state.settings.alwaysAdmin = true; await SH.call('settings_set', { alwaysAdmin: true });
   const r = await SH.call('relaunch_admin');
-  if (r === true) toast('Opening StellarHub as administrator…');
-  else if (r === false) toast('Windows did not grant permission. You are still in normal mode.');
-  else { setAdmin(true); toast('Administrator mode (simulated outside the app).'); }
+  if (r === true) toast(SH.t('Opening StellarHub as administrator…'));
+  else if (r === false) toast(SH.t('Windows did not grant permission. You are still in normal mode.'));
+  else { setAdmin(true); toast(SH.t('Administrator mode (simulated outside the app).')); }
 }
 function setAdmin(on) {
   state.admin = on; const pill = $('#modePill'); pill.classList.toggle('admin', on); const txt = $('#modeTxt');
   anim(txt, [{ opacity: 1, transform: 'none', filter: 'blur(0px)' }, { opacity: 0, transform: 'translate3d(0,-8px,0)', filter: 'blur(4px)' }], { d: 160 }).finished.then(() => {
-    txt.textContent = on ? 'Administrator mode' : 'Normal mode';
+    txt.textContent = on ? SH.t('Administrator mode') : SH.t('Normal mode');
     anim(txt, [{ opacity: 0, transform: 'translate3d(0,8px,0)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 300, e: EASE.spring });
   }).catch(() => {});
   anim(pill, [{ transform: 'scale(1)' }, { transform: 'scale(1.08)', offset: .35 }, { transform: 'scale(1)' }], { d: 460 });
@@ -605,7 +642,7 @@ SH.boot = async () => {
   await SH.loadSettings();
   const [info, pc] = await Promise.all([SH.call('info'), SH.call('pc_info')]);
   if (pc && pc.components) { Object.assign(SH.PC, pc); SH.PC.real = true; }
-  if (info) { state.version = info.version; if (info.admin) { state.admin = true; $('#modePill').classList.add('admin'); $('#modeTxt').textContent = 'Administrator mode'; } }
+  if (info) { state.version = info.version; if (info.admin) { state.admin = true; $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
   applyLook(); applyZoom();
   MODS.filter(m => m.id !== 'home').forEach(buildModule);
   SH.on('module:registered', def => { if (def.id !== 'home' && modById(def.id)) buildModule(modById(def.id)); });
@@ -614,6 +651,8 @@ SH.boot = async () => {
   if (!state.admin && S().adminHints) setTimeout(() => showNote(), 4200);
   SH.emit('boot');
   SH.booted = true; requestAnimationFrame(() => SH.call('ui_ready'));  /* startup time goes to the log */
+  /* after switching language the page reloads: come back to where the user was */
+  try { const sec = sessionStorage.getItem('sh.reopenSettings'); if (sec) { sessionStorage.removeItem('sh.reopenSettings'); setTimeout(() => openSettings(sec), 350); } } catch {}
   /* test routes: #drivers/all opens that tab, #drivers/* walks through all of them, #home=bento forces a Home view */
   const h = decodeURIComponent(location.hash.slice(1));
   const hv = h.match(/^home=(\w+)$/); if (hv) setTimeout(() => SH.setSetting('homeVariant', hv[1]), 50);

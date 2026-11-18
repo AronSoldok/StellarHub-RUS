@@ -16,6 +16,7 @@ import webbrowser
 import winreg
 from ctypes import wintypes
 
+from ..i18n import tc, tr
 from .removal import (hunter, index, monitor, paths, quarantine, registry, scanner, settings, system, uninstaller)
 from .removal import icons as _icons
 from .removal import programs as _pm
@@ -68,7 +69,7 @@ def _get(pid):
             with _progs_lock:
                 p = _progs.get(pid)
     if not p:
-        raise KeyError("Program not found; refresh the list")
+        raise KeyError(tr("Program not found; refresh the list"))
     return p
 
 
@@ -177,10 +178,10 @@ def background(job):
         if ic:
             batch[p["id"]] = ic
         if len(batch) >= 10:
-            job.progress(n / max(1, len(missing)) * .3, "Iconos", force=True, icons=batch, sizes={}, store=None)
+            job.progress(n / max(1, len(missing)) * .3, tr("Icons"), force=True, icons=batch, sizes={}, store=None)
             batch = {}
     if batch:
-        job.progress(.3, "Iconos", force=True, icons=batch, sizes={}, store=None)
+        job.progress(.3, tr("Icons"), force=True, icons=batch, sizes={}, store=None)
     threading.Thread(target=index.warm, daemon=True, name="index-warm").start()
     # 2. Store
     if settings.load().get("show_store", True):
@@ -203,7 +204,7 @@ def background(job):
                     if ic:
                         sb[p["id"]] = ic
             if sb:
-                job.progress(.5, "Store icons", force=True, icons=sb, sizes={}, store=None)
+                job.progress(.5, tr("Store icons"), force=True, icons=sb, sizes={}, store=None)
     # 3. real sizes on disk
     from concurrent.futures import ThreadPoolExecutor, as_completed
     progs = _all()
@@ -223,11 +224,11 @@ def background(job):
                 p["size"] = s
                 sizes[p["id"]] = s
             if sizes and time.time() - last > 0.3:
-                job.progress(.5 + .5 * done / max(1, len(progs)), "Sizes", force=True, icons={}, sizes=sizes, store=None)
+                job.progress(.5 + .5 * done / max(1, len(progs)), tr("Sizes"), force=True, icons={}, sizes=sizes, store=None)
                 sizes, last = {}, time.time()
     _pm.save_size_cache()
     if sizes:
-        job.progress(1, "Sizes", force=True, icons={}, sizes=sizes, store=None)
+        job.progress(1, tr("Sizes"), force=True, icons={}, sizes=sizes, store=None)
     return True
 
 
@@ -243,7 +244,8 @@ def details(pid):
 def _scan_into(key, p, level, job, still=None, base=0.0, span=1.0, step=None):
     def prog(frac, label=""):
         job.check()
-        job.progress(base + span * frac, label, step=step or "scan", label=label)
+        # the text is translated; data.label stays in English because the UI compares it with its scan steps
+        job.progress(base + span * frac, tc("remover", label), step=step or "scan", label=label)
     res = scanner.scan(p, _all(), level=level, still_installed=still, progress=prog)
     _scans[key] = {"program": p, "items": res["items"]}
     res["key"] = key
@@ -265,7 +267,7 @@ def remove(job, scan_key, item_ids):
     """Remove the chosen leftovers from a scan. By default they go to the quarantine (they can be restored)."""
     sc = _scans.get(scan_key)
     if not sc:
-        raise KeyError("The scan has expired; scan again")
+        raise KeyError(tr("The scan has expired; scan again"))
     wanted = set(item_ids or [])
     items = [i for i in sc["items"] if i["id"] in wanted and not i.get("blocked")]
     s = settings.load()
@@ -296,13 +298,13 @@ def uninstall(job, pid, opts=None):
     out = {"program": _ui(p), "mode": mode}
     prot = p.get("protected") or {}
     if prot.get("blocked"):
-        raise PermissionError("This component is essential to Windows and cannot be uninstalled")
+        raise PermissionError(tr("This component is essential to Windows and cannot be uninstalled"))
     if mode == "forced" and prot.get("no_force"):
-        raise PermissionError("For safety, this program can only be removed with its official uninstaller")
+        raise PermissionError(tr("For safety, this program can only be removed with its official uninstaller"))
     if opts.get("restore_point", True) and p.get("source") != "store":
         _step(job, "restore", "running")
         ok, msg = system.create_restore_point(f"StellarHub: {p['name']}") if system.is_admin() else (
-            False, "Administrator permissions are needed")
+            False, tr("Administrator permissions are needed"))
         _step(job, "restore", "done" if ok else "warn", "" if ok else (msg or "")[-200:])
         out["restore_point"] = ok
     else:
@@ -315,13 +317,15 @@ def uninstall(job, pid, opts=None):
     if mode != "forced":
         _step(job, "uninstall", "running")
         r = uninstaller.uninstall(p, quiet=(mode == "quiet"), cancel=_Cancel(job),
-                                  on_tick=lambda s, n: _step(job, "uninstall", "running", f"{int(s)} s, {n} process(es)"))
+                                  on_tick=lambda s, n: _step(job, "uninstall", "running",
+                                                                tr("{s} s, 1 process", s=int(s)) if n == 1 else
+                                                                tr("{s} s, {n} processes", s=int(s), n=n)))
         out["uninstall"] = r
         if r.get("cancelled"):
-            _step(job, "uninstall", "warn", "Cancelled")
+            _step(job, "uninstall", "warn", tr("Cancelled"))
             return {**out, "cancelled": True}
         _step(job, "uninstall", "done" if r.get("ok") else "warn",
-              "" if r.get("ok") else ("The program is still registered" if r.get("still_registered") else r.get("error", "")))
+              "" if r.get("ok") else (tr("The program is still registered") if r.get("still_registered") else r.get("error", "")))
         settings.log("uninstall", p["name"], {"ok": r.get("ok"), "seconds": r.get("seconds"), "mode": mode})
     else:
         _step(job, "uninstall", "skipped")
@@ -329,7 +333,8 @@ def uninstall(job, pid, opts=None):
     _step(job, "scan", "running")
     still = uninstaller.still_registered(p) if mode != "forced" else False
     res = _scan_into(pid, p, level, job, still=still, step="scan")
-    _step(job, "scan", "done", f"{len(res['items'])} items")
+    n = len(res["items"])
+    _step(job, "scan", "done", tr("{n} item", n=n) if n == 1 else tr("{n} items", n=n))
     out["scan"] = res
     out["still_registered"] = still
     return out
@@ -340,7 +345,7 @@ def batch_uninstall(job, pids, opts=None):
     level = opts.get("level", "safe")
     if opts.get("restore_point", True) and system.is_admin():
         _step(job, "restore", "running")
-        ok, msg = system.create_restore_point(f"StellarHub: {len(pids)} programs")
+        ok, msg = system.create_restore_point(tr("StellarHub: {n} programs", n=len(pids)))
         _step(job, "restore", "done" if ok else "warn", "" if ok else (msg or "")[-200:])
     results = []
     for n, pid in enumerate(pids):
@@ -351,7 +356,7 @@ def batch_uninstall(job, pids, opts=None):
         entry = {"program": _ui(p)}
         try:
             if (p.get("protected") or {}).get("blocked"):
-                raise PermissionError("Essential Windows component")
+                raise PermissionError(tr("Essential Windows component"))
             uninstaller.close_processes(p)
             quiet = bool(opts.get("quiet", True)) and p.get("can_quiet")
             r = uninstaller.uninstall(p, quiet=quiet, cancel=_Cancel(job))
@@ -373,12 +378,12 @@ def batch_uninstall(job, pids, opts=None):
 
 # ------------------------------------------------------------ watched install
 def monitor_start(job, name):
-    job.progress(.1, "Taking the initial snapshot", force=True)
+    job.progress(.1, tr("Taking the initial snapshot"), force=True)
     return monitor.start(name)
 
 
 def monitor_stop(job, mid):
-    job.progress(.1, "Comparing the snapshots", force=True)
+    job.progress(.1, tr("Comparing the snapshots"), force=True)
     r = monitor.stop(mid)
     settings.log("watch", (r or {}).get("name") if isinstance(r, dict) else str(mid), {})
     return r
@@ -401,7 +406,7 @@ def trace_delete(mid):
 def trace_scan(job, mid):
     if not _progs:
         programs_list()
-    meta = next((t for t in monitor.traces() if t["id"] == mid), {"name": "Rastreo"})
+    meta = next((t for t in monitor.traces() if t["id"] == mid), {"name": tr("Watched install")})
     items = monitor.trace_items(mid, _all())
     key = f"trace:{mid}"
     _scans[key] = {"program": {"name": meta["name"], "id": key}, "items": items}
@@ -497,8 +502,9 @@ def _file_dialog(save, title, filt, default="", ext=""):
 
 
 def hunter_file():
-    path = _file_dialog(False, "Choose a program or shortcut",
-                        "Programs and shortcuts (*.exe;*.lnk;*.url)\0*.exe;*.lnk;*.url\0All files (*.*)\0*.*\0\0")
+    path = _file_dialog(False, tr("Choose a program or shortcut"),
+                        tr("Programs and shortcuts") + " (*.exe;*.lnk;*.url)\0*.exe;*.lnk;*.url\0" + tr("All files") +
+                        " (*.*)\0*.*\0\0")
     if not path:
         return None
     if not _progs:
@@ -526,7 +532,11 @@ def open_regedit(display):
     target = f"{full.get(hive, hive)}\\{rest}"
     last = registry.get_value(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Applets\Regedit",
                               "LastKey") or ""
-    prefix = last.split("\\HKEY_")[0] if "\\HKEY_" in last else "Equipo"
+    if "\\HKEY_" in last:
+        prefix = last.split("\\HKEY_")[0]
+    else:  # regedit names its root after the Windows display language and has not saved one yet
+        from ..i18n import windows_language
+        prefix = {"es": "Equipo", "pt": "Computador", "fr": "Ordinateur", "zh": "计算机"}.get(windows_language(), "Computer")
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Applets\Regedit") as k:
         winreg.SetValueEx(k, "LastKey", 0, winreg.REG_SZ, f"{prefix}\\{target}")
     subprocess.Popen(["regedit", "/m"])
@@ -534,12 +544,12 @@ def open_regedit(display):
 
 
 def search_web(name):
-    webbrowser.open("https://www.google.com/search?q=" + urllib.parse.quote(f"{name} desinstalar"))
+    webbrowser.open("https://www.google.com/search?q=" + urllib.parse.quote(tr("{name} uninstall", name=name)))
     return True
 
 
 def export_programs():
-    path = _file_dialog(True, "Save the program list", "CSV (*.csv)\0*.csv\0\0",
+    path = _file_dialog(True, tr("Save the program list"), "CSV (*.csv)\0*.csv\0\0",
                         default="programs.csv", ext="csv")
     if not path:
         return None
@@ -547,7 +557,7 @@ def export_programs():
         programs_list()
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f, delimiter=";")
-        w.writerow(["Name", "Version", "Publisher", "Size (MB)", "Installed", "Type", "Folder"])
+        w.writerow([tr("Name"), tr("Version"), tr("Publisher"), tr("Size (MB)"), tr("Installed"), tr("Type"), tr("Folder")])
         for p in sorted(_all(), key=lambda p: p["name"].lower()):
             w.writerow([p["name"], p.get("version"), p.get("publisher"), round((p.get("size") or 0) / 1048576, 1),
                         p.get("date"), p.get("kind_label"), p.get("location")])

@@ -27,31 +27,31 @@
 
 <header class="top">
   <div class="brand" id="brand" title="Go Home">
-    <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.4"/><circle cx="20.2" cy="8.3" r="1.5" style="fill:var(--accent2)"/></svg>
+    <svg viewBox="0 0 24 24" fill="none"><defs><radialGradient id="brandShade" cx="10" cy="10.2" r="7.8" gradientUnits="userSpaceOnUse"><stop offset=".35" stop-opacity="0"/><stop offset="1" stop-opacity=".32"/></radialGradient><mask id="brandGap"><rect width="24" height="24" fill="#fff"/><path d="M22.2 12.6A10.2 3 0 0 1 1.8 12.6" transform="rotate(-20 12 12.6)" fill="none" stroke="#000" stroke-width="2.5"/></mask></defs><path d="M1.8 12.6A10.2 3 0 0 1 22.2 12.6" transform="rotate(-20 12 12.6)" style="stroke:var(--accent2)" stroke-opacity=".55" stroke-width="1.6"/><g mask="url(#brandGap)"><circle cx="12" cy="12.6" r="5.2" style="fill:var(--accent)"/><circle cx="12" cy="12.6" r="5.2" fill="url(#brandShade)"/></g><path d="M22.2 12.6A10.2 3 0 0 1 1.8 12.6" transform="rotate(-20 12 12.6)" style="stroke:var(--accent2)" stroke-width="1.6"/><circle cx="19.6" cy="4.4" r="1.5" style="fill:var(--accent2)"/></svg>
     StellarHub
   </div>
-  <button class="search" id="searchBtn" aria-label="Search">
+  <button class="search" id="searchBtn" aria-label="Search" data-t-attr="aria-label">
     <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
-    <span>Search for a tool or action</span>
+    <span data-t>Search for a tool or action</span>
     <span class="kbd">Ctrl K</span>
   </button>
   <div class="right">
-    <button class="mode" id="modePill"><span class="d"></span><span id="modeTxt">Normal mode</span></button>
-    <button class="iconbtn" id="widgetBtn" aria-label="Always-on-top widget" title="Always-on-top widget">
+    <button class="mode" id="modePill"><span class="d"></span><span id="modeTxt" data-t>Normal mode</span></button>
+    <button class="iconbtn" id="widgetBtn" aria-label="Always-on-top widget" title="Always-on-top widget" data-t-attr="aria-label title">
       <svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M13 5v14M13 12h7.5"/></svg>
     </button>
-    <button class="iconbtn" id="gearBtn" aria-label="Settings" title="Settings (Ctrl ,)">
+    <button class="iconbtn" id="gearBtn" aria-label="Settings" title="Settings (Ctrl ,)" data-t-attr="aria-label title">
       <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
     </button>
-    <div class="winctl" aria-label="Window">
-      <button class="wc" id="winMin" aria-label="Minimize" title="Minimize"><svg class="i" viewBox="0 0 24 24"><path d="M6 12.5h12"/></svg></button>
-      <button class="wc" id="winMax" aria-label="Maximize" title="Maximize"><svg class="i" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.8"/></svg></button>
-      <button class="wc close" id="winClose" aria-label="Close" title="Close"><svg class="i" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
+    <div class="winctl" aria-label="Window" data-t-attr="aria-label">
+      <button class="wc" id="winMin" aria-label="Minimize" title="Minimize" data-t-attr="aria-label title"><svg class="i" viewBox="0 0 24 24"><path d="M6 12.5h12"/></svg></button>
+      <button class="wc" id="winMax" aria-label="Maximize" title="Maximize" data-t-attr="aria-label title"><svg class="i" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.8"/></svg></button>
+      <button class="wc close" id="winClose" aria-label="Close" title="Close" data-t-attr="aria-label title"><svg class="i" viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></svg></button>
     </div>
-    <div class="note" id="adminNote" role="dialog" aria-label="Administrator mode">
-      <p><b>Turn on administrator mode</b> <span id="noteReason"></span></p>
-      <div class="row-btns"><button class="btn pri" id="adminYes">Turn on</button><button class="btn ghost" id="adminNo">Not now</button></div>
-      <label><span class="check" id="noteNever"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>Don’t suggest this again</label>
+    <div class="note" id="adminNote" role="dialog" aria-label="Administrator mode" data-t-attr="aria-label">
+      <p><b data-t>Turn on administrator mode</b> <span id="noteReason"></span></p>
+      <div class="row-btns"><button class="btn pri" id="adminYes" data-t>Turn on</button><button class="btn ghost" id="adminNo" data-t>Not now</button></div>
+      <label><span class="check" id="noteNever"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span data-t>Don’t suggest this again</span></label>
     </div>
   </div>
 </header>
@@ -60,27 +60,29 @@
   <section class="view is-on" data-view="home" id="v-home"></section>
 </main>
 
-<nav class="dock" id="dock" aria-label="Modules"></nav>
+<nav class="dock" id="dock" aria-label="Modules" data-t-attr="aria-label"></nav>
 <div class="toasts" id="toasts"></div>
 
 <div class="overlay" id="palO">
   <div class="scrim" data-close></div>
-  <div class="pal" id="pal" role="dialog" aria-label="Search">
+  <div class="pal" id="pal" role="dialog" aria-label="Search" data-t-attr="aria-label">
     <div class="in"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
-      <input id="palIn" placeholder="Type what you want to do" autocomplete="off" spellcheck="false"></div>
+      <input id="palIn" placeholder="Type what you want to do" data-t-attr="placeholder" autocomplete="off" spellcheck="false"></div>
     <div class="res" id="palRes"></div>
-    <div class="foot"><span>Arrows to move</span><span>Enter to open</span><span>Esc to close</span></div>
+    <div class="foot"><span data-t>Arrows to move</span><span data-t>Enter to open</span><span data-t>Esc to close</span></div>
   </div>
 </div>
 
 <div class="overlay" id="setO">
   <div class="scrim" data-close></div>
-  <aside class="sheet" id="sheet" aria-label="Settings"></aside>
+  <aside class="sheet" id="sheet" aria-label="Settings" data-t-attr="aria-label"></aside>
 </div>
 
+<script src="js/i18n.js"></script>
 <script src="js/core.js"></script>
 <script src="js/telemetry.js"></script>
 <script src="js/shell.js"></script>
+<script src="js/select.js"></script>
 <script src="js/modules/monitor.js"></script>
 <script src="js/modules/drivers.js"></script>
 <script src="js/modules/remover.js"></script>

@@ -87,3 +87,11 @@ SH.logActivity('Drivers updated', { sub: '2 installed', ic: 'drivers', go: 'driv
 ## Writing
 
 English only. Sentence case (capitalize only the first word and proper names), clear verbs ("Uninstall" → "Uninstalled"). No ALL-CAPS labels, no filler "A · B · C", no "→" on buttons, no emojis, no purple gradients. Numbers and dates use the `en-US` locale.
+
+## Text and translations
+
+Every sentence the user reads is written in English and wrapped: `SH.t('Scan the disk')`, or with placeholders
+`SH.t('{n} files', { n })`. Static text in HTML files uses `data-t` (text) and `data-t-attr="title aria-label"`
+(attributes). Engine code that produces visible text uses `tr()` from `stellarhub/i18n.py`. The dictionaries, the
+rules and the glossary are in [`stellarhub/ui/i18n/`](../stellarhub/ui/i18n/README.md). Never compare displayed text
+in code, and format numbers with `SH.fmt1` / `SH.fmtInt`, which follow the interface language.

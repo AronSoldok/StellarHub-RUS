@@ -90,6 +90,8 @@ conditions and what to do.
 - **Settings for almost everything**: theme, colors, interface size, density, corners, starfield, animation
   intensity and speed, shortcuts to Windows tools and more.
 - The **side buttons of your mouse** go back and forward, like in a browser.
+- **Six languages**: English, Español, Português (Brasil), Italiano, Français and 简体中文. It follows the Windows
+  language by default and can be changed in *Settings > General*.
 
 ## ðŸ–¼ï¸ Screenshots
 
@@ -197,6 +199,7 @@ designs/                   the early design explorations
 - [x] Real engine: telemetry, drivers, apps, updates, disk, optimizer and monitor
 - [x] Autopilot running routines on its own (while StellarHub is open, also hidden in the tray)
 - [x] `.exe` installer
+- [x] Six languages
 - [ ] Automatic StellarHub updates from this repository
 
 ## ðŸ¤ Contributing
@@ -204,6 +207,9 @@ designs/                   the early design explorations
 Ideas, bug reports and improvements are welcome: open an issue or a pull request. If you add or change a module,
 start with [`docs/UI_CONTRACT.md`](docs/UI_CONTRACT.md), and only test anything that touches the system in
 read-only mode.
+
+Translations live in [`stellarhub/ui/i18n/`](stellarhub/ui/i18n/): one JSON file per language and area, with the
+rules and glossary in its README. Corrections from native speakers are especially welcome.
 
 ## ðŸ“œ License and credits
 

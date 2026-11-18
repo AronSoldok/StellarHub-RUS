@@ -11,6 +11,7 @@ import threading
 import time
 from ctypes import wintypes
 
+from ...i18n import tr
 from . import index, registry, system
 from . import programs as progmod
 from .registry import RegRef
@@ -121,7 +122,7 @@ def uninstall(p, quiet=False, cancel=None, on_tick=None):
                 "still_registered": still_registered(p), "command": "Remove-AppxPackage"}
     cmd, is_quiet = progmod.uninstall_command(p, quiet)
     if not cmd:
-        return {"ok": False, "error": "The program has no uninstaller", "still_registered": True}
+        return {"ok": False, "error": tr("The program has no uninstaller"), "still_registered": True}
     r = run_tracked(cmd, cancel=cancel, on_tick=on_tick)
     # Steam and other launchers hand off to a process that was already running: wait for the entry to disappear
     if not r["cancelled"] and p.get("kind") in ("steam",):

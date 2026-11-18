@@ -23,6 +23,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from ...i18n import tr
 from . import paths, system
 
 RECENT_GRACE = 3600        # legacy file-level grace (seconds) when grace=True is passed to _walk
@@ -32,7 +33,7 @@ WALK_WORKERS = 4           # threads per category when walking folders
 CAT_WORKERS = 3            # categories measured at the same time
 DELETE_WORKERS = 6         # threads when deleting
 IN_USE_BUDGET = 6.0        # seconds spent at most asking processes for their open files
-LOOSE = "(files directly in this folder)"
+LOOSE = "(files directly in this folder)"   # English key; the row shows tr(LOOSE)
 LOOSE_TOKEN = "loose:"      # exclude entry "loose:<temp folder>" skips the loose files of that folder only
 
 
@@ -264,7 +265,7 @@ def in_use_paths(budget=IN_USE_BUDGET):
             info = p.info
         except Exception:
             continue
-        name = info.get("name") or "a program"
+        name = info.get("name") or tr("a program")
         cands = [info.get("exe"), info.get("cwd")]
         cmd = info.get("cmdline") or []
         cands += _PATH_RE.findall(" ".join(cmd) if isinstance(cmd, list) else str(cmd))
@@ -321,7 +322,7 @@ def temp_entries(root, days=TEMP_GRACE_DAYS, exclude=(), in_use=None, cancel=Non
     limit = max(0, float(days)) * 86400
     now = time.time()
     rows = []
-    loose = {"name": LOOSE, "path": root, "kind": "files", "size": 0, "files": 0, "kept": 0, "keptSize": 0,
+    loose = {"name": tr(LOOSE), "path": root, "kind": "files", "size": 0, "files": 0, "kept": 0, "keptSize": 0,
              "newest": 0.0, "status": "clean", "reason": "", "items": []}
     try:
         it = list(os.scandir(root))
@@ -337,7 +338,7 @@ def temp_entries(root, days=TEMP_GRACE_DAYS, exclude=(), in_use=None, cancel=Non
         is_link = bool(getattr(st, "st_file_attributes", 0) & 0x400) or e.is_symlink() or e.is_junction()
         if is_link:
             rows.append({"name": e.name, "path": e.path, "kind": "link", "size": 0, "files": 0,
-                         "newest": st.st_mtime, "status": "link", "reason": "Link to another folder: never followed"})
+                         "newest": st.st_mtime, "status": "link", "reason": tr("Link to another folder: never followed")})
             continue
         if e.is_dir(follow_symlinks=False):
             stats = {}
@@ -346,11 +347,11 @@ def temp_entries(root, days=TEMP_GRACE_DAYS, exclude=(), in_use=None, cancel=Non
             row = {"name": e.name, "path": e.path, "kind": "dir", "size": size, "files": files, "newest": newest}
             user = _user_for(e.path, in_use)
             if _excluded(e.path, exclude):
-                row.update(status="excluded", reason="You chose to always keep it")
+                row.update(status="excluded", reason=tr("You chose to always keep it"))
             elif user:
-                row.update(status="in_use", reason=f"In use by {user}", process=user)
+                row.update(status="in_use", reason=tr("In use by {name}", name=user), process=user)
             elif now - newest < limit:
-                row.update(status="recent", reason="Used recently")
+                row.update(status="recent", reason=tr("Used recently"))
             else:
                 row.update(status="clean", reason="")
             rows.append(row)
@@ -366,10 +367,10 @@ def temp_entries(root, days=TEMP_GRACE_DAYS, exclude=(), in_use=None, cancel=Non
         loose["items"].append((e.path, st.st_size))
     if loose["files"] or loose["kept"]:
         if skip_loose:
-            loose.update(status="excluded", reason="You chose to keep them", files=loose["kept"],
+            loose.update(status="excluded", reason=tr("You chose to keep them"), files=loose["kept"],
                          size=loose["keptSize"], kept=0, keptSize=0)
         elif not loose["files"]:
-            loose.update(status="recent", reason="All of them are recent or in use")
+            loose.update(status="recent", reason=tr("All of them are recent or in use"))
         rows.append(loose)
     rows.sort(key=lambda r: (r["status"] != "clean", -r["size"]))
     return rows
@@ -451,7 +452,7 @@ def scan(progress=None, on_item=None, days=TEMP_GRACE_DAYS, exclude=()):
                 size, count, rows = fut.result()
             except Exception:
                 size, count, rows = 0, 0, None
-            item = {"id": k, "label": c["label"], "group": c["group"], "desc": c["desc"], "size": size,
+            item = {"id": k, "label": tr(c["label"]), "group": tr(c["group"]), "desc": tr(c["desc"]) if c["desc"] else "", "size": size,
                     "count": count, "default": c["default"] and size > 0,
                     "needs_admin": bool(c.get("admin")) and not admin,
                     "busy": running(c.get("process"), procs), "process": c.get("process", "")}
@@ -465,10 +466,10 @@ def scan(progress=None, on_item=None, days=TEMP_GRACE_DAYS, exclude=()):
             if on_item:
                 on_item(item)
             if progress:
-                progress(done / len(cats), c["label"])
+                progress(done / len(cats), tr(c["label"]))
     out.sort(key=lambda i: order[i["id"]])
     if progress:
-        progress(1, "Done")
+        progress(1, tr("Done"))
     return out
 
 
@@ -564,7 +565,7 @@ def clean(ids, progress=None, days=TEMP_GRACE_DAYS, exclude=(), cancel=None, on_
         total_bytes += sum(s for _, s in found)
         plans.append((k, found, tidy))
         if progress:
-            progress(0, f"Preparing {c['label'].lower()}")
+            progress(0, tr("Preparing {name}", name=tr(c["label"]).lower()))
     counter = _Counter(total_files, total_bytes)
     per = {}
     stop = threading.Event()
@@ -593,9 +594,9 @@ def clean(ids, progress=None, days=TEMP_GRACE_DAYS, exclude=(), cancel=None, on_
                 per[k] = counter.freed - before
                 continue
             if progress:
-                progress(0, c["label"])
+                progress(0, tr(c["label"]))
             # temp folders show the folder being emptied; other categories their name
-            _delete_list(found, counter, cancel, label="" if c.get("temp") else c["label"])
+            _delete_list(found, counter, cancel, label="" if c.get("temp") else tr(c["label"]))
             for folder, remove_root in tidy:
                 _remove_empty_dirs(folder, remove_root=remove_root)  # never through links
             per[k] = counter.freed - before
@@ -606,6 +607,6 @@ def clean(ids, progress=None, days=TEMP_GRACE_DAYS, exclude=(), cancel=None, on_
         stop.set()
     _report(counter, on_progress, t0)
     if progress:
-        progress(1, "Done")
+        progress(1, tr("Done"))
     return {"freed": counter.freed, "deleted": counter.deleted, "skipped": counter.skipped,
             "cancelled": cancelled, "per": per}

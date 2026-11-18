@@ -17,6 +17,7 @@ import winreg
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
+from ..i18n import tr
 from .ps import ps, ps_json, NO_WINDOW
 from .removal import cleaner, paths, registry, startup
 from .removal.registry import RegRef, V32, V64
@@ -66,18 +67,18 @@ def clean_scan(job, opts=None):
     days, exclude = _clean_opts(opts)
     cats = cleaner.categories()
     out = []
-    job.progress(0, "Checking which folders running programs are using…")
+    job.progress(0, tr("Checking which folders running programs are using…"))
 
     def on_item(it):
         c = cats[it["id"]]
         dirs, files = ([], []) if c.get("recycle") else cleaner._expand(c)
         pths = [_short(d) for d in dirs[:4]] + [_short(f) for f in files[:2]]
         if c.get("recycle"):
-            pths = ["All drives"]
+            pths = [tr("All drives")]
         row = {"id": it["id"], "g": it["group"], "label": it["label"], "size": it["size"], "files": it["count"],
                "def": bool(c.get("default")), "admin": bool(c.get("admin")), "needs_admin": it["needs_admin"],
-               "busy": it["process"] if it["busy"] else "", "desc": it["desc"] or _DESC.get(it["id"], ""),
-               "paths": pths or ["(not present on this PC)"], "temp": bool(c.get("temp"))}
+               "busy": it["process"] if it["busy"] else "", "desc": it["desc"] or tr(_DESC.get(it["id"], "")),
+               "paths": pths or [tr("(not present on this PC)")], "temp": bool(c.get("temp"))}
         if "rows" in it:
             row["rows"] = [{**r, "short": _short(r["path"], 70)} for r in it["rows"]]
             row["keptSize"], row["keptCount"] = it.get("keptSize", 0), it.get("keptCount", 0)
@@ -125,21 +126,21 @@ def clean(job, ids, opts=None):
             total["busyCats"].append(cid)
         else:
             run.append(cid)
-    job.progress(0, "Checking which folders running programs are using…", force=True)
+    job.progress(0, tr("Checking which folders running programs are using…"), force=True)
 
     def on_progress(d):
         tot = max(1, d.get("total") or 0)
         pct = (d["deleted"] + d["skipped"]) / tot if d.get("total") else 0
         cur = d.get("current") or ""
         data = dict(d, current=_short(cur, 60) if os.path.isabs(cur) else cur)
-        job.progress(min(.99, pct), f"Deleted {d['deleted']:,} of {d.get('total', 0):,} files", **data)
+        job.progress(min(.99, pct), tr("Deleted {n} of {total} files", n=f"{d['deleted']:,}", total=f"{d.get('total', 0):,}"), **data)
 
     r = cleaner.clean(run, days=days, exclude=exclude, cancel=lambda: job.cancelled, on_progress=on_progress)
     for k in ("freed", "deleted", "skipped", "cancelled"):
         total[k] = r[k]
     total["per"] = r["per"]
     for cid, freed in r["per"].items():
-        job.progress(None, cats[cid]["label"], id=cid, catFreed=freed, force=True)
+        job.progress(None, tr(cats[cid]["label"]), id=cid, catFreed=freed, force=True)
     return total
 
 
@@ -194,7 +195,7 @@ def _packaged_startup():
                 if dn and (dn.startswith("ms-resource:") or dn == p.get("Name")):
                     dn = (_resource(p, dn) if dn.startswith("ms-resource:") else None) or _manifest_name(p, root) or p.get("Name").split(".")[-1]
                 out.append({"id": f"pkg|{pfn}|{tid}", "name": dn, "pub": p.get("Pub") or pubname, "on": on,
-                            "origin": "store", "path": f"App startup task ({tid})", "target": loc,
+                            "origin": "store", "path": tr("App startup task ({id})", id=tid), "target": loc,
                             "locked": state in (3, 4)})
     with ThreadPoolExecutor(max_workers=8) as ex:
         list(ex.map(one, pk))
@@ -263,14 +264,14 @@ _REVIEW = ("wscript.exe", "cscript.exe", "powershell.exe", "pwsh.exe", "cmd.exe"
 
 def startup_list(job):
     """The same as Task Manager > Startup apps: registry (Run), Startup folder and Store apps."""
-    job.progress(.1, "Registry and Startup folder")
+    job.progress(.1, tr("Registry and Startup folder"))
     base = [e for e in startup.list_entries() if e["type"] in ("run", "folder")]
-    job.progress(.4, "Store apps")
+    job.progress(.4, tr("Store apps"))
     try:
         pk = _packaged_startup()
     except Exception:
         pk = []
-    job.progress(.85, "Startup impact")
+    job.progress(.85, tr("Startup impact"))
     imp = _impacts()
     measured = bool(imp)
     groups = {}
@@ -293,11 +294,11 @@ def startup_list(job):
               "count": len(es) if len(es) > 1 else 0}
         if exe_name.lower() in _REVIEW:
             it["review"] = True
-            it["note"] = "Runs a script when you sign in. Check what it is before touching it: it may be yours."
+            it["note"] = tr("Runs a script when you sign in. Check what it is before touching it: it may be yours.")
         if any(r in (exe_name + " " + it["pub"]).lower() for r in _REC) and on:
             it["rec"] = True
         if exe_name.lower() == "securityhealthsystray.exe":
-            it["note"] = "The Windows Security icon in the system tray. Best left on."
+            it["note"] = tr("The Windows Security icon in the system tray. Best left on.")
         items.append(it)
     for p in pk:
         p["ids"] = [p["id"]]
@@ -305,7 +306,7 @@ def startup_list(job):
         if p["on"] and any(r in (p["name"] + " " + p["pub"]).lower() for r in _REC):
             p["rec"] = True
         items.append(p)
-    job.progress(1, "Done")
+    job.progress(1, tr("Done"))
     return {"items": items, "measured": measured, "admin": _admin()}
 
 
@@ -396,17 +397,18 @@ def services_list():
             continue
         modes = [_START.get(p.get("StartMode"), "manual") for p in present]
         cur = "auto" if "auto" in modes else "manual" if "manual" in modes else "disabled"
-        it = {k: e[k] for k in ("id", "name", "desc", "bal", "max") if k in e}
+        it = {k: e[k] for k in ("id", "bal", "max") if k in e}
+        it.update({"name": tr(e["name"]), "desc": tr(e["desc"])})
         it.update({"svc": [p["Name"] for p in present], "run": any(p.get("State") == "Running" for p in present), "start": cur})
         if e.get("warn"):
-            it["warn"] = e["warn"]
+            it["warn"] = tr(e["warn"])
         if e.get("printers"):
             if printers:
                 it["bal"] = None
-                it["warn"] = f"You have printers installed ({', '.join(printers[:2])}): leave it as it is."
+                it["warn"] = tr("You have printers installed ({names}): leave it as it is.", names=", ".join(printers[:2]))
             else:
-                it["desc"] += " Your PC has no printers installed."
-                it["warn"] = "If you ever need to print, turn it back on."
+                it["desc"] += " " + tr("Your PC has no printers installed.")
+                it["warn"] = tr("If you ever need to print, turn it back on.")
         out.append(it)
     return {"items": out, "admin": _admin()}
 
@@ -479,7 +481,7 @@ def registry_scan(job):
 
     HK = winreg.HKEY_LOCAL_MACHINE
     # 1. broken uninstallers
-    job.progress(.05, "Uninstallers")
+    job.progress(.05, tr("Uninstallers"))
     for hive, root, view in (("HKLM", HK, V64), ("HKLM", HK, V32), ("HKCU", winreg.HKEY_CURRENT_USER, 0)):
         base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
         for sub in registry.subkeys(root, base, view):
@@ -491,9 +493,9 @@ def registry_scan(job):
             miss = _abs_missing(str(us))
             loc = registry.get_value(root, p, "InstallLocation", view)
             if miss and not (loc and _exists(str(loc))):
-                add("Broken uninstallers", RegRef(hive, p, view), f"\"{name}\": the uninstaller {miss} no longer exists.")
+                add("Broken uninstallers", RegRef(hive, p, view), tr('"{name}": the uninstaller {path} no longer exists.', name=name, path=miss))
     # 2. App Paths
-    job.progress(.25, "App paths")
+    job.progress(.25, tr("App paths"))
     for hive, root, view in (("HKLM", HK, V64), ("HKLM", HK, V32), ("HKCU", winreg.HKEY_CURRENT_USER, 0)):
         base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
         for sub in registry.subkeys(root, base, view):
@@ -503,24 +505,24 @@ def registry_scan(job):
                 continue
             target = os.path.expandvars(str(d).strip().strip('"'))
             if os.path.isabs(target) and not os.path.exists(target):
-                add("Broken app paths", RegRef(hive, p, view), f"Points to {target}, which no longer exists.")
+                add("Broken app paths", RegRef(hive, p, view), tr("Points to {path}, which no longer exists.", path=target))
     # 3. startup entries that point to nothing
-    job.progress(.45, "Startup")
+    job.progress(.45, tr("Startup"))
     for hive, root, view in (("HKCU", winreg.HKEY_CURRENT_USER, 0), ("HKLM", HK, V64), ("HKLM", HK, V32)):
         base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
         for name, data, _ in registry.values(root, base, view):
             miss = _abs_missing(str(data))
             if miss:
-                add("Startup entries pointing nowhere", RegRef(hive, base, view, name), f"Starts {miss}, which doesn't exist.")
+                add("Startup entries pointing nowhere", RegRef(hive, base, view, name), tr("Starts {path}, which doesn't exist.", path=miss))
     # 4. shared files that no longer exist
-    job.progress(.6, "Shared files")
+    job.progress(.6, tr("Shared files"))
     for view in (V64, V32):
         base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\SharedDLLs"
         for name, data, _ in registry.values(HK, base, view):
             if os.path.isabs(name) and not os.path.exists(name):
-                add("Missing shared files", RegRef("HKLM", base, view, name), "The file no longer exists.")
+                add("Missing shared files", RegRef("HKLM", base, view, name), tr("The file no longer exists."))
     # 5. orphaned file types (the user's only)
-    job.progress(.75, "File types")
+    job.progress(.75, tr("File types"))
     cu, cls = winreg.HKEY_CURRENT_USER, r"Software\Classes"
     for sub in registry.subkeys(cu, cls):
         if not sub.startswith("."):
@@ -531,16 +533,16 @@ def registry_scan(job):
         in_cu = registry.key_exists(RegRef("HKCU", f"{cls}\\{prog}"))
         in_lm = registry.key_exists(RegRef("HKLM", f"SOFTWARE\\Classes\\{prog}"))
         if not in_cu and not in_lm and not registry.subkeys(cu, f"{cls}\\{sub}"):
-            add("Orphaned file types", RegRef("HKCU", f"{cls}\\{sub}"), f"Says it opens with \"{prog}\", which no longer exists.")
+            add("Orphaned file types", RegRef("HKCU", f"{cls}\\{sub}"), tr('Says it opens with "{name}", which no longer exists.', name=prog))
     for sub in registry.subkeys(cu, cls):
         if sub.startswith(".") or sub.startswith("{"):
             continue
         cmd = registry.get_value(cu, f"{cls}\\{sub}\\shell\\open\\command", "")
         miss = _abs_missing(str(cmd)) if cmd else None
         if miss:
-            add("Orphaned file types", RegRef("HKCU", f"{cls}\\{sub}"), f"Class of a program that is gone ({miss}).")
+            add("Orphaned file types", RegRef("HKCU", f"{cls}\\{sub}"), tr("Class of a program that is gone ({path}).", path=miss))
     # 6. broken context menu entries
-    job.progress(.88, "Context menu")
+    job.progress(.88, tr("Context menu"))
     for scope in ("*", "Directory", r"Directory\Background", "Folder"):
         for hive, root, base in (("HKLM", HK, r"SOFTWARE\Classes"), ("HKCU", cu, r"Software\Classes")):
             hp = f"{base}\\{scope}\\shellex\\ContextMenuHandlers"
@@ -557,11 +559,11 @@ def registry_scan(job):
                     continue
                 path = os.path.expandvars(str(dll).strip('"'))
                 if os.path.isabs(path) and not os.path.exists(path):
-                    add("Broken context menu entries", RegRef(hive, f"{hp}\\{h}"), f"Adds \"{h}\" to the right-click menu, but {os.path.basename(path)} no longer exists.")
-    job.progress(1, "Done")
+                    add("Broken context menu entries", RegRef(hive, f"{hp}\\{h}"), tr('Adds "{name}" to the right-click menu, but {file} no longer exists.', name=h, file=os.path.basename(path)))
+    job.progress(1, tr("Done"))
     order = ["Broken uninstallers", "Broken app paths", "Orphaned file types", "Startup entries pointing nowhere",
              "Missing shared files", "Broken context menu entries"]
-    return [{"g": g, "items": groups[g]} for g in order if g in groups]
+    return [{"g": tr(g), "items": groups[g]} for g in order if g in groups]
 
 
 def registry_fix(job, ids):
@@ -591,7 +593,7 @@ def registry_fix(job, ids):
             failed.append(f"{ref.display()}: {e}")
     with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, ensure_ascii=False)
-    job.progress(1, "Done")
+    job.progress(1, tr("Done"))
     return {"fixed": fixed, "failed": failed, "backup": bid, "folder": folder}
 
 
@@ -652,15 +654,15 @@ def _stream(job, cmd, pct_re=r"(\d{1,3}(?:[.,]\d)?)\s*%", weight=(0.0, 1.0)):
 
 def _restart_explorer(job):
     subprocess.run(["taskkill", "/f", "/im", "explorer.exe"], capture_output=True, creationflags=NO_WINDOW)
-    job.log("File Explorer closed.")
+    job.log(tr("File Explorer closed."))
     for _ in range(12):  # Windows reopens it by itself (AutoRestartShell)
         time.sleep(.5)
         if any(p["name"].lower() == "explorer.exe" for p in rsys.list_processes()):
-            job.log("File Explorer is open again.")
+            job.log(tr("File Explorer is open again."))
             return
     # if it didn't come back: open it with a non-elevated token (opening it from an admin process would leave it elevated)
     subprocess.Popen(["runas", "/trustlevel:0x20000", "explorer.exe"], creationflags=NO_WINDOW)
-    job.log("File Explorer is open again.")
+    job.log(tr("File Explorer is open again."))
 
 
 REPAIR_ADMIN = {"sfc", "dism", "chkdsk", "wu", "net"}
@@ -679,20 +681,20 @@ def repair(job, rid):
     elif rid == "wu":
         svcs = ["wuauserv", "cryptSvc", "bits", "msiserver"]
         for i, s in enumerate(svcs):
-            job.progress(.05 + i * .08, f"Stopping {s}")
+            job.progress(.05 + i * .08, tr("Stopping {name}", name=s))
             _stream(job, ["net", "stop", s, "/y"], weight=(0, 0))
         stamp = time.strftime("%Y%m%d%H%M%S")
         for i, d in enumerate([os.path.join(win, "SoftwareDistribution"), os.path.join(win, "System32", "catroot2")]):
-            job.progress(.45 + i * .12, f"Renaming {os.path.basename(d)}")
+            job.progress(.45 + i * .12, tr("Renaming {name}", name=os.path.basename(d)))
             try:
                 os.rename(d, f"{d}.old-{stamp}")
                 job.log(f"{d} → {os.path.basename(d)}.old-{stamp}")
             except OSError as e:
-                job.log(f"Couldn't rename {d}: {e}")
+                job.log(tr("Couldn't rename {path}: {error}", path=d, error=e))
         for i, s in enumerate(reversed(svcs)):
-            job.progress(.75 + i * .06, f"Starting {s}")
+            job.progress(.75 + i * .06, tr("Starting {name}", name=s))
             _stream(job, ["net", "start", s], weight=(0, 0))
-        job.log("Windows Update is ready to search again.")
+        job.log(tr("Windows Update is ready to search again."))
         code = 0
     elif rid == "net":
         job.progress(.1, "DNS")
@@ -701,11 +703,11 @@ def repair(job, rid):
         _stream(job, ["netsh", "winsock", "reset"], weight=(0, 0))
         job.progress(.7, "TCP/IP")
         _stream(job, ["netsh", "int", "ip", "reset"], weight=(0, 0))
-        job.log("Done. Restart the PC to finish.")
+        job.log(tr("Done. Restart the PC to finish."))
         code = 0
     elif rid == "icons":
         local = os.environ.get("LOCALAPPDATA", "")
-        job.progress(.1, "Closing File Explorer")
+        job.progress(.1, tr("Closing File Explorer"))
         subprocess.run(["taskkill", "/f", "/im", "explorer.exe"], capture_output=True, creationflags=NO_WINDOW)
         time.sleep(.6)
         n = 0
@@ -717,8 +719,8 @@ def repair(job, rid):
                     n += 1
                 except OSError:
                     pass
-        job.log(f"{n} icon cache files deleted.")
-        job.progress(.55, "Font cache")
+        job.log(tr("{n} icon cache files deleted.", n=n))
+        job.progress(.55, tr("Font cache"))
         if _admin():
             _stream(job, ["net", "stop", "FontCache", "/y"], weight=(0, 0))
             fc = os.path.join(win, "ServiceProfiles", "LocalService", "AppData", "Local", "FontCache")
@@ -729,27 +731,27 @@ def repair(job, rid):
                     pass
             _stream(job, ["net", "start", "FontCache"], weight=(0, 0))
         else:
-            job.log("The font cache needs administrator mode: skipped.")
+            job.log(tr("The font cache needs administrator mode: skipped."))
         subprocess.run(["ie4uinit.exe", "-show"], capture_output=True, creationflags=NO_WINDOW)
-        job.progress(.85, "Opening File Explorer")
+        job.progress(.85, tr("Opening File Explorer"))
         _restart_explorer(job)
         code = 0
     elif rid == "explorer":
-        job.progress(.3, "Restarting File Explorer")
+        job.progress(.3, tr("Restarting File Explorer"))
         _restart_explorer(job)
         code = 0
     else:
         raise ValueError(rid)
-    job.progress(1, "Done")
+    job.progress(1, tr("Done"))
     return {"code": code}
 
 
 def restore_point(job, desc="StellarHub, before optimizing"):
     if not _admin():
         return _need_admin()
-    job.progress(.1, "Creating the restore point…")
+    job.progress(.1, tr("Creating the restore point…"))
     ok, out = rsys.create_restore_point(desc)
-    job.progress(1, "Done")
+    job.progress(1, tr("Done"))
     return {"ok": ok, "msg": out[-300:]}
 
 
@@ -848,7 +850,7 @@ def perf_set(key, value):
         if key == current_src:
             r = ctypes.windll.powrprof.PowerSetActiveOverlayScheme(ctypes.byref(_guid(_OVERLAY_GUID[value])))
             if r != 0:
-                raise OSError(f"Windows didn't accept the mode (code {r})")
+                raise OSError(tr("Windows didn't accept the mode (code {code})", code=r))
         else:
             if not _admin():
                 return _need_admin()

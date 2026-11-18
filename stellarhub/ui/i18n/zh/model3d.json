@@ -1,0 +1,19 @@
+{
+  "Processor": "处理器",
+  "Graphics": "显卡",
+  "Memory": "内存",
+  "Video memory": "显存",
+  "Drive C:": "C: 盘",
+  "CPU fan": "CPU 风扇",
+  "GPU fan": "GPU 风扇",
+  "GPU power": "GPU 功耗",
+  "Download": "下载",
+  "Upload": "上传",
+  "Battery": "电池",
+  "Last 2 minutes": "最近 2 分钟",
+  "Components": "组件",
+  "Laptop": "笔记本",
+  "3D model": "3D 模型",
+  "Your PC in 3D: drag to rotate it and hover a component to see where it is.": "3D 展示你的电脑：拖动可旋转，悬停在组件上可查看其位置。",
+  "Drag to rotate it. Scroll to zoom in.": "拖动可旋转，滚动滚轮可缩放。"
+}

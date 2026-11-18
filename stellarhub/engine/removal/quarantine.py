@@ -17,6 +17,7 @@ import stat
 import time
 import winreg
 
+from ...i18n import tr
 from . import index, paths, registry, safety, system
 from .paths import is_within, norm_path
 from .registry import RegRef
@@ -199,7 +200,7 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
         try:
             blocked = _recheck(it, ctx)
             if blocked:
-                rec.update(status="skipped", error=f"Blocked for safety: {blocked}")
+                rec.update(status="skipped", error=tr("Blocked for safety: {reason}", reason=blocked))
                 result["skipped"] += 1
                 continue
             k = it["kind"]
@@ -212,7 +213,7 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
                     continue
                 regf = os.path.join(sdir, "reg", f"{n}.reg")
                 if not registry.export_key(ref, regf):
-                    raise OSError("Could not make the .reg backup; not deleting for safety")
+                    raise OSError(tr("Could not make the .reg backup; not deleting for safety"))
                 rec.update(reg_file=regf, view=ref.view)
                 registry.delete_tree(ref)
             elif k == "regvalue":
@@ -276,7 +277,7 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
     manifest["result"] = {k: v for k, v in result.items() if k != "errors"}
     _save(manifest)
     index.invalidate()
-    progress(1.0, "Done")
+    progress(1.0, tr("Done"))
     return result
 
 
@@ -291,7 +292,7 @@ def _recheck(it, ctx):
     if k == "service":
         return safety.service_rule(it["target"])
     if k == "task" and it["target"].lower().startswith("\\microsoft\\"):
-        return "Microsoft task"
+        return tr("Microsoft task")
     return None
 
 
@@ -377,9 +378,9 @@ def restore(sid, progress=None, only=None):
             k = it["kind"]
             if k in ("file", "folder"):
                 if not it.get("stored"):
-                    raise OSError("It was deleted permanently or was a link")
+                    raise OSError(tr("It was deleted permanently or was a link"))
                 if os.path.lexists(it["target"]):
-                    raise OSError("Something already exists at the original path")
+                    raise OSError(tr("Something already exists at the original path"))
                 _real_move(it["stored"], it["target"])
             elif k in ("regkey", "service"):
                 ok, out = registry.import_reg(it["reg_file"], it.get("view", 0))
@@ -416,7 +417,7 @@ def restore(sid, progress=None, only=None):
     m["restored"] = not any(i["status"] == "done" for i in m["items"])
     _save(m)
     index.invalidate()
-    progress(1.0, "Done")
+    progress(1.0, tr("Done"))
     return res
 
 

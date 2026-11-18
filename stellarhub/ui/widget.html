@@ -27,12 +27,19 @@
      transition:background-color calc(160ms*var(--f))}
   .c:hover{background:var(--raise2)}
   .c .n{display:flex;align-items:center;gap:6px;color:var(--mute);font-size:11.5px;white-space:nowrap}
-  .c .n svg{width:13px;height:13px}
+  .c .n svg{width:13px;height:13px;flex:none}
+  .c .n{min-width:0}
+  .c .n span{min-width:0;overflow:hidden;text-overflow:ellipsis}
   .c .v{font:500 17px/1 var(--display);letter-spacing:-.02em;white-space:nowrap;align-self:center;text-align:right}
   .c .v small{font:400 11px var(--text);color:var(--faint);margin-left:2px;letter-spacing:0}
   .c canvas{grid-column:1 / -1;width:100%;height:100%;min-height:16px;display:block;align-self:end}
   .L-row .c{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}
   .L-row .c .v{text-align:left;margin-top:5px}
+  /* when the user makes it small: the charts go first, then whole stats (never half a number) */
+  .compact .c canvas{display:none}
+  .compact .c{grid-template-rows:1fr;align-items:center;padding-bottom:7px}
+  .compact.L-row .c{grid-template-rows:auto auto}
+  .compact .c .v{font-size:15px}
   .c.hot .v{color:var(--warn)}
   /* list */
   .L-list #rows{grid-auto-rows:30px;gap:2px}
@@ -40,12 +47,15 @@
   .L-list .c .n{display:contents}
   .L-list .c canvas{grid-column:auto;height:18px}
   /* small version: a thin bar, only icon and number; the buttons appear on hover */
-  .M-mini{padding:0 6px 0 12px;flex-direction:row;align-items:center;gap:10px}
-  .M-mini .hd{order:2;margin:0;height:auto;gap:2px}
+  .M-mini{padding:0 12px;flex-direction:row;align-items:center;gap:10px}
+  /* the buttons float over the right end on hover, so the numbers get the whole bar */
+  .M-mini .hd{position:absolute;right:0;top:0;bottom:0;margin:0;height:auto;gap:2px;padding:0 6px 0 22px;z-index:2;
+     background:linear-gradient(90deg,transparent,var(--void) 18px);opacity:0;pointer-events:none;transition:opacity calc(160ms*var(--f))}
+  .M-mini:hover .hd{opacity:1;pointer-events:auto}
   .M-mini .hd .logo,.M-mini .hd>span{display:none}
   .M-mini .hd button{width:22px;height:22px}
-  .M-mini #rows{display:flex;gap:12px;align-items:center;flex:none}
-  .M-mini .c{display:flex;align-items:center;gap:6px;padding:0;background:none;overflow:visible}
+  .M-mini #rows{display:flex;gap:12px;align-items:center;flex:1 1 auto;min-width:0;overflow:hidden}
+  .M-mini .c{display:flex;align-items:center;gap:6px;padding:0;background:none;overflow:visible;flex:none}
   .M-mini .c:hover{background:none}
   .M-mini .c .n span,.M-mini .c canvas{display:none}
   .M-mini .c .n svg{width:14px;height:14px;color:var(--accent2)}
@@ -87,14 +97,15 @@
 <div class="wrz" data-edge="nw"></div><div class="wrz" data-edge="ne"></div><div class="wrz" data-edge="sw"></div><div class="wrz" data-edge="se"></div>
 <div class="w pywebview-drag-region" id="w">
   <div class="hd pywebview-drag-region">
-    <svg class="logo" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.6"/></svg>
+    <svg class="logo" viewBox="0 0 24 24" fill="none"><defs><radialGradient id="wgShade" cx="10" cy="10.2" r="7.8" gradientUnits="userSpaceOnUse"><stop offset=".35" stop-opacity="0"/><stop offset="1" stop-opacity=".32"/></radialGradient><mask id="wgGap"><rect width="24" height="24" fill="#fff"/><path d="M22.2 12.6A10.2 3 0 0 1 1.8 12.6" transform="rotate(-20 12 12.6)" fill="none" stroke="#000" stroke-width="2.5"/></mask></defs><path d="M1.8 12.6A10.2 3 0 0 1 22.2 12.6" transform="rotate(-20 12 12.6)" style="stroke:var(--accent2)" stroke-opacity=".55" stroke-width="1.6"/><g mask="url(#wgGap)"><circle cx="12" cy="12.6" r="5.2" style="fill:var(--accent)"/><circle cx="12" cy="12.6" r="5.2" fill="url(#wgShade)"/></g><path d="M22.2 12.6A10.2 3 0 0 1 1.8 12.6" transform="rotate(-20 12 12.6)" style="stroke:var(--accent2)" stroke-width="1.6"/><circle cx="19.6" cy="4.4" r="1.5" style="fill:var(--accent2)"/></svg>
     <span>StellarHub</span><span class="sp pywebview-drag-region"></span>
-    <button id="sizeBtn" title="Small version"><svg class="i" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l6-6M10 14l-6 6"/></svg></button>
-    <button id="openMain" title="Open StellarHub"><svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
-    <button id="close" title="Close the widget"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <button id="sizeBtn" title="Small version" data-t-attr="title"><svg class="i" viewBox="0 0 24 24"><path d="M4 14h6v6M20 10h-6V4M14 10l6-6M10 14l-6 6"/></svg></button>
+    <button id="openMain" title="Open StellarHub" data-t-attr="title"><svg class="i" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
+    <button id="close" title="Close the widget" data-t-attr="title"><svg class="i" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
   </div>
   <div id="rows" class="pywebview-drag-region"></div>
 </div>
+<script src="js/i18n.js"></script>
 <script src="js/core.js"></script>
 <script src="js/telemetry.js"></script>
 <script src="js/widget.js"></script>

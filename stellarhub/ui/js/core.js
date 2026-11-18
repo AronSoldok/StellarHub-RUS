@@ -5,14 +5,15 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const ROOT = document.documentElement;
+const t = (window.SH && SH.t) || (s => s); // i18n.js ran first
 const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
 
 /* ---------- state and settings ---------- */
 const DEFAULTS = {
   theme: 'deep', accent: '#FF7A66', accent2: '#9ED6FF', zoom: 'auto', intensity: reduceMQ.matches ? 'min' : 'max',
   stars: true, camera: true, parallax: true, homeVariant: 'bento', adminHints: true, trayOnClose: true,
-  startWithWindows: false, autoUpdate: true, language: 'en', density: 'comfortable', sounds: false,
-  widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetOnStart: false, widgetLayout: 'grid',
+  startWithWindows: false, autoUpdate: true, language: 'auto', density: 'comfortable', sounds: false,
+  widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetLayout: 'grid',
   starCount: 400, starSpeed: 1.5, starBright: 1.2, widgetMode: 'full', widgetWasOpen: false, alwaysAdmin: false, twinkle: true, shooting: true, nebula: 1, animSpeed: 1, panelAlpha: 1.75, corners: 'mid',
   countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', lastView: 'home',
 };
@@ -28,10 +29,17 @@ const emit = (ev, data) => (bus[ev] || []).forEach(fn => { try { fn(data); } cat
 
 /* bridge to Python (window.pywebview.api); outside the app it falls back to localStorage */
 const api = () => (window.pywebview && window.pywebview.api) || null;
+/* Inside the app (WebView2 always exposes window.chrome.webview) the bridge to Python can take several seconds on
+   a slow start (elevated relaunch, first launch while Defender scans the files): wait for it, polling as a fallback
+   in case the ready event fired before this script ran. In a normal browser there is no bridge: sample mode. */
+const IN_APP = !!(window.chrome && window.chrome.webview);
 const apiReady = new Promise(res => {
   if (api()) return res(api());
   addEventListener('pywebviewready', () => res(api()), { once: true });
-  setTimeout(() => res(api()), 1200);
+  if (!IN_APP) { setTimeout(() => res(api()), 1200); return; }
+  const t0 = Date.now(), poll = setInterval(() => {
+    if (api() || Date.now() - t0 > 60000) { clearInterval(poll); res(api()); }
+  }, 100);
 });
 async function call(name, ...args) {
   const a = await apiReady;
@@ -56,7 +64,7 @@ const _cerr = console.error.bind(console); console.error = (...a) => { _cerr(...
 async function engine(mod, fn, ...args) {
   const r = await call('engine', mod, fn, args);
   if (r === undefined) return undefined;
-  if (!r.ok) throw new Error(r.error || 'the engine failed');
+  if (!r.ok) throw new Error(r.error || t('the engine failed'));
   return r.data;
 }
 const jobWaiters = new Map();
@@ -67,7 +75,7 @@ on('job', m => {
   if (m.kind === 'end') {
     jobWaiters.delete(m.id);
     if (m.state === 'done') w.res(m.result); else if (m.state === 'cancelled') w.rej(Object.assign(new Error('cancelled'), { cancelled: true }));
-    else w.rej(new Error((m.result && m.result.error) || 'the task failed'));
+    else w.rej(new Error((m.result && m.result.error) || t('the task failed')));
   }
 });
 function job(mod, fn, args = [], o = {}) {
@@ -85,6 +93,17 @@ async function loadSettings() {
   let saved = await call('settings_get');
   if (saved === undefined) { try { saved = JSON.parse(localStorage.getItem('sh.settings') || '{}'); } catch { saved = {}; } }
   Object.assign(state.settings, saved || {});
+  /* the language lives in the settings; i18n.js read a local copy to translate before this point. If they differ
+     (first start after installing in another language, or changed elsewhere), switch once. */
+  const L = window.SH && SH.i18n;
+  if (L) {
+    const pref = state.settings.language || 'auto';
+    if (pref !== L.pref) {
+      L.remember(pref);
+      let ok = false; try { ok = localStorage.getItem('sh.lang') === pref; } catch {}
+      if (ok && L.resolve(pref) !== L.lang) location.reload(); // only if it really changes, and never in a loop
+    }
+  }
 }
 function setSetting(key, val) {
   if (state.settings[key] === val) return;
@@ -139,8 +158,10 @@ function loop(t) { const dt = Math.min(.05, (t - last) / 1000); last = t; for (c
 requestAnimationFrame(loop);
 
 /* ---------- formatting ---------- */
-const fmt1 = v => (+v).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const fmtInt = v => Math.round(+v).toLocaleString('en-US');
+/* numbers follow the interface language (1,234.5 in English, 1.234,5 in Spanish...) */
+const LOCALE = (window.SH && SH.i18n && SH.i18n.locale) || 'en-US';
+const fmt1 = v => (+v).toLocaleString(LOCALE, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtInt = v => Math.round(+v).toLocaleString(LOCALE);
 function fmtBytes(b) { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? fmt1(b) : Math.round(b)) + ' ' + u[i]; }
 function countUp(el, to, d = 900, dec = 0) {
   if (state.settings.countUp === false) { el.textContent = dec ? fmt1(to) : fmtInt(to); el.dataset.v = to; return; }
@@ -218,26 +239,28 @@ const P = {
 const ic = (n, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[n] || P.dots}</svg>`;
 const icons = { add(o) { Object.assign(P, o); }, has: n => n in P };
 
-/* ---------- the PC (sample data; inside the app it is replaced by the real data from Python) ---------- */
+/* ---------- the PC (sample data; inside the app it is replaced by the real data from Python) ----------
+   Component names, titles, values and typeName arrive translated; the row LABELS (rows[i][0]) stay in English because
+   code looks rows up by them: translate them where they are shown, SH.t(label). */
 const PC = {
-  model: 'ASUS TUF Gaming F16', code: 'FX608JPR', type: 'laptop', typeName: 'Laptop', maker: 'ASUSTeK',
+  model: 'ASUS TUF Gaming F16', code: 'FX608JPR', type: 'laptop', typeName: t('Laptop'), maker: 'ASUSTeK',
   os: 'Windows 11 Pro 25H2', build: '26200', bios: 'FX608JPR.312',
   facts: { drivers: 303, programs: 116, freeC: 361 },
   components: [
-    { id: 'cpu', name: 'Processor', title: 'Intel Core i7-14650HX', rows: [['Cores', '16 (8 performance, 8 efficient)'], ['Threads', '24'], ['Max frequency', '5.2 GHz'], ['Cache', '30 MB']] },
-    { id: 'gpu', name: 'Graphics', title: 'NVIDIA GeForce RTX 5070 Laptop', rows: [['Memory', '8 GB GDDR7'], ['Integrated', 'Intel UHD Graphics'], ['Driver', '32.0.16.1742']] },
-    { id: 'ram', name: 'Memory', title: '16 GB DDR5', rows: [['Speed', '5600 MT/s'], ['Manufacturer', 'Samsung'], ['Modules', '1 × 16 GB, 1 free slot']] },
-    { id: 'ssd', name: 'Storage', title: 'WD PC SN5000S 1 TB', rows: [['Type', 'NVMe SSD'], ['Used', '592 GB'], ['Free', '361 GB']], bar: .62 },
-    { id: 'display', name: 'Displays', title: '16 inch, 2560 × 1600', rows: [['Refresh rate', '165 Hz'], ['External', '1920 × 1080, 144 Hz']] },
-    { id: 'battery', name: 'Battery', title: '90 Wh, 97% health', rows: [['Current capacity', '87.2 Wh'], ['Status', 'Good']], bar: .97 },
-    { id: 'wifi', name: 'Network', title: 'Wi-Fi 6E', rows: [['Adapter', 'Realtek 8852CE'], ['Link', '1.2 Gb/s']] },
-    { id: 'audio', name: 'Audio', title: 'Realtek High Definition Audio', rows: [['Others', 'NVIDIA HD Audio, USB audio']] },
-    { id: 'sys', name: 'System', title: 'Windows 11 Pro 25H2', rows: [['Build', '26200'], ['BIOS', 'FX608JPR.312']] },
+    { id: 'cpu', name: t('Processor'), title: 'Intel Core i7-14650HX', rows: [['Cores', t('{n} ({p} performance, {e} efficient)', { n: 16, p: 8, e: 8 })], ['Threads', '24'], ['Max frequency', '5.2 GHz'], ['Cache', '30 MB']] },
+    { id: 'gpu', name: t('Graphics'), title: 'NVIDIA GeForce RTX 5070 Laptop', rows: [['Memory', '8 GB GDDR7'], ['Integrated', 'Intel UHD Graphics'], ['Driver', '32.0.16.1742']] },
+    { id: 'ram', name: t('Memory'), title: '16 GB DDR5', rows: [['Speed', '5600 MT/s'], ['Manufacturer', 'Samsung'], ['Modules', t('{n} × {size} GB, {free} free slot', { n: 1, size: 16, free: 1 })]] },
+    { id: 'ssd', name: t('Storage'), title: 'WD PC SN5000S 1 TB', rows: [['Type', 'NVMe SSD'], ['Used', '592 GB'], ['Free', '361 GB']], bar: .62 },
+    { id: 'display', name: t('Displays'), title: t('{n} inch, {res}', { n: 16, res: '2560 × 1600' }), rows: [['Refresh rate', '165 Hz'], ['External', '1920 × 1080, 144 Hz']] },
+    { id: 'battery', name: t('Battery'), title: t('{wh} Wh, {pct}% health', { wh: 90, pct: 97 }), rows: [['Current capacity', '87.2 Wh'], ['Status', t('Good')]], bar: .97 },
+    { id: 'wifi', name: t('Network'), title: 'Wi-Fi 6E', rows: [['Adapter', 'Realtek 8852CE'], ['Link', '1.2 Gb/s']] },
+    { id: 'audio', name: t('Audio'), title: 'Realtek High Definition Audio', rows: [['Others', 'NVIDIA HD Audio, USB Audio']] },
+    { id: 'sys', name: t('System'), title: 'Windows 11 Pro 25H2', rows: [['Build', '26200'], ['BIOS', 'FX608JPR.312']] },
   ],
 };
 
 /* ---------- modules: master list (the dock, the palette and the views come from here) ---------- */
-const MODS = [
+const MODS0 = [
   { id: 'home', name: 'Home', icon: 'home' },
   { id: 'monitor', name: 'Live Monitor', icon: 'monitor', desc: 'Your PC in real time: usage, temperatures, network, battery and health.',
     tabs: [['overview', 'Overview'], ['cpu', 'Processor'], ['gpu', 'Graphics'], ['memory', 'Memory'], ['disks', 'Disks'], ['network', 'Network'], ['battery', 'Battery'], ['processes', 'Processes'], ['health', 'Health']] },
@@ -256,6 +279,8 @@ const MODS = [
   { id: 'autopilot', name: 'Autopilot', icon: 'autopilot', real: true, desc: 'Automatic maintenance: you set the rules, StellarHub follows them.',
     tabs: [['routines', 'Routines'], ['calendar', 'Calendar'], ['notify', 'Notifications'], ['log', 'Log']] },
 ];
+/* names, descriptions and tab names in the interface language (ids stay as they are) */
+const MODS = MODS0.map(m => ({ ...m, name: t(m.name), desc: m.desc && t(m.desc), tabs: m.tabs && m.tabs.map(([id, n]) => [id, t(n)]) }));
 const modById = id => MODS.find(m => m.id === id);
 
 /* registry of modules and Home views (filled in by the files in js/modules and js/home) */
@@ -301,10 +326,11 @@ addEventListener('scroll', e => { const el = e.target; if (el.nodeType === 1 && 
 addEventListener('resize', () => sfSet.forEach(sfUpdate));
 setInterval(() => { const v = document.querySelector('.view.is-on'); if (v) sfScan(v); const s = document.querySelector('.overlay.on .sheet .body'); if (s) sfScan(s); }, 1200);
 
-window.SH = {
+/* i18n.js ran first and already put SH.t and SH.i18n here: keep them */
+window.SH = Object.assign(window.SH || {}, {
   $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, on, emit, call, apiReady, loadSettings, setSetting,
   engine, job, logActivity, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, fitText, esc,
   ic, icons, PC, MODS, modById, registry, module, homeVariant, actions,
   go: () => {}, toast: () => {}, openComponent: () => {}, sfScan,
-};
+});
 })();
