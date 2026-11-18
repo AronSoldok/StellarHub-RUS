@@ -35,7 +35,6 @@
   "Test paused": "Prueba en pausa",
   "Keep testing": "Seguir probando",
   "{key} has been held for over 5 s": "{key} lleva pulsada más de 5 s",
-  "{key}: possible chatter (very fast double press)": "{key}: posible rebote (doble pulsación muy rápida)",
   "Black": "Negro",
   "White": "Blanco",
   "Red": "Rojo",
@@ -167,5 +166,8 @@
   "You pressed a numeric keypad key. Switch to the laptop layout with a numeric keypad?": "Has pulsado una tecla del teclado numérico. ¿Cambiar a la distribución de portátil con teclado numérico?",
   "Switch to {layout}": "Cambiar a {layout}",
   "{n} key marked as missing": "{n} tecla marcada como ausente",
-  "{n} keys marked as missing": "{n} teclas marcadas como ausentes"
+  "{n} keys marked as missing": "{n} teclas marcadas como ausentes",
+  "The key sent a second press a few milliseconds after a very short one, more than once, without you pressing it again. Usually a worn or dirty switch.": "La tecla envió una segunda pulsación pocos milisegundos después de una muy corta, más de una vez, sin que la volvieras a pulsar. Suele ser un interruptor gastado o sucio.",
+  "{key}: possible chatter": "{key}: posible rebote",
+  "Possible chatter: {keys}": "Posible rebote: {keys}"
 }

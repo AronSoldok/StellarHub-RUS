@@ -424,5 +424,6 @@
   "In use for {time}": "Utilisé depuis {time}",
   "Windows Firewall is off: {list}": "Le pare-feu Windows est désactivé : {list}",
   "1 setting shares data that Windows works fine without": "1 paramètre partage des données dont Windows n’a pas besoin",
-  "{n} settings share data that Windows works fine without": "{n} paramètres partagent des données dont Windows n’a pas besoin"
+  "{n} settings share data that Windows works fine without": "{n} paramètres partagent des données dont Windows n’a pas besoin",
+  "Protection level, out of 100": "Niveau de protection, sur 100"
 }

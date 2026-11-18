@@ -35,7 +35,6 @@
   "Test paused": "测试已暂停",
   "Keep testing": "继续测试",
   "{key} has been held for over 5 s": "{key} 已按住超过 5 秒",
-  "{key}: possible chatter (very fast double press)": "{key}：可能存在连击（极快的双击）",
   "Black": "黑色",
   "White": "白色",
   "Red": "红色",
@@ -167,5 +166,8 @@
   "You pressed a numeric keypad key. Switch to the laptop layout with a numeric keypad?": "你按下了数字小键盘的按键。要切换到带数字键盘的笔记本布局吗？",
   "Switch to {layout}": "切换到 {layout}",
   "{n} key marked as missing": "已将 {n} 个按键标记为缺少",
-  "{n} keys marked as missing": "已将 {n} 个按键标记为缺少"
+  "{n} keys marked as missing": "已将 {n} 个按键标记为缺少",
+  "The key sent a second press a few milliseconds after a very short one, more than once, without you pressing it again. Usually a worn or dirty switch.": "该键在一次极短的按下后几毫秒内又发送了一次按下，且不止一次，而你并没有再次按它。通常是开关磨损或脏污。",
+  "{key}: possible chatter": "{key}：可能存在连击",
+  "Possible chatter: {keys}": "可能存在连击：{keys}"
 }

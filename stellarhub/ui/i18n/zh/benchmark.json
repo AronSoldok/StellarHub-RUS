@@ -262,5 +262,6 @@
  "Disks": "磁盘",
  "History": "历史记录",
  "benchmark|Copy": "复制",
- "benchmark|Both": "两者"
+ "benchmark|Both": "两者",
+ "Benchmark Testing": "性能测试"
 }

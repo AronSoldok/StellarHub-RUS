@@ -51,21 +51,9 @@ Step "assets" $py @("packaging\make_assets.py")
 Step "pyinstaller" $py @("-m", "PyInstaller", "packaging\StellarHub.spec", "--noconfirm", "--clean", "--log-level", "WARN",
                          "--distpath", "build\dist", "--workpath", "build\work")
 
-# 5. the WebView2 bootstrapper from Microsoft (only installed by the setup on PCs that lack WebView2)
-$wv = "build\redist\MicrosoftEdgeWebview2Setup.exe"
-if (-not (Test-Path $wv)) {
-    New-Item -ItemType Directory -Force build\redist | Out-Null
-    Invoke-WebRequest "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $wv -UseBasicParsing
-}
-$sig = Get-AuthenticodeSignature $wv
-if ($sig.Status -ne "Valid" -or $sig.SignerCertificate.Subject -notmatch "O=Microsoft Corporation") {
-    Remove-Item $wv
-    throw "The WebView2 bootstrapper is not signed by Microsoft; deleted it."
-}
-
-# 6. the installer
-$iscc = @("$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-          "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+# 5. the installer (it downloads the WebView2 bootstrapper from Microsoft itself, only on PCs that lack WebView2)
+$iscc = @($env:STELLARHUB_ISCC, "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+          "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 if (-not $iscc) { throw "Inno Setup not found: winget install JRSoftware.InnoSetup" }
 Step "installer" $iscc @("/Q", "/DAppVersion=$version", "packaging\StellarHub.iss")
 

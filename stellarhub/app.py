@@ -906,7 +906,7 @@ def _delete_admin_task():
 def _elevate_on_start():
     """If the user chose permanent administrator mode and this copy is not elevated: relaunch elevated
     (first through the scheduled task, with no prompt; if it does not exist, with the UAC prompt). Returns True if we must exit."""
-    if is_admin() or "--no-elevate" in sys.argv or "--from-task" in sys.argv:
+    if is_admin() or ISOLATED or "--no-elevate" in sys.argv or "--from-task" in sys.argv:
         return False
     try:
         with open(SETTINGS, encoding="utf-8") as fh:
@@ -981,18 +981,52 @@ def _quit_running():
             s.sendall(b"quit")
             s.settimeout(3)
             if s.recv(8) != b"bye":
-                return
+                return _wait_other_copies_gone()
     except OSError:
-        return
+        return _wait_other_copies_gone()  # not answering (or not running): make sure it is gone anyway
     for _ in range(80):  # up to 8 s
         time.sleep(0.1)
         try:
             socket.create_connection(("127.0.0.1", SINGLE_PORT), timeout=0.2).close()
         except OSError:
+            break
+    _wait_other_copies_gone()
+
+
+def _wait_other_copies_gone(seconds=12):
+    """Waits until no other StellarHub.exe from this folder is running; if one is still there after the wait, it
+    is ended, so the files can be replaced or removed."""
+    try:
+        import psutil
+    except ImportError:
+        return
+    me, exe = os.getpid(), os.path.normcase(sys.executable)
+
+    def others():
+        out = []
+        for pr in psutil.process_iter(["pid", "name", "exe"]):
+            try:
+                if pr.info["pid"] != me and (pr.info["name"] or "").lower() == os.path.basename(exe).lower() \
+                        and (pr.info["exe"] is None or os.path.normcase(pr.info["exe"]) == exe):
+                    out.append(pr)
+            except (psutil.Error, OSError):
+                continue
+        return out
+    if not FROZEN:
+        return
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if not others():
             return
+        time.sleep(0.2)
+    for pr in others():
+        try:
+            pr.kill()
+        except (psutil.Error, OSError):
+            pass
 
 
-SETUP_KEYS = {"language": str, "startWithWindows": bool, "alwaysAdmin": bool, "widgetWasOpen": bool}
+SETUP_KEYS = {"language": str, "startWithWindows": bool, "alwaysAdmin": bool, "widgetWasOpen": bool, "autoUpdate": bool}
 
 
 def _cli_setup(pairs):
@@ -1037,6 +1071,11 @@ def _cli_setup(pairs):
 def _uninstall_cleanup():
     """--uninstall-cleanup: removes what StellarHub registered in Windows outside its own folder."""
     _delete_admin_task()
+    try:
+        from .engine import selfupdate
+        selfupdate.delete_task()
+    except Exception:
+        pass
     import winreg
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
@@ -1182,6 +1221,14 @@ def main():
     if "--admin-task" in sys.argv:
         on = sys.argv[sys.argv.index("--admin-task") + 1:][:1] == ["on"]
         return _ensure_admin_task() if on else _delete_admin_task()
+    if "--self-update" in sys.argv:  # the updater (see engine/selfupdate.py): no window, never a second app
+        _log_to_file()
+        from .engine import selfupdate
+        return selfupdate.run_updater()
+    if "--update-task" in sys.argv:  # the installer, as administrator
+        from .engine import selfupdate
+        on = sys.argv[sys.argv.index("--update-task") + 1:][:1] == ["on"]
+        return selfupdate.ensure_task() if on else selfupdate.delete_task()
     _log_to_file()
     if FROZEN:
         _migrate_store_python_data()
@@ -1195,8 +1242,9 @@ def main():
     if not _claim_single_instance():
         _show_running_copy()
         return
-    threading.Thread(target=_sync_launch_entries, daemon=True).start()
-    if is_admin():
+    if not ISOLATED:  # a test copy never takes over the user's "open with Windows" entry or administrator task
+        threading.Thread(target=_sync_launch_entries, daemon=True).start()
+    if is_admin() and not ISOLATED:
         try:
             with open(SETTINGS, encoding="utf-8") as fh:
                 if json.load(fh).get("alwaysAdmin"):

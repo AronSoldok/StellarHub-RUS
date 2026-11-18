@@ -1,15 +1,19 @@
 ﻿; StellarHub installer (Inno Setup 6.7 or later). Built by packaging/build.ps1, which passes the version:
 ;   ISCC.exe /DAppVersion=0.2.0 packaging\StellarHub.iss
 ;
-; What it does, and nothing else: copies StellarHub to Program Files, adds a Start menu shortcut, installs the WebView2
-; runtime only if Windows lacks it, applies the choices made on the options page (desktop shortcut, open with Windows,
-; always as administrator, the widget at startup, the app's language) and registers a normal uninstaller.
-; The uninstaller also removes what the app registered itself (its scheduled task and "open with Windows" entry).
+; What it does, and nothing else: copies StellarHub to Program Files, adds a Start menu shortcut, downloads and installs
+; the WebView2 runtime from Microsoft only if Windows lacks it, applies the choices made on the options page (desktop
+; shortcut, open with Windows, always as administrator, the widget at startup, updates, the app's language), creates the
+; on-demand task StellarHub updates itself with, and registers a normal uninstaller.
+; The uninstaller also removes what the app registered itself (its scheduled tasks and "open with Windows" entry).
+;
+; /SELFUPDATE=<path of state.json> is how StellarHub's updater runs it (see stellarhub/engine/selfupdate.py): Setup
+; writes "done" or "failed" there when it ends, so the app can reopen itself.
 ;
 ; The wizard follows the Windows display language (English, Spanish, Portuguese, Italian, French or Chinese);
 ; /LANG=spanish (english, portuguese, italian, french, chinesesimplified) forces one.
 ; Silent installs keep the current settings, or use the defaults on a first install. They can also set the options:
-;   /OPTIONS=desktop,startup,admin,widget   (the ones listed are turned on, the rest off)
+;   /OPTIONS=desktop,startup,admin,widget,updates   (the ones listed are turned on, the rest off)
 ;   /APPLANG=es                             (en, es, pt, it, fr, zh)
 
 #ifndef AppVersion
@@ -128,7 +132,7 @@ chinesesimplified.FinishedLabel=StellarHub 已安装完成。您可以随时从�
 
 [CustomMessages]
 english.AppTagline=The control center for your Windows PC
-english.InfoInstalls=Installs StellarHub, plus the Microsoft Edge WebView2 Runtime only if Windows does not have it yet.
+english.InfoInstalls=Installs StellarHub. If Windows does not have the Microsoft Edge WebView2 Runtime yet, it is downloaded from Microsoft and installed too.
 english.InfoRequires=Requires Windows 10 (version 1809) or later, 64-bit.
 english.InfoFree=Free and open source under the GNU GPL v3. No ads, no account.
 english.LinkGitHub=StellarHub on GitHub
@@ -141,6 +145,8 @@ english.OptAdmin=Always open as administrator
 english.OptAdminHint=Every tool works right away, with no Windows permission prompt each time.
 english.OptWidget=Show the always-on-top widget at startup
 english.OptWidgetHint=A small live panel with your PC's vitals, above every window.
+english.OptUpdate=Keep StellarHub up to date
+english.OptUpdateHint=When it opens, StellarHub checks GitHub for a new version and asks before updating.
 english.OptLanguage=App language
 english.StatusApplying=Applying your choices...
 english.RunWebView=Installing the Microsoft Edge WebView2 Runtime...
@@ -149,7 +155,7 @@ english.RunNotes=See what's new in version %1
 english.UninstRemoveData=Also remove your StellarHub settings and Autopilot history?%n%nChoose No to keep them for a future installation.
 
 spanish.AppTagline=El centro de control de tu PC con Windows
-spanish.InfoInstalls=Instala StellarHub y, solo si Windows aún no lo tiene, Microsoft Edge WebView2 Runtime.
+spanish.InfoInstalls=Instala StellarHub. Si Windows aún no tiene Microsoft Edge WebView2 Runtime, también lo descarga de Microsoft y lo instala.
 spanish.InfoRequires=Requiere Windows 10 (versión 1809) o posterior, de 64 bits.
 spanish.InfoFree=Gratis y de código abierto, con licencia GNU GPL v3. Sin anuncios ni cuentas.
 spanish.LinkGitHub=StellarHub en GitHub
@@ -162,6 +168,8 @@ spanish.OptAdmin=Abrir siempre como administrador
 spanish.OptAdminHint=Todas las herramientas funcionan al instante, sin que Windows pida permiso cada vez.
 spanish.OptWidget=Mostrar el widget siempre visible al iniciar
 spanish.OptWidgetHint=Un pequeño panel en vivo con los signos vitales de tu PC, por encima de todas las ventanas.
+spanish.OptUpdate=Mantener StellarHub al día
+spanish.OptUpdateHint=Al abrirse, StellarHub busca una versión nueva en GitHub y pregunta antes de actualizar.
 spanish.OptLanguage=Idioma de la aplicación
 spanish.StatusApplying=Aplicando tus preferencias...
 spanish.RunWebView=Instalando Microsoft Edge WebView2 Runtime...
@@ -170,7 +178,7 @@ spanish.RunNotes=Ver las novedades de la versión %1
 spanish.UninstRemoveData=¿Eliminar también tu configuración de StellarHub y el historial de Autopilot?%n%nElige No para conservarlos para una futura instalación.
 
 portuguese.AppTagline=A central de controle do seu PC com Windows
-portuguese.InfoInstalls=Instala o StellarHub e, somente se o Windows ainda não o tiver, o Microsoft Edge WebView2 Runtime.
+portuguese.InfoInstalls=Instala o StellarHub. Se o Windows ainda não tiver o Microsoft Edge WebView2 Runtime, ele também é baixado da Microsoft e instalado.
 portuguese.InfoRequires=Requer o Windows 10 (versão 1809) ou posterior, de 64 bits.
 portuguese.InfoFree=Gratuito e de código aberto, sob a licença GNU GPL v3. Sem anúncios e sem conta.
 portuguese.LinkGitHub=StellarHub no GitHub
@@ -183,6 +191,8 @@ portuguese.OptAdmin=Sempre abrir como administrador
 portuguese.OptAdminHint=Todas as ferramentas funcionam na hora, sem o Windows pedir permissão a cada vez.
 portuguese.OptWidget=Mostrar o widget sempre visível ao iniciar
 portuguese.OptWidgetHint=Um pequeno painel ao vivo com os sinais vitais do seu PC, acima de todas as janelas.
+portuguese.OptUpdate=Manter o StellarHub atualizado
+portuguese.OptUpdateHint=Ao abrir, o StellarHub procura uma versão nova no GitHub e pergunta antes de atualizar.
 portuguese.OptLanguage=Idioma do aplicativo
 portuguese.StatusApplying=Aplicando suas escolhas...
 portuguese.RunWebView=Instalando o Microsoft Edge WebView2 Runtime...
@@ -191,7 +201,7 @@ portuguese.RunNotes=Ver as novidades da versão %1
 portuguese.UninstRemoveData=Remover também as suas configurações do StellarHub e o histórico do Autopilot?%n%nEscolha Não para mantê-los para uma instalação futura.
 
 italian.AppTagline=Il centro di controllo del tuo PC Windows
-italian.InfoInstalls=Installa StellarHub e, solo se Windows non lo ha già, Microsoft Edge WebView2 Runtime.
+italian.InfoInstalls=Installa StellarHub. Se Windows non ha ancora Microsoft Edge WebView2 Runtime, viene scaricato da Microsoft e installato.
 italian.InfoRequires=Richiede Windows 10 (versione 1809) o successivo, a 64 bit.
 italian.InfoFree=Gratuito e open source, con licenza GNU GPL v3. Niente pubblicità, nessun account.
 italian.LinkGitHub=StellarHub su GitHub
@@ -204,6 +214,8 @@ italian.OptAdmin=Apri sempre come amministratore
 italian.OptAdminHint=Tutti gli strumenti funzionano subito, senza che Windows chieda l'autorizzazione ogni volta.
 italian.OptWidget=Mostra il widget sempre in primo piano all'avvio
 italian.OptWidgetHint=Un piccolo pannello dal vivo con i parametri vitali del tuo PC, sopra tutte le finestre.
+italian.OptUpdate=Mantieni StellarHub aggiornato
+italian.OptUpdateHint=All'apertura, StellarHub cerca una nuova versione su GitHub e chiede prima di aggiornare.
 italian.OptLanguage=Lingua dell'app
 italian.StatusApplying=Applicazione delle tue scelte...
 italian.RunWebView=Installazione di Microsoft Edge WebView2 Runtime...
@@ -212,7 +224,7 @@ italian.RunNotes=Scopri le novità della versione %1
 italian.UninstRemoveData=Vuoi rimuovere anche le impostazioni di StellarHub e la cronologia di Autopilot?%n%nScegli No per conservarle per una futura installazione.
 
 french.AppTagline=Le centre de contrôle de votre PC Windows
-french.InfoInstalls=Installe StellarHub et, uniquement si Windows ne l'a pas encore, Microsoft Edge WebView2 Runtime.
+french.InfoInstalls=Installe StellarHub. Si Windows n'a pas encore Microsoft Edge WebView2 Runtime, il est aussi téléchargé depuis Microsoft et installé.
 french.InfoRequires=Nécessite Windows 10 (version 1809) ou ultérieur, 64 bits.
 french.InfoFree=Gratuit et open source, sous licence GNU GPL v3. Sans publicité, sans compte.
 french.LinkGitHub=StellarHub sur GitHub
@@ -225,6 +237,8 @@ french.OptAdmin=Toujours ouvrir en tant qu'administrateur
 french.OptAdminHint=Tous les outils fonctionnent immédiatement, sans demande d'autorisation de Windows à chaque fois.
 french.OptWidget=Afficher le widget toujours visible au démarrage
 french.OptWidgetHint=Un petit panneau en direct avec les signes vitaux de votre PC, au-dessus de toutes les fenêtres.
+french.OptUpdate=Garder StellarHub à jour
+french.OptUpdateHint=À l'ouverture, StellarHub cherche une nouvelle version sur GitHub et demande avant de mettre à jour.
 french.OptLanguage=Langue de l'application
 french.StatusApplying=Application de vos choix...
 french.RunWebView=Installation de Microsoft Edge WebView2 Runtime...
@@ -233,7 +247,7 @@ french.RunNotes=Voir les nouveautés de la version %1
 french.UninstRemoveData=Supprimer également vos paramètres StellarHub et l'historique d'Autopilot ?%n%nChoisissez Non pour les conserver en vue d'une future installation.
 
 chinesesimplified.AppTagline=您的 Windows 电脑控制中心
-chinesesimplified.InfoInstalls=安装 StellarHub；仅当 Windows 尚未安装 Microsoft Edge WebView2 Runtime 时，才会一并安装。
+chinesesimplified.InfoInstalls=安装 StellarHub。如果 Windows 尚未安装 Microsoft Edge WebView2 Runtime，也会从 Microsoft 下载并安装。
 chinesesimplified.InfoRequires=需要 64 位 Windows 10（版本 1809）或更高版本。
 chinesesimplified.InfoFree=免费开源，采用 GNU GPL v3 许可证。无广告，无需账户。
 chinesesimplified.LinkGitHub=GitHub 上的 StellarHub
@@ -246,6 +260,8 @@ chinesesimplified.OptAdmin=始终以管理员身份打开
 chinesesimplified.OptAdminHint=所有工具即开即用，Windows 不会每次都弹出权限提示。
 chinesesimplified.OptWidget=启动时显示置顶小组件
 chinesesimplified.OptWidgetHint=一个实时显示电脑状态的小面板，始终位于所有窗口之上。
+chinesesimplified.OptUpdate=让 StellarHub 保持最新
+chinesesimplified.OptUpdateHint=每次打开时，StellarHub 会在 GitHub 上检查新版本，并在更新前征得你的同意。
 chinesesimplified.OptLanguage=应用语言
 chinesesimplified.StatusApplying=正在应用您的选择...
 chinesesimplified.RunWebView=正在安装 Microsoft Edge WebView2 Runtime...
@@ -260,14 +276,15 @@ Type: filesandordirs; Name: "{app}\_internal"
 [Files]
 Source: "..\build\dist\StellarHub\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
-Source: "..\build\redist\MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: NeedsWebView2
+; the WebView2 bootstrapper comes straight from Microsoft, and only if Windows does not have the runtime yet
+Source: "https://go.microsoft.com/fwlink/p/?LinkId=2124703"; DestDir: "{tmp}"; DestName: "MicrosoftEdgeWebview2Setup.exe"; ExternalSize: 2097152; Flags: external download ignoreversion deleteafterinstall; Check: NeedsWebView2
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: "StellarHub.App"; Comment: "{cm:AppTagline}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: "StellarHub.App"; Comment: "{cm:AppTagline}"; Check: WantDesktopIcon
 
 [Run]
-Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "{cm:RunWebView}"; Check: NeedsWebView2; Flags: waituntilterminated
+Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "{cm:RunWebView}"; Check: NeedsWebView2 and WebView2SetupTrusted; Flags: waituntilterminated
 Filename: "{app}\{#AppExe}"; Description: "{cm:RunApp}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 Filename: "{#AppUrl}/releases/tag/v{#AppVersion}"; Description: "{cm:RunNotes,{#AppVersion}}"; Flags: shellexec nowait postinstall skipifsilent runasoriginaluser unchecked
 
@@ -276,7 +293,9 @@ Filename: "{app}\{#AppExe}"; Parameters: "--quit"; RunOnceId: "CloseStellarHub";
 Filename: "{app}\{#AppExe}"; Parameters: "--uninstall-cleanup"; RunOnceId: "CleanupStellarHub"; Flags: runhidden waituntilterminated
 
 [UninstallDelete]
-; the interface cache (rebuilt on demand); settings are only removed if the user says so (see below)
+; what the updater downloaded, and the interface cache (rebuilt on demand); settings are only removed if the user
+; says so (see below)
+Type: filesandordirs; Name: "{app}\update"
 Type: filesandordirs; Name: "{localappdata}\StellarHub\webview"
 Type: dirifempty; Name: "{localappdata}\StellarHub"
 
@@ -288,11 +307,13 @@ const
 
 var
   OptionsPage: TWizardPage;
-  DesktopBox, StartupBox, AdminBox, WidgetBox: TNewCheckBox;
-  StartupHint, AdminHint, WidgetHint: TNewStaticText;
+  DesktopBox, StartupBox, AdminBox, WidgetBox, UpdateBox: TNewCheckBox;
+  StartupHint, AdminHint, WidgetHint, UpdateHint: TNewStaticText;
   LangCombo: TNewComboBox;
   { the options as they were when Setup started: on top of existing settings, only what the user changes is applied }
-  HadSettings, WasDesktop, WasStartup, WasAdmin, WasWidget: Boolean;
+  HadSettings, WasDesktop, WasStartup, WasAdmin, WasWidget, WasUpdate: Boolean;
+  { /SELFUPDATE: reached the end of the installation }
+  SelfUpdateDone: Boolean;
   WasLang: String;
 
 function BoolArg(B: Boolean): String;
@@ -314,6 +335,21 @@ function NeedsWebView2: Boolean;
 begin
   Result := not (HasWebView2In(HKLM, WebView2Key32) or HasWebView2In(HKLM, WebView2Key) or
                  HasWebView2In(HKCU, WebView2Key));
+end;
+
+{ the downloaded bootstrapper only runs if Windows says it is signed by Microsoft }
+function WebView2SetupTrusted: Boolean;
+var
+  F: String;
+  Code: Integer;
+begin
+  F := ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe');
+  Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    '-NoProfile -NonInteractive -Command "$s = Get-AuthenticodeSignature -LiteralPath ''' + F + '''; ' +
+    'if ($s.Status -eq ''Valid'' -and $s.SignerCertificate.Subject -match ''O=Microsoft Corporation'') { exit 0 } else { exit 1 }"',
+    '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+  if not Result then
+    Log('The downloaded WebView2 bootstrapper is not signed by Microsoft: not running it.');
 end;
 
 { ---------- languages: wizard language <-> the app's language codes ---------- }
@@ -407,6 +443,7 @@ begin
     WasStartup := SettingBool(Json, 'startWithWindows', False);
     WasAdmin := SettingBool(Json, 'alwaysAdmin', False);
     WasWidget := SettingBool(Json, 'widgetWasOpen', False);
+    WasUpdate := SettingBool(Json, 'autoUpdate', True);
     WasLang := SettingValue(Json, 'language');
     { no language saved (or "auto") means the app follows Windows: offer the language of this wizard }
     if AppLangIndex(WasLang) < 0 then
@@ -417,6 +454,7 @@ begin
     WasStartup := GetPreviousData('StartWithWindows', '0') = '1';
     WasAdmin := GetPreviousData('AlwaysAdmin', '0') = '1';
     WasWidget := GetPreviousData('Widget', '0') = '1';
+    WasUpdate := GetPreviousData('AutoUpdate', '1') = '1';
     WasLang := GetPreviousData('AppLanguage', AppLangOf(ActiveLanguage));
     if AppLangIndex(WasLang) < 0 then
       WasLang := AppLangOf(ActiveLanguage);
@@ -429,7 +467,8 @@ procedure HintClick(Sender: TObject);
 begin
   if Sender = StartupHint then StartupBox.Checked := not StartupBox.Checked
   else if Sender = AdminHint then AdminBox.Checked := not AdminBox.Checked
-  else if Sender = WidgetHint then WidgetBox.Checked := not WidgetBox.Checked;
+  else if Sender = WidgetHint then WidgetBox.Checked := not WidgetBox.Checked
+  else if Sender = UpdateHint then UpdateBox.Checked := not UpdateBox.Checked;
 end;
 
 function AddOption(const Caption, Hint: String; Checked: Boolean; var Top: Integer;
@@ -476,6 +515,7 @@ begin
   StartupBox := AddOption(CustomMessage('OptStartup'), CustomMessage('OptStartupHint'), WasStartup, Top, StartupHint);
   AdminBox := AddOption(CustomMessage('OptAdmin'), CustomMessage('OptAdminHint'), WasAdmin, Top, AdminHint);
   WidgetBox := AddOption(CustomMessage('OptWidget'), CustomMessage('OptWidgetHint'), WasWidget, Top, WidgetHint);
+  UpdateBox := AddOption(CustomMessage('OptUpdate'), CustomMessage('OptUpdateHint'), WasUpdate, Top, UpdateHint);
 
   LangLabel := TNewStaticText.Create(OptionsPage);
   LangLabel.Parent := OptionsPage.Surface;
@@ -513,6 +553,7 @@ begin
     StartupBox.Checked := Pos(',startup,', Opts) > 0;
     AdminBox.Checked := Pos(',admin,', Opts) > 0;
     WidgetBox.Checked := Pos(',widget,', Opts) > 0;
+    UpdateBox.Checked := Pos(',updates,', Opts) > 0;
   end;
   L := ExpandConstant('{param:APPLANG|}');
   if AppLangIndex(L) >= 0 then
@@ -582,6 +623,7 @@ begin
   SetPreviousData(PreviousDataKey, 'StartWithWindows', BoolArg(StartupBox.Checked));
   SetPreviousData(PreviousDataKey, 'AlwaysAdmin', BoolArg(AdminBox.Checked));
   SetPreviousData(PreviousDataKey, 'Widget', BoolArg(WidgetBox.Checked));
+  SetPreviousData(PreviousDataKey, 'AutoUpdate', BoolArg(UpdateBox.Checked));
   SetPreviousData(PreviousDataKey, 'AppLanguage', AppLangAt(LangCombo.ItemIndex));
 end;
 
@@ -628,6 +670,8 @@ begin
     Args := Args + ' alwaysAdmin=' + BoolArg(AdminBox.Checked);
   if not HadSettings or (WidgetBox.Checked <> WasWidget) then
     Args := Args + ' widgetWasOpen=' + BoolArg(WidgetBox.Checked);
+  if not HadSettings or (UpdateBox.Checked <> WasUpdate) then
+    Args := Args + ' autoUpdate=' + BoolArg(UpdateBox.Checked);
   if Args <> '' then
   begin
     WizardForm.StatusLabel.Caption := CustomMessage('StatusApplying');
@@ -652,14 +696,43 @@ begin
       Log('Installing for this user only: StellarHub sets up its administrator task the first time it opens.');
   end;
 
+  { the task StellarHub updates itself with: it runs StellarHub.exe --self-update with administrator rights, and only
+    when the app starts it (it has no schedule). Installing for one user needs no task. }
+  if IsAdminInstallMode then
+  begin
+    Log('Update task: on');
+    Exec(Exe, '--update-task on', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  end;
+
   if WasDesktop and not DesktopBox.Checked then
     DeleteFile(ExpandConstant('{autodesktop}\{#AppName}.lnk'));
+end;
+
+{ /SELFUPDATE=<file>: tell StellarHub's updater how the installation ended }
+procedure WriteSelfUpdateState(const St: String);
+var
+  F: String;
+begin
+  F := ExpandConstant('{param:SELFUPDATE|}');
+  if F <> '' then
+    SaveStringToFile(F, '{"st": "' + St + '", "ver": "{#AppVersion}"}', False);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
-    ApplyOptions;
+    ApplyOptions
+  else if CurStep = ssDone then
+  begin
+    SelfUpdateDone := True;
+    WriteSelfUpdateState('done');
+  end;
+end;
+
+procedure DeinitializeSetup;
+begin
+  if not SelfUpdateDone then
+    WriteSelfUpdateState('failed');
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

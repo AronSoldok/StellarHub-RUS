@@ -23,6 +23,8 @@ Live hardware stats, drivers, apps, disk space, cleanup and hardware tests, in o
 - [Getting started](#-getting-started)
 - [Keyboard shortcuts](#-keyboard-shortcuts)
 - [Safety](#-safety)
+- [Privacy](#-privacy)
+- [Code signing policy](#-code-signing-policy)
 - [How it's built](#-how-its-built)
 - [Roadmap](#-roadmap)
 - [Contributing](#-contributing)
@@ -63,7 +65,7 @@ installer created); and a hunter mode (point at a window to find out which progr
 App updates through **winget**, Windows Update, Microsoft Store, system components (.NET, Visual C++, WebView2…)
 and developer tools (pip, npm), with release notes and a queue that shows real progress.
 
-### ⇪ Hangar
+### ⇪ App Hangar
 Pick apps from a curated catalog of 150+ trusted programs (or search all of winget) and install them in one go,
 with real progress. Ready-made **kits** (Essentials, Gamer, Developer, Creator…), your own kits, and a short code to
 set up another PC the same way.
@@ -83,7 +85,7 @@ A privacy and security score with plain-language findings: which apps used your 
 when, antivirus, firewall, Secure Boot, TPM, encryption and patch age, open ports and who can reach them, 20 Windows
 tracking settings with undo, and an audit of everything that starts on its own (tasks, services, browser extensions).
 
-### ◷ Benchmark
+### ◷ Benchmark Testing
 Test every component or run them all for a **StellarHub Score**: processor (per core), graphics (WebGL scenes),
 memory bandwidth and latency, CrystalDiskMark-style disk tests, an opt-in network test, and a **stress test** with
 live temperatures, clocks and throttling detection. Every run is kept to compare over time.
@@ -104,6 +106,9 @@ conditions and what to do.
   classic menu. Closing the window keeps StellarHub running in the background.
 - **Backups and restore** in Settings: restore points (create, turn on protection, delete) and every backup StellarHub
   made, in one place.
+- **Updates itself**: when it opens, StellarHub checks this repository for a new release and asks you. One click
+  downloads it, checks its SHA-256, installs it silently and reopens the app where you were (no Windows prompt
+  when it was installed for all users). It can be turned off in *Settings > Updates*.
 - **Command palette** (`Ctrl K`) to jump to any tool or action by typing.
 - **Optional administrator mode**, and a permanent one if you want it (no Windows prompt on every launch).
 - **Settings for almost everything**: theme, colors, interface size, density, corners, starfield, animation
@@ -130,11 +135,15 @@ conditions and what to do.
 
 Download **`StellarHub-Setup-x.y.z.exe`** from the [latest release](https://github.com/estebanarosemena/StellarHub/releases/latest)
 and run it. It installs to `Program Files`, adds a Start menu shortcut and can be removed from *Settings > Apps*
-like any other program. Requires Windows 10 (1809) or 11, 64-bit; the setup adds the
-[WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) only if your PC lacks it.
+like any other program. Requires Windows 10 (1809) or 11, 64-bit; if your PC lacks the
+[WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/), the setup downloads it from Microsoft
+(and only runs it if it is signed by Microsoft).
 
-> The installer is not code-signed yet, so Windows SmartScreen may say it is from an "unknown publisher".
-> Each release lists the SHA-256 of the setup file so you can check it is the original.
+After that, StellarHub keeps itself up to date: it asks when a new version is out.
+
+> The installer is not code-signed yet (see the [code signing policy](#-code-signing-policy)), so Windows
+> SmartScreen may say it is from an "unknown publisher". Each release lists the SHA-256 of the setup file so you
+> can check it is the original.
 
 ### ◇ Run it from source
 
@@ -156,9 +165,12 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 ```
 
 It creates a clean build environment with pinned versions, runs the tests, builds `StellarHub.exe` with
-PyInstaller and packs it with [Inno Setup](https://jrsoftware.org/isinfo.php) 6.6+ into `dist\`. The app is built
+PyInstaller and packs it with [Inno Setup](https://jrsoftware.org/isinfo.php) 6.7+ into `dist\`. The app is built
 as a folder (not a single self-extracting file) and without UPX, so it starts as fast as running from source and
 does not look like a packed executable to antivirus software.
+
+Releases are built from this repository by GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)),
+with the same script.
 
 ### ◇ Administrator mode
 
@@ -186,6 +198,25 @@ StellarHub touches sensitive parts of Windows, so it does it carefully:
 - Some areas are **never touched**: Windows itself, shared folders, personal data, critical services, kernel
   drivers and StellarHub's own folder.
 - Whatever Windows does not report is shown as "—": the app never makes up numbers.
+
+## 🔒 Privacy
+
+StellarHub has no account, no telemetry and no analytics: it never sends anything about you or your PC anywhere.
+The few times it goes online (to check for its own updates, to download app icons, or for a network test you
+start) are listed in [PRIVACY.md](PRIVACY.md), with how to turn each one off.
+
+## 🔏 Code signing policy
+
+StellarHub is applying to the [SignPath Foundation](https://signpath.org) for free code signing for open-source
+projects. Once accepted, releases will say: *Free code signing provided by [SignPath.io](https://about.signpath.io),
+certificate by [SignPath Foundation](https://signpath.org)*.
+
+- **What gets signed:** only the installer and program built by GitHub Actions from this repository
+  ([`.github/workflows/build.yml`](.github/workflows/build.yml)), never a file built on a personal computer.
+- **Committers and reviewers:** [estebanarosemena](https://github.com/estebanarosemena)
+- **Approvers** (every release is approved by hand before it is signed): [estebanarosemena](https://github.com/estebanarosemena)
+- **Privacy:** see [PRIVACY.md](PRIVACY.md). This program will not transfer any information to other networked
+  systems unless specifically requested by the user or the person installing or operating it.
 
 ## 🏗️ How it's built
 
@@ -219,7 +250,8 @@ designs/                   the early design explorations
 - [x] Autopilot running routines on its own (while StellarHub is open, also hidden in the tray)
 - [x] `.exe` installer
 - [x] Six languages
-- [ ] Automatic StellarHub updates from this repository
+- [x] Automatic StellarHub updates from this repository
+- [ ] Code-signed releases (SignPath Foundation)
 
 ## 🤝 Contributing
 

@@ -59,7 +59,10 @@ Short labels stay short (buttons, tabs, chips must fit). Sentence case as in Eng
 | Program Remover | Desinstalador de programas | Removedor de programas | Rimozione programmi | Désinstallateur | 程序卸载 |
 | Program Updater | Actualizador de programas | Atualizador de programas | Aggiornamento programmi | Mise à jour des programmes | 程序更新 |
 | Storage Checker | Analizador de almacenamiento | Analisador de armazenamento | Analisi dello spazio | Analyseur de stockage | 存储分析 |
-| Super Optimizer | Superoptimizador | Superotimizador | Super ottimizzatore | Super optimiseur | 超级优化 |
+| Super Optimizer | Super Optimizador | Super Otimizador | Super ottimizzatore | Super optimiseur | 超级优化 |
+| App Hangar | App Hangar | App Hangar | App Hangar | App Hangar | App Hangar |
+| Privacy & Security | Privacidad y seguridad | Privacidade e segurança | Privacy e sicurezza | Confidentialité et sécurité | 隐私和安全性 |
+| Benchmark Testing | Benchmark Testing | Benchmark Testing | Benchmark Testing | Benchmark Testing | 性能测试 |
 | Device Tester | Probador de dispositivos | Testador de dispositivos | Test dei dispositivi | Testeur de périphériques | 设备测试 |
 | Autopilot | Piloto automático | Piloto automático | Pilota automatico | Pilote automatique | 自动维护 |
 | Settings | Ajustes | Configurações | Impostazioni | Paramètres | 设置 |

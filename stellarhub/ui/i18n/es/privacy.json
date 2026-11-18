@@ -245,7 +245,7 @@
   "Search by name or path": "Buscar por nombre o ruta",
   "When it runs": "Cuándo se ejecuta",
   "Risk": "Riesgo",
-  "Regular startup apps are in Super Optimizer > Startup. Here you see what runs without showing up there.": "Las aplicaciones de inicio normales están en Superoptimizador > Arranque. Aquí ves lo que se ejecuta sin aparecer allí.",
+  "Regular startup apps are in Super Optimizer > Startup. Here you see what runs without showing up there.": "Las aplicaciones de inicio normales están en Super Optimizador > Arranque. Aquí ves lo que se ejecuta sin aparecer allí.",
   "Open Startup": "Abrir Arranque",
   "{name}: enabled": "{name}: activado",
   "Reading tasks, services, the registry and browser extensions, and checking signatures…": "Leyendo tareas, servicios, el registro y las extensiones del navegador, y comprobando firmas…",
@@ -424,5 +424,6 @@
   "In use for {time}": "En uso desde hace {time}",
   "Windows Firewall is off: {list}": "El Firewall de Windows está desactivado: {list}",
   "1 setting shares data that Windows works fine without": "1 ajuste comparte datos que Windows no necesita",
-  "{n} settings share data that Windows works fine without": "{n} ajustes comparten datos que Windows no necesita"
+  "{n} settings share data that Windows works fine without": "{n} ajustes comparten datos que Windows no necesita",
+  "Protection level, out of 100": "Nivel de protección, sobre 100"
 }

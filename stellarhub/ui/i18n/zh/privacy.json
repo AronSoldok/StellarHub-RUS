@@ -424,5 +424,6 @@
   "In use for {time}": "已使用 {time}",
   "Windows Firewall is off: {list}": "Windows 防火墙已关闭：{list}",
   "1 setting shares data that Windows works fine without": "1 项设置会共享 Windows 并不需要的数据",
-  "{n} settings share data that Windows works fine without": "{n} 项设置会共享 Windows 并不需要的数据"
+  "{n} settings share data that Windows works fine without": "{n} 项设置会共享 Windows 并不需要的数据",
+  "Protection level, out of 100": "防护等级（满分 100）"
 }

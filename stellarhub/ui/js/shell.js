@@ -412,7 +412,7 @@ function sectionHTML(id) {
       ${tog('adminHints', t('Suggest administrator mode'), t('A subtle hint when a feature needs it.'))}`;
     case 'updates': return `<h3>${t('Updates')}</h3><p>${t('StellarHub updates itself from its GitHub repository.')}</p>
       <div class="set inline"><div class="lbl"><div>${t('Installed version')}<span>StellarHub ${state.version}</span></div></div><button class="btn sec" data-act="checkupd">${ic('updater')}${t('Check now')}</button></div>
-      ${tog('autoUpdate', t('Check for updates automatically'), t('When the app opens and once a day.'))}`;
+      ${tog('autoUpdate', t('Check for updates automatically'), t('When the app opens and every few hours. StellarHub always asks before updating.'))}`;
     case 'about': return `<div class="about-h"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.4"/><circle cx="20.2" cy="8.3" r="1.5" style="fill:var(--accent2)"/></svg>
         <div><h3>StellarHub</h3><p>${t('Version {v}. The control center for your PC.', { v: state.version })}</p></div></div>
       <div class="set inline"><div class="lbl"><div>${t('Created by')}<span>${t('Esteban Arosemena and Claude')}</span></div></div></div>
@@ -465,7 +465,7 @@ sheet.addEventListener('click', e => {
 });
 async function runAct(a) {
   if (a === 'admin') askAdmin(true);
-  else if (a === 'checkupd') toast(SH.t('You are on the latest version.'));
+  else if (a === 'checkupd') { const b = $('[data-act="checkupd"]'); if (SH.selfUpdate) { if (b) b.disabled = true; try { await SH.selfUpdate.check(true); } finally { if (b) b.disabled = false; } } }
   else if (a === 'github') { if (await SH.call('open_url', 'https://github.com/estebanarosemena/StellarHub') === undefined) window.open('https://github.com/estebanarosemena/StellarHub'); }
   else if (a === 'autozoom') {
     const v = String(autoZoom); const s = $('.seg[data-key="zoom"]', sheet);
