@@ -5,10 +5,12 @@ __pycache__/
 .venv/
 venv/
 
-# compilación (el .exe se genera aparte)
+# build output (packaging/build.ps1)
 build/
 dist/
+.buildenv/
 *.spec
+!packaging/StellarHub.spec
 
 # editores y sistema
 .vscode/
