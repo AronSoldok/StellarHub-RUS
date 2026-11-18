@@ -281,3 +281,10 @@
   #v-storage .st-bh,#v-storage .st-br{grid-template-columns:44px minmax(0,1fr) 84px 76px}
   #v-storage .st-bd,#v-storage .st-bh span:nth-child(4){display:none}
 }
+
+/* real file icons (inside the app): the type colour stays as a thin border */
+#v-storage .st-bt.img{background:var(--raise2);border-color:color-mix(in oklab,var(--c) 30%,var(--line))}
+#v-storage .st-bt.img img{width:24px;height:24px;object-fit:contain;display:block}
+#v-storage .st-new .st-bt.img img{width:22px;height:22px}
+#v-storage .st-ic.img{background:none}
+#v-storage .st-ic.img img{width:20px;height:20px;object-fit:contain;display:block}

@@ -208,7 +208,7 @@ def _programs():
 def _match(row):
     progs, by_key, by_name = _programs()
     rid = row.get("id", "")
-    if rid.startswith("ARP\\"):
+    if rid.startswith(("ARP\\", "MSIX\\")):  # registry key or Store package full name
         p = by_key.get(rid.split("\\")[-1].lower())
         if p:
             return p
@@ -291,13 +291,13 @@ def scan_apps(job):
             unknown.append({"name": r["name"].replace("…", "").strip(), "ver": r.get("version", ""),
                             "pub": (p or {}).get("publisher", ""), "url": (p or {}).get("url", ""), "_p": p})
         elif rid.startswith("MSIX\\") or (r.get("source") or "").lower() == "msstore":
-            store_ok.append({"name": r["name"], "ver": r.get("version", "")})
+            store_ok.append({"name": r["name"], "ver": r.get("version", ""), "_p": _match(r)})
         else:
             c = _category(r)
             if c == "runtimes":
-                rt_ok.append({"name": r["name"], "ver": r.get("version", ""), "pub": "", "id": rid})
+                rt_ok.append({"name": r["name"], "ver": r.get("version", ""), "pub": "", "id": rid, "_p": _match(r)})
             elif c == "dev":
-                dev_ok.append({"name": r["name"], "ver": r.get("version", ""), "id": rid})
+                dev_ok.append({"name": r["name"], "ver": r.get("version", ""), "id": rid, "_p": _match(r)})
     # components: no duplicates and no Store framework packages nobody recognizes
     noise = re.compile(r"UWP|Native Runtime Package|^Microsoft\.(UI\.Xaml|VCLibs|WindowsAppRuntime)", re.I)
     seen = set()
@@ -305,9 +305,16 @@ def scan_apps(job):
     # WebView2 doesn't always show up in winget
     wv = _webview2()
     if wv and not any("webview2" in x["name"].lower() for x in rt_ok + [i for i in items if i["cat"] == "runtimes"]):
-        rt_ok.append({"name": "WebView2 Runtime", "ver": wv, "pub": "Microsoft", "id": "Microsoft.EdgeWebView2Runtime"})
+        exe = os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"), "Microsoft", "EdgeWebView",
+                           "Application", wv, "msedgewebview2.exe")
+        rt_ok.append({"name": "WebView2 Runtime", "ver": wv, "pub": "Microsoft", "id": "Microsoft.EdgeWebView2Runtime",
+                      "_p": {"source": "file", "icon": exe}})
     job.progress(.6, tr("Getting each program's icon…"))
-    todo = [x for x in items + unknown if x.get("_p")]
+    lists = items + unknown + store_ok + rt_ok + dev_ok
+    for x in items:  # not in the registry index: the icon helper still looks in Program Files\<name>
+        if not x.get("_p") and x.get("source") != "msstore":
+            x["_p"] = {"name": x["name"], "source": "winget"}
+    todo = [x for x in lists if x.get("_p")]
     done = [0]
 
     def ic(x):
@@ -316,7 +323,7 @@ def scan_apps(job):
         if done[0] % 4 == 0:
             job.progress(.6 + .38 * done[0] / max(1, len(todo)), tr("Getting each program's icon…"))
     list(ThreadPoolExecutor(6).map(ic, todo))
-    for x in items + unknown:
+    for x in lists:
         x.pop("_p", None)
     unknown.sort(key=lambda x: x["name"].lower())
     store_ok.sort(key=lambda x: x["name"].lower())

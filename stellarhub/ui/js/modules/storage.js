@@ -238,6 +238,34 @@ const pathOf = n => {
 };
 const isAnc = (a, n) => { for (let x = n; x; x = x.parent) if (x === a) return true; return false; };
 const typeOf = n => n.dir ? n.dom : n.type;
+/* ---------------- real file icons (what Explorer shows), cached per type; programs and shortcuts get their own.
+   Inside the app only: the engine answers in batches; the coloured extension badge stays as the fallback. ---------------- */
+const FICON = new Map(), FTRIES = new Map();
+const extOf = name => { const s = String(name || ''); const i = s.lastIndexOf('.'); return i > 0 ? s.slice(i + 1).toLowerCase() : ''; };
+const iconSpec = (name, full) => { const e = extOf(name); return /^(exe|lnk|ico|msc|cpl|scr)$/.test(e) && full ? 'file:' + full : 'ext:.' + (e || 'zzunknown'); };
+/* extension badge (Largest, Duplicates, Compare) */
+function badge(name, full, color) {
+  const e = extOf(name), spec = iconSpec(name, full), u = FICON.get(spec);
+  return u ? `<span class="st-bt img" style="--c:${color}" title=".${esc(e)}"><img src="${u}" alt="" decoding="async"></span>`
+    : `<span class="st-bt" style="--c:${color}" data-ics="${esc(spec)}">${esc(e || '·')}</span>`;
+}
+async function paintIcons(root) {
+  if (!ST.real || !root) return;
+  const els = $$('[data-ics]', root);
+  const want = [...new Set(els.map(x => x.dataset.ics))].filter(k => !FICON.has(k) && (FTRIES.get(k) || 0) < 2).slice(0, 150);
+  if (want.length) {
+    let r = null; try { r = await SH.engine('monitor', 'icons', want); } catch { r = null; }
+    want.forEach(k => { if (r && r[k]) FICON.set(k, r[k]); else FTRIES.set(k, (FTRIES.get(k) || 0) + 1); });
+  }
+  let left = false;
+  $$('[data-ics]', root).forEach(x => {
+    const u = FICON.get(x.dataset.ics); if (!u) { left = left || (FTRIES.get(x.dataset.ics) || 0) < 2; return; }
+    const tree = x.classList.contains('st-ic'); x.removeAttribute('data-ics'); x.classList.add('img');
+    if (!tree) x.title = '.' + x.textContent.trim();
+    x.innerHTML = `<img src="${u}" alt="" decoding="async">`;
+  });
+  if (left && want.length) setTimeout(() => paintIcons(root), 200);
+}
 const fmtB = b => SH.fmtBytes(b);
 const pct = v => (v * 100 < 0.1 ? '<' + fmt1(.1) : fmt1(v * 100)) + '%';
 const fmtDate = t => new Date(t).toLocaleDateString(SH.i18n.locale, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -644,7 +672,8 @@ function scanFirst(el, what) {
 function trow(n, depth, base) {
   const t = typeOf(n); const frac = base ? n.size / base : 0;
   return `<div class="st-tr${n.dir ? '' : ' file'}${n.group ? ' grp' : ''}" data-id="${n.id}" style="--d:${depth}">
-    <span class="st-nmc">${n.dir ? `<button class="st-tw" data-tw="${n.id}" aria-label="${T('Expand')}">${ic('chev')}</button>` : '<span class="st-tw"></span>'}<span class="st-ic" style="--c:${T_(t).c}">${ic(n.dir ? 'folder' : n.group ? 'layers' : 'file')}</span><span class="st-nm">${esc(depth === 0 ? targetName() : n.name)}</span></span>
+    <span class="st-nmc">${n.dir ? `<button class="st-tw" data-tw="${n.id}" aria-label="${T('Expand')}">${ic('chev')}</button>` : '<span class="st-tw"></span>'}${!n.dir && !n.group && ST.real && FICON.get(iconSpec(n.name, pathOf(n))) ? `<span class="st-ic img" style="--c:${T_(t).c}"><img src="${FICON.get(iconSpec(n.name, pathOf(n)))}" alt="" decoding="async"></span>`
+      : `<span class="st-ic" style="--c:${T_(t).c}"${!n.dir && !n.group ? ` data-ics="${esc(iconSpec(n.name, pathOf(n)))}"` : ''}>${ic(n.dir ? 'folder' : n.group ? 'layers' : 'file')}</span>`}<span class="st-nm">${esc(depth === 0 ? targetName() : n.name)}</span></span>
     <span class="st-sz">${fmtB(n.size)}</span>
     <span class="st-pc"><span class="bar"><span style="--v:${Math.max(.003, frac).toFixed(4)};background:${T_(t).c}"></span></span><em>${pct(frac)}</em></span>
     <span class="st-fc">${n.dir || n.group ? fmtInt(n.fc) : ''}</span><span class="st-dt">${n.mtime ? fmtDate(n.mtime) : ''}</span></div>${n.dir ? `<div class="st-kids" data-kids="${n.id}"><div></div></div>` : ''}`;
@@ -653,6 +682,7 @@ function fillKids(n, depth) {
   const box = $(`#v-${ID} [data-kids="${n.id}"] > div`); if (!box || box.dataset.f) return box; box.dataset.f = 1;
   const shown = n.kids.filter(k => k.size > 0).slice(0, 80); const rest = n.kids.length - shown.length;
   box.innerHTML = shown.map(k => trow(k, depth + 1, n.size)).join('') + (rest > 0 ? `<div class="st-tr more" style="--d:${depth + 1}"><span class="st-nmc"><span class="st-tw"></span><span class="faint">${T('and {n} smaller items', { n: fmtInt(rest) })}</span></span></div>` : '');
+  paintIcons(box);
   return box;
 }
 async function toggleTree(id, force) {
@@ -743,7 +773,7 @@ function bigList() {
 }
 function bigRow(n) {
   const t = typeOf(n);
-  return `<div class="st-br" data-big="${n.id}"><span class="st-bt" style="--c:${T_(t).c}">${esc(n.ext || '·')}</span>
+  return `<div class="st-br" data-big="${n.id}">${badge(n.name, fullPath(n), T_(t).c)}
     <div class="st-bn"><b>${esc(n.name)}</b><span class="faint">${wp(folderOf(n))}</span></div>
     <span class="st-bs">${fmtB(n.size)}</span><span class="st-bd faint">${n.mtime ? fmtDate(n.mtime) : ''}</span>
     <span class="st-ba"><button class="iconbtn" data-bopen="${n.id}" title="${T('Show in Explorer')}">${ic('folder')}</button><button class="iconbtn" data-btrash="${n.id}" title="${T('Send to the Recycle Bin')}">${ic('trash')}</button></span></div>`;
@@ -780,7 +810,7 @@ async function renderBig(el) {
   BIG.items = await bigItems();
   const list = $('.st-blist', el);
   const total = () => { const l = bigList(); $('.st-btot', el).textContent = T('{n} files, {size}', { n: fmtInt(l.length), size: fmtB(l.reduce((a, n) => a + n.size, 0)) }); };
-  const paint = () => { const l = bigList(); list.innerHTML = l.map(bigRow).join('') || `<div class="empty"><b>${T('Nothing matches')}</b>${T('Try another word.')}</div>`; total(); };
+  const paint = () => { const l = bigList(); list.innerHTML = l.map(bigRow).join('') || `<div class="empty"><b>${T('Nothing matches')}</b>${T('Try another word.')}</div>`; total(); paintIcons(list); };
   el._paint = paint;
   paint(); $$('.st-br', list).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: Math.min(i, 14) * 25, e: EASE.spring }));
   if (el.dataset.b) return; el.dataset.b = 1;
@@ -854,14 +884,14 @@ async function renderDups(el) {
       <div class="st-dbars st-scroll">${DUPS.map(d => `<button class="st-dbr" data-dgo="${d.id}"><span class="st-dbn"><span>${esc(d.name)}</span><b>${fmtB(d.size * (d.copies.length - 1))}</b></span><span class="bar"><span style="transform:scaleX(${(d.size * (d.copies.length - 1) / mxd).toFixed(4)});background:${T_(dupType(d)).c}"></span></span></button>`).join('')}</div>
       <button class="btn danger" data-dall>${ic('trash')}${T('Delete all copies')}</button></aside>
     <div class="st-dgroups st-scroll">${DUPS.map(d => `<div class="pan st-dg${d.id < 2 ? ' open' : ''}" data-dg="${d.id}" data-asm>
-      <button class="st-dgh" data-dt="${d.id}"><span class="st-bt" style="--c:${T_(dupType(d)).c}">${esc(d.ext || '·')}</span>
+      <button class="st-dgh" data-dt="${d.id}">${badge(d.name, d.copies[0] && d.copies[0][2], T_(dupType(d)).c)}
         <div class="st-bn"><b>${esc(d.name)}</b><span class="faint">${T('{n} copies of {size}', { n: d.copies.length, size: fmtB(d.size) })}</span></div>
         <span class="chip acc">${T('Frees {size}', { size: fmtB(d.size * (d.copies.length - 1)) })}</span><span class="st-dch">${ic('chevd')}</span></button>
       <div class="st-dbody"><div><div class="st-dcs">${d.copies.map((c, j) => `<button class="st-dc${j === d.keep ? ' keep' : ''}" data-dk="${d.id}:${j}"><span class="st-radio"></span><span class="st-dp">${wp(c[0])}</span><span class="faint">${c[1]}</span><span class="st-dkl">${j === d.keep ? T('Keep') : T('Delete')}</span></button>`).join('')}</div>
         <div class="st-dfoot"><span class="faint">${T('Pick which one to keep. The others go to the Recycle Bin.')}</span><button class="btn sm sec" data-dclean="${d.id}">${T('Delete the other copies')}</button></div></div></div>
     </div>`).join('')}</div></div>`;
   SH.assemble(el, 40);
-  updDups(el); bindDups(el);
+  updDups(el); bindDups(el); paintIcons(el);
 }
 function updDups(el, d = 900) {
   const f = dupFree(); const el2 = $('.st-dfree', el); if (!el2) return; SH.countUp(el2, +(f / GB).toFixed(1), d, 1);
@@ -968,9 +998,9 @@ async function renderCompare(el) {
       <div class="pan st-hist" data-asm><h4>${T('Space used')} <em>${T('{n} scans', { n: H.length })}</em></h4>
         <svg viewBox="0 0 ${W} ${HH}" class="st-spark"><path class="area" d="${path} L${px(H.length - 1)},${HH} L${px(0)},${HH} Z"/><path class="ln" d="${path}"/>${H.map(([, v], i) => `<circle cx="${px(i)}" cy="${py(v)}" r="${i === H.length - 1 ? 4 : 2.5}"/>`).join('')}</svg>
         <div class="st-hx">${H.slice(-6).map(([d, v]) => `<span><b>${v}</b>${d}</span>`).join('')}</div></div>
-      <div class="pan st-new st-fp" data-asm><h4>${T('New large files')} <em>${T('{n} since the last scan', { n: NB.length })}</em></h4><div class="rows st-scroll">${NB.length ? NB.map(([n, g, p, d]) => `<div class="row"><span class="st-bt" style="--c:${T_(EXT2T[n.split('.').pop().toLowerCase()] || 'other').c}">${esc(n.includes('.') ? n.split('.').pop() : '·')}</span><div class="rt"><b>${esc(n)}</b><span>${wp(p)}, ${d}</span></div><span class="st-bs">${fmt1(g)} GB</span></div>`).join('') : `<div class="empty"><b>${T('None')}</b>${T('No new file over 300 MB showed up.')}</div>`}</div></div>
+      <div class="pan st-new st-fp" data-asm><h4>${T('New large files')} <em>${T('{n} since the last scan', { n: NB.length })}</em></h4><div class="rows st-scroll">${NB.length ? NB.map(([n, g, p, d]) => `<div class="row">${badge(n, p + '\\' + n, T_(EXT2T[extOf(n)] || 'other').c)}<div class="rt"><b>${esc(n)}</b><span>${wp(p)}, ${d}</span></div><span class="st-bs">${fmt1(g)} GB</span></div>`).join('') : `<div class="empty"><b>${T('None')}</b>${T('No new file over 300 MB showed up.')}</div>`}</div></div>
     </div></div>`;
-  SH.assemble(el, 40);
+  SH.assemble(el, 40); paintIcons(el);
   const ln = $('.st-spark .ln', el); const L = ln.getTotalLength(); ln.style.strokeDasharray = `${L} ${L}`; anim(ln, [{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { d: 1200, delay: 200 });
   anim($('.st-spark .area', el), [{ opacity: 0 }, { opacity: 1 }], { d: 800, delay: 700 });
   $$('.st-spark circle', el).forEach((c, i) => anim(c, [{ opacity: 0, transform: 'scale(0)' }, { opacity: 1, transform: 'scale(1)' }], { d: 380, delay: 200 + i * 170, e: EASE.spring }));

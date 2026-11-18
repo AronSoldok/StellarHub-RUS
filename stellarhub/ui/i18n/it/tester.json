@@ -156,5 +156,16 @@
   "Click to go again.": "Fai clic per riprovare.",
   "{button}: two presses in under 60 ms. The button may be chattering.": "{button}: due pressioni in meno di 60 ms. Il pulsante potrebbe avere rimbalzi.",
   "move the mouse": "muovi il mouse",
-  "best {n} Hz": "max {n} Hz"
+  "best {n} Hz": "max {n} Hz",
+  "Laptop + numpad": "Portatile + tastierino",
+  "Mark the keys your keyboard doesn't have": "Segna i tasti che la tua tastiera non ha",
+  "Missing keys": "Tasti mancanti",
+  "Click the keys your keyboard doesn't have. They won't count toward the progress. During the test, right-click a key to do the same.": "Fai clic sui tasti che la tua tastiera non ha. Non verranno contati nei progressi. Durante il test puoi anche fare clic destro su un tasto.",
+  "Restore defaults": "Ripristina predefiniti",
+  "Done": "Fatto",
+  "Is a key missing from your keyboard? Right-click it during the test, or use “Missing keys”.": "Alla tua tastiera manca un tasto? Fai clic destro su di esso durante il test oppure usa “Tasti mancanti”.",
+  "You pressed a numeric keypad key. Switch to the laptop layout with a numeric keypad?": "Hai premuto un tasto del tastierino numerico. Passare al layout per portatile con tastierino numerico?",
+  "Switch to {layout}": "Passa a {layout}",
+  "{n} key marked as missing": "{n} tasto segnato come mancante",
+  "{n} keys marked as missing": "{n} tasti segnati come mancanti"
 }

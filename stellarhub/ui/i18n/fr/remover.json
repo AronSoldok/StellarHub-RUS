@@ -464,5 +464,8 @@
   "product name without number": "nom du produit sans numéro",
   "Store package": "paquet du Store",
   "package family": "famille du paquet",
-  "executable name": "nom de l'exécutable"
+  "executable name": "nom de l'exécutable",
+  "Select all": "Tout sélectionner",
+  "Select all: {group}": "Tout sélectionner : {group}",
+  "Select all programs": "Sélectionner tous les programmes"
 }

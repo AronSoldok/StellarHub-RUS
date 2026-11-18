@@ -1,5 +1,5 @@
 /* StellarHub · Home: header grid + three aligned columns (live status, components, what is pending). */
-#v-home{--lw:clamp(300px,23vw,380px);--rw:clamp(290px,22vw,360px)}
+#v-home{--lw:clamp(256px,22vw,380px);--rw:clamp(248px,21vw,360px)}
 .home-grid{position:absolute;inset:8px 30px var(--dockspace) 30px;display:grid;grid-template-columns:var(--lw) minmax(0,1fr) var(--rw);
   grid-template-rows:auto minmax(0,1fr);column-gap:26px;row-gap:20px}
 

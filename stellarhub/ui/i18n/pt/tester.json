@@ -156,5 +156,16 @@
   "Click to go again.": "Clique para repetir.",
   "{button}: two presses in under 60 ms. The button may be chattering.": "{button}: dois cliques em menos de 60 ms. O botão pode estar com repique.",
   "move the mouse": "mova o mouse",
-  "best {n} Hz": "máx. {n} Hz"
+  "best {n} Hz": "máx. {n} Hz",
+  "Laptop + numpad": "Notebook + numérico",
+  "Mark the keys your keyboard doesn't have": "Marque as teclas que o seu teclado não tem",
+  "Missing keys": "Teclas ausentes",
+  "Click the keys your keyboard doesn't have. They won't count toward the progress. During the test, right-click a key to do the same.": "Clique nas teclas que o seu teclado não tem. Elas não vão contar no progresso. Durante o teste, você também pode clicar com o botão direito em uma tecla.",
+  "Restore defaults": "Restaurar padrões",
+  "Done": "Concluído",
+  "Is a key missing from your keyboard? Right-click it during the test, or use “Missing keys”.": "Falta alguma tecla no seu teclado? Clique nela com o botão direito durante o teste ou use “Teclas ausentes”.",
+  "You pressed a numeric keypad key. Switch to the laptop layout with a numeric keypad?": "Você pressionou uma tecla do teclado numérico. Mudar para o layout de notebook com teclado numérico?",
+  "Switch to {layout}": "Mudar para {layout}",
+  "{n} key marked as missing": "{n} tecla marcada como ausente",
+  "{n} keys marked as missing": "{n} teclas marcadas como ausentes"
 }

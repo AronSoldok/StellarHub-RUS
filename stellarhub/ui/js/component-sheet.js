@@ -24,7 +24,10 @@ const CFG = {
     stats: () => [[t('Used'), T.has('diskUsed') ? Math.round(v().diskUsed / v().diskTotal * 100) + '%' : dash], [t('Read'), f('diskRead', fmtInt, ' MB/s')], [t('Write'), f('diskWrite', fmtInt, ' MB/s')], [t('Activity'), T.has('diskRead') ? (v().diskRead + v().diskWrite > 50 ? t('high') : t('low')) : dash]],
     actions: [[t('See what takes up space'), 'storage', 'map', 'storage'], [t('Free up space'), 'optimizer', 'clean', 'broom']] },
   display: { wide: true, actions: [[t('Test the screen'), 'tester', 'screen', 'display'], [t('View graphics'), 'monitor', 'gpu', 'monitor']] },
-  battery: { big: () => [f('battery'), v().charging ? t('% and charging') : t('% charge')],
+  /* the battery changes all the time: title and status come from live telemetry, not from the cached PC info */
+  battery: { title: () => T.has('battery') ? (v().charging ? t('{pct}%, charging', { pct: Math.round(v().battery) }) : `${Math.round(v().battery)}%`) : null,
+    liveRows: () => [['Status', v().charging ? SH.tc('battery', 'Plugged in') : SH.tc('battery', 'On battery')]],
+    big: () => [f('battery'), v().charging ? t('% and charging') : t('% charge')],
     stats: () => [[t('Health'), f('batteryHealth', undefined, '%')], [t('Power'), T.has('batteryPower') ? (v().batteryPower > 0 ? '+' : '') + fmt1(v().batteryPower) + ' W' : dash],
       [t('Time left'), T.has('batterySecs') ? upt(v().batterySecs) : (v().charging ? t('plugged in') : dash)], [t('Status'), v().charging ? SH.tc('battery', 'Plugged in') : SH.tc('battery', 'On battery')]],
     meter: () => ({ label: t('Capacity it keeps'), v: (v().batteryHealth || 0) / 100 }),
@@ -81,17 +84,20 @@ async function html(id) {
         ${k.chart ? `<div class="cs-chart"><span>${k.chart.label}</span><canvas></canvas></div>` : ''}
         ${k.meter ? `<div class="cs-meter"><div><span>${k.meter().label}</span><b>${T.has('batteryHealth') ? Math.round(k.meter().v * 100) + ' %' : dash}</b></div><div class="bar ok"><span style="transform:scaleX(0)"></span></div></div>` : ''}
         ${k.list ? `<div class="cs-list">${k.list().map(([i, a, b]) => `<div><span class="ri">${ic(i)}</span><span><b>${esc(a)}</b>${b ? `<small>${esc(b)}</small>` : ''}</span></div>`).join('')}</div>` : ''}`;
-  return `<header class="cs-h"><span class="cs-ic">${ic(ICON[id] || id)}</span><div class="cs-t"><span>${esc(c.name)}</span><h2>${esc(c.title)}</h2></div>
+  return `<header class="cs-h"><span class="cs-ic">${ic(ICON[id] || id)}</span><div class="cs-t"><span>${esc(c.name)}</span><h2 id="csTitle">${esc((k.title && k.title()) || c.title)}</h2></div>
       <button class="iconbtn cs-x" aria-label="${t('Close')}">${ic('x')}</button></header>
     <div class="cs-b${k.wide ? ' wide' : ''}">
       <div class="cs-l">${left}</div>
-      <div class="cs-r"><h4>${t('Specs')}</h4><dl>${rows.map(([a, b]) => `<dt>${esc(t(a))}</dt><dd>${esc(b)}</dd>`).join('')}</dl>
+      <div class="cs-r"><h4>${t('Specs')}</h4><dl>${rows.map(([a, b]) => { const live = k.liveRows && k.liveRows().find(r => r[0] === a); return `<dt data-k="${esc(a)}">${esc(t(a))}</dt><dd>${esc(live ? live[1] : b)}</dd>`; }).join('')}</dl>
         <div class="cs-acts">${(k.actions || []).map(([label, m, tab, i], n) => `<button class="btn ${n ? 'sec' : 'pri'}" data-m="${m}" data-tab="${tab}">${ic(i)}${esc(label)}</button>`).join('')}</div></div>
     </div>`;
 }
 function update() {
   if (!open) return; const k = CFG[open];
   if (k.big) { const [bv] = k.big(); const b = $('#csBig'); if (b && b.textContent !== String(bv)) b.textContent = bv; }
+  if (k.title) { const tt = k.title(), h = $('#csTitle'); if (tt && h && h.textContent !== tt) h.textContent = tt; }
+  if (k.liveRows) { const dds = $$('.cs-r dl dd', sheet), dts = $$('.cs-r dl dt', sheet);
+    k.liveRows().forEach(([lab, val]) => { const i = dts.findIndex(d => d.dataset.k === lab); if (i >= 0 && dds[i].textContent !== val) dds[i].textContent = val; }); }
   if (k.stats) { const st = k.stats(); $$('.cs-stats b', sheet).forEach((b, i) => { const s = st[i]; if (s && b.textContent !== s[1]) b.textContent = s[1]; }); }
   lastTick = performance.now();
 }

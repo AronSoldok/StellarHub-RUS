@@ -156,5 +156,16 @@
   "Click to go again.": "Cliquez pour recommencer.",
   "{button}: two presses in under 60 ms. The button may be chattering.": "{button} : deux appuis en moins de 60 ms. Le bouton a peut-être des rebonds.",
   "move the mouse": "bougez la souris",
-  "best {n} Hz": "max {n} Hz"
+  "best {n} Hz": "max {n} Hz",
+  "Laptop + numpad": "Portable + pavé num.",
+  "Mark the keys your keyboard doesn't have": "Marquez les touches que votre clavier n'a pas",
+  "Missing keys": "Touches absentes",
+  "Click the keys your keyboard doesn't have. They won't count toward the progress. During the test, right-click a key to do the same.": "Cliquez sur les touches que votre clavier n'a pas. Elles ne compteront pas dans la progression. Pendant le test, un clic droit sur une touche fait de même.",
+  "Restore defaults": "Rétablir les valeurs par défaut",
+  "Done": "Terminé",
+  "Is a key missing from your keyboard? Right-click it during the test, or use “Missing keys”.": "Il manque une touche à votre clavier ? Faites un clic droit dessus pendant le test ou utilisez « Touches absentes ».",
+  "You pressed a numeric keypad key. Switch to the laptop layout with a numeric keypad?": "Vous avez appuyé sur une touche du pavé numérique. Passer à la disposition portable avec pavé numérique ?",
+  "Switch to {layout}": "Passer à {layout}",
+  "{n} key marked as missing": "{n} touche marquée comme absente",
+  "{n} keys marked as missing": "{n} touches marquées comme absentes"
 }

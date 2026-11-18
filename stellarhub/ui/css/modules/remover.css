@@ -284,3 +284,12 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .lo.blk:hover{background:none}
 #v-remover .check.lock{border-color:var(--line);background:var(--raise2);color:var(--faint)}
 #v-remover .check.lock svg{width:11px;height:11px;stroke-dasharray:none;stroke-dashoffset:0;stroke-width:2;color:var(--faint)}
+
+/* "select all" boxes: none, some (a dash) or all */
+#v-remover .check.rv-all{cursor:pointer}
+#v-remover .check.rv-all.off{opacity:.35;cursor:default}
+#v-remover .check.some{background:var(--accent);border-color:var(--accent)}
+#v-remover .check.some svg{opacity:0;grid-area:1/1}
+#v-remover .check.some::after{content:"";grid-area:1/1;width:8px;height:2px;border-radius:2px;background:var(--on-accent)}
+#v-remover .rg h5>.rv-all{margin:0 6px 0 8px}
+#v-remover .tbl-head>.rv-all{justify-self:start}

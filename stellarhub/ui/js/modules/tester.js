@@ -30,7 +30,7 @@ const KB_LANGS = {
   'de-DE': { n: t('German'), iso: true, names: 'en', map: { Backquote: '^', Minus: 'ß', Equal: '´', KeyY: 'Z', KeyZ: 'Y', BracketLeft: 'Ü', BracketRight: '+', Semicolon: 'Ö', Quote: 'Ä', Backslash: '#', IntlBackslash: '<', Comma: ',', Period: '.', Slash: '-' } },
   'pt-BR': { n: t('Portuguese (Brazil)'), iso: true, abnt: true, names: 'en', map: { Backquote: "'", Minus: '-', Equal: '=', BracketLeft: '´', BracketRight: '[', Semicolon: 'Ç', Quote: '~', Backslash: ']', IntlBackslash: '\\', Comma: ',', Period: '.', Slash: ';', IntlRo: '/' } },
 };
-const KB_FORMATS = { laptop: t('Laptop'), full: t('Full 100%'), tkl: 'TKL 80%', p75: '75%', p65: '65%' };
+const KB_FORMATS = { laptop: t('Laptop'), laptopnum: t('Laptop + numpad'), full: t('Full 100%'), tkl: 'TKL 80%', p75: '75%', p65: '65%' };
 function kbLabel(L, c) { return L.map[c] ?? KB_COMMON[c] ?? KB_NAMES[L.names][c] ?? (c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5) : /^F\d+$/.test(c) ? c : c); }
 function kbLayout(fmt, lang) {
   const L = KB_LANGS[lang] || KB_LANGS['es-ES']; const K = [];
@@ -50,12 +50,22 @@ function kbLayout(fmt, lang) {
   };
   const fnRow = (y, h, keys) => keys.forEach(([c, x, w = 1]) => add(c, x, y, w, h, 'fn'));
   let W = 15, H = 6;
-  if (fmt === 'laptop') {
+  if (fmt === 'laptop' || fmt === 'laptopnum') {
+    /* only the keys every laptop has: no right Win, Menu, Scroll Lock, Pause or navigation block */
     fnRow(0, .7, [['Escape', 0], ...Array.from({ length: 12 }, (_, i) => ['F' + (i + 1), 1 + i]), ['PrintScreen', 13], ['Delete', 14]]);
     const y = main(.9, 15);
     add('ControlLeft', 0, y, 1.25); add('Fn', 1.25, y); add('MetaLeft', 2.25, y); add('AltLeft', 3.25, y, 1.25); add('Space', 4.5, y, 5.5); add('AltRight', 10, y); add('ControlRight', 11, y);
     add('ArrowLeft', 12, y + .5, 1, .5, 'half'); add('ArrowUp', 13, y, 1, .5, 'half'); add('ArrowDown', 13, y + .5, 1, .5, 'half'); add('ArrowRight', 14, y + .5, 1, .5, 'half');
     W = 15; H = y + 1;
+    if (fmt === 'laptopnum') { /* the compact keypad of 15-17" laptops, next to the main block */
+      const nx = 15.3, y0 = .9;
+      add('NumLock', nx, y0); add('NumpadDivide', nx + 1, y0); add('NumpadMultiply', nx + 2, y0); add('NumpadSubtract', nx + 3, y0);
+      add('Numpad7', nx, y0 + 1); add('Numpad8', nx + 1, y0 + 1); add('Numpad9', nx + 2, y0 + 1); add('NumpadAdd', nx + 3, y0 + 1, 1, 2);
+      add('Numpad4', nx, y0 + 2); add('Numpad5', nx + 1, y0 + 2); add('Numpad6', nx + 2, y0 + 2);
+      add('Numpad1', nx, y0 + 3); add('Numpad2', nx + 1, y0 + 3); add('Numpad3', nx + 2, y0 + 3); add('NumpadEnter', nx + 3, y0 + 3, 1, 2);
+      add('Numpad0', nx, y0 + 4, 2); add('NumpadDecimal', nx + 2, y0 + 4);
+      W = nx + 4;
+    }
   } else if (fmt === 'full' || fmt === 'tkl') {
     fnRow(0, 1, [['Escape', 0], ...[1, 2, 3, 4].map(i => ['F' + i, 1 + i]), ...[5, 6, 7, 8].map(i => ['F' + i, 1.5 + i]), ...[9, 10, 11, 12].map(i => ['F' + i, 2 + i]), ['PrintScreen', 15.25], ['ScrollLock', 16.25], ['Pause', 17.25]]);
     const y = main(1.5, 15);
@@ -84,12 +94,24 @@ function kbLayout(fmt, lang) {
   }
   return { keys: K, W, H, count: new Set(K.map(k => k.code).filter(c => c !== 'Fn')).size };
 }
-const kb = { capturing: false, tested: new Set(), down: new Map(), lastUp: {}, maxRoll: 0, chatter: new Set(), stuck: new Set(), escT: 0, presses: 0, layout: null, detected: null, sugNum: false };
+const kb = { capturing: false, tested: new Set(), down: new Map(), lastUp: {}, maxRoll: 0, chatter: new Set(), stuck: new Set(), escT: 0, presses: 0, layout: null, detected: null, sugNum: false,
+  missing: new Set(), marking: false, autoT: {} };
 const kbFmt = () => state.settings.testerKbFormat || 'laptop';
+/* Keys this keyboard doesn't have: they don't count toward the total. Remembered per layout (setting
+   testerKbMissing = { format: [codes] }). Laptops rarely have right Win, Menu, Scroll Lock or Pause, so when the PC
+   is a laptop the 100% and TKL layouts start with those marked. */
+const KB_LAPTOP_MISSING = ['MetaRight', 'ContextMenu', 'ScrollLock', 'Pause'];
+const kbMissDefault = fmt => SH.PC && SH.PC.type === 'laptop' && (fmt === 'full' || fmt === 'tkl') ? KB_LAPTOP_MISSING : [];
+function kbLoadMissing() { const m = (state.settings.testerKbMissing || {})[kbFmt()]; kb.missing = new Set(Array.isArray(m) ? m : kbMissDefault(kbFmt())); }
+function kbSaveMissing() { SH.setSetting('testerKbMissing', { ...(state.settings.testerKbMissing || {}), [kbFmt()]: [...kb.missing] }); }
+const kbCodes = () => kb.layout ? new Set(kb.layout.keys.map(k => k.code).filter(c => c !== 'Fn')) : new Set();
+const kbTotal = () => [...kbCodes()].filter(c => !kb.missing.has(c)).length;
+const kbDoneN = () => { const codes = kbCodes(); return [...kb.tested].filter(c => codes.has(c) && !kb.missing.has(c)).length; };
 const kbLang = () => state.settings.testerKbLang || kb.detected || 'es-ES';
 function kbKeysHTML() {
   const lay = kb.layout = kbLayout(kbFmt(), kbLang());
-  return lay.keys.map(k => `<div class="k${k.code === 'Fn' ? ' nd' : ''}${k.label && k.label.length > 3 ? ' sm' : ''}${k.cls ? ' ' + k.cls : ''}${kb.tested.has(k.code) ? ' done' : ''}" data-code="${k.code}" style="--x:${k.x};--y:${k.y};--w:${k.w};--h:${k.h}"><span>${esc(k.label)}</span>${k.code === 'Escape' ? '<i class="esc-ring"></i>' : ''}</div>`).join('');
+  kbLoadMissing();
+  return lay.keys.map(k => `<div class="k${k.code === 'Fn' ? ' nd' : ''}${kb.missing.has(k.code) ? ' miss' : ''}${k.label && k.label.length > 3 ? ' sm' : ''}${k.cls ? ' ' + k.cls : ''}${kb.tested.has(k.code) ? ' done' : ''}" data-code="${k.code}" style="--x:${k.x};--y:${k.y};--w:${k.w};--h:${k.h}"><span>${esc(k.label)}</span>${k.code === 'Escape' ? '<i class="esc-ring"></i>' : ''}</div>`).join('');
 }
 function kbFit(el) {
   const st = $('#kbStage', el), box = $('#kbKeys', el); if (!st || !box || !kb.layout) return;
@@ -98,7 +120,7 @@ function kbFit(el) {
 }
 function kbRebuild(el, animate) {
   const box = $('#kbKeys', el); box.innerHTML = kbKeysHTML(); kbFit(el);
-  $('#kbTot', el).textContent = t('of {n} keys', { n: kb.layout.count }); updKb(el);
+  updKb(el);
   if (animate) $$('.k', box).forEach((k, i) => anim(k, [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: Math.min(i * 4, 260), e: EASE.spring }));
 }
 async function kbDetect(el) {
@@ -117,12 +139,14 @@ function renderKeyboard(el) {
     <div class="pan kb-board" data-asm>
       <div class="kb-top"><div class="seg" id="kbFmt"><span class="ind"></span>${Object.entries(KB_FORMATS).map(([k, n]) => `<button data-v="${k}"${kbFmt() === k ? ' class="on"' : ''}>${n}</button>`).join('')}</div>
         <label class="field kb-lang">${ic('globe')}<select id="kbLang">${Object.entries(KB_LANGS).map(([k, l]) => `<option value="${k}"${kbLang() === k ? ' selected' : ''}>${l.n}</option>`).join('')}</select></label>
-        <span class="chip ok kb-det" id="kbDet" hidden></span></div>
-      <div class="kb-sug" id="kbSug" hidden>${ic('info')}<span>${t('You pressed a numeric keypad key. Switch to the full layout?')}</span><button class="btn sec sm" id="kbSugYes">${t('Switch to 100%')}</button><button class="btn ghost sm" id="kbSugNo">${t('No')}</button></div>
+        <span class="chip ok kb-det" id="kbDet" hidden></span>
+        <button class="btn ghost sm kb-missb" id="kbMiss" title="${t("Mark the keys your keyboard doesn't have")}">${ic('keyboard')}${t('Missing keys')}</button></div>
+      <div class="kb-sug kb-mark" id="kbMark" hidden>${ic('info')}<span>${t("Click the keys your keyboard doesn't have. They won't count toward the progress. During the test, right-click a key to do the same.")}</span><button class="btn ghost sm" id="kbMissDef">${t('Restore defaults')}</button><button class="btn pri sm" id="kbMissDone">${t('Done')}</button></div>
+      <div class="kb-sug" id="kbSug" hidden>${ic('info')}<span id="kbSugT">${t('You pressed a numeric keypad key. Switch to the full layout?')}</span><button class="btn sec sm" id="kbSugYes">${t('Switch to 100%')}</button><button class="btn ghost sm" id="kbSugNo">${t('No')}</button></div>
       <div class="kb-stage" id="kbStage"><div class="kb-keys" id="kbKeys"></div></div>
-      <div class="kb-cover" id="kbCover"><div><b>${t('Click “Start”, then press every key')}</b><span>${t('While the test runs, StellarHub ignores its own shortcuts. Hold Esc for a second to exit. Windows keeps Win + any key, Alt + Tab and Fn for itself.')}</span><button class="btn pri lg" id="kbStart">${ic('keyboard')}${t('Start')}</button></div></div></div>
+      <div class="kb-cover" id="kbCover"><div><b>${t('Click “Start”, then press every key')}</b><span>${t('While the test runs, StellarHub ignores its own shortcuts. Hold Esc for a second to exit. Windows keeps Win + any key, Alt + Tab and Fn for itself.')}<br>${t('Is a key missing from your keyboard? Right-click it during the test, or use “Missing keys”.')}</span><button class="btn pri lg" id="kbStart">${ic('keyboard')}${t('Start')}</button></div></div></div>
     <div class="kb-side">
-      <div class="pan" data-asm><h4>${t('Progress')}</h4><div class="kb-n"><b class="big" id="kbN">0</b><span class="muted" id="kbTot">${t('of {n} keys', { n: 0 })}</span></div><div class="bar" style="margin-top:12px"><span id="kbBar" style="transform:scaleX(0)"></span></div></div>
+      <div class="pan" data-asm><h4>${t('Progress')}</h4><div class="kb-n"><b class="big" id="kbN">0</b><span class="muted" id="kbTot">${t('of {n} keys', { n: 0 })}</span></div><div class="bar" style="margin-top:12px"><span id="kbBar" style="transform:scaleX(0)"></span></div><div class="kb-missn faint" id="kbMissN" hidden></div></div>
       <div class="pan kb-stats" data-asm>
         <div><span class="muted">${t('Keys at once (max)')}</span><b id="kbRoll">0</b></div>
         <div><span class="muted">${t('Keystrokes')}</span><b id="kbPress">0</b></div>
@@ -136,39 +160,79 @@ function renderKeyboard(el) {
   requestAnimationFrame(() => SH.placeSeg($('#kbFmt', el), true));
   $('#kbFmt', el).addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return; $$('#kbFmt button', el).forEach(x => x.classList.toggle('on', x === b)); SH.placeSeg($('#kbFmt', el)); SH.setSetting('testerKbFormat', b.dataset.v); kbRebuild(el, true); });
   $('#kbLang', el).addEventListener('change', e => { SH.setSetting('testerKbLang', e.target.value); kbRebuild(el, true); });
-  $('#kbSugYes', el).addEventListener('click', () => { const b = $('#kbFmt [data-v="full"]', el); b && b.click(); hideSug(el); });
+  $('#kbSugYes', el).addEventListener('click', e => { const b = $(`#kbFmt [data-v="${e.currentTarget.dataset.to || 'full'}"]`, el); b && b.click(); hideSug(el); });
+  $('#kbMiss', el).addEventListener('click', () => setMarking(el, !kb.marking));
+  $('#kbMissDone', el).addEventListener('click', () => setMarking(el, false));
+  $('#kbMissDef', el).addEventListener('click', () => { kb.missing = new Set(kbMissDefault(kbFmt())); kbSaveMissing(); $$('.k', el).forEach(k => k.classList.toggle('miss', kb.missing.has(k.dataset.code))); updKb(el); });
+  const box = $('#kbKeys', el);
+  box.addEventListener('click', e => { if (!kb.marking) return; const k = e.target.closest('.k'); if (k) toggleMissing(k.dataset.code); });
+  box.addEventListener('contextmenu', e => { const k = e.target.closest('.k'); if (!k) return; e.preventDefault(); if (kb.capturing || kb.marking) toggleMissing(k.dataset.code); });
   $('#kbSugNo', el).addEventListener('click', () => { kb.sugNum = true; hideSug(el); });
   $('#kbStart', el).addEventListener('click', () => setCapture(el, true));
   $('#kbStop', el).addEventListener('click', () => setCapture(el, false));
   $('#kbReset', el).addEventListener('click', () => { kb.tested.clear(); kb.down.clear(); kb.chatter.clear(); kb.stuck.clear(); kb.maxRoll = 0; kb.presses = 0; $$('.k', el).forEach(k => k.classList.remove('done', 'down', 'warn')); updKb(el); SH.toast(t('Keyboard test reset.')); });
   kbDetect(el);
 }
-function showSug(el) { const s = $('#kbSug', el); if (!s || !s.hidden) return; s.hidden = false; anim(s, [{ opacity: 0, transform: 'translate3d(0,-6px,0)' }, { opacity: 1, transform: 'none' }], { d: 320, e: EASE.spring }); kbFit(el); }
+function toggleMissing(code) {
+  if (!code || code === 'Fn') return; const on = !kb.missing.has(code);
+  if (on) kb.missing.add(code); else kb.missing.delete(code); kbSaveMissing();
+  keyEls(code).forEach(k => { k.classList.toggle('miss', on); anim(k, [{ transform: 'scale(.9)' }, { transform: 'none' }], { d: 260, e: EASE.spring }); });
+  updKb(kb.el);
+}
+function setMarking(el, on) {
+  if (on && kb.capturing) setCapture(el, false);
+  kb.marking = on; const bar = $('#kbMark', el), cov = $('#kbCover', el);
+  bar.hidden = !on; $('#kbMiss', el).classList.toggle('on', on); $('#kbStage', el).classList.toggle('marking', on); cov.hidden = on;
+  if (on) anim(bar, [{ opacity: 0, transform: 'translate3d(0,-6px,0)' }, { opacity: 1, transform: 'none' }], { d: 320, e: EASE.spring });
+  else anim(cov, [{ opacity: 0 }, { opacity: 1 }], { d: 260 });
+  kbFit(el);
+}
+function showSug(el) { const s = $('#kbSug', el); if (!s || !s.hidden) return;
+  const to = kbFmt() === 'laptop' ? 'laptopnum' : 'full'; $('#kbSugYes', el).dataset.to = to;
+  $('#kbSugT', el).textContent = to === 'full' ? t('You pressed a numeric keypad key. Switch to the full layout?') : t('You pressed a numeric keypad key. Switch to the laptop layout with a numeric keypad?');
+  $('#kbSugYes', el).textContent = to === 'full' ? t('Switch to 100%') : t('Switch to {layout}', { layout: KB_FORMATS.laptopnum });
+  s.hidden = false; anim(s, [{ opacity: 0, transform: 'translate3d(0,-6px,0)' }, { opacity: 1, transform: 'none' }], { d: 320, e: EASE.spring }); kbFit(el); }
 function hideSug(el) { const s = $('#kbSug', el); if (s) s.hidden = true; kbFit(el); }
 function setCapture(el, on) {
+  if (on && kb.marking) setMarking(el, false);
+  if (!on) releaseAll();
   kb.capturing = on; const cov = $('#kbCover', el);
   if (on) { anim(cov, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(1.04)' }], { d: 260 }).finished.then(() => { if (kb.capturing) cov.hidden = true; }).catch(() => {}); }
-  else { cov.hidden = false; anim(cov, [{ opacity: 0 }, { opacity: 1 }], { d: 260 }); $('#kbCover b', el).textContent = kb.layout && kb.tested.size >= kb.layout.count ? t('Every key works') : t('Test paused'); $('#kbStart', el).innerHTML = `${ic('keyboard')}${t('Keep testing')}`; }
+  else { cov.hidden = false; anim(cov, [{ opacity: 0 }, { opacity: 1 }], { d: 260 }); $('#kbCover b', el).textContent = kb.layout && kbDoneN() >= kbTotal() ? t('Every key works') : t('Test paused'); $('#kbStart', el).innerHTML = `${ic('keyboard')}${t('Keep testing')}`; }
   $('#kbStop', el).hidden = !on;
 }
 const keyEls = code => kb.el ? $$(`.k[data-code="${code}"]`, kb.el) : [];
 function updKb(el) {
-  if (!el || !kb.layout) return; const n = [...kb.tested].filter(c => kb.layout.keys.some(k => k.code === c)).length; const nEl = $('#kbN', el);
+  if (!el || !kb.layout) return; const n = kbDoneN(), tot = kbTotal(), nEl = $('#kbN', el);
   if (+nEl.textContent !== n) { nEl.textContent = n; anim(nEl, [{ transform: 'translateY(-4px)', opacity: .5 }, { transform: 'none', opacity: 1 }], { d: 220 }); }
-  $('#kbBar', el).style.transform = `scaleX(${(n / kb.layout.count).toFixed(3)})`; $('#kbRoll', el).textContent = kb.maxRoll; $('#kbPress', el).textContent = SH.fmtInt(kb.presses);
+  $('#kbTot', el).textContent = t('of {n} keys', { n: tot });
+  const miss = [...kbCodes()].filter(c => kb.missing.has(c)).length, mEl = $('#kbMissN', el);
+  mEl.hidden = !miss; mEl.textContent = miss === 1 ? t('{n} key marked as missing', { n: miss }) : t('{n} keys marked as missing', { n: miss });
+  $('#kbBar', el).style.transform = `scaleX(${(tot ? Math.min(1, n / tot) : 0).toFixed(3)})`; $('#kbRoll', el).textContent = kb.maxRoll; $('#kbPress', el).textContent = SH.fmtInt(kb.presses);
   const w = [...[...kb.stuck].map(c => `<div class="chip warn">${ic('alert')}${t('{key} has been held for over 5 s', { key: esc(c) })}</div>`), ...[...kb.chatter].map(c => `<div class="chip bad">${ic('alert')}${t('{key}: possible chatter (very fast double press)', { key: esc(c) })}</div>`)];
   $('#kbWarn', el).innerHTML = w.length ? w.join('') : `<span class="faint">${t('Nothing odd so far.')}</span>`;
 }
-/* The Windows key: Windows swallows its keyup (opens Start, Win+something…), so it's released as soon as
-   any event without metaKey arrives, on focus loss or after 1.5 s. It never counts as "stuck". */
+/* Keys whose keyup may never arrive: Win opens Start (the page loses focus), Print Screen is taken by Windows.
+   Their keydown counts as a complete press and they release by themselves; on focus loss every key is released. */
 const META = ['MetaLeft', 'MetaRight', 'OSLeft', 'OSRight'];
+const AUTO = new Set([...META, 'PrintScreen']);
 function keyUpVisual(code) {
   keyEls(code).forEach(k => { k.classList.remove('down', 'warn'); k.getAnimations().forEach(x => { if (!(window.CSSTransition && x instanceof CSSTransition)) x.cancel(); }); anim(k, [{ transform: 'translateY(2px) scale(.95)' }, { transform: 'translateY(0) scale(1)' }], { d: 260, e: EASE.spring, keep: true }); });
 }
-function releaseMeta() { META.forEach(c => { if (kb.down.has(c)) { kb.down.delete(c); kb.lastUp[c] = performance.now(); kb.stuck.delete(c); keyUpVisual(c); } }); }
-/* Print Screen: the browser only delivers its keyup; it counts as a full press */
+function releaseKey(code) {
+  clearTimeout(kb.autoT[code]); delete kb.autoT[code];
+  const was = kb.down.delete(code); kb.stuck.delete(code); if (was) kb.lastUp[code] = performance.now();
+  keyUpVisual(code);
+}
+function releaseAll() {
+  [...kb.down.keys()].forEach(releaseKey); Object.keys(kb.autoT).forEach(releaseKey);
+  if (kb.el) $$('.k.down, .k.warn', kb.el).forEach(k => releaseKey(k.dataset.code));
+  kb.stuck.clear(); kb.escT = 0; const r = kb.el && $('.esc-ring', kb.el); if (r) r.style.transform = 'scaleX(0)';
+  if (kb.el) updKb(kb.el);
+}
+/* Print Screen or Win seen only on keyup: it counts as a full press */
 function virtualPress(code, e) {
-  kb.presses++; const fresh = !kb.tested.has(code); kb.tested.add(code);
+  kb.presses++; const fresh = !kb.tested.has(code); kb.tested.add(code); if (kb.missing.has(code)) toggleMissing(code);
   keyEls(code).forEach(k => { k.classList.add('done'); anim(k, [{ transform: 'translateY(0) scale(1)' }, { transform: 'translateY(2px) scale(.95)' }, { transform: 'translateY(0) scale(1)' }], { d: 320, e: EASE.out, keep: true });
     if (fresh && !isMin()) { const r = document.createElement('i'); r.className = 'rip'; k.appendChild(r); anim(r, [{ transform: 'scale(.2)', opacity: .8 }, { transform: 'scale(2.6)', opacity: 0 }], { d: 520 }).finished.then(() => r.remove()).catch(() => r.remove()); } });
   $('#kbLast', kb.el).textContent = `${e.key || code}  (${code})`;
@@ -176,36 +240,37 @@ function virtualPress(code, e) {
 addEventListener('keydown', e => {
   if (!kb.capturing || !active('keyboard')) return;
   e.preventDefault(); e.stopImmediatePropagation();
-  const code = e.code || e.key; if (!e.metaKey && !META.includes(code)) releaseMeta(); if (e.repeat) return;
+  const code = e.code || e.key; if (e.repeat) return;
   const now = performance.now(); if (kb.lastUp[code] && now - kb.lastUp[code] < 35) kb.chatter.add(code);
   kb.down.set(code, now); kb.presses++; kb.maxRoll = Math.max(kb.maxRoll, kb.down.size);
-  if (code.startsWith('Numpad') && kbFmt() !== 'full' && !kb.sugNum) showSug(kb.el);
+  if (code.startsWith('Numpad') && kbFmt() !== 'full' && kbFmt() !== 'laptopnum' && !kb.sugNum) showSug(kb.el);
+  if (kb.missing.has(code)) toggleMissing(code);    // pressed, so the keyboard does have it
   const ks = keyEls(code); const fresh = !kb.tested.has(code); kb.tested.add(code);
   ks.forEach(k => { k.classList.add('down', 'done'); anim(k, [{ transform: 'translateY(0) scale(1)' }, { transform: 'translateY(2px) scale(.95)' }], { d: 70, e: EASE.out, keep: true });
     if (fresh && !isMin()) { const r = document.createElement('i'); r.className = 'rip'; k.appendChild(r); anim(r, [{ transform: 'scale(.2)', opacity: .8 }, { transform: 'scale(2.6)', opacity: 0 }], { d: 520 }).finished.then(() => r.remove()).catch(() => r.remove()); } });
   $('#kbLast', kb.el).textContent = (e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key) + (code !== e.key ? `  (${code})` : '');
   if (code === 'Escape') kb.escT = now;
+  if (AUTO.has(code)) { clearTimeout(kb.autoT[code]); kb.autoT[code] = setTimeout(() => { releaseKey(code); updKb(kb.el); }, 260); }
   updKb(kb.el);
 }, true);
 addEventListener('keyup', e => {
   if (!kb.capturing || !active('keyboard')) return;
   e.preventDefault(); e.stopImmediatePropagation();
   const code = e.code || e.key;
-  if (code === 'PrintScreen' && !kb.down.has(code)) { virtualPress(code, e); updKb(kb.el); return; }
-  kb.down.delete(code); kb.lastUp[code] = performance.now(); kb.stuck.delete(code);
-  keyUpVisual(code);
-  if (!e.metaKey) releaseMeta();
+  if (AUTO.has(code) && !kb.down.has(code) && !kb.autoT[code]) { virtualPress(code, e); updKb(kb.el); return; }
+  releaseKey(code);
   if (code === 'Escape') { kb.escT = 0; const r = $('.esc-ring', kb.el); if (r) r.style.transform = 'scaleX(0)'; }
   updKb(kb.el);
 }, true);
-addEventListener('blur', () => { kb.down.clear(); if (kb.el) $$('.k.down', kb.el).forEach(k => k.classList.remove('down', 'warn')); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) releaseMeta(); });
+/* Start menu, Alt + Tab, Win + D, another window…: the page never gets those keyups */
+addEventListener('blur', releaseAll);
+addEventListener('focus', releaseAll);
+document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
 tickers.add(() => {
   if (!kb.capturing || !active('keyboard')) return; const now = performance.now();
-  if (kb.escT) { const p = Math.min(1, (now - kb.escT) / 1000); const r = $('.esc-ring', kb.el); if (r) r.style.transform = `scaleX(${p})`; if (p >= 1) { kb.escT = 0; kb.down.clear(); $$('.k.down', kb.el).forEach(k => k.classList.remove('down')); setCapture(kb.el, false); } }
+  if (kb.escT) { const p = Math.min(1, (now - kb.escT) / 1000); const r = $('.esc-ring', kb.el); if (r) r.style.transform = `scaleX(${p})`; if (p >= 1) { kb.escT = 0; setCapture(kb.el, false); } }
   let ch = false;
-  kb.down.forEach((t, c) => { if (META.includes(c) && now - t > 1500) { releaseMeta(); ch = true; } });
-  kb.down.forEach((t, c) => { if (c !== 'Escape' && !META.includes(c) && now - t > 5000 && !kb.stuck.has(c)) { kb.stuck.add(c); ch = true; keyEls(c).forEach(k => k.classList.add('warn')); } }); if (ch) updKb(kb.el);
+  kb.down.forEach((t, c) => { if (c !== 'Escape' && !AUTO.has(c) && now - t > 5000 && !kb.stuck.has(c)) { kb.stuck.add(c); ch = true; keyEls(c).forEach(k => k.classList.add('warn')); } }); if (ch) updKb(kb.el);
 });
 
 /* ========================= Screen ========================= */
@@ -272,7 +337,7 @@ tickers.add((dt, t) => {
 });
 
 /* ========================= Speakers ========================= */
-const au = { ctx: null, vol: .5, sweep: null, playing: null };
+const au = { ctx: null, vol: .5, sweep: null, voices: new Set() };
 function audioCtx() { if (!au.ctx) { const C = window.AudioContext || window.webkitAudioContext; if (!C) return null; au.ctx = new C(); } if (au.ctx.state === 'suspended') au.ctx.resume(); return au.ctx; }
 function renderSpeakers(el) {
   el.classList.add('fill');
@@ -295,21 +360,43 @@ function renderSpeakers(el) {
   $('#spSweep', el).addEventListener('click', () => au.sweep ? stopSweep() : startSweep());
 }
 function cone(side, on) { const s = au.el && $(`.sp-spk[data-side="${side}"]`, au.el); if (s) s.classList.toggle('play', on); }
+/* The rings follow the sound that is really playing: each button press is a "voice" that ends with its last note
+   (onended), with a timer as a fallback. Before, one shared timer was replaced on every click, so Left then Right
+   cancelled the timer that had to turn the left speaker off and it kept animating. */
+function coneSync() {
+  const on = { L: !!au.sweep, R: !!au.sweep };
+  au.voices.forEach(v => v.sides.forEach(s => { on[s] = true; }));
+  cone('L', on.L); cone('R', on.R);
+}
+function stopVoice(v, fade) {
+  if (!au.voices.delete(v)) return; clearTimeout(v.timer);
+  const c = au.ctx, now = c ? c.currentTime : 0;
+  v.oscs.forEach(o => { o.onended = null; try { o.stop(fade && c ? now + .06 : 0); } catch {} });
+  if (fade && c) { try { v.out.gain.cancelScheduledValues(now); v.out.gain.setTargetAtTime(0, now, .015); } catch {} }
+  setTimeout(() => { try { v.out.disconnect(); } catch {} }, fade ? 120 : 0);
+}
+function stopNotes() { [...au.voices].forEach(v => stopVoice(v, true)); coneSync(); }
 function playSide(side) {
   const c = audioCtx(); if (!c) { SH.toast(t("This PC can't play audio here.")); return; }
+  stopNotes();    // a new click replaces the notes still playing
   const pan = c.createStereoPanner ? c.createStereoPanner() : null; if (pan) pan.pan.value = side === 'L' ? -1 : side === 'R' ? 1 : 0;
   const out = c.createGain(); out.gain.value = au.vol * .35; (pan ? (out.connect(pan), pan) : out).connect(c.destination);
+  const v = { sides: side === 'C' ? ['L', 'R'] : [side], oscs: [], out, timer: 0 };
+  const end = () => { stopVoice(v); coneSync(); };
   [523.25, 659.25, 783.99].forEach((f, i) => { const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = f; const t0 = c.currentTime + i * .22;
-    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(1, t0 + .02); g.gain.exponentialRampToValueAtTime(.001, t0 + .5); o.connect(g).connect(out); o.start(t0); o.stop(t0 + .55); });
-  const sides = side === 'C' ? ['L', 'R'] : [side]; sides.forEach(s => cone(s, true)); clearTimeout(au.playing); au.playing = setTimeout(() => sides.forEach(s => cone(s, false)), 1050);
+    g.gain.setValueAtTime(0, t0); g.gain.linearRampToValueAtTime(1, t0 + .02); g.gain.exponentialRampToValueAtTime(.001, t0 + .5); o.connect(g).connect(out); o.start(t0); o.stop(t0 + .55); v.oscs.push(o); });
+  v.oscs[v.oscs.length - 1].onended = end;
+  v.timer = setTimeout(end, 1400);    // if the audio device stalls, onended may never come
+  au.voices.add(v); coneSync();
 }
 function startSweep() {
   const c = audioCtx(); if (!c) return; const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; g.gain.value = au.vol * .25;
   const T = 12, t0 = c.currentTime; o.frequency.setValueAtTime(20, t0); o.frequency.exponentialRampToValueAtTime(20000, t0 + T); o.connect(g).connect(c.destination); o.start(); o.stop(t0 + T);
-  au.sweep = { o, g, t0, T }; $('#spHzL', au.el).textContent = t('playing now'); o.onended = () => stopSweep(true); $('#spSweep', au.el).innerHTML = `${ic('stop')}${t('Stop')}`; cone('L', true); cone('R', true);
+  au.sweep = { o, g, t0, T }; $('#spHzL', au.el).textContent = t('playing now'); o.onended = () => stopSweep(true); $('#spSweep', au.el).innerHTML = `${ic('stop')}${t('Stop')}`;
+  clearTimeout(au.sweepT); au.sweepT = setTimeout(() => stopSweep(true), (T + 1) * 1000); coneSync();
 }
 function stopSweep(ended) {
-  if (!au.sweep) return; try { au.sweep.o.onended = null; au.sweep.o.stop(); } catch {} au.sweep = null; cone('L', false); cone('R', false);
+  clearTimeout(au.sweepT); if (!au.sweep) return; try { au.sweep.o.onended = null; au.sweep.o.stop(); } catch {} au.sweep = null; coneSync();
   if (au.el) { $('#spSweep', au.el).innerHTML = `${ic('wave')}${t('Start the sweep')}`; $('#spHzL', au.el).textContent = ended ? t('sweep finished') : t('stopped'); }
 }
 tickers.add(() => {
@@ -317,7 +404,9 @@ tickers.add(() => {
   $('#spHz', au.el).textContent = f >= 1000 ? fmt1(f / 1000) + ' kHz' : Math.round(f) + ' Hz';
   $('#spProg', au.el).style.transform = `scaleX(${k.toFixed(4)})`; $('#spHead', au.el).style.left = (k * 100).toFixed(2) + '%';
 });
-function closeAudio() { stopSweep(); if (au.ctx) { au.ctx.close().catch(() => {}); au.ctx = null; } }
+function closeAudio() { stopSweep(); [...au.voices].forEach(v => stopVoice(v)); coneSync(); if (au.ctx) { au.ctx.close().catch(() => {}); au.ctx = null; } }
+/* the window hidden or minimized: the notes are cut and the rings stop with them */
+document.addEventListener('visibilitychange', () => { if (document.hidden && au.voices.size) stopNotes(); });
 
 /* ========================= Microphone ========================= */
 const mic = { stream: null, an: null, ctx: null, buf: null, peak: 0, lvl: 0, rec: null };

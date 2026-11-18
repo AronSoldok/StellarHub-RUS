@@ -156,5 +156,16 @@
   "Click to go again.": "点击再来一次。",
   "{button}: two presses in under 60 ms. The button may be chattering.": "{button}：60 毫秒内按了两次。该按键可能存在连击问题。",
   "move the mouse": "请移动鼠标",
-  "best {n} Hz": "最高 {n} Hz"
+  "best {n} Hz": "最高 {n} Hz",
+  "Laptop + numpad": "笔记本 + 数字键盘",
+  "Mark the keys your keyboard doesn't have": "标记你的键盘没有的按键",
+  "Missing keys": "缺少的按键",
+  "Click the keys your keyboard doesn't have. They won't count toward the progress. During the test, right-click a key to do the same.": "点击你的键盘没有的按键，它们不会计入进度。测试过程中，也可以右键点击按键来标记。",
+  "Restore defaults": "恢复默认",
+  "Done": "完成",
+  "Is a key missing from your keyboard? Right-click it during the test, or use “Missing keys”.": "键盘缺少某个按键？在测试中右键点击它，或使用“缺少的按键”。",
+  "You pressed a numeric keypad key. Switch to the laptop layout with a numeric keypad?": "你按下了数字小键盘的按键。要切换到带数字键盘的笔记本布局吗？",
+  "Switch to {layout}": "切换到 {layout}",
+  "{n} key marked as missing": "已将 {n} 个按键标记为缺少",
+  "{n} keys marked as missing": "已将 {n} 个按键标记为缺少"
 }

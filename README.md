@@ -1,6 +1,6 @@
-﻿<div align="center">
+<div align="center">
 
-# ðŸª StellarHub
+# 🪐 StellarHub
 
 **The control center for your Windows PC.**
 Live hardware stats, drivers, apps, disk space, cleanup and hardware tests, in one carefully crafted app.
@@ -14,7 +14,7 @@ Live hardware stats, drivers, apps, disk space, cleanup and hardware tests, in o
 
 </div>
 
-## ðŸ“‘ Contents
+## 📑 Contents
 
 - [What it is](#-what-it-is)
 - [Modules](#-modules)
@@ -28,7 +28,7 @@ Live hardware stats, drivers, apps, disk space, cleanup and hardware tests, in o
 - [Contributing](#-contributing)
 - [License and credits](#-license-and-credits)
 
-## âœ¨ What it is
+## ✨ What it is
 
 StellarHub brings together the tools that are usually spread across half a dozen programs: a system monitor,
 a driver and app updater, an uninstaller that removes leftovers, a disk space analyzer, an optimizer and a
@@ -38,53 +38,72 @@ Everything works with **real data from your PC**, everything that changes the sy
 possible, and the interface is designed to be a pleasure to use: smooth animations, a configurable starfield and
 no cluttered screens.
 
-## ðŸ§© Modules
+## 🧩 Modules
 
-### âŒ‚ Home
+### ⌂ Home
 Your PC at a glance: the real model, its components as a **tile grid** or a **3D model** you can rotate, live
 stats (CPU, GPU, temperatures, memory, disk, network, battery), system health and what needs attention. Each
 component opens a detail card with live data; the displays card even shows what is on each monitor right now.
 
-### âˆ¿ Live Monitor
+### ∿ Live Monitor
 CPU per thread (performance and efficient cores apart), real clock speed, NVIDIA GPU (load, temperature, power,
 VRAM), memory, disks with **SMART** health, network and Wi-Fi, battery wear, processes with their icons, and system
 health (failing devices and critical events explained in plain language).
 
-### â‡… Driver Updater
+### ⇅ Driver Updater
 A full driver inventory, search and install from **Windows Update** with a restore point first, devices with
 problems or no longer connected, **driver backups**, stored versions to roll back to, and history.
 
-### âŒ« Program Remover
+### ⌫ Program Remover
 Standard, silent or forced uninstall; a **leftover scanner** with a confidence score and the reason for each item;
 a **quarantine** so everything can be undone; batch uninstall; **watched installs** (removes exactly what an
 installer created); and a hunter mode (point at a window to find out which program it belongs to).
 
-### â†» Program Updater
-App updates through **winget**, Windows Update, Microsoft Store, system components (.NET, Visual C++, WebView2â€¦)
+### ↻ Program Updater
+App updates through **winget**, Windows Update, Microsoft Store, system components (.NET, Visual C++, WebView2…)
 and developer tools (pip, npm), with release notes and a queue that shows real progress.
 
-### â–¦ Storage Checker
+### ⇪ Hangar
+Pick apps from a curated catalog of 150+ trusted programs (or search all of winget) and install them in one go,
+with real progress. Ready-made **kits** (Essentials, Gamer, Developer, Creator…), your own kits, and a short code to
+set up another PC the same way.
+
+### ▦ Storage Checker
 An interactive map of what each folder takes up, WinDirStat style, with zoom and free space in view. As administrator it reads the NTFS master file table directly, so a full drive scan takes seconds. File types,
 largest files, **duplicates**, and comparisons with earlier scans to see what grew.
 
-### â†¯ Super Optimizer
+### ↯ Super Optimizer
 Cleanup of temp files and caches, **startup** apps, services, registry, Windows **repairs** (SFC, DISM, chkdsk,
-network, Windows Updateâ€¦) with live output, and performance settings (power plan, visual effects, game mode,
-hardware-accelerated GPU scheduling). Everything backed up first and undoable.
+network, Windows Update…) with live output, and performance settings (power plan, visual effects, game mode,
+hardware-accelerated GPU scheduling), and **Debloat**: remove preinstalled apps and turn off ads, suggestions,
+Widgets, Copilot and Bing in Start search. Everything backed up first and undoable.
 
-### âŒ¨ï¸Ž Device Tester
+### ⛨ Privacy & Security
+A privacy and security score with plain-language findings: which apps used your camera, microphone or location and
+when, antivirus, firewall, Secure Boot, TPM, encryption and patch age, open ports and who can reach them, 20 Windows
+tracking settings with undo, and an audit of everything that starts on its own (tasks, services, browser extensions).
+
+### ◷ Benchmark
+Test every component or run them all for a **StellarHub Score**: processor (per core), graphics (WebGL scenes),
+memory bandwidth and latency, CrystalDiskMark-style disk tests, an opt-in network test, and a **stress test** with
+live temperatures, clocks and throttling detection. Every run is kept to compare over time.
+
+### ⌨︎ Device Tester
 Keyboard (laptop, 100 %, TKL, 75 %, 65 % and several layouts), dead pixels, speakers, microphone, camera and
 mouse, with a **CPS test**.
 
-### â—Ž Autopilot
-Maintenance routines: you choose when (a time, at startup, on unplugging, when space runs lowâ€¦), under which
+### ◎ Autopilot
+Maintenance routines: you choose when (a time, at startup, on unplugging, when space runs low…), under which
 conditions and what to do.
 
-## ðŸŽ›ï¸ Also included
+## 🎛️ Also included
 
 - **Always-on-top widget**, large (with charts) or small (a slim bar), above everything including the taskbar and on
   every virtual desktop.
-- **Tray icon** with quick actions; closing the window keeps StellarHub running in the background.
+- **Tray icon**: a left click opens a panel with live stats, every module and quick actions; a right click shows the
+  classic menu. Closing the window keeps StellarHub running in the background.
+- **Backups and restore** in Settings: restore points (create, turn on protection, delete) and every backup StellarHub
+  made, in one place.
 - **Command palette** (`Ctrl K`) to jump to any tool or action by typing.
 - **Optional administrator mode**, and a permanent one if you want it (no Windows prompt on every launch).
 - **Settings for almost everything**: theme, colors, interface size, density, corners, starfield, animation
@@ -93,7 +112,7 @@ conditions and what to do.
 - **Six languages**: English, Español, Português (Brasil), Italiano, Français and 简体中文. It follows the Windows
   language by default and can be changed in *Settings > General*.
 
-## ðŸ–¼ï¸ Screenshots
+## 🖼️ Screenshots
 
 | Live Monitor | Storage Checker |
 |---|---|
@@ -105,9 +124,9 @@ conditions and what to do.
 
 > Screenshots were taken with sample data.
 
-## ðŸš€ Getting started
+## 🚀 Getting started
 
-### â—‡ Install it
+### ◇ Install it
 
 Download **`StellarHub-Setup-x.y.z.exe`** from the [latest release](https://github.com/estebanarosemena/StellarHub/releases/latest)
 and run it. It installs to `Program Files`, adds a Start menu shortcut and can be removed from *Settings > Apps*
@@ -117,7 +136,7 @@ like any other program. Requires Windows 10 (1809) or 11, 64-bit; the setup adds
 > The installer is not code-signed yet, so Windows SmartScreen may say it is from an "unknown publisher".
 > Each release lists the SHA-256 of the setup file so you can check it is the original.
 
-### â—‡ Run it from source
+### ◇ Run it from source
 
 Needs Python 3.12 or later.
 
@@ -130,7 +149,7 @@ pythonw run.py
 
 For development, `python run.py --debug` opens the developer tools for the interface.
 
-### â—‡ Build the installer
+### ◇ Build the installer
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File packaging\build.ps1
@@ -141,23 +160,23 @@ PyInstaller and packs it with [Inno Setup](https://jrsoftware.org/isinfo.php) 6.
 as a folder (not a single self-extracting file) and without UPX, so it starts as fast as running from source and
 does not look like a packed executable to antivirus software.
 
-### â—‡ Administrator mode
+### ◇ Administrator mode
 
 StellarHub works without it, in limited mode. Installing drivers, cleaning system files, repairing Windows or
 reading the CPU temperature and disk SMART data require it; the app suggests it quietly when needed.
 
-## âŒ¨ï¸ Keyboard shortcuts
+## ⌨️ Keyboard shortcuts
 
 | Shortcut | Action |
 |---|---|
 | `Ctrl K` | Search for a tool or action |
 | `Ctrl ,` | Settings |
-| `Ctrl 1` â€¦ `Ctrl 9` | Go to a module |
-| `Alt â†` / `Alt â†’` or mouse side buttons | Back / forward |
+| `Ctrl 1` … `Ctrl 9` | Go to a module |
+| `Alt ←` / `Alt →` or mouse side buttons | Back / forward |
 | `Esc` | Close whatever is open, or go back to Home |
 | Double-click the top bar | Maximize or restore |
 
-## ðŸ›¡ï¸ Safety
+## 🛡️ Safety
 
 StellarHub touches sensitive parts of Windows, so it does it carefully:
 
@@ -166,12 +185,12 @@ StellarHub touches sensitive parts of Windows, so it does it carefully:
   moves deleted items to a **quarantine** they can be restored from.
 - Some areas are **never touched**: Windows itself, shared folders, personal data, critical services, kernel
   drivers and StellarHub's own folder.
-- Whatever Windows does not report is shown as "â€”": the app never makes up numbers.
+- Whatever Windows does not report is shown as "—": the app never makes up numbers.
 
-## ðŸ—ï¸ How it's built
+## 🏗️ How it's built
 
 - **Python** for everything that talks to Windows (`stellarhub/engine/`): live telemetry (psutil, performance
-  counters, nvidia-smi), WMI, PowerShell, Windows Update, winget, pnputilâ€¦
+  counters, nvidia-smi), WMI, PowerShell, Windows Update, winget, pnputil…
 - **A single interface** in plain HTML, CSS and JavaScript, no frameworks (`stellarhub/ui/`), inside a native
   window powered by [pywebview](https://pywebview.flowrl.com/) and WebView2.
 - How a module is written and how it talks to the engine: [`docs/UI_CONTRACT.md`](docs/UI_CONTRACT.md).
@@ -179,12 +198,12 @@ StellarHub touches sensitive parts of Windows, so it does it carefully:
 ```
 run.py                     launcher
 stellarhub/
-â”œâ”€ app.py                  window, API for the interface, widget and administrator mode
-â”œâ”€ chrome.py               custom window frame (move, resize, maximize)
-â”œâ”€ tray.py                 tray icon
-â”œâ”€ engine/                 engine: one file per module, plus telemetry, system info and long-running jobs
-â”‚  â””â”€ removal/             leftover scanner, quarantine, cleanup and Windows startup
-â””â”€ ui/                     interface: core, shell, modules, Home views and widget
+├─ app.py                  window, API for the interface, widget and administrator mode
+├─ chrome.py               custom window frame (move, resize, maximize)
+├─ tray.py                 tray icon
+├─ engine/                 engine: one file per module, plus telemetry, system info and long-running jobs
+│  └─ removal/             leftover scanner, quarantine, cleanup and Windows startup
+└─ ui/                     interface: core, shell, modules, Home views and widget
 packaging/                 build script, PyInstaller recipe and Inno Setup installer
 tests/                     engine tests (they never touch the system)
 docs/                      UI contract and screenshots
@@ -193,16 +212,16 @@ designs/                   the early design explorations
 
 **Tests:** `python -m unittest discover -s tests -t .`
 
-## ðŸ—ºï¸ Roadmap
+## 🗺️ Roadmap
 
-- [x] Full interface for all 9 modules
+- [x] Full interface for all 12 modules
 - [x] Real engine: telemetry, drivers, apps, updates, disk, optimizer and monitor
 - [x] Autopilot running routines on its own (while StellarHub is open, also hidden in the tray)
 - [x] `.exe` installer
 - [x] Six languages
 - [ ] Automatic StellarHub updates from this repository
 
-## ðŸ¤ Contributing
+## 🤝 Contributing
 
 Ideas, bug reports and improvements are welcome: open an issue or a pull request. If you add or change a module,
 start with [`docs/UI_CONTRACT.md`](docs/UI_CONTRACT.md), and only test anything that touches the system in
@@ -211,7 +230,7 @@ read-only mode.
 Translations live in [`stellarhub/ui/i18n/`](stellarhub/ui/i18n/): one JSON file per language and area, with the
 rules and glossary in its README. Corrections from native speakers are especially welcome.
 
-## ðŸ“œ License and credits
+## 📜 License and credits
 
 Created by **Esteban Arosemena** and **Claude**.
 

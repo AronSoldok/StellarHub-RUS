@@ -53,7 +53,7 @@ tickers.add((dt, t) => {
 SH.mouse = mouse; SH.warp = warp;
 
 /* ================= dock ================= */
-const DOCK = ['home', '|', 'monitor', 'drivers', 'remover', 'updater', 'storage', 'optimizer', 'tester', '|', 'autopilot'];
+const DOCK = ['home', '|', 'monitor', 'drivers', 'remover', 'updater', 'hangar', '|', 'storage', 'optimizer', 'privacy', '|', 'benchmark', 'tester', '|', 'autopilot'];
 const dock = $('#dock');
 dock.innerHTML = DOCK.map(id => id === '|' ? '<span class="sep"></span>' : (m => `<button class="dk${id === 'home' ? ' on' : ''}" data-go="${id}" aria-label="${m.name}">${ic(m.icon)}<span class="tip">${m.name}</span></button>`)(modById(id))).join('') + '<span class="dot" id="dockDot"></span>';
 const BASE = 52, GROW = .3;
@@ -333,7 +333,7 @@ function langPicker() {
   const tiles = [['auto', SH.t('Automatic'), SH.t('Same as Windows: {lang}', { lang: sys[1] })], ...L.LANGS.map(([c, own, eng]) => [c, own, SH.t(eng)])];
   return `<div class="langs">${tiles.map(([c, a, b]) => `<button class="lang${c === cur ? ' on' : ''}" data-lang="${c}">${flag(c)}<span><b>${a}</b><small>${b}</small></span>${ic('check')}</button>`).join('')}</div>`;
 }
-const SECTIONS = [['look', SH.t('Appearance'), 'palette'], ['background', SH.t('Background'), 'sparkle'], ['motion', SH.t('Animation'), 'play'], ['home', SH.t('Home'), 'home'], ['widget', SH.t('Widget'), 'monitor'], ['general', SH.t('General'), 'sliders'], ['tools', SH.t('Tools'), 'wrench'], ['data', SH.t('Data'), 'folder'], ['keys', SH.t('Shortcuts'), 'keyboard'], ['admin', SH.t('Administrator'), 'shield'], ['updates', SH.t('Updates'), 'download'], ['about', SH.t('About'), 'info']];
+const SECTIONS = [['look', SH.t('Appearance'), 'palette'], ['background', SH.t('Background'), 'sparkle'], ['motion', SH.t('Animation'), 'play'], ['home', SH.t('Home'), 'home'], ['widget', SH.t('Widget'), 'monitor'], ['general', SH.t('General'), 'sliders'], ['tools', SH.t('Tools'), 'wrench'], ['data', SH.t('Data'), 'folder'], ['backups', SH.t('Backups and restore'), 'restore'], ['keys', SH.t('Shortcuts'), 'keyboard'], ['admin', SH.t('Administrator'), 'shield'], ['updates', SH.t('Updates'), 'download'], ['about', SH.t('About'), 'info']];
 const seg = (key, opts) => `<div class="seg" data-key="${key}"><span class="ind"></span>${opts.map(([v, l]) => `<button data-v="${v}"${String(S()[key]) === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div>`;
 const tog = (key, label, sub) => `<div class="set inline"><div class="lbl"><div>${label}${sub ? `<span>${sub}</span>` : ''}</div></div><button class="toggle${S()[key] ? ' on' : ''}" data-key="${key}" aria-label="${label}"><i></i></button></div>`;
 /* slider: live value, saved on release */
@@ -346,7 +346,10 @@ const TOOLS = [['devmgmt', SH.t('Device Manager'), 'drivers'], ['services', SH.t
   ['powercfg', SH.t('Power Options'), 'power'], ['ncpa', SH.t('Network Connections'), 'wifi'], ['appwiz', SH.t('Programs and Features'), 'package'], ['control', SH.t('Control Panel'), 'grid'],
   ['cleanmgr', SH.t('Disk Cleanup'), 'broom'], ['dfrgui', SH.t('Optimize Drives'), 'storage'], ['rstrui', SH.t('System Restore'), 'restore'], ['cmd', SH.t('Command Prompt'), 'code'], ['powershell', 'PowerShell', 'code']];
 const INT_HINT = { max: SH.t('Everything moves: stars, camera flights and full transitions.'), normal: SH.t('Shorter animations and slower stars.'), min: SH.t('Brief transitions. The stars stand still.') };
+/* sections that live in their own file register here: SH.settingsSections[id] = { html(), mount(el) } */
+SH.settingsSections = SH.settingsSections || {};
 function sectionHTML(id) {
+  if (SH.settingsSections[id]) return SH.settingsSections[id].html();
   const st = S(), t = SH.t;
   switch (id) {
     case 'look': return `<h3>${t('Appearance')}</h3><p>${t('How StellarHub looks.')}</p>
@@ -437,6 +440,7 @@ function showSection(id, first) {
   $$('.sec > *', body).forEach((el, i) => anim(el, [{ opacity: 0, transform: 'translate3d(14px,0,0)' }, { opacity: 1, transform: 'translate3d(0,0,0)' }], { d: 380, delay: 30 + i * 35, e: EASE.spring }));
   requestAnimationFrame(() => $$('.seg', body).forEach(s => placeSeg(s, true)));
   if (id === 'about') renderLangs();
+  const ext = SH.settingsSections[id]; if (ext && ext.mount) ext.mount($('.sec', body));
 }
 tickers.add(dt => { if (!state.setOpen) return; secInd.step(dt); $('#secInd').style.transform = `translateY(${secInd.v.toFixed(2)}px)`; });
 sheet.addEventListener('click', e => {
@@ -466,7 +470,7 @@ async function runAct(a) {
   else if (a === 'autozoom') {
     const v = String(autoZoom); const s = $('.seg[data-key="zoom"]', sheet);
     if (s) { $$('button', s).forEach(x => x.classList.toggle('on', x.dataset.v === v)); placeSeg(s); }
-    SH.setSetting('zoom', v); applyZoom(); toast(SH.t('Automatic size: {pct}%.', { pct: Math.round(autoZoom * 100) }));
+    SH.setSetting('zoom', 'auto'); computeAutoZoom(); applyZoom(); toast(SH.t('Automatic size: {pct}%.', { pct: Math.round(autoZoom * 100) })); /* 'auto' keeps adapting to the window */
   }
   else if (a === 'widget' && SH.toggleWidget) SH.toggleWidget();
   else if (a === 'datadir') { if (await SH.call('open_data_dir') === undefined) toast(SH.t('This only works inside the app.')); }
@@ -522,9 +526,29 @@ function applySetting(key, val) {
     else SH.call('set_always_admin', !!val).then(r => { if (r === false) toast(SH.t('Could not set up starting as administrator.')); });
   }
 }
-let autoZoom = 1;
-function computeAutoZoom() { const w = screen.width; autoZoom = w >= 1880 ? 1.25 : w >= 1680 ? 1.15 : w >= 1480 ? 1.1 : 1; }
-function applyZoom() { if (S().zoom === 'auto' || !ZOOMS.some(z => z[0] === String(S().zoom))) { S().zoom = String(autoZoom); } SH.call('set_zoom', +S().zoom); }
+/* Automatic size: the largest zoom at which the layouts still have the room they are designed for, measured on
+   the window itself (not the screen), so it adapts when the window is resized or moved to another monitor. */
+const DESIGN_W = 1440, DESIGN_H = 820;
+let autoZoom = 1, curZoom = 1;
+function computeAutoZoom() {
+  const w = innerWidth * curZoom, h = innerHeight * curZoom; // the window's size at 100 %
+  autoZoom = [1.25, 1.15, 1.1, 1, .92, .85].find(z => w / z >= DESIGN_W && h / z >= DESIGN_H) || .85;
+}
+let zoomTimer = 0;
+addEventListener('resize', () => {
+  clearTimeout(zoomTimer);
+  zoomTimer = setTimeout(() => {
+    if (!isAutoZoom()) return;
+    const before = autoZoom; computeAutoZoom();
+    if (autoZoom !== before || autoZoom !== curZoom) applyZoom();
+  }, 350);
+});
+const isAutoZoom = () => S().zoom === 'auto' || !ZOOMS.some(z => z[0] === String(S().zoom));
+function applyZoom() {
+  const z = isAutoZoom() ? autoZoom : +S().zoom;
+  if (z === curZoom && SH.booted) return;
+  curZoom = z; SH.call('set_zoom', z);
+}
 function applyLook() {
   const st = S(); ROOT.dataset.theme = st.theme; ROOT.dataset.density = st.density; ROOT.dataset.int = st.intensity; ROOT.dataset.corners = st.corners;
   ROOT.dataset.quick = st.quickActions ? 'on' : 'off';

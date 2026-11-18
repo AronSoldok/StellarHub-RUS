@@ -323,6 +323,29 @@ const pi = (p, lg) => p.icon
   ? `<span class="pi img${lg ? ' lg' : ''}" data-pi="${p.id}"><img src="${p.icon}" alt="" loading="lazy" decoding="async"></span>`
   : `<span class="pi${lg ? ' lg' : ''}" data-pi="${p.id}" style="--h:${p.h}">${esc(p.ini)}</span>`;
 const CHK = on => `<span class="check${on ? ' on' : ''}"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>`;
+/* "select all" box with three states: none, some (a dash) or all */
+const ALLCHK = (attr, label) => `<span class="check rv-all" role="checkbox" tabindex="0" aria-checked="false" ${attr} aria-label="${esc(label)}" title="${esc(T('Select all'))}"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>`;
+function setTri(box, n, total) {
+  if (!box) return;
+  const st = !total || !n ? 'false' : n === total ? 'true' : 'mixed';
+  box.classList.toggle('on', st === 'true'); box.classList.toggle('some', st === 'mixed'); box.setAttribute('aria-checked', st);
+  box.classList.toggle('off', !total);
+}
+const triKeys = e => { if ((e.key === ' ' || e.key === 'Enter') && e.target.classList && e.target.classList.contains('rv-all')) { e.preventDefault(); e.target.click(); } };
+/* icons of programs that were uninstalled: the quarantine and the history still show them (kept on this PC only) */
+const ICON_KEY = 'sh.rmIcons';
+function rememberIcons(progs) {
+  try {
+    const m = JSON.parse(localStorage.getItem(ICON_KEY) || '{}');
+    progs.forEach(p => { if (p && p.icon && p.name) { delete m[p.name]; m[p.name] = p.icon; } });
+    const keys = Object.keys(m); keys.slice(0, Math.max(0, keys.length - 60)).forEach(k => delete m[k]);
+    localStorage.setItem(ICON_KEY, JSON.stringify(m));
+  } catch { /* storage full or blocked: letters stay */ }
+}
+function iconByName(name) {
+  const live = PROGRAMS.find(p => p.name === name && p.icon); if (live) return live.icon;
+  try { return JSON.parse(localStorage.getItem(ICON_KEY) || '{}')[name] || null; } catch { return null; }
+}
 function flip(container, mutate) {
   const kids = [...container.children]; const first = new Map(kids.map(e => [e, e.getBoundingClientRect().top]));
   mutate();
@@ -351,7 +374,7 @@ const STEPS = [T('Mode'), T('Prepare'), T('Uninstall'), T('Leftovers'), T('Revie
 function openFlow(progs, opts = {}) {
   const mod = sectionEl(); if (!mod || $('.rv-flow', mod)) return;
   const one = progs.length === 1 ? progs[0] : null;
-  const prot = progs.some(p => p.prot);
+  const prot = progs.some(p => p.prot); rememberIcons(progs);
   const f = document.createElement('div'); f.className = 'rv-flow';
   f.innerHTML = `<div class="rf-head">${one ? pi(one, true) : `<span class="pi lg" style="--h:200">${progs.length}</span>`}<div><h3>${one ? T('Uninstall {name}', { name: esc(one.name) }) : T('Leftovers from {n} programs', { n: progs.length })}</h3><div class="who">${one ? `${esc(one.pub)}, ${fmtMB(one.mb)}` : esc(progs.map(p => p.name).join(', '))}</div></div>
       <button class="iconbtn x" data-x aria-label="${T('Close')}">${ic('x')}</button></div>
@@ -496,16 +519,26 @@ function openFlow(progs, opts = {}) {
   function stepReview() {
     const dir = setStep(4);
     const groups = Object.keys(TYPES).map(t => [t, items.filter(l => l.type === t)]).filter(g => g[1].length);
-    swap(body, items.length ? `<div class="rv-groups">${groups.map(([t, list]) => `<div class="rg"><h5>${ic(TYPES[t][1])}${TYPES[t][0]} <span class="faint">${list.length}</span></h5>${list.sort((a, b) => (a.blocked - b.blocked) || (b.conf - a.conf)).map(l => `<button class="lo${l.blocked ? ' blk' : ''}" data-l="${esc(l.id)}"${l.blocked ? ' aria-disabled="true"' : ''}>${l.blocked ? `<span class="check lock">${ic('lock')}</span>` : CHK(sel.has(l.id))}<span class="p"><b>${esc(l.path)}</b><span>${esc(l.why)}${progs.length > 1 ? `. ${T('From {name}', { name: esc(l.prog) })}` : ''}</span></span><span class="conf" style="--c:${confColor(l.conf)}"><span class="bar"><span style="transform:scaleX(0)" data-v="${l.conf / 100}"></span></span><b>${l.conf}</b></span><span class="sz">${l.mb ? fmtMB(l.mb) : ''}</span></button>`).join('')}</div>`).join('')}</div>`
+    swap(body, items.length ? `<div class="rv-groups">${groups.map(([t, list]) => `<div class="rg" data-g="${t}"><h5>${list.some(l => !l.blocked) ? ALLCHK(`data-gall="${t}"`, T('Select all: {group}', { group: TYPES[t][0] })) : ''}${ic(TYPES[t][1])}${TYPES[t][0]} <span class="faint">${list.length}</span></h5>${list.sort((a, b) => (a.blocked - b.blocked) || (b.conf - a.conf)).map(l => `<button class="lo${l.blocked ? ' blk' : ''}" data-l="${esc(l.id)}"${l.blocked ? ' aria-disabled="true"' : ''}>${l.blocked ? `<span class="check lock">${ic('lock')}</span>` : CHK(sel.has(l.id))}<span class="p"><b>${esc(l.path)}</b><span>${esc(l.why)}${progs.length > 1 ? `. ${T('From {name}', { name: esc(l.prog) })}` : ''}</span></span><span class="conf" style="--c:${confColor(l.conf)}"><span class="bar"><span style="transform:scaleX(0)" data-v="${l.conf / 100}"></span></span><b>${l.conf}</b></span><span class="sz">${l.mb ? fmtMB(l.mb) : ''}</span></button>`).join('')}</div>`).join('')}</div>`
       : `<div class="empty"><b>${T('Nothing left')}</b>${T('The uninstaller removed everything. No cleanup needed.')}</div>`, dir, () => {
-      stagger($$('.rg', body), 40, 50);
+      stagger($$('.rg', body), 40, 50); syncGroups();
       setTimeout(() => $$('.conf .bar>span', body).forEach((b, i) => anim(b, [{ transform: 'scaleX(0)' }, { transform: `scaleX(${b.dataset.v})` }], { d: 700, delay: i * 18 })), 120);
     });
-    body.onclick = e => { const r = e.target.closest('.lo'); if (!r) return; if (r.classList.contains('blk')) { SH.toast(T('It is protected: StellarHub will not touch it.')); return; } const id = r.dataset.l; sel.has(id) ? sel.delete(id) : sel.add(id); const c = $('.check', r); c.classList.toggle('on', sel.has(id)); anim(c, [{ transform: 'scale(.75)' }, { transform: 'none' }], { d: 320, e: EASE.spring }); sumFoot(); };
+    const syncGroups = () => $$('.rg', body).forEach(g => { const ls = items.filter(l => l.type === g.dataset.g && !l.blocked); setTri($('[data-gall]', g), ls.filter(l => sel.has(l.id)).length, ls.length); });
+    body.onkeydown = triKeys;
+    body.onclick = e => {
+      const ga = e.target.closest('[data-gall]');
+      if (ga) {
+        const ls = items.filter(l => l.type === ga.dataset.gall && !l.blocked); const all = ls.every(l => sel.has(l.id));
+        ls.forEach(l => { if (all) sel.delete(l.id); else sel.add(l.id); const c = $(`.lo[data-l="${CSS.escape(l.id)}"] .check`, body); if (c) c.classList.toggle('on', sel.has(l.id)); });
+        anim(ga, [{ transform: 'scale(.75)' }, { transform: 'none' }], { d: 320, e: EASE.spring }); sumFoot(); return;
+      }
+      const r = e.target.closest('.lo'); if (!r) return; if (r.classList.contains('blk')) { SH.toast(T('It is protected: StellarHub will not touch it.')); return; } const id = r.dataset.l; sel.has(id) ? sel.delete(id) : sel.add(id); const c = $('.check', r); c.classList.toggle('on', sel.has(id)); anim(c, [{ transform: 'scale(.75)' }, { transform: 'none' }], { d: 320, e: EASE.spring }); sumFoot(); };
     function sumFoot() {
       const s = items.filter(l => sel.has(l.id)); const mb = s.reduce((a, l) => a + l.mb, 0);
       $('.t', foot).innerHTML = items.length ? T('<b>{n} of {total}</b> selected, {size}. High-confidence items are selected by default. Everything goes to the quarantine.', { n: s.length, total: items.length, size: fmtMB(mb) }) : '';
       const b = $('#rfDel', f); if (b) b.disabled = !s.length;
+      syncGroups();
     }
     setFoot(`<span class="t"></span>${items.length ? `<button class="btn ghost" id="rfKeep">${T('Keep all')}</button><button class="btn pri lg" id="rfDel">${ic('trash')}${T('Remove selected')}</button>` : `<button class="btn pri lg" id="rfKeep">${T('Finish')}</button>`}`); sumFoot();
     $('#rfKeep', f).onclick = () => stepDone([]);
@@ -640,7 +673,7 @@ const QUEUE_EMPTY = `<div class="empty"><b>${T('The queue is empty')}</b>${T('Se
 function renderBatch(el) {
   el.classList.add('fill', 'rv-batch');
   el.innerHTML = `<div class="rv-left pan rv-listwrap" data-asm><div class="rv-tools"><label class="field">${ic('search')}<input id="rbQ" placeholder="${T('Filter programs')}" spellcheck="false"></label><span class="cnt" id="rbCnt"></span></div>
-    <div class="tbl-head rv-cols"><span></span><span>${T('Program')}</span><span>${T('Size')}</span><span>${T('Installed')}</span></div><div class="rv-scroll" id="rbList"></div></div>
+    <div class="tbl-head rv-cols">${ALLCHK('id="rbAll"', T('Select all programs'))}<span>${T('Program')}</span><span>${T('Size')}</span><span>${T('Installed')}</span></div><div class="rv-scroll" id="rbList"></div></div>
     <div class="pan rq" data-asm><h4 class="pan-h">${T('Uninstall queue')} <em id="rbN">0</em></h4><div class="opts">${segHTML([['silent', T('Silent when possible')], ['normal', T('With windows')]], 'silent')}</div>
       <div class="list" id="rbQueue">${QUEUE_EMPTY}</div>
       <div class="rd-acts"><button class="btn pri lg" id="rbGo" disabled>${ic('remover')}${T('Uninstall')}</button></div></div>`;
@@ -650,11 +683,19 @@ function renderBatch(el) {
     list.innerHTML = avail().map(p => `<button class="pr rv-cols" data-p="${p.id}">${CHK(sel.has(p.id))}<span class="nm">${pi(p)}<span style="min-width:0"><b>${esc(p.name)}</b><span>${esc(p.pub)}</span></span></span><span class="c sz">${fmtMB(p.mb)}</span><span class="c">${fmtDate(p.date)}</span></button>`).join('');
     filter(); stagger($$('.pr', list).slice(0, 16), 60, 22);
   }
-  function filter() { const qq = q.toLowerCase(); let n = 0; $$('.pr', list).forEach(r => { const p = PROGRAMS.find(x => x.id === r.dataset.p); r.hidden = !!qq && !(p.name + ' ' + p.pub).toLowerCase().includes(qq); if (!r.hidden) n++; }); $('#rbCnt', el).textContent = PL(n, '{n} program', '{n} programs'); }
+  function filter() { const qq = q.toLowerCase(); let n = 0; $$('.pr', list).forEach(r => { const p = PROGRAMS.find(x => x.id === r.dataset.p); r.hidden = !!qq && !(p.name + ' ' + p.pub).toLowerCase().includes(qq); if (!r.hidden) n++; }); $('#rbCnt', el).textContent = PL(n, '{n} program', '{n} programs'); syncAll(); }
+  const shown = () => $$('.pr', list).filter(r => !r.hidden).map(r => r.dataset.p);
+  function syncAll() { const ids = shown(); setTri($('#rbAll', el), ids.filter(id => sel.has(id)).length, ids.length); }
+  $('#rbAll', el).addEventListener('keydown', triKeys);
+  $('#rbAll', el).addEventListener('click', e => {
+    if (running) return; const ids = shown(); if (!ids.length) return; const all = ids.every(id => sel.has(id));
+    ids.forEach(id => { if (all) sel.delete(id); else sel.add(id); const c = $(`.pr[data-p="${id}"] .check`, list); if (c) c.classList.toggle('on', sel.has(id)); });
+    anim(e.currentTarget, [{ transform: 'scale(.75)' }, { transform: 'none' }], { d: 320, e: EASE.spring }); drawQueue();
+  });
   $('#rbQ', el).addEventListener('input', e => { q = e.target.value.trim(); filter(); });
   wireSeg($('.seg', el), v => { mode = v; });
   function drawQueue() {
-    const ps = [...sel].map(id => PROGRAMS.find(p => p.id === id)).filter(Boolean);
+    const ps = [...sel].map(id => PROGRAMS.find(p => p.id === id)).filter(Boolean); syncAll();
     $('#rbN', el).textContent = ps.length; $('#rbGo', el).disabled = !ps.length || running;
     $('#rbGo', el).innerHTML = `${ic('remover')}${ps.length ? PL(ps.length, 'Uninstall {n} program, {size}', 'Uninstall {n} programs, {size}', { size: fmtMB(ps.reduce((a, p) => a + p.mb, 0)) }) : T('Uninstall')}`;
     if (!ps.length) { queue.innerHTML = QUEUE_EMPTY; return; }
@@ -830,7 +871,7 @@ function renderQuarantine(el) {
     const by = {}; items.forEach(l => { by[l.type] = (by[l.type] || 0) + 1; }); const mx = Math.max(1, ...Object.values(by));
     const tEl = $('#qzTypes', el); if (tEl) tEl.innerHTML = Object.keys(by).length ? Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<div class="qt"><span class="ri">${ic(TYPES[k][1])}</span><span class="tn">${TYPES[k][0]}</span><b>${n}</b><span class="bar"><span style="transform:scaleX(${(n / mx).toFixed(3)})"></span></span></div>`).join('') : `<p class="faint" style="font-size:12.5px">${T('Nothing saved right now.')}</p>`; };
   const sHTML = s => { const left = Math.max(0, qDays - daysSince(s.date)); const mb = s.items.reduce((a, l) => a + l.mb, 0);
-    return `<div class="qs" data-s="${s.id}"><div class="qs-h" role="button" tabindex="0">${ic('chev', 'i cv')}<span class="pi" style="--h:${s.h}">${esc(s.ini)}</span><span class="rt"><b>${esc(s.prog)}</b><span>${fmtDate(s.date)}, ${esc(SMODE[s.mode] || s.mode)}</span></span><span class="muted" style="font-size:12.5px">${PL(s.items.length, '{n} item, {size}', '{n} items, {size}', { size: fmtMB(mb) })}</span>
+    return `<div class="qs" data-s="${s.id}"><div class="qs-h" role="button" tabindex="0">${ic('chev', 'i cv')}${pi({ id: 'q' + s.id, h: s.h, ini: s.ini, icon: iconByName(s.prog) })}<span class="rt"><b>${esc(s.prog)}</b><span>${fmtDate(s.date)}, ${esc(SMODE[s.mode] || s.mode)}</span></span><span class="muted" style="font-size:12.5px">${PL(s.items.length, '{n} item, {size}', '{n} items, {size}', { size: fmtMB(mb) })}</span>
       <span class="left">${PL(left, '{n} day left', '{n} days left')}<span class="bar ${left < 4 ? 'warn' : ''}"><span style="transform:scaleX(${(left / qDays).toFixed(3)})"></span></span></span>${s.restorable === false ? `<span class="chip">${T('deleted permanently')}</span>` : `<button class="btn sm sec" data-a="all">${ic('restore')}${T('Restore all')}</button>`}</div>
       <div class="qs-b"><div><div class="qs-in">${s.items.map(l => `<div class="qit" data-l="${l.id}">${ic(TYPES[l.type][1])}<span class="p" title="${esc(l.path)}">${esc(l.path)}</span><span class="s">${l.mb ? fmtMB(l.mb) : ''}</span>${s.restorable === false ? '' : `<button class="btn sm ghost" data-a="one">${T('Restore')}</button>`}</div>`).join('')}</div></div></div></div>`; };
   function draw() { tot(); listEl.innerHTML = sessions.length ? sessions.map(sHTML).join('') : `<div class="empty"><b>${T('The quarantine is empty')}</b>${T('What you remove when uninstalling is kept here for {days} days in case you need it back.', { days: qDays })}</div>`; stagger([...listEl.children], 60, 50); }

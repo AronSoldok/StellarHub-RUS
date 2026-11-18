@@ -193,7 +193,6 @@
   "{n} {kind} packages": "{n} paquetes de {kind}",
   "Update {kind} packages": "Actualizar paquetes de {kind}",
   "(nothing selected)": "(nada seleccionado)",
-  "All or none": "Todos o ninguno",
   "Update packages": "Actualizar paquetes",
   "All your pip packages are up to date.": "Todos tus paquetes de pip están al día.",
   "No global npm package is out of date.": "Ningún paquete global de npm está desactualizado.",
@@ -290,5 +289,7 @@
   "winget can't read the installed version, so updating reinstalls the latest one. That's why it isn't included in Update all.": "winget no puede leer la versión instalada, así que al actualizar se reinstala la más reciente. Por eso no se incluye en Actualizar todo.",
   "It's no longer available.": "Ya no está disponible.",
   "Failed": "Falló",
-  "Windows Update returned code {code}.": "Windows Update devolvió el código {code}."
+  "Windows Update returned code {code}.": "Windows Update devolvió el código {code}.",
+  "Select all": "Seleccionar todo",
+  "Select all: {group}": "Seleccionar todo: {group}"
 }

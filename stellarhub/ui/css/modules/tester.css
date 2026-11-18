@@ -219,3 +219,14 @@ html[data-int=min] #v-tester .sp-spk.play .sp-cone i,html[data-int=min] #v-teste
 #v-tester .ms-stats #msHz{margin-left:auto}
 #v-tester .ms-stats #msHzMax{font-style:normal;font-size:11px;align-self:center}
 #v-tester .ms-stats #msHzMax:empty{display:none}
+
+/* ---------- keyboard: keys this keyboard doesn't have ---------- */
+#v-tester .kb-missb{margin-left:auto;height:30px}
+#v-tester .kb-missb.on{background:color-mix(in oklab,var(--accent2) 14%,transparent);color:var(--ink)}
+#v-tester .kb-missb svg{width:15px;height:15px}
+#v-tester .kb-mark .btn{flex:none}
+#v-tester .k.miss{background:transparent;border-style:dashed;border-bottom-width:1px;border-color:var(--line2);color:var(--faint);opacity:.5}
+#v-tester .k.miss span{text-decoration:line-through;text-decoration-thickness:1px}
+#v-tester .kb-stage.marking .k:not(.nd){cursor:pointer}
+#v-tester .kb-stage.marking .k:not(.nd):hover{border-color:var(--accent2);opacity:1}
+#v-tester .kb-missn{font-size:12px;margin-top:10px}

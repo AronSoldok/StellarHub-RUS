@@ -245,7 +245,9 @@ class Tray:
 
         # texts are functions: pystray asks for them each time the menu opens, so they follow the language
         menu = Menu(
-            Item(L("Open StellarHub"), lambda i, it: a.show_main(), default=True),
+            # left click: StellarHub's own panel; the right click shows this native menu
+            Item("panel", lambda i, it: a.tray_panel_toggle(), default=True, visible=False),
+            Item(L("Open StellarHub"), lambda i, it: a.show_main()),
             Item(L("Always-on-top widget"), lambda i, it: a.widget_toggle(), checked=lambda it: a._widget is not None),
             Menu.SEPARATOR,
             Item(L("Live Monitor"), go("monitor")),

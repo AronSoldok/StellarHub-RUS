@@ -63,30 +63,73 @@ function build(conf) {
   requestAnimationFrame(fit);
   return st;
 }
-/* fits the content to the window the user sized: whole stats only, never cut in half */
+/* fits the content to the window the user sized. Nothing is ever cut: the window has a minimum size where
+   everything still fits (squeezed) and a maximum where it still looks good; Windows enforces both while dragging. */
+const GAP = 6;
+let limitsSent = '';
+function chooseGrid(W, H, n) {
+  /* the column count that gives the roomiest cells while every stat fits */
+  let best = null;
+  for (let c = 1; c <= n; c++) {
+    const lines = Math.ceil(n / c), cw = (W - (c - 1) * GAP) / c, ch = (H - (lines - 1) * GAP) / lines;
+    if (cw < 104 || ch < 34) continue;
+    const score = Math.min(cw / 2.4, ch);
+    if (!best || score > best.score) best = { c, ch, score };
+  }
+  return best || { c: Math.min(n, 2), ch: 34 };
+}
 function fit() {
   const w = $('#w'), box = $('#rows'); if (!rows.length || !box) return;
   rows.forEach(r => { r.el.hidden = false; });
-  w.classList.remove('compact'); box.style.gridTemplateColumns = '';
+  w.classList.remove('compact', 'tight'); box.style.gridTemplateColumns = ''; box.style.gridAutoRows = '';
+  const n = rows.length;
   if (w.classList.contains('M-mini')) {
-    const avail = box.clientWidth + .5; let used = 0;
-    rows.forEach((r, i) => { const need = r.el.offsetWidth + (i ? 12 : 0); if (i && used + need > avail) r.el.hidden = true; else used += need; });
+    /* small bar: the numbers share the width; when it gets narrow they squeeze (less padding and gap) */
+    const natural = rows.reduce((a, r) => a + r.el.offsetWidth, 0) + GAP * (n - 1);
+    if (box.clientWidth < natural) w.classList.add('tight');
+    if (box.scrollWidth > box.clientWidth + 1) { // only if Windows let it get smaller than the minimum
+      let used = 0; rows.forEach((r, i) => { used += r.el.offsetWidth + (i ? GAP : 0); if (i && used > box.clientWidth) r.el.hidden = true; });
+    }
   } else {
-    const W = box.clientWidth, H = box.clientHeight, n = rows.length, gap = 6;
-    let show = n;
+    const W = box.clientWidth, H = box.clientHeight;
     if (w.classList.contains('L-grid')) {
-      const cols = Math.max(1, Math.min(n, Math.floor((W + gap) / (128 + gap))));
-      box.style.gridTemplateColumns = `repeat(${cols},1fr)`;
-      const lines = Math.ceil(n / cols), cell = (H - (lines - 1) * gap) / lines;
-      if (cell < 54) w.classList.add('compact');
-      if (cell < 34) show = Math.max(1, Math.floor((H + gap) / (34 + gap))) * cols;
+      const g = chooseGrid(W, H, n);
+      box.style.gridTemplateColumns = `repeat(${g.c},1fr)`;
+      if (g.ch < 54) w.classList.add('compact');
     } else if (w.classList.contains('L-row')) {
-      show = Math.max(1, Math.floor((W + gap) / (86 + gap)));
       if (H < 96) w.classList.add('compact');
-    } else show = Math.max(1, Math.floor((H + 2) / 32));
-    rows.forEach((r, i) => { r.el.hidden = i >= show; });
+    } else box.style.gridAutoRows = Math.max(26, Math.min(40, Math.floor((H + 2) / n) - 2)) + 'px';
   }
   paint(SH.tele.v);
+  sendLimits();
+}
+/* min and max window size for what is shown (CSS px; sent to Windows in device px) */
+function limits() {
+  const w = $('#w'), n = Math.max(1, rows.length);
+  if (w.classList.contains('M-mini')) {
+    const chrome = 12 + 7 + 10 + 12;
+    const had = w.classList.contains('tight');
+    w.classList.remove('tight'); const natural = rows.reduce((a, r) => a + r.el.offsetWidth, 0);
+    w.classList.add('tight'); const tight = rows.reduce((a, r) => a + r.el.offsetWidth, 0);
+    if (!had) w.classList.remove('tight');
+    return { minW: chrome + tight + GAP * (n - 1) + 2, maxW: chrome + natural + 34 * (n - 1), minH: 38, maxH: 38,
+             comfy: chrome + natural + 16 * (n - 1) };
+  }
+  const pad = 24, head = 54;
+  if (w.classList.contains('L-grid')) {
+    const c = Math.min(2, n), lines = Math.ceil(n / c);
+    return { minW: pad + c * 104 + (c - 1) * GAP, minH: head + lines * 34 + (lines - 1) * GAP,
+             maxW: pad + Math.min(n, 3) * 240, maxH: head + n * 110 };
+  }
+  if (w.classList.contains('L-row')) return { minW: pad + n * 84 + (n - 1) * GAP, minH: head + 44, maxW: pad + n * 210, maxH: head + 130 };
+  return { minW: 220, minH: head + n * 28, maxW: 480, maxH: head + n * 42 };
+}
+SH.widgetLimits = () => limits();
+function sendLimits() {
+  const L = limits(), d = devicePixelRatio || 1;
+  const v = [L.minW, L.minH, L.maxW, L.maxH].map(x => Math.ceil(x * d));
+  const key = v.join(','); if (key === limitsSent) return; limitsSent = key;
+  SH.call('widget_limits', ...v);
 }
 new ResizeObserver(() => requestAnimationFrame(fit)).observe(document.getElementById('w'));
 function draw(r) {
@@ -108,11 +151,12 @@ function fitWindow(st) {
     paint(SH.tele.v);
     /* a size the user chose by dragging the edges wins over the automatic one (per mode) */
     const saved = st['widgetSize_' + (st.widgetMode === 'mini' ? 'mini' : 'full')];
-    if (st.widgetMode === 'mini') {
-      const need = Math.ceil(12 + 7 + 10 + $('#rows').scrollWidth + 14);
-      SH.call('widget_resize', saved ? Math.max(need, saved[0]) : need, 38);
-    } else if (saved) SH.call('widget_resize', saved[0], saved[1]);
-    else { const sz = SH.widgetSize(st); SH.call('widget_resize', sz.w, sz.h); }
+    const L = limits(), clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+    let sz;
+    if (st.widgetMode === 'mini') sz = { w: saved ? saved[0] : L.comfy, h: 38 };
+    else sz = saved ? { w: saved[0], h: saved[1] } : SH.widgetSize(st);
+    limitsSent = ''; sendLimits();
+    SH.call('widget_resize', Math.round(clamp(sz.w, L.minW, L.maxW)), Math.round(clamp(sz.h, L.minH, L.maxH)));
   });
 }
 /* resize handles: Windows' own resize loop does the dragging */

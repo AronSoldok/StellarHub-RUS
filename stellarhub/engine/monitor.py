@@ -19,7 +19,7 @@ from ..i18n import tr
 from .ps import ps_json
 
 EXPORTS = {"processes", "end_process", "open_location", "disks", "network", "public_ip", "dns_test", "set_dns",
-           "battery_report", "health", "gpu_info", "memory_info"}
+           "battery_report", "health", "gpu_info", "memory_info", "icons"}
 
 NO_WINDOW = 0x08000000
 MB = 1024 ** 2
@@ -77,6 +77,72 @@ def _icon(exe):
         except Exception:
             _icon_cache[exe] = None
     return _icon_cache[exe]
+
+
+# Parts of Windows with no program file: they get the Windows logo
+PSEUDO = {"system", "registry", "memcompression", "memory compression", "idle", "system idle process", "secure system",
+          "interrupts", "vmmem", "vmmemwsl", "vmmemws"}
+SERVICE_HOSTS = {"svchost.exe", "services.exe", "wudfhost.exe", "dllhost.exe"}
+_svc = {"at": 0, "paths": set(), "byname": {}}
+
+
+def _services():
+    """Program files of the installed services (refreshed every 10 min): which processes are services, and the path
+    of protected ones Windows will not tell a normal user (an antivirus, for example)."""
+    if time.monotonic() - _svc["at"] > 600 or not _svc["at"]:
+        paths, byname = set(), {}
+        try:
+            from .removal.programs import exe_from_command
+            for sv in psutil.win_service_iter():
+                try:
+                    exe = exe_from_command(sv.binpath())
+                except (psutil.Error, OSError):
+                    continue
+                if exe and os.path.isabs(exe):
+                    paths.add(exe.lower())
+                    byname.setdefault(os.path.basename(exe).lower(), exe)
+        except Exception:
+            pass
+        _svc.update(at=time.monotonic(), paths=paths, byname=byname)
+    return _svc
+
+
+def _find_exe(name):
+    """Where a process lives when Windows refuses to say (protected and system processes, normal mode)."""
+    name = (name or "").lower()
+    if not name.endswith(".exe"):
+        return ""
+    root = os.environ.get("SystemRoot", r"C:\Windows")
+    for d in (os.path.join(root, "System32"), root, os.path.join(root, "SysWOW64")):
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return p
+    p = _services()["byname"].get(name)
+    return p if p and os.path.isfile(p) else ""
+
+
+def _proc_icon(name, exe, system):
+    """Icon for a process row: its own icon; the Windows logo for parts of Windows; a gear for services
+    without an icon; the generic program icon otherwise (like Explorer). Never None if Windows can draw one."""
+    try:
+        from .removal import icons
+    except Exception:
+        return None
+    low = (name or "").lower()
+    if os.path.splitext(low)[0] in PSEUDO or low in PSEUDO:
+        return icons.windows_icon()
+    if low in SERVICE_HOSTS:
+        return icons.stock_icon("settings")
+    path = exe if exe and os.path.isfile(exe) else _find_exe(name)
+    own = _icon(path) if path else None
+    if own:
+        return own
+    if path and path.lower() in _services()["paths"]:
+        return icons.stock_icon("settings")
+    in_windows = path and path.lower().startswith(SYS_DIRS) and "\\driverstore\\" not in path.lower()  # not drivers' helpers
+    if in_windows or (not path and system):
+        return icons.windows_icon()
+    return icons.type_icon(".exe")
 
 
 class _PdhArray:
@@ -191,7 +257,8 @@ def processes(known=None):
             g = groups.get(key)
             if g is None:
                 system = (not exe) or exe.lower().startswith(SYS_DIRS)
-                desc = _file_desc(exe) if exe and (exe in _desc_cache or time.monotonic() - t0 < 1.0) else None
+                where = exe or _find_exe(name)  # protected processes: only for the description and the icon
+                desc = _file_desc(where) if where and (where in _desc_cache or time.monotonic() - t0 < 1.0) else None
                 g = groups[key] = {"key": key, "n": desc or os.path.splitext(name)[0], "exe": name, "path": exe, "sys": bool(system),
                                    "k": 0, "pids": [], "cpu": 0.0, "ram": 0.0, "gpu": 0.0, "disk": 0.0, "net": 0}
             g["k"] += 1
@@ -209,14 +276,33 @@ def processes(known=None):
         for g in sorted(groups.values(), key=lambda g: -g["ram"]):
             g["cpu"], g["ram"], g["gpu"], g["disk"] = round(min(100, g["cpu"]), 2), round(g["ram"], 1), round(g["gpu"], 1), round(g["disk"], 2)
             if g["key"] not in known:
-                if not g["path"]:
-                    g["icon"] = None
-                elif g["path"] in _icon_cache or time.monotonic() - t_icons < ICON_BUDGET:
-                    g["icon"] = _icon(g["path"])  # if there is no time left it is not sent and the interface asks again
+                if not g["path"] or g["path"] in _icon_cache or time.monotonic() - t_icons < ICON_BUDGET:
+                    g["icon"] = _proc_icon(g["exe"], g["path"], g["sys"])  # no time left: not sent, the interface asks again
             if OWN in g["pids"]:
                 g["own"] = True
             out.append(g)
         return {"list": out, "total": len(alive), "gpuPerProcess": "gpu" in _pdh.c, "admin": _admin()}
+
+
+def icons(specs, budget=1.5):
+    """Shared icon lookup for lists in any module (Storage's files, for example). Each spec is 'ext:.mp4' (file type),
+    'file:<path>' (the file's own icon, or its type's), 'dir:' (folder), 'stock:<name>' or 'windows'.
+    Returns {spec: data URI}; what does not fit in the time budget is left out and arrives on the next call."""
+    from .removal import icons as ic
+    out, t0 = {}, time.monotonic()
+    for spec in list(specs or [])[:400]:
+        if time.monotonic() - t0 > budget:
+            break
+        kind, _, val = str(spec).partition(":")
+        try:
+            uri = (ic.type_icon(val) if kind == "ext" else ic.file_icon(val) if kind == "file" else
+                   ic.type_icon("", folder=True) if kind == "dir" else ic.stock_icon(val) if kind == "stock" else
+                   ic.windows_icon() if kind == "windows" else None)
+        except Exception:
+            uri = None
+        if uri:
+            out[spec] = uri
+    return out
 
 
 def end_process(key):
@@ -399,13 +485,18 @@ Get-NetIPConfiguration | Where-Object { $_.NetAdapter.Status -eq 'Up' } | ForEac
     for pid, n in apps.items():
         try:
             p = psutil.Process(pid)
-            name, exe = p.name(), p.exe()
+            name = p.name()
         except psutil.Error:
             continue
-        g = byname.setdefault(name.lower(), {"n": _file_desc(exe) or os.path.splitext(name)[0], "exe": name, "conns": 0, "icon": None})
+        try:
+            exe = p.exe()
+        except psutil.Error:  # protected (an antivirus, for example): still listed
+            exe = ""
+        where = exe or _find_exe(name)
+        g = byname.setdefault(name.lower(), {"n": (_file_desc(where) if where else None) or os.path.splitext(name)[0], "exe": name, "conns": 0, "icon": None})
         g["conns"] += n
         if g["icon"] is None:
-            g["icon"] = _icon(exe)
+            g["icon"] = _proc_icon(name, exe, not exe or exe.lower().startswith(SYS_DIRS))
     top = sorted(byname.values(), key=lambda g: -g["conns"])[:8]
     for a in cfg:
         a["virtual"] = bool(re.search(r"hyper-v|virtualbox|vmware|wsl|tap-|wintun|loopback|virtual|vpn|zerotier|tailscale", (a.get("desc") or "") + " " + (a.get("alias") or ""), re.I))

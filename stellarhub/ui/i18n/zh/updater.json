@@ -193,7 +193,6 @@
   "{n} {kind} packages": "{n} 个 {kind} 包",
   "Update {kind} packages": "更新 {kind} 包",
   "(nothing selected)": "（未选择）",
-  "All or none": "全选/全不选",
   "Update packages": "更新包",
   "All your pip packages are up to date.": "你的所有 pip 包都是最新的。",
   "No global npm package is out of date.": "没有过期的全局 npm 包。",
@@ -290,5 +289,7 @@
   "winget can't read the installed version, so updating reinstalls the latest one. That's why it isn't included in Update all.": "winget 无法读取已安装的版本，因此更新会重新安装最新版本。这就是它不包含在“全部更新”中的原因。",
   "It's no longer available.": "已不再可用。",
   "Failed": "失败",
-  "Windows Update returned code {code}.": "Windows 更新返回了代码 {code}。"
+  "Windows Update returned code {code}.": "Windows 更新返回了代码 {code}。",
+  "Select all": "全选",
+  "Select all: {group}": "全选：{group}"
 }

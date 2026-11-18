@@ -135,10 +135,10 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-search{width:280px}
 #v-updater .u-list{padding:10px 8px 8px;margin-bottom:14px}
 #v-updater .u-th{padding-left:62px}
-#v-updater .u-th span:nth-child(1){flex:1}
-#v-updater .u-th span:nth-child(2){width:min(250px,24%)}
-#v-updater .u-th span:nth-child(3){width:64px;text-align:right}
-#v-updater .u-th span:nth-child(4){width:150px}
+#v-updater .u-th span:nth-of-type(1){flex:1}
+#v-updater .u-th span:nth-of-type(2){width:min(250px,24%)}
+#v-updater .u-th span:nth-of-type(3){width:64px;text-align:right}
+#v-updater .u-th span:nth-of-type(4){width:150px}
 #v-updater .u-unknown{padding:14px 8px 8px}
 #v-updater .u-unknown>h4{padding:0 10px}
 /* panel titles with a subtitle: longer translations move the subtitle to its own line instead of squeezing the title */
@@ -349,6 +349,27 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 }
 @media (max-width:1280px){
   #v-updater .u-row .u-ver{width:min(200px,22%)}
-  #v-updater .u-th span:nth-child(2){width:min(200px,22%)}
+  #v-updater .u-th span:nth-of-type(2){width:min(200px,22%)}
   #v-updater .u-act{width:130px}
 }
+
+/* "select all" in each group header: none, some (a dash) or all */
+#v-updater .check.u-gall{cursor:pointer;flex:none}
+#v-updater .check.some{background:var(--accent);border-color:var(--accent)}
+#v-updater .check.some svg{opacity:0}
+#v-updater .check.some::after{content:"";grid-area:1/1;width:8px;height:2px;border-radius:2px;background:var(--on-accent)}
+#v-updater .check.some svg{grid-area:1/1}
+#v-updater .check.u-gall:disabled{opacity:.35;cursor:default}
+#v-updater .u-gh>.u-gall{margin:0 2px 0 4px}
+#v-updater .u-th{padding-left:10px;align-items:center}
+#v-updater .u-th>.u-gall+span{margin-left:48px}
+#v-updater .pan>h4>.u-gall{margin:0 4px 0 0}
+#v-updater .u-ph>.u-gall{margin-left:6px}
+#v-updater .u-dsub h5{display:flex;align-items:center;gap:10px}
+#v-updater .u-dsub h5>.u-gall{margin-left:8px}
+
+/* confirm dialog: the program tile keeps its size (it was stretched by the name's flex rule) */
+#v-updater .u-clist>div>.u-tile{flex:none;width:28px;height:28px;border-radius:8px;font-size:12px}
+#v-updater .u-clist>div>.u-tile.img{padding:4px}
+#v-updater .u-clist>div>.u-tile svg{width:14px;height:14px}
+#v-updater .u-tile.img img{max-width:100%;max-height:100%}

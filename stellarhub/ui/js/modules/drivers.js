@@ -47,6 +47,14 @@ function ask(title, body, ok = t('Continue'), danger = false) {
     setTimeout(() => $('[data-y]', o).focus(), 30);
   });
 }
+/* engine/backups.py reason codes, when the engine sent no text of its own */
+const RP_WHY = {
+  needs_admin: t('Creating a restore point needs administrator rights.'),
+  protection_off: t('System Protection is turned off for the system drive, so Windows cannot create restore points.'),
+  service_disabled: t('The Volume Shadow Copy service is disabled, and restore points depend on it.'),
+  policy: t('Restore points are turned off by a policy on this PC.'),
+  failed: t('Windows did not create a new restore point and gave no reason.'),
+};
 const needAdmin = (r, why) => { if (r && r.needAdmin) { SH.requireAdmin(why); return true; } return false; };
 
 /* ---------- sample data ---------- */
@@ -141,7 +149,8 @@ const API = {
     for (let i = 0; i < phases.length; i++) { onPhase(phases[i], i); await wait(1500 + i * 350); }
     return UPDATES.filter(u => !u.installed);
   },
-  async restorePoint() { await wait(1700); return { created: true }; },
+  /* design tests can set SH.sampleRestorePoint = { ok: false, reason: 'protection_off' } to see a failure */
+  async restorePoint() { await wait(1700); return SH.sampleRestorePoint || { ok: true, reason: 'created' }; },
   async install(u, onProgress) {
     for (let p = 0; p <= 1.0001; p += .04 + rnd() * .06) { onProgress('download', Math.min(1, p)); await wait(60); }
     onProgress('install', 0); await wait(900 + rnd() * 900); onProgress('done', 1);
@@ -205,9 +214,9 @@ const DATA = {
   /* onStep(id, phase, data): id = 'rp' or the update id; phase = run|download|install|done|error|skip */
   async install(todo, onStep) {
     if (!REAL) {
-      onStep('rp', 'run'); await API.restorePoint(); onStep('rp', 'done'); let reboot = false;
+      onStep('rp', 'run'); const rp = await API.restorePoint(); onStep('rp', rp.ok ? 'done' : 'skip', rp); let reboot = false;
       for (const u of todo) { const r = await API.install(u, (ph, p) => onStep(u.id, ph === 'done' ? 'done' : ph, { p })); reboot = reboot || r.reboot; onStep(u.id, 'done', { result: { ok: true, reboot: r.reboot } }); }
-      return { results: todo.map(u => ({ id: u.id, ok: true, reboot: u.reboot })), reboot };
+      return { results: todo.map(u => ({ id: u.id, ok: true, reboot: u.reboot })), reboot, restorePoint: rp };
     }
     return SH.job('drivers', 'install', [todo.map(u => u.id), true], { onProgress: m => { const d = m.data || {}; if (m.kind === 'progress' && d.step) onStep(d.step, d.phase, d); } });
   },
@@ -225,6 +234,15 @@ const DATA = {
 
 /* ---------- interface helpers ---------- */
 const CHECK = '<span class="check"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>';
+/* "select all" box with three states: none, some (a dash) or all */
+const allCheck = (id, label) => `<span class="check" role="checkbox" tabindex="0" aria-checked="false" id="${id}" aria-label="${esc(label)}" title="${esc(t('Select all'))}"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>`;
+function setTri(box, n, total) {
+  if (!box) return;
+  const st = !total || !n ? 'false' : n === total ? 'true' : 'mixed';
+  box.classList.toggle('on', st === 'true'); box.classList.toggle('some', st === 'mixed'); box.setAttribute('aria-checked', st);
+}
+/* the empty state, centred in its panel */
+const emptyBox = (title, body, icon = 'check') => `<div class="empty du-empty"><span class="du-ei${icon === 'check' ? ' ok' : ''}">${ic(icon)}</span><b>${title}</b><span class="du-et">${body}</span></div>`;
 function flip(container, mutate) {
   const kids = [...container.children]; const first = new Map(kids.map(e => [e, e.getBoundingClientRect().top]));
   mutate();
@@ -284,9 +302,9 @@ function renderUpdates(el, ctx) {
       <span>${u.reboot ? `<span class="chip warn">${t('Needs a restart')}</span>` : `<span class="chip">${t('No restart')}</span>`}</span></div>`;
   }
   function drawList(animate, never) {
-    if (never) list.innerHTML = `<div class="empty"><b>${t('You have not searched yet')}</b>${t('Click "{btn}" and StellarHub will ask Windows Update which drivers are available for your PC.', { btn: t('Search again') })}</div>`;
-    else if (!st.updates.length) list.innerHTML = `<div class="empty"><b>${t('Nothing to install')}</b>${t('Your drivers match the latest that Windows Update offers for this PC.')}</div>`;
-    else list.innerHTML = `<div class="tbl-head du-cols"><span class="check${st.sel.size === st.updates.length ? ' on' : ''}" id="duAll"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>${t('Driver')}</span><span>${t('Class')}</span><span>${t('Date')}</span><span>${t('Size')}</span><span></span></div><div class="rows" id="duRows">${st.updates.map(rowHTML).join('')}</div>`;
+    if (never) list.innerHTML = emptyBox(t('You have not searched yet'), t('Click "{btn}" and StellarHub will ask Windows Update which drivers are available for your PC.', { btn: t('Search again') }), 'search');
+    else if (!st.updates.length) list.innerHTML = emptyBox(t('Nothing to install'), t('Your drivers match the latest that Windows Update offers for this PC.'));
+    else list.innerHTML = `<div class="tbl-head du-cols">${allCheck('duAll', t('Select all drivers'))}<span>${t('Driver')}</span><span>${t('Class')}</span><span>${t('Date')}</span><span>${t('Size')}</span><span></span></div><div class="rows" id="duRows">${st.updates.map(rowHTML).join('')}</div>`;
     if (animate) stagger($$('.du-row', list), 60);
     syncBar();
   }
@@ -295,11 +313,12 @@ function renderUpdates(el, ctx) {
     $('#duSel', el).innerHTML = st.sel.size ? t('<b>{n} selected</b>, {mb} MB. A restore point will be created before installing.', { n: st.sel.size, mb: fmt1(mb) }) : t('Choose the drivers you want to install.');
     $('#duInstall', el).disabled = !st.sel.size || st.busy; $('#duNone', el).style.visibility = st.sel.size ? 'visible' : 'hidden';
     const bar = $('#duBar', el); bar.style.display = st.updates.length && !st.busy ? '' : 'none';
-    const all = $('#duAll', el); if (all) all.classList.toggle('on', st.sel.size === st.updates.length && st.updates.length > 0);
+    setTri($('#duAll', el), st.updates.filter(u => st.sel.has(u.id)).length, st.updates.length);
   }
+  list.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && e.target.id === 'duAll') { e.preventDefault(); e.target.click(); } });
   list.addEventListener('click', e => {
     if (st.busy) return;
-    if (e.target.closest('#duAll')) { if (st.sel.size === st.updates.length) st.sel.clear(); else st.updates.forEach(u => st.sel.add(u.id)); $$('.du-row', list).forEach(r => { const on = st.sel.has(r.dataset.u); r.classList.toggle('sel', on); $('.check', r).classList.toggle('on', on); }); syncBar(); return; }
+    if (e.target.closest('#duAll')) { if (st.sel.size === st.updates.length) st.sel.clear(); else st.updates.forEach(u => st.sel.add(u.id)); $$('.du-row', list).forEach(r => { const on = st.sel.has(r.dataset.u); r.classList.toggle('sel', on); $('.check', r).classList.toggle('on', on); }); anim($('#duAll', el), [{ transform: 'scale(.8)' }, { transform: 'scale(1)' }], { d: 300, e: EASE.spring }); syncBar(); return; }
     const r = e.target.closest('.du-row'); if (!r) return; const id = r.dataset.u;
     st.sel.has(id) ? st.sel.delete(id) : st.sel.add(id); r.classList.toggle('sel', st.sel.has(id)); $('.check', r).classList.toggle('on', st.sel.has(id));
     anim($('.check', r), [{ transform: 'scale(.8)' }, { transform: 'scale(1)' }], { d: 300, e: EASE.spring }); syncBar();
@@ -358,12 +377,32 @@ function renderUpdates(el, ctx) {
     const setRes = (id, html, cls) => { const s = $(`.du-step[data-s="${id}"]`, list); if (!s) return; s.classList.remove('run', 'ok'); if (cls) s.classList.add(cls); const r = $('.res', s); r.innerHTML = html; anim(r, [{ opacity: 0, transform: 'scale(.8)' }, { opacity: 1, transform: 'none' }], { d: 320, e: EASE.spring }); };
     const markOk = id => { const ok = $(`.du-step[data-s="${id}"] .st`, list); if (ok) { ok.innerHTML = ic('check'); anim(ok, [{ transform: 'scale(.6)' }, { transform: 'scale(1)' }], { d: 420, e: EASE.spring }); } };
     const seen = {};
+    let rpMade = false;
+    /* why the restore point was not created (engine/backups.py reason codes), with the way to fix it */
+    const rpWhy = d => {
+      const row = $('.du-step[data-s="rp"]', list); if (!row) return; row.classList.add('rpwarn');
+      const s = $('.sub', row); if (s) s.textContent = d.msg || RP_WHY[d.reason] || RP_WHY.failed;
+      const fix = ['protection_off', 'service_disabled', 'policy'].includes(d.reason) ? 'protect' : 'retry';
+      let b = $('.du-rpfix', row); if (b) b.remove();
+      b = document.createElement('button'); b.className = 'btn sm sec du-rpfix';
+      b.innerHTML = fix === 'protect' ? `${ic('shield')}${d.reason === 'protection_off' ? t('Turn on protection') : t('See how to fix it')}` : `${ic('restore')}${t('Try again')}`;
+      s.after(b); anim(b, [{ opacity: 0, transform: 'translate3d(0,4px,0)' }, { opacity: 1, transform: 'none' }], { d: 260, e: EASE.spring });
+      b.addEventListener('click', async () => {
+        if (fix === 'protect') { SH.go('settings', { section: 'backups' }); return; }
+        b.disabled = true; setRes('rp', `<span class="chip acc">${t('Creating')}</span>`, 'run');
+        let r;
+        try { r = REAL ? await SH.job('backups', 'create_point', [t('StellarHub: before installing drivers')]) : await API.restorePoint(); }
+        catch (e) { r = { ok: false, reason: 'failed', msg: e.message }; }
+        if (r && r.ok) { rpMade = true; b.remove(); row.classList.remove('rpwarn'); if (s) s.textContent = t('To go back if something goes wrong'); setRes('rp', `<span class="chip ok">${t('Created')}</span>`, 'ok'); markOk('rp'); }
+        else { setRes('rp', `<span class="chip warn">${t('Not created')}</span>`, 'ok'); rpWhy(r || {}); }
+      });
+    };
     const onStep = (id, phase, d = {}) => {
       const sp = springs.get(id); if (!sp || seen[id] === phase) return; seen[id] = phase;
       if (id === 'rp') {
         if (phase === 'run') { setRes('rp', `<span class="chip acc">${t('Creating')}</span>`, 'run'); sp.t = .6; }
-        else if (phase === 'done') { sp.t = 1; setRes('rp', `<span class="chip ok">${t('Created')}</span>`, 'ok'); markOk('rp'); }
-        else if (phase === 'skip') { sp.t = 1; setRes('rp', `<span class="chip warn">${t('Not created')}</span>`, 'ok'); const s = $('.du-step[data-s="rp"] .sub', list); if (s && d.msg) s.textContent = d.msg; }
+        else if (phase === 'done') { sp.t = 1; rpMade = true; setRes('rp', `<span class="chip ok">${t('Created')}</span>`, 'ok'); markOk('rp'); }
+        else if (phase === 'skip') { sp.t = 1; setRes('rp', `<span class="chip warn">${t('Not created')}</span>`, 'ok'); rpWhy(d); }
         return;
       }
       if (phase === 'download') { sp.t = .35; setRes(id, `<span class="chip acc">${t('Downloading')}</span>`, 'run'); }
@@ -387,7 +426,7 @@ function renderUpdates(el, ctx) {
     const ttl = err ? t('The installation was interrupted') : !nOk ? t('No driver was installed')
       : failed ? (nOk === 1 ? t('{n} driver installed, {failed} with errors', { n: nOk, failed }) : t('{n} drivers installed, {failed} with errors', { n: nOk, failed }))
       : (nOk === 1 ? t('{n} driver installed', { n: nOk }) : t('{n} drivers installed', { n: nOk }));
-    done.innerHTML = `${okIds.size && !err ? ringSVG('ring') : warnSVG('ring')}<div><h3>${ttl}</h3><p>${err ? esc(err.message) : reboot ? t('Restart the PC to finish.') : nOk ? t('No restart needed.') : t('See the reason on each row.')} ${nOk ? t('The restore point stays saved in case you want to go back.') : ''}</p></div>
+    done.innerHTML = `${okIds.size && !err ? ringSVG('ring') : warnSVG('ring')}<div><h3>${ttl}</h3><p>${err ? esc(err.message) : reboot ? t('Restart the PC to finish.') : nOk ? t('No restart needed.') : t('See the reason on each row.')} ${nOk && rpMade ? t('The restore point stays saved in case you want to go back.') : ''}</p></div>
       <div class="a">${reboot ? `<button class="btn ghost" data-x="later">${t('Later')}</button><button class="btn pri" data-x="reboot">${t('Restart in 1 minute')}</button>` : `<button class="btn sec" data-x="later">${t('Close')}</button>`}</div>`;
     list.before(done); anim(done, [{ opacity: 0, transform: 'translate3d(0,-10px,0) scale(.97)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 520, e: EASE.spring }); playRing($('svg', done), 150);
     done.addEventListener('click', async e => {
@@ -500,10 +539,10 @@ async function renderProblems(el) {
       <button class="btn ghost sm" id="dpRe" style="margin-left:auto">${ic('restore')}${t('Check again')}</button></div>
     <div class="dp-grid">
       <div class="pan" data-asm><h4>${bad ? t('With problems') : SH.tc('drivers', 'Disabled')} <em>${bad ? bad : P.disabled.length}</em></h4>
-        <div class="rows dp-list">${bad ? P.errors.map(errRow).join('') + (P.disabled.length ? `<div class="dp-sub">${SH.tc('drivers', 'Disabled')}</div>${P.disabled.map(disRow).join('')}` : '') : P.disabled.length ? P.disabled.map(disRow).join('') : `<div class="empty" style="padding:20px"><b>${t('Nothing disabled')}</b>${t('All of your devices are active.')}</div>`}</div></div>
+        <div class="rows dp-list">${bad ? P.errors.map(errRow).join('') + (P.disabled.length ? `<div class="dp-sub">${SH.tc('drivers', 'Disabled')}</div>${P.disabled.map(disRow).join('')}` : '') : P.disabled.length ? P.disabled.map(disRow).join('') : emptyBox(t('Nothing disabled'), t('All of your devices are active.'))}</div></div>
       <div class="pan" data-asm><h4>${t('Devices that are no longer connected')} <em id="dpGn">${P.ghosts.length}</em></h4>
         <p class="muted" style="font-size:12.5px;margin:-4px 0 10px">${t('Windows remembers every device you have ever connected (USB drives, controllers, phones). Removing them does not delete anything of yours; if you connect them again, they reinstall by themselves.')}</p>
-        <div class="rows dp-list" id="dpG">${P.ghosts.length ? P.ghosts.map(ghRow).join('') : `<div class="empty" style="padding:20px"><b>${t('All clear')}</b>${t('There are no stored disconnected devices.')}</div>`}</div>
+        <div class="rows dp-list" id="dpG">${P.ghosts.length ? P.ghosts.map(ghRow).join('') : emptyBox(t('All clear'), t('There are no stored disconnected devices.'))}</div>
         ${P.ghosts.length ? `<div style="margin-top:10px;flex:none"><button class="btn sec sm" id="dpAll">${t('Remove all')}</button></div>` : ''}</div>
     </div></div>`;
   SH.assemble(el, 0, 40);
@@ -548,7 +587,7 @@ async function renderBackup(el) {
     </div>
     <div class="db-lower"><div class="pan db-list" data-asm><h4>${t('Saved backups')} <em id="dbCount">–</em></h4>
       <div class="tbl-head db-cols"><span>${t('Date')}</span><span>${t('Drivers')}</span><span>${t('Size')}</span><span>${t('Folder')}</span><span></span></div><div class="rows" id="dbRows">${skRows(2)}</div></div>
-    <div class="pan db-store" data-asm><h4>${t('Old driver copies')} <em id="dsCount">–</em></h4>
+    <div class="pan db-store" data-asm><h4>${allCheck('dsAll', t('Select all old copies'))}${t('Old driver copies')} <em id="dsCount">–</em></h4>
       <p class="ds-note">${t('Previous versions Windows kept after a driver update. Only copies that a newer version replaced and no device uses (not even a disconnected one) are listed, and Windows refuses to remove anything in use.')}</p>
       <div class="rows" id="dsRows">${skRows(2)}</div>
       <div class="ds-foot" id="dsFoot" hidden><span class="muted" id="dsSum"></span><button class="btn sec" id="dsGo">${ic('trash')}${t('Remove selected')}</button></div></div></div></div>`;
@@ -556,7 +595,7 @@ async function renderBackup(el) {
   const rowHTML = (b, i) => `<div class="db-row db-cols" data-i="${i}"><b style="font-weight:500">${fmtDateCol(b.date)}</b><span class="muted">${b.count}</span><span class="muted">${fmt1(b.gb)} GB</span><span class="p" title="${esc(b.path)}">${esc(b.path)}</span><span class="a"><button class="btn sm sec" data-a="restore">${ic('restore')}${t('Restore')}</button><button class="btn sm ghost" data-a="open" title="${t('Open folder')}">${ic('folder')}</button><button class="btn sm ghost" data-a="del" title="${t('Send to the Recycle Bin')}">${ic('trash')}</button></span></div>`;
   async function loadList(anim_) {
     try { LIST = await DATA.backups(); } catch { LIST = []; }
-    rows.innerHTML = LIST.length ? LIST.map(rowHTML).join('') : `<div class="empty" style="padding:24px"><b>${t('No backups yet')}</b>${t('Create the first one with the button above. It takes a minute or two.')}</div>`;
+    rows.innerHTML = LIST.length ? LIST.map(rowHTML).join('') : emptyBox(t('No backups yet'), t('Create the first one with the button above. It takes a minute or two.'), 'download');
     $('#dbCount', el).textContent = LIST.length; if (anim_) stagger($$('.db-row', rows), 0, 40);
   }
   loadList(true);
@@ -589,19 +628,27 @@ async function renderBackup(el) {
     const mb = OLD.filter(o => dsSel.has(o.inf)).reduce((s, o) => s + o.mb, 0);
     $('#dsSum', el).textContent = dsSel.size ? t('{n} selected · {mb} MB', { n: dsSel.size, mb: fmt1(mb) }) : t('Nothing selected');
     $('#dsGo', el).disabled = !dsSel.size; $('#dsFoot', el).hidden = !OLD.length;
+    setTri($('#dsAll', el), dsSel.size, OLD.length); $('#dsAll', el).hidden = !OLD.length;
   };
   async function loadStore(fresh) {
     let r; try { r = REAL ? await SH.engine('drivers', 'store_packages', !!fresh) : API.store; } catch { r = null; }
     OLD = (r && r.old) || []; dsSel.clear(); OLD.forEach(o => dsSel.add(o.inf));
     $('#dsCount', el).textContent = OLD.length;
-    ds.innerHTML = !r ? `<div class="empty" style="padding:20px"><b>${t('The driver store could not be read')}</b>${t('Try again in a moment.')}</div>`
-      : r.supported === false ? `<div class="empty" style="padding:20px"><b>${t('Not available on this Windows version')}</b>${t('It needs Windows 11 22H2 or newer.')}</div>`
-      : !OLD.length ? `<div class="empty" style="padding:20px"><b>${t('Nothing to clean')}</b>${r.packages ? t('The {n} manufacturer driver packages in the store are all current or in use.', { n: r.packages }) : esc(r.msg || '')}</div>`
+    ds.innerHTML = !r ? emptyBox(t('The driver store could not be read'), t('Try again in a moment.'), 'alert')
+      : r.supported === false ? emptyBox(t('Not available on this Windows version'), t('It needs Windows 11 22H2 or newer.'), 'info')
+      : !OLD.length ? emptyBox(t('Nothing to clean'), r.packages ? t('The {n} manufacturer driver packages in the store are all current or in use.', { n: r.packages }) : esc(r.msg || ''))
       : OLD.map(dsRow).join('');
     if (OLD.length) stagger($$('.ds-row', ds), 0, 40);
     dsSync();
   }
   loadStore(false);
+  const dsAll = $('#dsAll', el);
+  dsAll.addEventListener('click', () => {
+    if (!OLD.length) return; const on = dsSel.size !== OLD.length; dsSel.clear(); if (on) OLD.forEach(o => dsSel.add(o.inf));
+    $$('.ds-row', ds).forEach(r => { const v = dsSel.has(r.dataset.inf); r.classList.toggle('sel', v); $('.check', r).classList.toggle('on', v); });
+    anim(dsAll, [{ transform: 'scale(.8)' }, { transform: 'scale(1)' }], { d: 300, e: EASE.spring }); dsSync();
+  });
+  dsAll.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); dsAll.click(); } });
   ds.addEventListener('click', e => {
     const row = e.target.closest('.ds-row'); if (!row) return; const k = row.dataset.inf;
     if (dsSel.has(k)) dsSel.delete(k); else dsSel.add(k);
@@ -658,7 +705,7 @@ async function renderHistory(el) {
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const monthOf = (y, m) => cap(new Date(+y, +m - 1, 1).toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' }));
   const dayOf = (y, m, d) => new Date(+y, +m - 1, +d).toLocaleDateString(LOCALE, { month: 'short', day: 'numeric' });
-  if (!H.length) { el.innerHTML = `<div class="pan"><div class="empty"><b>${t('No driver installations')}</b>${t('Windows Update has not installed any drivers on this PC yet.')}</div></div>`; return; }
+  if (!H.length) { el.innerHTML = `<div class="pan dh-pan">${emptyBox(t('No driver installations'), t('Windows Update has not installed any drivers on this PC yet.'), 'clock')}</div>`; return; }
   let html = `<div class="pan dh-pan" data-asm><div class="dh-note">${t('What Windows Update installed on this PC, including what it did on its own. To go back to a previous version, choose the driver in "{tab}".', { tab: t('All drivers') })}</div>`, cur = '';
   H.forEach((h, i) => {
     if (!h.date) return; const [y, m, d] = h.date.split('-'); const key = `${y}-${m}`;

@@ -377,7 +377,34 @@ function toggleSel(id, btn) {
   if (btn) anim(btn, [{ transform: 'scale(.82)' }, { transform: 'scale(1)' }], { d: 300, e: EASE.spring });
   updateSelBars();
 }
+/* tri-state "select all" in each group header: none, some (dash) or all */
+const live = i => i && !i.done && !S.ignored.has(i.id) && !S.pinned.has(i.id);
+function groupIds(key) {
+  const ids = l => l.filter(live).map(i => i.id);
+  if (key.startsWith('cat:')) return pendingIn(key.slice(4)).map(i => i.id);
+  if (key === 'w:security') return ids(S.items.filter(i => i.cat === 'security' && i.kind !== 'defender'));
+  if (key === 'w:windows') return ids(S.items.filter(i => i.cat === 'windows' && !i.optional));
+  if (key === 'w:optional') return ids(S.items.filter(i => i.optional));
+  if (key === 'store') return ids(S.items.filter(i => i.cat === 'store'));
+  if (key === 'apps') return $$(`#v-${ID} .u-applist .u-row [data-sel]`).map(b => b.dataset.sel).filter(id => live(S.byId[id]));
+  return [];
+}
+const groupCheck = (key, name) => `<button class="check u-gall" role="checkbox" aria-checked="false" data-gall="${key}" aria-label="${esc(t('Select all: {group}', { group: name }))}" title="${esc(t('Select all'))}">${ic('check')}</button>`;
+function setTri(b, n, total) {
+  const st = !total || !n ? 'false' : n === total ? 'true' : 'mixed';
+  b.classList.toggle('on', st === 'true'); b.classList.toggle('some', st === 'mixed'); b.setAttribute('aria-checked', st); b.disabled = !total;
+}
+function syncGroupChecks() { $$(`#v-${ID} [data-gall]`).forEach(b => { const ids = groupIds(b.dataset.gall); setTri(b, ids.filter(id => S.sel.has(id)).length, ids.length); }); }
+function toggleGroup(b) {
+  const ids = groupIds(b.dataset.gall); if (!ids.length) return;
+  const all = ids.every(id => S.sel.has(id));
+  ids.forEach(id => { if (all) S.sel.delete(id); else S.sel.add(id); });
+  $$(`#v-${ID} [data-sel]`).forEach(x => x.classList.toggle('on', S.sel.has(x.dataset.sel)));
+  anim(b, [{ transform: 'scale(.82)' }, { transform: 'scale(1)' }], { d: 300, e: EASE.spring });
+  updateSelBars();
+}
 function updateSelBars() {
+  syncGroupChecks();
   $$(`#v-${ID} .u-selbar`).forEach(bar => {
     const n = S.sel.size; const show = n > 0; const was = bar.classList.contains('on');
     $('b', bar).textContent = t('{n} selected', { n });
@@ -465,13 +492,14 @@ function fillGroups(el, animate) {
   groups.innerHTML = cats.length ? cats.map(c => groupHTML(c)).join('') : (S.scanned && !S.winScanning ? `<div class="pan u-allok"><span class="u-qei">${ic('check')}</span><b>${t('Everything is up to date')}</b><span class="muted">${t('winget, the Store and Windows Update have nothing new for this PC.')}</span></div>` : '');
   const errs = $('.u-errs', el); if (errs) errs.innerHTML = errBox('apps') + errBox('win');
   if (animate) SH.assemble(groups, 0, 45, '.u-group, .u-allok');
+  syncGroupChecks();
 }
 function groupHTML(c) {
   const all = S.items.filter(i => i.cat === c && !i.optional && !S.ignored.has(i.id) && !S.pinned.has(i.id));
   const pend = all.filter(i => !i.done);
   const show = all.slice(0, c === 'apps' ? 6 : 4);
   return `<div class="pan u-group${c === 'security' ? ' is-sec' : ''}" data-cat="${c}">
-    <div class="u-gh"><span class="u-gi">${ic(CATS[c].ic)}</span><b>${CATS[c].n}</b><span class="chip u-gc${c === 'security' && pend.length ? ' warn' : pend.length ? '' : ' ok'}">${pend.length ? t('{n} pending', { n: pend.length }) : t('Up to date')}</span>${c === 'security' && pend.length ? `<span class="faint u-rec">${t('Best installed first')}</span>` : ''}
+    <div class="u-gh">${groupCheck('cat:' + c, CATS[c].n)}<span class="u-gi">${ic(CATS[c].ic)}</span><b>${CATS[c].n}</b><span class="chip u-gc${c === 'security' && pend.length ? ' warn' : pend.length ? '' : ' ok'}">${pend.length ? t('{n} pending', { n: pend.length }) : t('Up to date')}</span>${c === 'security' && pend.length ? `<span class="faint u-rec">${t('Best installed first')}</span>` : ''}
       <span class="sp"></span><button class="btn sm ghost" data-gotab="${CATS[c].tab}">${t('See all')}${ic('chev')}</button>${pend.length ? `<button class="btn sm sec" data-grp="${c}">${t('Update')}</button>` : ''}</div>
     <div class="u-gl">${show.map(it => itemRow(it, { menu: c === 'apps' })).join('')}</div>
     ${all.length > show.length ? `<button class="u-gmore" data-gotab="${CATS[c].tab}">${t('and {n} more', { n: all.length - show.length })}</button>` : ''}
@@ -497,7 +525,7 @@ function renderApps(el) {
         <div class="seg u-filt"><span class="ind"></span><button data-f="all" class="on">${t('Pending')}</button><button data-f="sel">${t('Selected')}</button><button data-f="hidden">${t('Ignored and pinned')}</button></div>
         <span class="sp"></span><span class="faint u-acount"></span></div>
       ${selBar()}
-      <div class="tbl-head u-th"><span>${t('App')}</span><span>${t('Version')}</span><span>${t('Size')}</span><span></span></div>
+      <div class="tbl-head u-th">${groupCheck('apps', t('Apps'))}<span>${t('App')}</span><span>${t('Version')}</span><span>${t('Size')}</span><span></span></div>
       <div class="u-scroll"><div class="u-applist rows"></div></div>
     </div>
     <aside class="u-aside">
@@ -553,9 +581,9 @@ function renderWindows(el) {
     <div class="u-wwait"><span></span><div class="bar"><span></span></div></div>
     <div class="u-wcols">
       <div class="u-wmain u-scroll">
-        <div class="pan" data-asm><h4>${t('Security')} <em>${t('installed even when paused')}</em></h4><div class="u-wl" data-wl="security"></div></div>
-        <div class="pan" data-asm><h4>${t('Quality and servicing')}</h4><div class="u-wl" data-wl="windows"></div></div>
-        <div class="pan" data-asm><h4>${t('Optional')} <em>${t('only if you want them')}</em></h4><div class="u-wl" data-wl="optional"></div></div>
+        <div class="pan" data-asm><h4>${groupCheck('w:security', t('Security'))}${t('Security')} <em>${t('installed even when paused')}</em></h4><div class="u-wl" data-wl="security"></div></div>
+        <div class="pan" data-asm><h4>${groupCheck('w:windows', t('Quality and servicing'))}${t('Quality and servicing')}</h4><div class="u-wl" data-wl="windows"></div></div>
+        <div class="pan" data-asm><h4>${groupCheck('w:optional', t('Optional'))}${t('Optional')} <em>${t('only if you want them')}</em></h4><div class="u-wl" data-wl="optional"></div></div>
       </div>
       <div class="u-wside">
         <div class="pan u-pause" data-asm><h4>${t('Pause updates')}</h4><div class="u-pbody"></div></div>
@@ -577,7 +605,7 @@ function fillWindows(el) {
   fill('security', S.items.filter(i => i.cat === 'security' && i.kind !== 'defender'));
   fill('windows', S.items.filter(i => i.cat === 'windows' && !i.optional));
   fill('optional', S.items.filter(i => i.optional));
-  setReboot(el); renderPause($('.u-pbody', el));
+  setReboot(el); renderPause($('.u-pbody', el)); syncGroupChecks();
   const h = $('.u-hist', el);
   h.innerHTML = (w.history || []).length ? w.history.map(x => `<div class="row"><span class="ri ${x.ok ? 'ok' : 'bad'}">${ic(x.ok ? 'check' : 'x')}</span><div class="rt"><b>${esc(x.t)}</b><span>${x.ok ? fdate(x.d) : t('{date}, failed with error {code}', { date: fdate(x.d), code: esc(x.hr || '') })}</span></div></div>`).join('') : `<div class="faint u-none">${t('Windows has no update history.')}</div>`;
 }
@@ -609,7 +637,7 @@ function renderStore(el) {
   el.classList.add('fill'); el.dataset.ready = '1';
   el.innerHTML = `<div class="u-apps">
     <div class="pan u-list u-fp" data-asm>
-      <div class="u-ph"><div class="u-pht"><b>${t('Pending')}</b><span class="muted">${t('The Store updates on its own, but sometimes falls behind. Force it here.')}</span></div>
+      <div class="u-ph">${groupCheck('store', t('Store'))}<div class="u-pht"><b>${t('Pending')}</b><span class="muted">${t('The Store updates on its own, but sometimes falls behind. Force it here.')}</span></div>
         <span class="sp"></span><button class="btn pri" data-grp="store">${ic('download')}${t('Update all')}</button></div>
       <div class="u-scroll"><div class="u-storelist rows"></div></div>
     </div>
@@ -634,9 +662,10 @@ function fillStore(el) {
   const list = S.items.filter(i => i.cat === 'store');
   box.innerHTML = list.length ? list.map(it => itemRow(it, { menu: false })).join('') : `<div class="empty"><b>${t('The Store is up to date')}</b>${t('No Store apps have a new version.')}</div>`;
   $$('.u-row', box).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: Math.min(i, 10) * 40, e: EASE.spring }));
+  syncGroupChecks();
   const ok = (S.apps && S.apps.storeOk) || [];
   $('.u-sokn', el).textContent = t('{n} apps', { n: ok.length });
-  $('.u-sok', el).innerHTML = ok.map(x => `<div class="row"><span class="ri ok">${ic('check')}</span><div class="rt"><b>${esc(x.name)}</b><span>${t('version {v}', { v: esc(x.ver || '—') })}</span></div></div>`).join('');
+  $('.u-sok', el).innerHTML = ok.map(x => `<div class="row">${x.icon ? smallTile(x) : `<span class="ri ok">${ic('check')}</span>`}<div class="rt"><b>${esc(x.name)}</b><span>${t('version {v}', { v: esc(x.ver || '—') })}</span></div></div>`).join('');
 }
 
 /* ---------------- Components ---------------- */
@@ -671,7 +700,7 @@ function fillRuntimes(el) {
   box.innerHTML = cards.join('') + errBox('apps'); SH.assemble(box, 0, 40, '.u-card');
   const ok = (S.apps && S.apps.runtimesOk) || [];
   $('.u-rtn', el).textContent = t('{n} components', { n: ok.length });
-  $('.u-rtok', el).innerHTML = ok.length ? ok.map(u => `<div class="row"><span class="u-tile sm" style="--c:var(--ok)">${ic('layers')}</span><div class="rt"><b>${esc(u.name)}</b><span>${t('version {v}', { v: esc(u.ver || '—') })}</span></div></div>`).join('') : `<div class="faint u-none">${t('Nothing else to show.')}</div>`;
+  $('.u-rtok', el).innerHTML = ok.length ? ok.map(u => `<div class="row">${u.icon ? smallTile(u) : `<span class="u-tile sm" style="--c:var(--ok)">${ic('layers')}</span>`}<div class="rt"><b>${esc(u.name)}</b><span>${t('version {v}', { v: esc(u.ver || '—') })}</span></div></div>`).join('') : `<div class="faint u-none">${t('Nothing else to show.')}</div>`;
 }
 
 /* ---------------- Development ---------------- */
@@ -685,7 +714,7 @@ function renderDev(el) {
     const one = e.target.closest('[data-one]'); if (one) { if (enqueue([one.dataset.one])) { one.disabled = true; one.innerHTML = `<span class="u-spin"></span>${t('Queued')}`; SH.toast(t('{name} added to the queue.', { name: S.byId[one.dataset.one].name }), { action: { label: t('See the queue'), run: goOverview } }); } return; }
     const url = e.target.closest('[data-url]'); if (url) { SH.call('open_url', url.dataset.url); return; }
     const c = e.target.closest('[data-pkc]'); if (c) { c.classList.toggle('on'); anim(c, [{ transform: 'scale(.82)' }, { transform: 'scale(1)' }], { d: 300, e: EASE.spring }); updCmd(c.closest('.u-dsub')); return; }
-    const all = e.target.closest('[data-pkall]'); if (all) { const col = all.closest('.u-dsub'); const ks = $$('.u-pkr .check', col); const on = ks.some(k => !k.classList.contains('on')); ks.forEach(k => k.classList.toggle('on', on)); updCmd(col); return; }
+    const all = e.target.closest('[data-pkall]'); if (all) { const col = all.closest('.u-dsub'); const ks = $$('.u-pkr .check', col); const on = ks.some(k => !k.classList.contains('on')); ks.forEach(k => k.classList.toggle('on', on)); anim(all, [{ transform: 'scale(.82)' }, { transform: 'scale(1)' }], { d: 300, e: EASE.spring }); updCmd(col); return; }
     const g = e.target.closest('[data-pkgo]'); if (g) {
       const col = g.closest('.u-dsub'); const kind = g.dataset.pkgo;
       const names = $$('.u-pkr', col).filter(r => { const k = $('.check', r); return k && k.classList.contains('on'); }).map(r => r.dataset.pk);
@@ -697,6 +726,7 @@ function renderDev(el) {
 }
 function updCmd(col) {
   const kind = col.dataset.kind;
+  const ks = $$('.u-pkr .check', col), all = $('[data-pkall]', col); if (all) setTri(all, ks.filter(k => k.classList.contains('on')).length, ks.length);
   const names = $$('.u-pkr', col).filter(r => { const k = $('.check', r); return k && k.classList.contains('on'); }).map(r => r.dataset.pk + (kind === 'npm' ? '@latest' : ''));
   const l = $('.u-cmdl', col); if (l) { l.textContent = names.join(' ') || t('(nothing selected)'); anim(l, [{ opacity: .3 }, { opacity: 1 }], { d: 260 }); }
 }
@@ -704,7 +734,7 @@ function fillDev(el) {
   const d = S.dev || {}; const witems = S.items.filter(i => i.cat === 'dev');
   const pkgTable = (list, kind) => `<div class="u-pk">${list.map(([n, a, b]) => `<div class="u-pkr" data-pk="${esc(n)}"><button class="check on" data-pkc aria-label="${t('Select {name}', { name: esc(n) })}">${ic('check')}</button><span class="u-pkn">${esc(n)}</span><span class="u-ver"><span>${esc(a)}</span>${ic('arrow')}<b>${esc(b)}</b></span></div>`).join('')}</div>`;
   const pkgBlock = (list, kind, title, err) => err ? `<div class="u-err">${ic('alert')}<span>${esc(err)}</span></div>` : list.length
-    ? `<div class="u-dsub" data-kind="${kind}"><div class="u-dsh"><h5>${title} <em>${list.length}</em></h5><button class="btn sm ghost" data-pkall>${t('All or none')}</button></div><div class="u-pkwrap u-scroll">${pkgTable(list, kind)}</div>
+    ? `<div class="u-dsub" data-kind="${kind}"><div class="u-dsh"><h5><button class="check u-gall on" role="checkbox" aria-checked="true" data-pkall aria-label="${esc(t('Select all: {group}', { group: title }))}" title="${esc(t('Select all'))}">${ic('check')}</button>${title} <em>${list.length}</em></h5></div><div class="u-pkwrap u-scroll">${pkgTable(list, kind)}</div>
        <div class="u-cmd faint">${kind === 'pip' ? 'python -m pip install -U ' : 'npm install -g '}<span class="u-cmdl">${list.map(x => x[0] + (kind === 'npm' ? '@latest' : '')).join(' ')}</span></div>
        <button class="btn sm pri" data-pkgo="${kind}">${ic('download')}${t('Update packages')}</button></div>`
     : `<p class="muted u-dnote">${ic('check')}${kind === 'pip' ? t('All your pip packages are up to date.') : t('No global npm package is out of date.')}</p>`;
@@ -852,6 +882,7 @@ function bindCommon(el) {
     if (e.target.closest('[data-all]')) { updateAll(); return; }
     const one = e.target.closest('[data-one]'); if (one) { if (enqueue([one.dataset.one])) { one.disabled = true; one.innerHTML = `<span class="u-spin"></span>${t('Queued')}`; SH.toast(t('{name} added to the queue.', { name: S.byId[one.dataset.one].name }), { action: { label: t('See the queue'), run: goOverview }, group: 'upd-add' }); } return; }
     const grp = e.target.closest('[data-grp]'); if (grp) { const ids = pendingIn(grp.dataset.grp).map(i => i.id); if (!ids.length) { SH.toast(t('That group is already up to date.')); return; } confirmRun(ids, CATS[grp.dataset.grp].u, () => { enqueue(ids); goOverview(); }); return; }
+    const ga = e.target.closest('[data-gall]'); if (ga) { toggleGroup(ga); return; }
     const sel = e.target.closest('[data-sel]'); if (sel) { toggleSel(sel.dataset.sel, sel); return; }
     if (e.target.closest('[data-selclear]')) { [...S.sel].forEach(id => toggleSel(id)); return; }
     if (e.target.closest('[data-selgo]')) { const ids = [...S.sel]; confirmRun(ids, t('Update selected'), () => { [...S.sel].forEach(id => toggleSel(id)); enqueue(ids); goOverview(); }); return; }

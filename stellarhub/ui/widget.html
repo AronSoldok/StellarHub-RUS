@@ -54,7 +54,10 @@
   .M-mini:hover .hd{opacity:1;pointer-events:auto}
   .M-mini .hd .logo,.M-mini .hd>span{display:none}
   .M-mini .hd button{width:22px;height:22px}
-  .M-mini #rows{display:flex;gap:12px;align-items:center;flex:1 1 auto;min-width:0;overflow:hidden}
+  .M-mini #rows{display:flex;gap:6px;justify-content:space-between;align-items:center;flex:1 1 auto;min-width:0;overflow:hidden}
+  /* squeezed (the user made the bar narrow): tighter numbers, still whole */
+  .M-mini.tight .c{padding:0 4px 0 3px;gap:4px}
+  .M-mini.tight .c .v{min-width:3.3em}
   .M-mini .c{display:flex;align-items:center;gap:6px;padding:0;background:none;overflow:visible;flex:none}
   .M-mini .c:hover{background:none}
   .M-mini .c .n span,.M-mini .c canvas{display:none}

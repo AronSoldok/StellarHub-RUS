@@ -464,5 +464,8 @@
   "product name without number": "不含编号的产品名称",
   "Store package": "应用商店包",
   "package family": "包系列",
-  "executable name": "可执行文件名称"
+  "executable name": "可执行文件名称",
+  "Select all": "全选",
+  "Select all: {group}": "全选：{group}",
+  "Select all programs": "选择所有程序"
 }
