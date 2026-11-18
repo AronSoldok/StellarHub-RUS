@@ -35,7 +35,7 @@ class Quarantine(unittest.TestCase):
         winreg.SetValueEx(k, "bin", 0, winreg.REG_BINARY, b"\x01\x02\x03")
         winreg.SetValueEx(k, "multi", 0, winreg.REG_MULTI_SZ, ["a", "b"])
         winreg.CloseKey(k)
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN, 0, winreg.KEY_SET_VALUE) as k:
+        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, RUN, 0, winreg.KEY_SET_VALUE) as k:  # a fresh profile (CI) may not have it
             winreg.SetValueEx(k, "MiniRevoTestRun", 0, winreg.REG_SZ, r'"C:\nope\x.exe"')
         self.prog = {"id": "test", "name": "MiniRevo Test App", "location": self.app}
 
