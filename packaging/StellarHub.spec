@@ -39,7 +39,7 @@ exe = EXE(  # noqa: F821
     icon=os.path.join(ASSETS, "StellarHub.ico"),
     version=os.path.join(ASSETS, "version_info.txt"),
     console=False,
-    disable_windowed_traceback=False,
+    disable_windowed_traceback=True,  # a failing worker process must not pop up a raw Python error dialog
     upx=False,
     uac_admin=False,  # starts as a normal user; administrator mode is the user's choice inside the app
 )

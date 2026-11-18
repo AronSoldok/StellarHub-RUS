@@ -22,6 +22,11 @@ def base_dir():
 UI_DIR = os.path.join(base_dir(), "stellarhub", "ui")
 DATA_DIR = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "StellarHub")
 WEB_DIR = os.path.join(os.environ.get("LOCALAPPDATA") or DATA_DIR, "StellarHub", "webview")
+# STELLARHUB_ISOLATED=1: a test copy that runs next to the user's (own lock, ports and browser profile)
+ISOLATED = os.environ.get("STELLARHUB_ISOLATED") == "1"
+if ISOLATED:
+    import tempfile
+    WEB_DIR = os.path.join(tempfile.gettempdir(), f"stellarhub_isolated_{os.getpid()}")
 SETTINGS = os.path.join(DATA_DIR, "settings.json")
 
 
@@ -86,6 +91,10 @@ class Api:
         self._chrome = None
         self._widget = None
         self._tray = None
+        self._panel = None          # the tray panel (left click on the tray icon), created on first use
+        self._panel_ready = False
+        self._panel_shown = False
+        self._panel_hidden_at = 0.0
         self._sampler = None
         self._visible = True
         self._quitting = False
@@ -395,6 +404,26 @@ class Api:
                 print("widget_resize:", e)
         return True
 
+    def widget_limits(self, min_w, min_h, max_w, max_h):
+        """Smallest and largest size the user can drag the widget to (device pixels), computed by the widget
+        from what it shows. Windows enforces them during the resize loop."""
+        w = self._widget
+        if w is None:
+            return False
+        try:
+            from System import Action
+            from System.Drawing import Size
+            form = w.native
+
+            def apply():
+                form.MinimumSize = Size(int(min_w), int(min_h))
+                form.MaximumSize = Size(int(max_w), int(max_h))
+            form.BeginInvoke(Action(apply))
+            return True
+        except Exception as e:
+            print("widget_limits:", e)
+            return False
+
     def widget_drag_resize(self, edge):
         """The user drags an edge of the widget: Windows' own resize loop (smooth, like any window).
         When it ends, the new size is saved for that widget size mode so it is kept next time."""
@@ -420,6 +449,140 @@ class Api:
         except Exception as e:
             print("widget_drag_resize:", e)
             return False
+
+    # ---------- tray panel (left click on the tray icon) ----------
+    PANEL_W, PANEL_H = 344, 452  # CSS pixels
+
+    def tray_panel_toggle(self):
+        """Shows the panel above the tray icon, or hides it if it is showing."""
+        if self._panel_shown:
+            return self.panel_hide()
+        if time.time() - self._panel_hidden_at < 0.35:
+            return False  # the click that just took the focus away from it: leave it closed
+        if self._panel is None:
+            self._panel_create()
+            return True
+        if self._panel_ready:
+            self._panel_place_and_show()
+        return True
+
+    def _panel_create(self):
+        import webview
+        self._panel = webview.create_window(
+            "StellarHub", url=os.path.join(UI_DIR, "tray.html"), js_api=self, width=self.PANEL_W, height=self.PANEL_H,
+            frameless=True, easy_drag=False, on_top=True, resizable=False, hidden=True, focus=True, background_color=BG)
+        pw = self._panel
+
+        def loaded():
+            if self._panel_ready:
+                return
+            self._panel_ready = True
+            self._panel_setup(pw)
+            self._panel_place_and_show()
+        pw.events.loaded += loaded
+        pw.events.closed += lambda: setattr(self, "_panel", None) or setattr(self, "_panel_ready", False)
+
+    def _panel_setup(self, pw):
+        """Tool window (no taskbar button, no Alt+Tab), rounded corners, and hide as soon as it loses focus."""
+        try:
+            from System import Action, EventHandler
+            form = pw.native
+            hwnd = form.Handle.ToInt32()
+            u = ctypes.windll.user32
+            u.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+            u.SetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
+            ex = u.GetWindowLongPtrW(ctypes.c_void_p(hwnd), -20)
+            u.SetWindowLongPtrW(ctypes.c_void_p(hwnd), -20, (ex | 0x00000080) & ~0x00040000)
+            _round_corners(pw)
+
+            def on_deactivate(sender, args):
+                if self._panel_shown:
+                    self._panel_shown = False
+                    self._panel_hidden_at = time.time()
+                    form.Hide()
+            form.BeginInvoke(Action(lambda: form.add_Deactivate(EventHandler(on_deactivate))))
+        except Exception as e:
+            print("tray panel setup:", e)
+
+    def _panel_place_and_show(self):
+        """Above the tray (or next to it when the taskbar is on a side), inside the work area of the monitor
+        under the cursor, in device pixels for that monitor's scaling."""
+        pw = self._panel
+        if pw is None:
+            return
+        try:
+            from System import Action
+            import ctypes.wintypes as wt
+            u = ctypes.windll.user32
+            pt = wt.POINT()
+            u.GetCursorPos(ctypes.byref(pt))
+            mon = u.MonitorFromPoint(pt, 2)
+
+            class MONITORINFO(ctypes.Structure):
+                _fields_ = [("cbSize", wt.DWORD), ("rcMonitor", wt.RECT), ("rcWork", wt.RECT), ("dwFlags", wt.DWORD)]
+            mi = MONITORINFO()
+            mi.cbSize = ctypes.sizeof(mi)
+            u.GetMonitorInfoW(mon, ctypes.byref(mi))
+            dx, dy = ctypes.c_uint(96), ctypes.c_uint(96)
+            try:
+                ctypes.windll.shcore.GetDpiForMonitor(mon, 0, ctypes.byref(dx), ctypes.byref(dy))
+            except Exception:
+                pass
+            k = dx.value / 96
+            w, h = int(self.PANEL_W * k), int(self.PANEL_H * k)
+            wa, m = mi.rcWork, int(10 * k)
+            if pt.y >= wa.bottom:      # taskbar at the bottom (the usual)
+                x, y = pt.x - w // 2, wa.bottom - h - m
+            elif pt.y <= wa.top:       # at the top
+                x, y = pt.x - w // 2, wa.top + m
+            elif pt.x >= wa.right:     # on the right
+                x, y = wa.right - w - m, pt.y - h // 2
+            else:                      # on the left (or the panel was opened another way)
+                x, y = wa.left + m, pt.y - h // 2
+            x = max(wa.left + m, min(x, wa.right - w - m))
+            y = max(wa.top + m, min(y, wa.bottom - h - m))
+            form = pw.native
+            tray_hwnd = getattr(getattr(self._tray, "icon", None), "_hwnd", None)
+
+            def show():
+                hwnd = form.Handle.ToInt32()
+                if tray_hwnd:  # the tray click lets this process take the foreground: hand it to the panel
+                    u.SetForegroundWindow(ctypes.c_void_p(tray_hwnd))
+                u.SetWindowPos(ctypes.c_void_p(hwnd), ctypes.c_void_p(-1), x, y, w, h, 0x0040)  # TOPMOST, SHOWWINDOW
+                form.Show()
+                form.Activate()
+                u.SetForegroundWindow(ctypes.c_void_p(hwnd))
+            self._panel_shown = True
+            form.BeginInvoke(Action(show))
+            self._tele_refresh()
+            self._js("window.SH && SH.panelShown && SH.panelShown()", pw)
+        except Exception as e:
+            print("tray panel:", e)
+
+    def panel_hide(self):
+        pw = self._panel
+        if pw is None or not self._panel_shown:
+            return False
+        self._panel_shown = False
+        self._panel_hidden_at = time.time()
+        try:
+            from System import Action
+            form = pw.native
+            form.BeginInvoke(Action(form.Hide))
+        except Exception:
+            pass
+        return True
+
+    def panel_go(self, mod=None, tab=None):
+        """From the panel: open the main window (on a module, a tab or the settings)."""
+        self.panel_hide()
+        self.show_main()
+        if mod == "settings":
+            self._js("SH.go('settings')")
+        elif mod:
+            t = f", {{tab: {json.dumps(tab)}}}" if tab else ""
+            self._js(f"SH.go({json.dumps(mod)}{t})")
+        return True
 
     def log_js_error(self, msg):
         """UI errors go to the log (stellarhub.log), to help diagnose problems."""
@@ -479,6 +642,12 @@ class Api:
         if w is not None:
             try:
                 w.evaluate_js(f"window.SH && SH.tele.push && SH.tele.push({payload})")
+            except Exception:
+                pass
+        pw = self._panel
+        if pw is not None and self._panel_shown:
+            try:
+                pw.evaluate_js(f"window.SH && SH.tele.push && SH.tele.push({payload})")
             except Exception:
                 pass
 
@@ -879,7 +1048,43 @@ def _uninstall_cleanup():
         pass
 
 
+UI_PORT = 47822  # the interface's local web server. pywebview's default (42001) is shared by every pywebview app
+
+
+def _ui_port():
+    """A stable port for the interface: the page's local storage (language, small preferences) belongs to the
+    address, so it must not change between starts. If ours is taken, pick a free one and remember it."""
+    import socket
+
+    def free(port):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return True
+            except OSError:
+                return False
+    saved = _read_settings().get("uiPort")
+    for port in ([] if ISOLATED else ([saved] if isinstance(saved, int) else []) + [UI_PORT]):
+        if free(port):
+            return port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    if ISOLATED:
+        return port
+    try:
+        data = _read_settings()
+        data["uiPort"] = port
+        with open(SETTINGS, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+    except OSError:
+        pass
+    return port
+
+
 SINGLE_PORT = 47821  # single instance: a second copy asks the first one to show itself, then exits
+if ISOLATED:
+    SINGLE_PORT = 47900 + os.getpid() % 90
 
 
 def _already_running():
@@ -932,7 +1137,42 @@ def _wait_for_previous():
         k32.CloseHandle(h)
 
 
+_MUTEX = None  # held for the whole life of the process
+
+
+def _claim_single_instance():
+    """One StellarHub per Windows session, normal or elevated: a named mutex. True if this copy got it.
+    A copy started by the scheduled task or relaunched as administrator gives the previous one a few seconds
+    to exit first."""
+    global _MUTEX
+    k32 = ctypes.windll.kernel32
+    k32.CreateMutexW.restype = ctypes.c_void_p
+    tries = 50 if ("--from-task" in sys.argv or "--wait-pid" in sys.argv) else 1
+    for i in range(tries):
+        h = k32.CreateMutexW(None, False, (r"Local\StellarHub.SingleInstance" + (f".test{os.getpid()}" if ISOLATED else "")))
+        err = k32.GetLastError()
+        if h and err != 183:  # 183 = ERROR_ALREADY_EXISTS
+            _MUTEX = h
+            return True
+        if h:
+            k32.CloseHandle(ctypes.c_void_p(h))
+        # no handle with error 5 = it exists but belongs to an elevated copy: also "already running"
+        if i + 1 < tries:
+            time.sleep(0.1)
+    return False
+
+
+def _show_running_copy():
+    """Brings the copy that is already running to the front (it may still be starting: retry a moment)."""
+    for _ in range(30):
+        if _already_running():
+            return
+        time.sleep(0.2)
+
+
 def main():
+    if any(a.startswith("--multiprocessing") for a in sys.argv[1:]):
+        return  # a worker process that freeze_support() did not catch: never boot the app from it
     if "--quit" in sys.argv:
         return _quit_running()
     if "--uninstall-cleanup" in sys.argv:
@@ -951,6 +1191,9 @@ def main():
     if _already_running():
         return
     if _elevate_on_start():
+        return
+    if not _claim_single_instance():
+        _show_running_copy()
         return
     threading.Thread(target=_sync_launch_entries, daemon=True).start()
     if is_admin():
@@ -1011,12 +1254,13 @@ def main():
     # Autopilot: runs the routines while the app is open, also hidden in the tray
     try:
         from .engine import autopilot
-        autopilot.attach((lambda title, text: api._tray.notify(text, title)) if api._tray else None)
+        if not ISOLATED:  # a test copy must not run the user's routines or write their Autopilot state
+            autopilot.attach((lambda title, text: api._tray.notify(text, title)) if api._tray else None)
     except Exception as e:
         print("autopilot:", e)
 
     refresh_ui_cache()
-    webview.start(gui="edgechromium", debug="--debug" in sys.argv, http_server=True,
+    webview.start(gui="edgechromium", debug="--debug" in sys.argv, http_server=True, http_port=_ui_port(),
                   private_mode=False, storage_path=WEB_DIR)
     if api._tray is not None:
         api._tray.stop()
