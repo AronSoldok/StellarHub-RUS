@@ -19,12 +19,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 from ..i18n import tr
 from .ps import ps, ps_json, NO_WINDOW
-from .removal import cleaner, paths, registry, startup
+from .removal import cleaner, registry, startup
 from .removal.registry import RegRef, V32, V64
 from .removal import system as rsys
 
 EXPORTS = {"perf_read", "perf_set", "startup_set", "services_list", "services_apply", "services_undo",
-           "registry_undo", "open_location", "open_startup_page", "boot_info", "bg_set", "power_plan_set"}
+           "registry_undo", "open_location", "open_startup_page", "boot_info", "bg_set", "power_plan_set",
+           "startup_icons"}
 JOBS = {"clean_scan", "clean", "startup_list", "registry_scan", "registry_fix", "repair", "restore_point"}
 
 DATA = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "optimizer")
@@ -151,10 +152,13 @@ _IMPACT_CACHE = {}
 
 def _packaged_startup():
     """Store apps with a startup task (what Task Manager lists besides Run and the Startup folder)."""
-    pk = ps_json("Get-AppxPackage -PackageTypeFilter Main | Select-Object Name, PackageFamilyName, PackageFullName, InstallLocation, "
-                 "@{n='Pub';e={$_.PublisherDisplayName}}", timeout=60, as_list=True)
+    with ThreadPoolExecutor(max_workers=2) as ex:  # both queries at once
+        f_pk = ex.submit(ps_json, "Get-AppxPackage -PackageTypeFilter Main | Select-Object Name, PackageFamilyName, PackageFullName, "
+                         "InstallLocation, @{n='Pub';e={$_.PublisherDisplayName}}", timeout=60, as_list=True)
+        f_sa = ex.submit(_start_apps)
+        pk, start_apps = f_pk.result(), f_sa.result()
     names = {}
-    for a in ps_json("Get-StartApps | Select-Object Name, AppID", timeout=40, as_list=True):
+    for a in start_apps:
         app_id = a.get("AppID") or ""
         if "!" in app_id:
             names.setdefault(app_id.split("!")[0], a.get("Name"))
@@ -196,10 +200,82 @@ def _packaged_startup():
                     dn = (_resource(p, dn) if dn.startswith("ms-resource:") else None) or _manifest_name(p, root) or p.get("Name").split(".")[-1]
                 out.append({"id": f"pkg|{pfn}|{tid}", "name": dn, "pub": p.get("Pub") or pubname, "on": on,
                             "origin": "store", "path": tr("App startup task ({id})", id=tid), "target": loc,
-                            "locked": state in (3, 4)})
+                            "locked": state in (3, 4), "isrc": _store_icon_src(loc, root)})
     with ThreadPoolExecutor(max_workers=8) as ex:
         list(ex.map(one, pk))
     return out
+
+
+_SA = {"t": 0, "d": [], "lock": threading.Lock()}
+
+
+def _start_apps():
+    """Get-StartApps (Start menu apps), shared by Startup and Performance for a minute: it's a slow query."""
+    with _SA["lock"]:
+        if time.time() - _SA["t"] > 60:
+            _SA["d"] = ps_json("Get-StartApps | Select-Object Name, AppID", timeout=40, as_list=True)
+            _SA["t"] = time.time()
+        return _SA["d"]
+
+
+def _store_icon_src(loc, root):
+    """The small logo of a Store app (Square44x44Logo, the one Start and Task Manager show)."""
+    rel = ""
+    for el in root.iter():
+        if el.tag.endswith("VisualElements") and el.get("Square44x44Logo"):
+            rel = el.get("Square44x44Logo")
+            break
+    if not rel:
+        for el in root.iter():
+            if el.tag.rsplit("}", 1)[-1] == "Logo" and el.text:
+                rel = el.text.strip()
+                break
+    if not rel:
+        return ""
+    from .removal.programs import _store_logo
+    png = _store_logo(loc, rel)
+    return "png:" + png if png else ""
+
+
+# script hosts: their own icon says nothing about what runs, so the UI shows a script icon instead
+_SCRIPT_HOSTS = ("wscript.exe", "cscript.exe", "powershell.exe", "pwsh.exe", "cmd.exe", "mshta.exe", "rundll32.exe",
+                 "conhost.exe")
+
+
+def icon_src(target, origin):
+    """What to take a startup entry's icon from: "png:<file>" (Store), "exe:<file>", "script" or ""."""
+    t = (target or "").strip().strip('"')
+    if not t:
+        return ""
+    if os.path.basename(t).lower() in _SCRIPT_HOSTS:
+        return "script"
+    if origin == "store":
+        return ""
+    t = os.path.expandvars(t)
+    if t.lower().endswith((".exe", ".dll", ".ico", ".lnk", ".bat", ".cmd", ".vbs", ".ps1", ".js")):
+        if t.lower().endswith((".bat", ".cmd", ".vbs", ".ps1", ".js")):
+            return "script"
+        return "exe:" + t
+    return ""
+
+
+def _icon_of(src, extract=True):
+    from .removal import icons
+    try:
+        if src.startswith("png:"):
+            return icons.get_icon({"source": "store", "icon": src[4:]}, extract=extract)
+        if src.startswith("exe:"):
+            return icons.get_icon({"source": "file", "icon": src[4:]}, extract=extract)
+    except Exception:
+        return None
+    return None
+
+
+def startup_icons(srcs):
+    """Real icons for the startup list (PNG data URIs), extracted in parallel; cached on disk afterwards."""
+    srcs = [s for s in (srcs or []) if isinstance(s, str) and s[:4] in ("png:", "exe:")][:80]
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        return {s: ic for s, ic in zip(srcs, ex.map(_icon_of, srcs)) if ic}
 
 
 def _resource(p, ref):
@@ -265,14 +341,19 @@ _REVIEW = ("wscript.exe", "cscript.exe", "powershell.exe", "pwsh.exe", "cmd.exe"
 def startup_list(job):
     """The same as Task Manager > Startup apps: registry (Run), Startup folder and Store apps."""
     job.progress(.1, tr("Registry and Startup folder"))
-    base = [e for e in startup.list_entries() if e["type"] in ("run", "folder")]
-    job.progress(.4, tr("Store apps"))
-    try:
-        pk = _packaged_startup()
-    except Exception:
-        pk = []
-    job.progress(.85, tr("Startup impact"))
-    imp = _impacts()
+
+    def packaged():
+        try:
+            return _packaged_startup()
+        except Exception:
+            return []
+    with ThreadPoolExecutor(max_workers=3) as ex:  # the three sources at once
+        f_base, f_pk, f_imp = ex.submit(startup.list_entries), ex.submit(packaged), ex.submit(_impacts)
+        base = [e for e in f_base.result() if e["type"] in ("run", "folder")]
+        job.progress(.4, tr("Store apps"))
+        pk = f_pk.result()
+        job.progress(.85, tr("Startup impact"))
+        imp = f_imp.result()
     measured = bool(imp)
     groups = {}
     for e in base:
@@ -292,6 +373,7 @@ def startup_list(job):
               "target": e.get("exe") or "", "hklm": hk == "HKLM", "missing": any(x.get("missing") for x in es),
               "children": [x["command"] for x in es] if len(es) > 1 or e["type"] == "folder" else [],
               "count": len(es) if len(es) > 1 else 0}
+        it["isrc"] = icon_src(e.get("exe") or "", it["origin"])
         if exe_name.lower() in _REVIEW:
             it["review"] = True
             it["note"] = tr("Runs a script when you sign in. Check what it is before touching it: it may be yours.")
@@ -306,6 +388,9 @@ def startup_list(job):
         if p["on"] and any(r in (p["name"] + " " + p["pub"]).lower() for r in _REC):
             p["rec"] = True
         items.append(p)
+    for it in items:  # icons already on disk come right away; the UI asks for the rest (startup_icons)
+        src = it.get("isrc") or ""
+        it["icon"] = _icon_of(src, extract=False) if src[:4] in ("png:", "exe:") else None
     job.progress(1, tr("Done"))
     return {"items": items, "measured": measured, "admin": _admin()}
 
@@ -611,45 +696,210 @@ def registry_undo(bid):
 
 
 # =============================================================== repair
-def _stream(job, cmd, pct_re=r"(\d{1,3}(?:[.,]\d)?)\s*%", weight=(0.0, 1.0)):
-    """Runs a command showing every line as it comes (also the ones rewritten with \\r, like the SFC and DISM %)."""
+def _oem_codec():
+    """The console code page (what chkdsk and DISM write when their output is redirected)."""
+    try:
+        cp = ctypes.windll.kernel32.GetOEMCP()
+        codecs.lookup(f"cp{cp}")
+        return f"cp{cp}"
+    except Exception:
+        return "cp850"
+
+
+_PCT = re.compile(r"(\d{1,3}(?:[.,]\d+)?)\s*%")
+_BAR_ONLY = re.compile(r"[\[\]=\-\s\d.,%]+")
+
+
+def parse_pct(text):
+    """Percentage (0..1) in a console line, or None. With several (chkdsk: “Stage: 40%; Total: 12%”) the last one
+    is the overall one. Works in any language: only the number and the % sign matter."""
+    found = _PCT.findall(text or "")
+    if not found:
+        return None
+    try:
+        v = float(found[-1].replace(",", "."))
+    except ValueError:
+        return None
+    return v / 100 if 0 <= v <= 100 else None
+
+
+def is_bar(text):
+    """DISM-style progress bars ("[=====   38.4%   ]"): they only carry the %."""
+    return bool(text) and "%" in text and _BAR_ONLY.fullmatch(text) is not None
+
+
+class ConsoleStream:
+    """Turns the raw bytes of a console program into lines, as they arrive.
+
+    - Encoding: SFC writes UTF-16 when its output is redirected (with or without a BOM); chkdsk and DISM use the
+      console code page. It's decided from the first bytes and decoded incrementally (a character split between
+      two reads is fine).
+    - "\\r" without "\\n" rewrites the same line (SFC's "Verification 41% complete.", DISM's bar, chkdsk's
+      "Progress: … Total: 12%"): those come out as ("live", text); finished lines as ("line", text).
+    """
+
+    def __init__(self, oem="cp850"):
+        self.oem = oem
+        self.dec = None
+        self.head = b""
+        self.cur = ""
+        self.cr = False  # the last character seen was a lone \r (it may be the first half of \r\n)
+        self.encoding = None
+
+    def _pick(self, data):
+        if data.startswith(b"\xff\xfe"):
+            return "utf-16"  # the BOM is consumed by the decoder
+        # console code pages never contain NUL bytes; UTF-16 text has them (ASCII, \r\n, many CJK characters)
+        return "utf-16-le" if b"\x00" in data[:64] else self.oem
+
+    def feed(self, chunk):
+        if self.dec is None:
+            self.head += chunk
+            if len(self.head) < 16 and not self.head.startswith(b"\xff\xfe"):
+                return []
+            self.encoding = self._pick(self.head)
+            self.dec = codecs.getincrementaldecoder(self.encoding)(errors="replace")
+            chunk, self.head = self.head, b""
+        return self._text(self.dec.decode(chunk))
+
+    def close(self):
+        ev = []
+        if self.dec is None and self.head:
+            self.encoding = self._pick(self.head)
+            self.dec = codecs.getincrementaldecoder(self.encoding)(errors="replace")
+            ev += self._text(self.dec.decode(self.head))
+        elif self.dec is not None:
+            ev += self._text(self.dec.decode(b"", final=True))
+        if self.cr:
+            self.cr = False
+            ev.append(("live", self.cur.strip()))
+            self.cur = ""
+        if self.cur.strip():
+            ev.append(("line", self.cur.strip()))
+        self.cur = ""
+        return [e for e in ev if e[1]]
+
+    def peek(self):
+        """The line being written right now (no \\r or \\n yet), e.g. a % that hasn't been rewritten yet."""
+        return self.cur.strip()
+
+    def _text(self, s):
+        ev = []
+        for ch in s.replace("\x00", ""):
+            if self.cr:
+                self.cr = False
+                if ch == "\n":  # \r\n: an ordinary end of line
+                    ev.append(("line", self.cur.strip()))
+                    self.cur = ""
+                    continue
+                ev.append(("live", self.cur.strip()))  # lone \r: the line will be rewritten
+                self.cur = ""
+            if ch == "\r":
+                self.cr = True
+            elif ch == "\n":
+                ev.append(("line", self.cur.strip()))
+                self.cur = ""
+            else:
+                self.cur += ch
+        return [e for e in ev if e[1]]
+
+
+def _cbs_tail(state):
+    """Last “[SR]” line of CBS.log, where SFC writes while it works (when its own output is quiet)."""
+    f = os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Logs", "CBS", "CBS.log")
+    try:
+        size = os.path.getsize(f)
+        pos = state.get("pos")
+        if pos is None or pos > size:
+            pos = max(0, size - 65536)
+        with open(f, "rb") as fh:
+            fh.seek(pos)
+            data = fh.read(min(size - pos, 1 << 20))
+        state["pos"] = pos + len(data)
+        lines = [ln for ln in data.decode("utf-8", "replace").splitlines() if "[SR]" in ln]
+        if lines:
+            state["last"] = lines[-1].split("[SR]", 1)[1].strip()[:140]
+    except OSError:
+        pass
+    return state.get("last")
+
+
+def _stream(job, cmd, weight=(0.0, 1.0), tool=None):
+    """Runs a command showing its output live: finished lines go to the log, lines rewritten with \\r (the % of
+    SFC, DISM and chkdsk) update the progress bar and a "live" line. A heartbeat every second sends the elapsed
+    time and how long the program has been quiet, so the UI can say it's still working."""
     job.log("> " + (cmd if isinstance(cmd, str) else " ".join(cmd)))
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                          creationflags=NO_WINDOW, shell=isinstance(cmd, str))
-    dec = None
-    buf = ""
-    last = ""
+    cs = ConsoleStream(_oem_codec())
     lo, hi = weight
-    while True:
-        chunk = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096)
-        if not chunk:
-            break
-        if dec is None:
-            utf16 = chunk.count(b"\x00") > len(chunk) // 3
-            dec = codecs.getincrementaldecoder("utf-16-le" if utf16 else "cp850")(errors="replace")
-        buf += dec.decode(chunk)
-        parts = re.split(r"[\r\n]+", buf)
-        buf = parts.pop()
-        for line in parts:
-            line = line.strip().replace("\x00", "")
-            if not line or line == last:
-                continue
-            last = line
-            m = re.search(pct_re, line)
-            if m:
+    t0 = time.monotonic()
+    st = {"out": t0, "live": "", "last": "", "pct": None, "done": False}
+    cbs = {}
+    lock = threading.Lock()
+
+    def heartbeat():
+        while not st["done"]:
+            time.sleep(1)
+            if st["done"]:
+                break
+            if job.cancelled:
                 try:
-                    job.progress(lo + (hi - lo) * float(m.group(1).replace(",", ".")) / 100, line)
-                except ValueError:
+                    p.kill()
+                except OSError:
                     pass
-                if re.fullmatch(r"[\[\]=\s\d.,%]+", line):
-                    continue  # DISM progress bars: they only update the %
-            job.log(line)
-        if job.cancelled:
-            p.kill()
-            job.stop()
-    if buf.strip():
-        job.log(buf.strip())
-    return p.wait()
+            now = time.monotonic()
+            with lock:
+                live = cs.peek() or st["live"]
+            quiet = now - st["out"]
+            extra = {}
+            pct = parse_pct(live)
+            if pct is not None and hi > lo:
+                st["pct"] = pct
+                extra["pct"] = lo + (hi - lo) * pct
+            if tool == "sfc" and quiet > 8:
+                act = _cbs_tail(cbs)
+                if act:
+                    extra["act"] = act
+            job.progress(extra.pop("pct", None), None, force=True, el=round(now - t0), quiet=round(quiet), live=live,
+                         hasPct=st["pct"] is not None, **extra)
+    hb = threading.Thread(target=heartbeat, daemon=True)
+    if weight != (0, 0):
+        hb.start()
+
+    def handle(events):
+        for kind, text in events:
+            st["out"] = time.monotonic()
+            pct = parse_pct(text)
+            if pct is not None and hi > lo:
+                st["pct"] = pct
+                job.progress(lo + (hi - lo) * pct, text, live=text if kind == "live" else "", hasPct=True,
+                             el=round(time.monotonic() - t0), quiet=0)
+            if kind == "live":
+                st["live"] = text
+                continue
+            if is_bar(text) or text == st["last"]:
+                continue
+            st["last"] = text
+            job.log(text)
+
+    try:
+        while True:
+            chunk = p.stdout.read1(4096) if hasattr(p.stdout, "read1") else p.stdout.read(4096)
+            if not chunk:
+                break
+            with lock:
+                ev = cs.feed(chunk)
+            handle(ev)
+        with lock:
+            ev = cs.close()
+        handle(ev)
+    finally:
+        st["done"] = True
+    code = p.wait()
+    if job.cancelled:
+        job.stop()
+    return code
 
 
 def _restart_explorer(job):
@@ -673,11 +923,11 @@ def repair(job, rid):
         return _need_admin()
     win = os.environ.get("WINDIR", r"C:\Windows")
     if rid == "sfc":
-        code = _stream(job, ["sfc", "/scannow"])
+        code = _stream(job, ["sfc", "/scannow"], tool="sfc")
     elif rid == "dism":
-        code = _stream(job, ["DISM", "/Online", "/Cleanup-Image", "/RestoreHealth"])
+        code = _stream(job, ["DISM", "/Online", "/Cleanup-Image", "/RestoreHealth"], tool="dism")
     elif rid == "chkdsk":
-        code = _stream(job, ["chkdsk", "C:", "/scan"])
+        code = _stream(job, ["chkdsk", "C:", "/scan"], tool="chkdsk")
     elif rid == "wu":
         svcs = ["wuauserv", "cryptSvc", "bits", "msiserver"]
         for i, s in enumerate(svcs):
@@ -782,7 +1032,7 @@ def _plans():
 def _bg_apps():
     base = r"Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications"
     names = {}
-    for a in ps_json("Get-StartApps | Select-Object Name, AppID", timeout=30, as_list=True):
+    for a in _start_apps():
         if "!" in (a.get("AppID") or ""):
             names.setdefault(a["AppID"].split("!")[0], a["Name"])
     out = []

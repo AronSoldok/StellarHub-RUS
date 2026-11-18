@@ -54,7 +54,7 @@ const DB = {
      origin: registry (HKCU/HKLM Run), folder (Startup folder), store (Store app StartupTask), task, service */
   startup: [
     { id: 'sechealth', name: 'SecurityHealthSystray.exe', pub: 'Microsoft Corporation', on: true, impact: 'low', origin: 'registry', path: 'HKLM\\…\\CurrentVersion\\Run\\SecurityHealth', target: 'C:\\Windows\\System32\\SecurityHealthSystray.exe', note: t('The Windows Security icon in the system tray. Best left on.') },
-    { id: 'wscript', name: 'wscript.exe', count: 3, pub: '', on: true, impact: 'high', origin: 'folder', review: true, path: t('Your Startup folder'), target: 'C:\\Windows\\System32\\wscript.exe', note: t('Three .vbs scripts that run when you sign in. Check what they are before touching them: they may be yours.'),
+    { id: 'wscript', name: 'wscript.exe', isrc: 'script', count: 3, pub: '', on: true, impact: 'high', origin: 'folder', review: true, path: t('Your Startup folder'), target: 'C:\\Windows\\System32\\wscript.exe', note: t('Three .vbs scripts that run when you sign in. Check what they are before touching them: they may be yours.'),
       children: ['%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\script 1.vbs', '%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\script 2.vbs', '%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\script 3.vbs'] },
     { id: 'xbox', name: 'XBOX', pub: 'Microsoft Corporation', on: false, impact: 'none', origin: 'store', path: 'Xbox app StartupTask' },
     { id: 'copilot', name: 'Copilot', pub: 'Microsoft Corporation', on: false, impact: 'none', origin: 'store', path: 'Copilot app StartupTask' },
@@ -123,11 +123,69 @@ DB.clean.forEach(c => { c.sel = c.def && !c.busy; });
 DB.startup.forEach(s => s.orig = s.on);
 DB.services.forEach(s => { s.orig = s.start; s.cur = s.start; });
 let regDone = false;
+/* Debloat: catalogued preinstalled apps (g: safe, choice, keep), Windows settings that add ads or clutter, and what
+   StellarHub removed (with how it can come back: register, store or none). Same shape as engine/debloat.py. */
+const ADV = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced', CDM = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager';
+const sv = (path, name, now, to) => ({ path, name, now, to });
+const DBX = {
+  apps: [
+    ['Microsoft.BingNews', 'safe', 'Microsoft News', 'News feed with ads. The same news is on the web.', 9.3e5],
+    ['Microsoft.BingWeather', 'safe', 'Weather', 'MSN Weather. The forecast is also in Widgets and on the web.', 3.09e7],
+    ['Microsoft.BingSearch', 'safe', 'Bing Search', 'Bing app that puts web results in Windows search.', 1.55e7],
+    ['king.com.CandyCrushSaga', 'safe', 'King games (Candy Crush and others)', 'Games Windows installs as a promotion.', 1.92e8],
+    ['Clipchamp.Clipchamp', 'safe', 'Clipchamp', 'Online video editor. Many of its features need an account.', 6.74e7],
+    ['Microsoft.GetHelp', 'safe', 'Get Help', 'Opens Microsoft support articles. Settings already links to them.', 2.85e8],
+    ['Microsoft.WindowsFeedbackHub', 'safe', 'Feedback Hub', 'Sends suggestions and bug reports to Microsoft.', 8.34e7],
+    ['Microsoft.MicrosoftOfficeHub', 'safe', 'Microsoft 365 Copilot', 'Launcher that advertises Microsoft 365. Word, Excel and the rest keep working without it.', 1.2e5],
+    ['Microsoft.Windows.DevHome', 'safe', 'Dev Home', 'Developer dashboard that Microsoft discontinued.', 1.4e6, true],
+    ['Microsoft.PowerAutomateDesktop', 'safe', 'Power Automate', 'Automation tool for businesses.', 5.3e5],
+    ['Microsoft.Copilot', 'choice', 'Copilot', "Microsoft's AI assistant. Remove it if you don't use it.", 8.1e7],
+    ['MSTeams', 'choice', 'Microsoft Teams', 'Chat and video calls. Keep it if you use it for work or school.', 3.88e8],
+    ['Microsoft.GamingApp', 'choice', 'Xbox', 'Game Pass and the Xbox store. Keep it if you play PC Game Pass.', 3.71e8],
+    ['Microsoft.XboxGamingOverlay', 'choice', 'Game Bar', 'Win+G: captures, performance and chat in games. Some games rely on it to record clips.', 3.53e7],
+    ['Microsoft.YourPhone', 'choice', 'Phone Link', "Your phone's messages, calls and photos on the PC.", 1.93e8],
+    ['Microsoft.OutlookForWindows', 'choice', 'Outlook (new)', 'The new Outlook for email and calendar.', 7.99e7],
+    ['Microsoft.ZuneMusic', 'choice', 'Media Player', 'The default Windows player for music and video. Without it, files open in another player you have.', 3.82e7],
+    ['SpotifyAB.SpotifyMusic', 'choice', 'Spotify', 'Music. Often preinstalled as a promotion.', 4.65e8],
+    ['Microsoft.WindowsStore', 'keep', 'Microsoft Store', "Without it you can't install or update Store apps.", 1.3e8],
+    ['Microsoft.DesktopAppInstaller', 'keep', 'App Installer (winget)', 'Installs and updates programs; StellarHub uses it too.', 4.1e7],
+    ['Microsoft.SecHealthUI', 'keep', 'Windows Security', 'The antivirus and firewall settings.', 2.2e7],
+    ['Microsoft.HEVCVideoExtension', 'keep', 'Media extensions', 'Codecs so Photos and other apps open HEIF, HEVC, WebP, AV1 and RAW files.', 5.3e7],
+  ].map(([name, g, label, desc, size, gone]) => ({ id: name + '_1.0.0.0_x64__8wekyb3d8bbwe', name, family: name + '_8wekyb3d8bbwe', g, label: t(label), desc: t(desc), size, prov: true, gone: !!gone, icon: null, count: label === 'Media extensions' ? 10 : 1 })),
+  removed: [{ name: 'Microsoft.MicrosoftSolitaireCollection', label: t('Solitaire Collection'), t: Date.now() / 1000 - 86400 * 3, restore: 'store', deprov: false },
+    { name: 'Microsoft.549981C3F5F10', label: t('Cortana'), t: Date.now() / 1000 - 86400 * 9, restore: 'none', deprov: false }],
+  groups: [['ads', 'Ads and suggestions'], ['ai', 'Search, Widgets and AI'], ['taskbar', 'Taskbar'], ['explorer', 'File Explorer']].map(([id, n]) => ({ id, n: t(n) })),
+  tweaks: [
+    ['start_recs', 'ads', 1, 0, 'Suggestions and ads in Start', 'Promoted apps and “recommendations” for tips, shortcuts and new apps in the Start menu.', [sv(CDM, 'SystemPaneSuggestionsEnabled', 1, 0), sv(CDM, 'SubscribedContent-338388Enabled', null, 0), sv(ADV, 'Start_IrisRecommendations', null, 0)]],
+    ['auto_install', 'ads', 1, 0, 'Apps Windows installs by itself', 'Stops Windows from silently installing promoted apps and games such as Candy Crush.', [sv(CDM, 'SilentInstalledAppsEnabled', 1, 0), sv(CDM, 'OemPreInstalledAppsEnabled', 1, 0), sv(CDM, 'PreInstalledAppsEnabled', 1, 0)]],
+    ['lock_ads', 'ads', 1, 0, 'Ads and fun facts on the lock screen', 'The tips and promotions shown over the lock screen picture. The picture itself stays.', [sv(CDM, 'RotatingLockScreenOverlayEnabled', 1, 0), sv(CDM, 'SubscribedContent-338387Enabled', null, 0)]],
+    ['settings_ads', 'ads', 1, 0, 'Suggestions in Settings', 'Suggested content and offers at the top of the Settings app.', [sv(CDM, 'SubscribedContent-338393Enabled', null, 0), sv(CDM, 'SubscribedContent-353694Enabled', null, 0), sv(CDM, 'SubscribedContent-353696Enabled', null, 0)]],
+    ['tips', 'ads', 1, 0, 'Tips and tricks notifications', 'Notifications with tips and suggestions while you use Windows.', [sv(CDM, 'SubscribedContent-338389Enabled', 1, 0), sv(CDM, 'SoftLandingEnabled', 1, 0)]],
+    ['welcome', 'ads', 1, 0, '“Get even more out of Windows”', 'The full-screen setup prompts after updates that push Microsoft 365, OneDrive and Game Pass.', [sv('HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\UserProfileEngagement', 'ScoobeSystemSettingEnabled', null, 0), sv(CDM, 'SubscribedContent-310093Enabled', null, 0)]],
+    ['account_ads', 'ads', 1, 0, 'Account notifications in Start', 'Badges on your picture in Start that suggest backing up or buying Microsoft 365.', [sv(ADV, 'Start_AccountNotifications', null, 0)]],
+    ['explorer_ads', 'ads', 1, 1, 'Ads in File Explorer', 'Notices from sync providers (such as OneDrive offers) at the top of File Explorer.', [sv(ADV, 'ShowSyncProviderNotifications', null, 0)]],
+    ['edge_shortcut', 'ads', 1, 0, 'Edge shortcut on the desktop after updates', 'Edge puts its shortcut back on the desktop every time it updates. This stops it.', [sv('HKLM\\SOFTWARE\\Policies\\Microsoft\\EdgeUpdate', 'CreateDesktopShortcutDefault', null, 0)]],
+    ['web_search', 'ai', 1, 0, 'Bing and web results in Start search', 'Searching from Start only shows apps, files and settings on your PC.', [sv('HKCU\\Software\\Policies\\Microsoft\\Windows\\Explorer', 'DisableSearchBoxSuggestions', null, 1), sv('HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search', 'BingSearchEnabled', null, 0)]],
+    ['search_highlights', 'ai', 1, 0, 'Search highlights', 'The daily illustrations and trending searches inside the search box.', [sv('HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\SearchSettings', 'IsDynamicSearchBoxEnabled', null, 0)]],
+    ['widgets', 'ai', 1, 1, 'Widgets', 'Turns off the Widgets board with news and weather on the taskbar.', [sv('HKLM\\SOFTWARE\\Policies\\Microsoft\\Dsh', 'AllowNewsAndInterests', null, 0)]],
+    ['copilot', 'ai', 1, 1, 'Copilot in Windows', 'Hides the Copilot button and turns off Copilot built into Windows. The Copilot app, if you have it, is in the apps list.', [sv('HKCU\\Software\\Policies\\Microsoft\\Windows\\WindowsCopilot', 'TurnOffWindowsCopilot', null, 1), sv(ADV, 'ShowCopilotButton', null, 0)]],
+    ['recall', 'ai', 1, 0, 'Recall', 'Stops Windows from saving snapshots of your screen to search them later.', [sv('HKCU\\Software\\Policies\\Microsoft\\Windows\\WindowsAI', 'DisableAIDataAnalysis', null, 1)]],
+    ['tb_left', 'taskbar', 0, 1, 'Align the taskbar to the left', 'Start and the apps on the left, like in Windows 10.', [sv(ADV, 'TaskbarAl', null, 0)]],
+    ['tb_search', 'taskbar', 0, 1, 'Hide the search box', 'Start still searches when you type after opening it.', [sv('HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Search', 'SearchboxTaskbarMode', 2, 0)]],
+    ['tb_taskview', 'taskbar', 0, 1, 'Hide Task view', 'Win+Tab still opens it.', [sv(ADV, 'ShowTaskViewButton', null, 0)]],
+    ['classic_menu', 'explorer', 0, 1, 'Classic right-click menu', 'The full right-click menu without “Show more options”.', [sv('HKCU\\Software\\Classes\\CLSID\\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\\InprocServer32', '(Default)', null, '')]],
+    ['extensions', 'explorer', 1, 1, 'Show file extensions', "Shows .exe, .pdf and the rest, so a “photo.jpg.exe” can't fool you.", [sv(ADV, 'HideFileExt', 0, 0)]],
+    ['hidden', 'explorer', 0, 1, 'Show hidden files', 'Shows hidden files and folders such as AppData. System files stay hidden.', [sv(ADV, 'Hidden', 2, 1)]],
+    ['this_pc', 'explorer', 0, 1, 'Open File Explorer in This PC', 'Opens on your drives instead of Home with recent files.', [sv(ADV, 'LaunchTo', null, 1)]],
+  ].map(([id, g, rec, explorer, tt, d, vals]) => ({ id, g, rec: !!rec, explorer: !!explorer, t: t(tt), d: t(d), admin: vals.some(v => v.path.startsWith('HKLM')), vals,
+    state: vals.every(v => v.now === v.to) ? 'off' : 'on', ours: false })),
+  provKnown: true,
+};
 
 /* ================= real engine =================
    Inside the app everything comes from stellarhub/engine/optimizer.py; outside (browser) the sample above stays. */
 let REAL = false;
-const realP = SH.apiReady.then(a => { REAL = !!a; if (REAL) { DB.clean = []; DB.startup = []; DB.services = []; DB.registry = []; DB.boots = []; DB.bios = null; } return REAL; });
+const realP = SH.apiReady.then(a => { REAL = !!a; if (REAL) { DB.clean = []; DB.startup = []; DB.services = []; DB.registry = []; DB.boots = []; DB.bios = null; DBX.apps = []; DBX.tweaks = []; DBX.removed = []; } return REAL; });
 const loaded = {};
 const last = { svcBackup: null, regBackup: null, prevAc: null, startupChanged: [] };
 /* engine call: if administrator rights are needed it says so (without nagging) and stops */
@@ -141,17 +199,46 @@ async function engJob(fn, args = [], o = {}) {
   if (r && r.needAdmin) { SH.requireAdmin(t('to make this change in Windows.')); const e = new Error(t('Needs administrator mode')); e.needAdmin = true; throw e; }
   return r;
 }
-const LOADERS = {
-  async clean() { const r = await engJob('clean_scan', [cleanOpts()]); DB.clean = r.map(c => ({ ...c })); DB.clean.forEach(c => { applySkips(c); c.sel = c.def && !c.busy && c.size > 0 && (!c.admin || state.admin); }); publishJunk(); },
-  async startup() { const r = await engJob('startup_list'); DB.startup = r.items.map(s => ({ ...s, pub: s.pub || '', orig: s.on, path: s.path || '' })); DB.measured = r.measured; },
-  async boot() { const r = await eng('boot_info'); DB.bios = r.bios; DB.boots = (r.boots || []).map(b => b.s); },
-  async services() { const r = await eng('services_list'); DB.services = r.items.map(s => ({ ...s, orig: s.start, cur: s.start })); },
-  async registry() { const r = await engJob('registry_scan'); DB.registry = r.map(g => ({ g: g.g, items: g.items.map(i => [i.k, i.why, i.id]) })); regDone = false; },
-  async performance() { const r = await eng('perf_read'); Object.assign(DB.perf, r); },
+/* the debloat engine (stellarhub/engine/debloat.py), with the same administrator handling */
+async function engD(fn, ...a) {
+  const r = await SH.engine('debloat', fn, ...a);
+  if (r && r.needAdmin) { SH.requireAdmin(t('to make this change in Windows.')); const e = new Error(t('Needs administrator mode')); e.needAdmin = true; throw e; }
+  return r;
+}
+const jobD = (fn, args = [], o = {}) => SH.job('debloat', fn, args, o);
+/* every area: how it's read from Windows (fetch, with progress text for the loading state) and how it's put in DB.
+   cache: the last result is kept in localStorage and shown at once next time while a fresh read runs. Cleanup and
+   registry are never shown from the cache: they're measurements, and the registry fix acts on what is listed. */
+const loadMsg = {};
+const onLoadMsg = area => m => { if (m && m.text) { loadMsg[area] = m.text; $$(`.opt-load[data-area~="${area}"] .opt-lm`).forEach(e => { e.textContent = m.text; }); } };
+const AREA = {
+  clean: { fetch: () => engJob('clean_scan', [cleanOpts()], { onProgress: onLoadMsg('clean') }),
+    put(r) { DB.clean = r.map(c => ({ ...c })); DB.clean.forEach(c => { applySkips(c); c.sel = c.def && !c.busy && c.size > 0 && (!c.admin || state.admin); }); publishJunk(); } },
+  startup: { cache: true, fetch: () => engJob('startup_list', [], { onProgress: onLoadMsg('startup') }),
+    put(r) { DB.startup = r.items.map(s => ({ ...s, pub: s.pub || '', orig: s.on, path: s.path || '' })); DB.measured = r.measured; } },
+  boot: { cache: true, fetch: () => eng('boot_info'), put(r) { DB.bios = r.bios; DB.boots = (r.boots || []).map(b => b.s); } },
+  services: { cache: true, fetch: () => eng('services_list'), put(r) { DB.services = r.items.map(s => ({ ...s, orig: s.start, cur: s.start })); } },
+  registry: { fetch: () => engJob('registry_scan', [], { onProgress: onLoadMsg('registry') }), put(r) { DB.registry = r.map(g => ({ g: g.g, items: g.items.map(i => [i.k, i.why, i.id]) })); regDone = false; } },
+  performance: { cache: true, fetch: () => eng('perf_read'), put(r) { Object.assign(DB.perf, r); } },
+  dbApps: { cache: true, fetch: () => jobD('apps_scan', [], { onProgress: onLoadMsg('dbApps') }), put(r) { DBX.apps = r.items; DBX.removed = r.removed || []; DBX.provKnown = r.provKnown; } },
+  dbTweaks: { cache: true, fetch: () => engD('tweaks_list'), put(r) { DBX.tweaks = r.items; DBX.groups = r.groups; } },
 };
+const ready = {}, sig = {}, raw = {};
+const CK = a => 'sh.opt.cache.' + a;
+function cachePut(a, data) { try { localStorage.setItem(CK(a), JSON.stringify({ v: 1, lang: SH.i18n && SH.i18n.lang, t: Date.now(), d: data })); } catch {} }
+function cacheGet(a) { try { const c = JSON.parse(localStorage.getItem(CK(a)) || 'null'); return c && c.v === 1 && c.lang === (SH.i18n && SH.i18n.lang) ? c : null; } catch { return null; } }
+/* the last result from the cache, if there is one: true when DB has data to draw */
+function hydrate(a) {
+  if (ready[a]) return true;
+  const c = AREA[a].cache && cacheGet(a); if (!c) return false;
+  try { AREA[a].put(c.d); raw[a] = c.d; sig[a] = JSON.stringify(c.d); ready[a] = 'cache'; return true; } catch (e) { return false; }
+}
 function load(area, force) {
   if (!REAL) return Promise.resolve();
-  if (!loaded[area] || force) loaded[area] = LOADERS[area]().catch(e => { console.error('optimizer', area, e); delete loaded[area]; throw e; });
+  if (!loaded[area] || force) loaded[area] = AREA[area].fetch().then(r => {
+    const s = JSON.stringify(r), changed = s !== sig[area]; sig[area] = s;
+    raw[area] = r; AREA[area].put(r); ready[area] = true; if (AREA[area].cache) cachePut(area, r); return changed;
+  }).catch(e => { console.error('optimizer', area, e); delete loaded[area]; throw e; });
   return loaded[area];
 }
 /* temp folders: how many days to keep (setting cleanTempDays), folders skipped always (setting cleanExclusions)
@@ -207,9 +294,29 @@ const API = {
 };
 
 /* ================= helpers ================= */
-const LOAD_TXT = { clean: t('Measuring how much each category takes…'), startup: t('Reading what starts with Windows…'), services: t('Reading services…'), registry: t('Looking for broken registry entries…'), performance: t('Reading Windows settings…') };
-const loadingHTML = tab => `<div class="opt-load"><div class="opt-spin"></div><b>${LOAD_TXT[tab] || t('Loading…')}</b><span class="muted">${t('Read-only; nothing changes.')}</span>
-  <div class="sk-rows" style="width:100%;margin-top:20px">${[46, 38, 52, 30, 44].map((w, i) => `<div class="sk-row"><div class="sk a" style="--dl:${i * .08}s"></div><div class="sk b" style="--w:${w}%;--dl:${i * .08 + .04}s"></div><div class="sk c" style="--dl:${i * .08 + .08}s"></div></div>`).join('')}</div></div>`;
+const LOAD_TXT = { clean: t('Measuring how much each category takes…'), startup: t('Reading what starts with Windows…'), services: t('Reading services…'), registry: t('Looking for broken registry entries…'), performance: t('Reading Windows settings…'), debloat: t('Reading the installed apps and Windows settings…') };
+const LOAD_AREA = { clean: 'clean', startup: 'startup boot', services: 'services', registry: 'registry', performance: 'performance', debloat: 'dbApps dbTweaks' };
+/* loading state: drawn at once with the shape of the tab (skeleton rows), and a line that follows the engine's progress */
+const skRows = (n, w0 = 28) => `<div class="sk-rows">${Array.from({ length: n }, (_, i) => `<div class="sk-row"><div class="sk a"></div><div class="sk b" style="--w:${w0 + (i * 17) % 32}%"></div><div class="sk c"></div></div>`).join('')}</div>`;
+const skLines = n => Array.from({ length: n }, (_, i) => `<div class="sk opt-skl" style="width:${92 - (i * 23) % 50}%"></div>`).join('');
+const loadHead = tab => { const a = LOAD_AREA[tab] || tab, m = a.split(' ').map(x => loadMsg[x]).filter(Boolean).pop();
+  return `<div class="opt-load" data-area="${a}"><div class="opt-spin"></div><div><b>${LOAD_TXT[tab] || t('Loading…')}</b><span class="opt-lm muted">${esc(m || t('Read-only; nothing changes.'))}</span></div></div>`; };
+function skelHTML(tab) {
+  const head = loadHead(tab);
+  if (tab === 'clean') return `<div class="opt-sk"><div class="pan">${head}</div><div class="opt-sk2"><div class="pan">${skLines(1)}${skRows(5)}</div><div class="pan">${skLines(1)}${skRows(4)}</div></div></div>`;
+  if (tab === 'startup') return `<div class="opt-sk"><div class="opt-sk2 st-like"><div class="pan">${skLines(4)}</div><div class="pan">${skLines(4)}</div></div><div class="pan">${head}${skRows(7, 34)}</div></div>`;
+  if (tab === 'services') return `<div class="opt-sk opt-sk-side"><div class="pan">${skLines(6)}</div><div class="pan">${head}${skRows(8)}</div></div>`;
+  if (tab === 'registry') return `<div class="opt-sk"><div class="pan">${head}</div><div class="opt-sk3"><div class="pan">${skRows(3)}</div><div class="pan">${skRows(4)}</div><div class="pan">${skRows(2)}</div></div></div>`;
+  if (tab === 'performance') return `<div class="opt-sk"><div class="pan">${head}</div><div class="opt-sk3"><div class="pan">${skLines(6)}</div><div class="pan">${skLines(4)}</div><div class="pan">${skLines(4)}</div></div></div>`;
+  if (tab === 'debloat') return `<div class="opt-sk"><div class="pan">${head}</div><div class="opt-sk2"><div class="pan">${skLines(1)}${skRows(8)}</div><div class="pan">${skLines(1)}${skRows(8)}</div></div></div>`;
+  return `<div class="opt-sk"><div class="pan">${head}${skRows(5)}</div></div>`;
+}
+/* a small “Updating…” mark while a tab shown from the cache is being read again */
+function setUpd(el, on) {
+  let u = $(':scope > .opt-upd', el);
+  if (on && !u) { u = document.createElement('div'); u.className = 'opt-upd'; u.innerHTML = `<span class="opt-spin sm"></span>${t('Updating…')}`; el.appendChild(u); }
+  else if (!on && u) u.remove();
+}
 function swap(el, html, after) {
   const a = anim(el, [{ opacity: 1, transform: 'none', filter: 'blur(0px)' }, { opacity: 0, transform: 'translate3d(0,-8px,0)', filter: 'blur(6px)' }], { d: 170 });
   const go = () => { el.innerHTML = html; anim(el, [{ opacity: 0, transform: 'translate3d(0,14px,0)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 460, e: EASE.spring }); after && after(); };
@@ -238,6 +345,8 @@ const servicePending = p => DB.services.filter(s => s[p] && s[p] !== s.cur);
 const regCount = () => regDone ? 0 : DB.registry.reduce((a, g) => a + g.items.length, 0);
 const rendered = {};
 const refresh = tab => { if (rendered[tab]) try { rendered[tab](); } catch (e) { console.error(e); } };
+/* group checkbox: none / some (dash) / all of the group selected */
+function setTri(btn, n, of) { btn.classList.toggle('on', of > 0 && n === of); btn.classList.toggle('mix', n > 0 && n < of); btn.disabled = !of; btn.setAttribute('aria-checked', n === 0 ? 'false' : n === of ? 'true' : 'mixed'); }
 
 /* ================= Overview ================= */
 let score = 64;
@@ -498,8 +607,9 @@ function renderClean(el) {
   el.classList.add('fill');
   const groups = [...new Set(DB.clean.map(c => c.g))];
   /* two real columns, balanced by item count (CSS columns don't get along with animations) */
-  const cols = [[], []], load = [0, 0];
-  groups.map(g => [g, DB.clean.filter(c => c.g === g).reduce((a, c) => a + 1 + (c.rows ? 3 : 0), 0)]).sort((x, y) => y[1] - x[1]).forEach(([g, n]) => { const i = load[0] <= load[1] ? 0 : 1; cols[i].push(g); load[i] += n + 1.5; });
+  /* (named `weight`, not `load`: a local `load` hid the module's load() and broke rescan with “load is not a function”) */
+  const cols = [[], []], weight = [0, 0];
+  groups.map(g => [g, DB.clean.filter(c => c.g === g).reduce((a, c) => a + 1 + (c.rows ? 3 : 0), 0)]).sort((x, y) => y[1] - x[1]).forEach(([g, n]) => { const i = weight[0] <= weight[1] ? 0 : 1; cols[i].push(g); weight[i] += n + 1.5; });
   const days = tempDays();
   const detHTML = c => (c.busy ? `<p class="warn-t">${t("{name} is open. Close it to clean its cache; otherwise it's skipped.", { name: esc(c.label) })}</p>` : '') + (c.rows ? tempDetHTML(c)
     : `<p class="faint">${t('{n} files', { n: SH.fmtInt(c.files) })}</p>${c.paths.map(p => `<div class="cl-path">${ic('folder')}<span>${esc(p)}</span></div>`).join('')}`);
@@ -511,7 +621,7 @@ function renderClean(el) {
     <div class="pan cl-run" id="clRun" hidden><div class="cl-run-h"><b id="clRunT">${t('Getting ready…')}</b><span class="faint" id="clRunE"></span><button class="btn ghost sm" id="clCancel">${ic('stop')}${t('Cancel')}</button></div>
       <div class="cl-bar"><span></span></div>
       <div class="cl-run-s"><span id="clRunF"></span><span id="clRunR"></span><span id="clRunK"></span></div><div class="cl-run-c faint" id="clRunC"></div></div>
-    <div class="cl-list">${cols.map(col => `<div class="cl-col">${col.map(g => `<div class="cl-g" data-asm><div class="cl-gh">${esc(g)}<em data-g="${esc(g)}"></em></div>${DB.clean.filter(c => c.g === g).map(c => `
+    <div class="cl-list">${cols.map(col => `<div class="cl-col">${col.map(g => `<div class="cl-g" data-asm><div class="cl-gh"><button class="check grp" data-ga="${esc(g)}" aria-label="${esc(t('Select all in {group}', { group: g }))}">${ic('check')}</button><span>${esc(g)}</span><em data-g="${esc(g)}"></em></div>${DB.clean.filter(c => c.g === g).map(c => `
       <div class="cl-it${c.rows && c.id === 'user_temp' ? ' open' : ''}" data-id="${c.id}">
         <div class="cl-row"><button class="check" aria-label="${esc(c.label)}">${ic('check')}</button>
           <div class="rt"><b>${esc(c.label)}${c.busy ? ` <span class="chip warn">${t('open')}</span>` : ''}${c.admin && !state.admin ? ` <span class="chip">${t('administrator')}</span>` : ''}</b><span>${esc(c.desc)}</span></div>
@@ -523,13 +633,15 @@ function renderClean(el) {
   const upd = () => { SH.countUp(tot, totalSel() / 1e9, 450, 1); $('#clCount', el).textContent = t('{n} categories', { n: DB.clean.filter(c => c.sel && c.size > 0).length }); $('#clAllSize', el).textContent = t('of {size} that can be cleaned', { size: gb(totalAll()) }); $('#clGo', el).disabled = busy || !totalSel(); };
   function sync() {
     DB.clean.forEach(c => { const it = $(`.cl-it[data-id="${c.id}"]`, el); if (!it) return; it.classList.toggle('sel', c.sel); $('.check', it).classList.toggle('on', c.sel); it.classList.toggle('clean', c.size === 0); $('.cl-size', it).textContent = c.size ? gb(c.size) : tc('Clean'); });
-    $$('.cl-gh em', el).forEach(e => e.textContent = gb(DB.clean.filter(c => c.g === e.dataset.g).reduce((a, c) => a + c.size, 0))); upd();
+    $$('.cl-gh em', el).forEach(e => e.textContent = gb(DB.clean.filter(c => c.g === e.dataset.g).reduce((a, c) => a + c.size, 0)));
+    $$('.cl-gh .check', el).forEach(b => { const can = DB.clean.filter(c => c.g === b.dataset.ga && c.size > 0); setTri(b, can.filter(c => c.sel).length, can.length); });
+    upd();
   }
   const redrawTemp = c => { const box = $(`.cl-it[data-id="${c.id}"] .cl-det-in`, el); if (box) box.innerHTML = detHTML(c); };
   /* changing the days or removing an exclusion needs a fresh look at the folders */
   async function rescan() {
     if (!REAL) { renderClean(el); SH.assemble(el, 0, 30); return; }
-    el.innerHTML = loadingHTML('clean');
+    el.innerHTML = skelHTML('clean');
     try { await load('clean', true); } catch (e) { SH.toast(t("Couldn't measure: {error}", { error: e.message })); }
     el.innerHTML = ''; renderClean(el); SH.assemble(el, 0, 30);
   }
@@ -555,10 +667,12 @@ function renderClean(el) {
       const on = !skipNow.has(k); tr.classList.toggle('on', on); $('.check', tr).classList.toggle('on', on);
       const c = DB.clean.find(x => x.id === tr.closest('.cl-it').dataset.id); applySkips(c); if (!c.size) c.sel = false; sync(); return;
     }
+    const ga = e.target.closest('.cl-gh .check');
+    if (ga) { const can = DB.clean.filter(c => c.g === ga.dataset.ga && c.size > 0); const all = can.every(c => c.sel); can.forEach(c => { c.sel = !all; }); sync(); return; }
     const it = e.target.closest('.cl-it'); if (!it) return;
     if (e.target.closest('.cl-x')) { it.classList.toggle('open'); return; }
     if (e.target.closest('.cl-row') && !it.classList.contains('clean') && !it.classList.contains('busyrun')) {
-      const c = DB.clean.find(x => x.id === it.dataset.id); c.sel = !c.sel; it.classList.toggle('sel', c.sel); $('.check', it).classList.toggle('on', c.sel); upd(); }
+      const c = DB.clean.find(x => x.id === it.dataset.id); c.sel = !c.sel; sync(); }
   };
   el.addEventListener('click', el._clClick);
   $('#clRec', el).addEventListener('click', () => { if (busy) return; DB.clean.forEach(c => c.sel = c.def && !c.busy && c.size > 0); sync(); });
@@ -641,6 +755,24 @@ const IMP_N = { high: tc('High'), medium: tc('Medium'), low: tc('Low'), none: tc
 const IMP_L = { high: t('high impact'), medium: t('medium impact'), low: t('low impact'), none: t('no impact'), unmeasured: t('impact not measured') };
 const IMP_O = { high: 0, medium: 1, low: 2, none: 3, unmeasured: 4 };
 const bootAdded = () => DB.startup.filter(s => !s.orig && s.on).reduce((a, s) => a + (IMPACT_S[s.impact] || .8) * (s.count || 1), 0);
+/* the program's real icon (from its .exe, or the Store app's logo); scripts run by wscript, PowerShell and the like
+   get a script icon (the host's icon says nothing about what runs); the first letter only when there is no icon */
+const avatar = s => s.icon ? `<span class="st-av img"><img src="${s.icon}" alt="" decoding="async"></span>`
+  : s.isrc === 'script' ? `<span class="st-av scr" title="${esc(t('Script'))}">${ic('code')}</span>`
+  : `<span class="st-av">${esc((s.name.replace(/[^\p{L}\p{N}]/gu, '')[0] || '?').toUpperCase())}</span>`;
+/* icons not cached on disk yet: asked for once, in parallel, after the list is drawn */
+const iconAsked = new Set();
+async function startupIcons(list) {
+  if (!REAL) return;
+  const miss = DB.startup.filter(s => !s.icon && s.isrc && /^(exe|png):/.test(s.isrc) && !iconAsked.has(s.isrc));
+  if (!miss.length) return;
+  miss.forEach(s => iconAsked.add(s.isrc));
+  let got = {};
+  try { got = await eng('startup_icons', [...new Set(miss.map(s => s.isrc))]) || {}; } catch (e) { return; }
+  let n = 0;
+  DB.startup.forEach(s => { if (!s.icon && got[s.isrc]) { s.icon = got[s.isrc]; n++; const av = list && $(`.st-it[data-id="${CSS.escape(s.id)}"] .st-av`, list); if (av) av.outerHTML = avatar(s); } });
+  if (n && raw.startup) { raw.startup.items.forEach(it => { if (!it.icon && got[it.isrc]) it.icon = got[it.isrc]; }); sig.startup = JSON.stringify(raw.startup); cachePut('startup', raw.startup); }
+}
 function renderStartup(el) {
   el.classList.add('fill');
   const DAYS = [t('Mon'), t('Tue'), t('Wed'), t('Thu'), t('Fri'), t('Sat'), t('Today')];
@@ -667,7 +799,7 @@ function renderStartup(el) {
       <div class="st-rows" id="stList"></div></div></div>`;
   const list = $('#stList', el);
   const rowHTML = s => `<div class="st-it${s.on ? '' : ' off'}${open.has(s.id) ? ' open' : ''}" data-id="${s.id}">
-      <div class="st-r"><span class="st-n"><span class="st-av">${esc(s.name.replace(/[^\p{L}\p{N}]/u, '')[0] || '?')}</span><span class="st-nt"><b>${esc(s.name)}${s.count ? ` <em>(${s.count})</em>` : ''}</b>${s.review && s.on ? `<span class="chip warn">${t('check what it is')}</span>` : ''}</span></span>
+      <div class="st-r"><span class="st-n">${avatar(s)}<span class="st-nt"><b>${esc(s.name)}${s.count ? ` <em>(${s.count})</em>` : ''}</b>${s.review && s.on ? `<span class="chip warn">${t('check what it is')}</span>` : ''}</span></span>
         <span class="st-pub">${s.pub ? esc(s.pub) : `<span class="faint">${t('no publisher')}</span>`}</span>
         <span><span class="chip${s.on ? ' ok' : ''}">${s.on ? t('Enabled') : t('Disabled')}</span></span>
         <span class="st-imp i-${s.impact.replace(' ', '-')}"><i></i>${IMP_N[s.impact]}</span>
@@ -696,7 +828,7 @@ function renderStartup(el) {
     $('#stHeavy', el).innerHTML = heavy ? `<span class="faint">${t('Heaviest')}</span><b>${esc(heavy.name)}${heavy.count ? ` (${heavy.count})` : ''}</b><span class="st-imp i-${heavy.impact}"><i></i>${IMP_L[heavy.impact]}</span>` : '';
     const rv = reviewStartup(); if ($('#stHint', el)) $('#stHint', el).textContent = rv.length ? t('{name} ({n}) is the heaviest at startup.', { name: rv[0].name, n: rv[0].count || 1 }) : bootSaved() > .1 ? t('About {s} s less than before.', { s: fmt1(bootSaved()) }) : t('Nothing is weighing it down much.');
   };
-  draw(true); upd();
+  draw(true); upd(); startupIcons(list);
   list.addEventListener('click', e => {
     const row = e.target.closest('.st-it'); if (!row) return; const s = DB.startup.find(x => x.id === row.dataset.id);
     if (e.target.closest('.st-loc')) { if (REAL) eng('open_location', s.target).then(ok => { if (!ok) SH.toast(t('That location no longer exists.')); }).catch(() => {}); else SH.toast(t('Opening the location works inside the app.')); return; }
@@ -801,9 +933,17 @@ function renderRegistry(el) {
     el.innerHTML = `<div class="rg">
       <div class="pan rg-note">${ic('info')}<div><b>${t('What gets fixed here')}</b><span>${t('Cleaning the registry barely speeds up Windows. Only genuinely broken entries are touched here, the ones pointing to files that no longer exist. A .reg backup is saved first so you can undo.')}</span></div>
         <div class="rg-n"><b id="rgN">${sel.size}</b><span class="muted">${t('selected')}</span></div><button class="btn pri" id="rgGo">${ic('wrench')}${t('Fix selected')}</button></div>
-      <div class="rg-groups">${DB.registry.map(g => `<div class="pan rg-g"><h4>${esc(g.g)} <em>${g.items.length}</em></h4>${g.items.map(i => `<div class="row rg-it" data-k="${esc(kid(i))}"><button class="check${sel.has(kid(i)) ? ' on' : ''}" aria-label="${t('Select')}">${ic('check')}</button><span class="rt"><b>${esc(i[0])}</b><span>${esc(i[1])}</span></span></div>`).join('')}</div>`).join('')}</div></div>`;
+      <div class="rg-groups">${DB.registry.map((g, gi) => `<div class="pan rg-g"><h4><button class="check grp" data-gi="${gi}" aria-label="${esc(t('Select all in {group}', { group: g.g }))}">${ic('check')}</button><span>${esc(g.g)}</span> <em>${g.items.length}</em></h4>${g.items.map(i => `<div class="row rg-it" data-k="${esc(kid(i))}"><button class="check${sel.has(kid(i)) ? ' on' : ''}" aria-label="${t('Select')}">${ic('check')}</button><span class="rt"><b>${esc(i[0])}</b><span>${esc(i[1])}</span></span></div>`).join('')}</div>`).join('')}</div></div>`;
     $$('.rg .pan', el).forEach((p, i) => anim(p, [{ opacity: 0, transform: 'translate3d(0,12px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: i * 45, e: EASE.spring }));
-    $('.rg', el).addEventListener('click', e => { const r = e.target.closest('.rg-it'); if (!r) return; const k = r.dataset.k; sel.has(k) ? sel.delete(k) : sel.add(k); $('.check', r).classList.toggle('on', sel.has(k)); $('#rgN', el).textContent = sel.size; $('#rgGo', el).disabled = !sel.size; });
+    const syncSel = () => {
+      $$('.rg-it', el).forEach(r => $('.check', r).classList.toggle('on', sel.has(r.dataset.k)));
+      $$('.rg-g h4 .check', el).forEach(b => { const ks = DB.registry[+b.dataset.gi].items.map(kid); setTri(b, ks.filter(k => sel.has(k)).length, ks.length); });
+      $('#rgN', el).textContent = sel.size; $('#rgGo', el).disabled = !sel.size; };
+    syncSel();
+    $('.rg', el).addEventListener('click', e => {
+      const ga = e.target.closest('.rg-g h4 .check');
+      if (ga) { const ks = DB.registry[+ga.dataset.gi].items.map(kid); const all = ks.every(k => sel.has(k)); ks.forEach(k => all ? sel.delete(k) : sel.add(k)); syncSel(); return; }
+      const r = e.target.closest('.rg-it'); if (!r) return; const k = r.dataset.k; sel.has(k) ? sel.delete(k) : sel.add(k); syncSel(); });
     $('#rgGo', el).addEventListener('click', async () => {
       const needA = REAL ? DB.registry.some(g => g.items.some(i => sel.has(kid(i)) && /^HKLM/i.test(i[0]))) : true;
       if (needA && !state.admin && !SH.requireAdmin(t('to fix system registry entries.'))) return;
@@ -845,19 +985,45 @@ const REPAIRS = [
   { id: 'explorer', ic: 'folder', t: t('Restart File Explorer'), need: t('to restart File Explorer.'), cmd: 'taskkill /f /im explorer.exe && start explorer', d: t('If the taskbar or the Start menu hangs.'), when: t("The taskbar doesn't respond or the Start menu won't open."), dur: '5 s',
     log: [[t('Closing explorer.exe…'), .4], [t('Opening explorer.exe…'), .8], [t('File Explorer restarted.'), 1, 'ok']] },
 ];
+/* elapsed time as m:ss (or h:mm:ss) */
+const clock = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
+/* SFC, DISM and chkdsk report their own %; the rest move in fixed steps */
+const STREAMED = new Set(['sfc', 'dism', 'chkdsk']);
 function renderRepair(el) {
   el.classList.add('fill');
-  let busy = null, cur = REPAIRS[0].id; const logs = {}, status = {};
+  let busy = null, cur = REPAIRS[0].id; const logs = {}, status = {}, info = {};
   el.innerHTML = `<div class="rp">
     <div class="pan rp-l" data-asm><h4>${t('Tools')} <em>${REPAIRS.length}</em></h4><div class="rp-list">${REPAIRS.map(r => `<button class="rp-it${r.id === cur ? ' on' : ''}" data-r="${r.id}"><span class="ri">${ic(r.ic)}</span><span class="rt"><b>${esc(r.t)}</b><span>${esc(r.admin && !state.admin ? t('{time}, administrator', { time: r.dur }) : r.dur)}</span></span><span class="rp-dot"></span></button>`).join('')}</div></div>
     <div class="pan rp-r" data-asm id="rpR"></div></div>`;
   const right = $('#rpR', el);
+  /* the status line under the bar: live line (the % being rewritten), elapsed time and a clear “still working” */
+  const stat = id => {
+    const i = info[id], st = status[id];
+    if (!i) return { bar: st === 'ok' ? 1 : 0, indet: false, main: '', sub: '', pct: '', el: '' };
+    const elapsed = (i.end || Date.now()) / 1000 - i.t0 / 1000;
+    if (st !== 'run') return { bar: 1, indet: false, main: st === 'err' ? t('Stopped with an error') : t('Finished'), sub: '', pct: '', el: t('Took {time}', { time: clock(elapsed) }) };
+    const quiet = i.quiet != null ? i.quiet : (Date.now() - i.lastOut) / 1000;
+    const det = i.hasPct || !STREAMED.has(id);
+    return { bar: i.pct || 0, indet: !det, pct: i.hasPct ? `${SH.fmtInt(Math.floor((i.pct || 0) * 100))}%` : '',
+      main: quiet >= 12 ? t('Still working. No new output for {time}; long checks are often quiet for a while.', { time: clock(quiet) }) : (i.live || t('Working…')),
+      sub: i.act && quiet >= 12 ? t('Windows log: {line}', { line: i.act }) : (quiet >= 12 && i.live ? i.live : ''),
+      el: t('Elapsed {time}', { time: clock(elapsed) }) };
+  };
+  const paintStat = () => {
+    const s = stat(cur), box = $('.rp-prog', right); if (!box) return;
+    box.classList.toggle('run', status[cur] === 'run'); box.classList.toggle('indet', s.indet);
+    $('.rp-bar>span', box).style.transform = s.indet ? '' : `scaleX(${Math.min(1, s.bar).toFixed(4)})`;
+    $('.rp-live', box).textContent = s.main; $('.rp-sub', box).textContent = s.sub; $('.rp-pct', box).textContent = s.pct; $('.rp-el', box).textContent = s.el;
+  };
   const paint = (animate) => {
     const r = REPAIRS.find(x => x.id === cur);
     right.innerHTML = `<div class="rp-h"><span class="rp-big">${ic(r.ic)}</span><div class="rt"><b>${esc(r.t)}</b><span>${esc(r.d)}</span></div><button class="btn pri lg rp-go"${busy ? ' disabled' : ''}>${ic(status[r.id] === 'ok' ? 'restore' : 'play')}${busy === r.id ? t('Running…') : status[r.id] === 'ok' ? t('Run again') : t('Run')}</button></div>
       <div class="rp-facts"><div><span class="faint">${t('When to use it')}</span><b>${esc(r.when)}</b></div><div><span class="faint">${t('Duration')}</span><b>${esc(r.dur)}</b></div><div><span class="faint">${t('Needs')}</span><b>${r.admin ? (r.reboot ? t('Administrator mode, a restart') : t('Administrator mode')) : r.reboot ? t('A restart') : t('Nothing special')}</b></div></div>
-      <div class="bar acc rp-bar"><span style="transform:scaleX(${status[r.id] === 'ok' ? 1 : 0})"></span></div>
+      <div class="rp-prog"><div class="bar acc rp-bar"><span></span></div>
+        <div class="rp-st"><span class="rp-pulse"></span><span class="rp-txt"><span class="rp-live"></span><span class="rp-sub faint"></span></span><b class="rp-pct"></b><span class="rp-el faint"></span></div></div>
       <div class="rp-log"><div class="rp-cmd">${ic('terminal')}<span>${esc(r.cmd)}</span></div>${(logs[r.id] || []).map(([l, , k]) => `<div class="ln${k ? ' ' + k : ''}">${esc(l)}</div>`).join('') || `<div class="ln faint">${t('Click “Run” to start. The output shows up here live.')}</div>`}</div>`;
+    paintStat();
+    const log = $('.rp-log', right); log.scrollTop = log.scrollHeight;
     if (animate) $$(':scope > *', right).forEach((c, i) => anim(c, [{ opacity: 0, transform: 'translate3d(14px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: i * 40, e: EASE.spring }));
   };
   paint(false);
@@ -866,29 +1032,49 @@ function renderRepair(el) {
     if (!e.target.closest('.rp-go')) return; const r = REPAIRS.find(x => x.id === cur);
     if (busy) { SH.toast(t('Wait for the current repair to finish.')); return; }
     if (r.admin && !state.admin && !SH.requireAdmin(r.need)) return;
-    busy = r.id; logs[r.id] = []; status[r.id] = 'run'; const it = $(`.rp-it[data-r="${r.id}"]`, el); it.classList.remove('ok', 'err'); it.classList.add('run'); paint(false);
+    busy = r.id; logs[r.id] = []; status[r.id] = 'run'; info[r.id] = { t0: Date.now(), lastOut: Date.now(), pct: 0, hasPct: false, live: '', quiet: null, act: '' };
+    const I = info[r.id];
+    const it = $(`.rp-it[data-r="${r.id}"]`, el); it.classList.remove('ok', 'err'); it.classList.add('run'); paint(false);
+    /* the clock keeps moving even when the program prints nothing */
+    const tick = setInterval(() => { if (cur === r.id) paintStat(); }, 1000);
+    let pend = [], raf = 0;
+    const flush = () => { raf = 0; if (cur !== r.id) { pend = []; return; } const log = $('.rp-log', right); if (!log) return; const ph = $('.ln.faint', log); if (ph) ph.remove();
+      const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40; const frag = document.createDocumentFragment();
+      pend.forEach(([l, , k]) => { const d = document.createElement('div'); d.className = 'ln' + (k ? ' ' + k : ''); d.textContent = l; frag.appendChild(d); });
+      pend = []; log.appendChild(frag); if (atEnd) log.scrollTop = log.scrollHeight; paintStat(); };
+    const push = (line, k) => { const e = [line, I.pct, k]; logs[r.id].push(e); if (logs[r.id].length > 4000) logs[r.id].splice(0, 1000); pend.push(e); if (!raf) raf = requestAnimationFrame(flush); };
+    const finish = err => {
+      clearInterval(tick); I.end = Date.now(); I.pct = 1;
+      busy = null; status[r.id] = err ? 'err' : 'ok'; it.classList.remove('run'); it.classList.add(err ? 'err' : 'ok');
+      if (cur === r.id) paint(false); else $$('.rp-go', right).forEach(b => b.disabled = false);
+    };
     if (REAL) {
-      /* live output: every line comes from the engine; they're painted together once per frame */
-      let pend = [], raf = 0, pct = 0;
-      const flush = () => { raf = 0; if (cur !== r.id) { pend = []; return; } const log = $('.rp-log', right); if (!log) return; const ph = $('.ln.faint', log); if (ph) ph.remove();
-        const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40; const frag = document.createDocumentFragment();
-        pend.forEach(([l, , k]) => { const d = document.createElement('div'); d.className = 'ln' + (k ? ' ' + k : ''); d.textContent = l; frag.appendChild(d); });
-        pend = []; log.appendChild(frag); if (atEnd) log.scrollTop = log.scrollHeight; const bar = $('.rp-bar>span', right); if (bar) bar.style.transform = `scaleX(${pct})`; };
-      const push = (line, k) => { const e = [line, pct, k]; logs[r.id].push(e); if (logs[r.id].length > 4000) logs[r.id].splice(0, 1000); pend.push(e); if (!raf) raf = requestAnimationFrame(flush); };
+      /* live output: lines go to the console; the % being rewritten (SFC, DISM, chkdsk) drives the bar */
       let res = null, err = null;
-      try { res = await engJob('repair', [r.id], { onLog: lines => lines.forEach(l => push(l)), onProgress: m => { pct = m.pct || pct; if (!raf) raf = requestAnimationFrame(flush); } }); }
-      catch (e) { err = e; }
-      pct = 1;
+      try {
+        res = await engJob('repair', [r.id], {
+          onLog: lines => { I.lastOut = Date.now(); I.quiet = 0; lines.forEach(l => push(l)); },
+          onProgress: m => { const d = m.data || {};
+            if (d.hasPct || !STREAMED.has(r.id)) { I.pct = m.pct || I.pct; I.hasPct = !!d.hasPct; }
+            if (d.live !== undefined && d.live) I.live = d.live;
+            if (d.quiet !== undefined) I.quiet = d.quiet;
+            if (d.act) I.act = d.act;
+            if (!raf) raf = requestAnimationFrame(flush); } });
+      } catch (e) { err = e; }
       if (err) push(err.needAdmin ? t('Needs administrator mode.') : t('Error: {error}', { error: err.message }), 'err');
       else push(res && res.code ? t('Finished with code {code}. Check the output above.', { code: res.code }) : (r.reboot ? t('Done. Restart the PC to finish.') : t('Done.')), res && res.code ? 'warn' : (r.reboot ? 'warn' : 'ok'));
-      busy = null; status[r.id] = err ? 'err' : 'ok'; it.classList.remove('run'); it.classList.add(err ? 'err' : 'ok'); if (cur === r.id) paint(false); else $$('.rp-go', right).forEach(b => b.disabled = false);
+      finish(err);
       if (!err) { SH.logActivity(t('{name}: done', { name: r.t }), { ic: r.ic, go: 'optimizer', tab: 'repair' }); SH.toast(r.reboot ? t('{name}: done. Restart to finish.', { name: r.t }) : t('{name}: done.', { name: r.t })); }
       return;
     }
-    for (let i = 0; i < r.log.length; i++) { const [line, p, k] = r.log[i]; await wait(i ? 420 + Math.random() * 600 : 300); logs[r.id].push(r.log[i]);
+    /* sample mode: the same output, slowed down; lines with a % rewrite the live line like the real tools do */
+    for (let i = 0; i < r.log.length; i++) { const [line, p, k] = r.log[i]; await wait(i ? 420 + Math.random() * 600 : 300);
+      I.lastOut = Date.now(); I.pct = p;
+      if (STREAMED.has(r.id) && /\d%/.test(line) && !k) { I.hasPct = true; I.live = line; if (cur === r.id) paintStat(); continue; }
+      logs[r.id].push(r.log[i]);
       if (cur === r.id) { const log = $('.rp-log', right); const ph = $('.ln.faint', log); if (ph) ph.remove(); const d = document.createElement('div'); d.className = 'ln' + (k ? ' ' + k : ''); d.textContent = line; log.appendChild(d); log.scrollTop = log.scrollHeight;
-        anim(d, [{ opacity: 0, transform: 'translate3d(0,4px,0)' }, { opacity: 1, transform: 'none' }], { d: 220 }); $('.rp-bar>span', right).style.transform = `scaleX(${p})`; } }
-    busy = null; status[r.id] = 'ok'; it.classList.remove('run'); it.classList.add('ok'); if (cur === r.id) paint(false); else $$('.rp-go', right).forEach(b => b.disabled = false);
+        anim(d, [{ opacity: 0, transform: 'translate3d(0,4px,0)' }, { opacity: 1, transform: 'none' }], { d: 220 }); paintStat(); } }
+    finish(null);
     SH.toast(r.reboot ? t('{name}: done. Restart to finish.', { name: r.t }) : t('{name}: done.', { name: r.t }));
   });
 }
@@ -940,7 +1126,8 @@ function renderPerformance(el) {
     try { const r = k.startsWith('bg:') ? await eng('bg_set', k.slice(3), v) : await eng('perf_set', k, v); if (r && r.plans) Object.assign(P, r); return true; }
     catch (err) { SH.toast(err.message); revert && revert(); return false; }
   };
-  el.addEventListener('click', async e => {
+  if (el._pfClick) el.removeEventListener('click', el._pfClick);
+  el.addEventListener('click', el._pfClick = async e => {
     const o = e.target.closest('[data-open]'); if (o) { const u = o.dataset.open; if (u === 'sysperf') SH.call('run_tool', 'perf').then(r => { if (r === undefined) SH.toast(t('Open Performance Options from inside the app.')); }); else SH.call('open_url', u).then(r => { if (r === undefined) SH.toast(t('This opens Windows Settings from inside the app.')); }); return; }
     const pl = e.target.closest('[data-plan]'); if (pl && REAL && !pl.classList.contains('on')) { try { Object.assign(P, await eng('power_plan_set', pl.dataset.plan)); $$('.pf-plan', el).forEach(x => { const on = x.dataset.plan === pl.dataset.plan; x.classList.toggle('on', on); }); SH.toast(t('Power plan changed.')); } catch (err) { SH.toast(err.message); } return; }
     const sb = e.target.closest('.seg button'); if (sb) { const s = sb.parentElement; if (sb.classList.contains('on')) return; const prevB = $('button.on', s); $$('button', s).forEach(x => x.classList.toggle('on', x === sb)); SH.placeSeg(s);
@@ -962,8 +1149,268 @@ function renderPerformance(el) {
   rendered.performance = () => { $$('.seg[data-k="ac"] button', el).forEach(b => b.classList.toggle('on', b.dataset.v === P.ac)); SH.placeSeg($('.seg[data-k="ac"]', el), true); now(); };
 }
 
+/* ================= Debloat ================= */
+/* Preinstalled apps from a closed catalog and Windows settings that add ads or clutter. Nothing changes until the
+   preview is accepted; a restore point comes first; every setting keeps its previous value for Undo and every
+   removed app is recorded so it can be reinstalled (the UI says when that's not possible). */
+const DB_G = {
+  safe: [t('Safe to remove'), t('Promotions and apps few people use.')],
+  choice: [t('Your choice'), t('Useful to some people. Read what each one does first.')],
+  keep: [t('Keep'), t("Windows or other apps need them, so they can't be removed here.")],
+};
+const dsel = { apps: new Set(), tw: new Set() };
+let deprov = false;
+const appBy = id => DBX.apps.find(a => a.id === id), twBy = id => DBX.tweaks.find(x => x.id === id);
+/* how an app would come back: its files stay (provisioned for new users and not deprovisioned), the Store, or not at all */
+const backHow = a => a.prov && !deprov ? 'register' : a.gone ? 'none' : 'store';
+const BACK_TXT = { register: t('Its files stay on the PC: it comes back right away.'), store: t('Can be reinstalled from the Microsoft Store.'), none: t("Microsoft no longer offers it: it can't be reinstalled.") };
+const szTxt = b => b == null ? '—' : b < 1e6 ? t('< 1 MB') : gb(b);
+const regVal = v => v === null || v === undefined ? t('(not set)') : v === '' ? t('(empty)') : String(v);
+const appsRec = () => DBX.apps.filter(a => a.g === 'safe');
+const twRec = () => DBX.tweaks.filter(x => x.rec && x.state !== 'off');
+const selApps = () => [...dsel.apps].map(appBy).filter(Boolean), selTw = () => [...dsel.tw].map(twBy).filter(Boolean);
+function renderDebloat(el, ctx) {
+  el.classList.add('fill');
+  /* forget selections that no longer apply (app gone, setting already applied) */
+  [...dsel.apps].forEach(id => { const a = appBy(id); if (!a || a.g === 'keep') dsel.apps.delete(id); });
+  [...dsel.tw].forEach(id => { const x = twBy(id); if (!x || x.state === 'off') dsel.tw.delete(id); });
+  el.innerHTML = `<div class="db">
+    <div class="pan db-top" data-asm>
+      <div class="db-rec"><span class="db-rec-ic">${ic('sparkle')}</span><div><b>${t('Recommended')}</b><span>${t('Removes promotional apps and turns off ads, suggestions and web results in Start. Nothing Windows needs is touched, and everything can be undone.')}</span></div><button class="btn sec" id="dbRec">${t('Select recommended')}</button></div>
+      <div class="db-nums"><div><b class="big" id="dbNA">0</b><span class="muted">${t('apps to remove')}</span></div><div><b class="big" id="dbNT">0</b><span class="muted">${t('settings to change')}</span></div></div>
+      <div class="db-acts"><button class="btn ghost sm" id="dbNone">${t('Clear selection')}</button><button class="btn ghost sm" id="dbUndoAll">${ic('undo')}${t('Undo all debloat')}</button><button class="btn pri lg" id="dbPrev">${ic('eye')}${t('Preview changes')}</button></div>
+    </div>
+    <div class="db-cols">
+      <div class="pan db-pan" data-asm><div class="db-ph"><h4>${t('Preinstalled apps')} <em id="dbAC"></em></h4>
+        <div class="db-dep" title="${esc(t('Windows installs them again for every new user unless they are removed from the system image too. Needs administrator mode.'))}"><span>${t('Also for new users')}</span><button class="toggle${deprov ? ' on' : ''}" id="dbDep" aria-label="${esc(t('Also for new users'))}"><i></i></button></div></div>
+        <div class="db-list" id="dbApps"></div></div>
+      <div class="pan db-pan" data-asm><div class="db-ph"><h4>${t('Windows settings')} <em id="dbTC"></em></h4><span class="faint db-pn">${t('Ads, suggestions and clutter. Each one can be undone.')}</span></div>
+        <div class="db-list" id="dbTw"></div></div>
+    </div>
+    <div class="db-ov" id="dbOv" hidden></div></div>`;
+  const root = $('.db', el), ov = $('#dbOv', el);
+  const appRow = a => { const keep = a.g === 'keep', how = backHow(a);
+    return `<div class="db-it${keep ? ' keep' : ''}" data-a="${esc(a.id)}">${keep ? '<span class="db-sp"></span>' : `<button class="check" aria-label="${esc(a.label)}">${ic('check')}</button>`}
+      <span class="db-ic">${a.icon ? `<img src="${a.icon}" alt="" decoding="async">` : ic('package')}</span>
+      <span class="rt"><b>${esc(a.label)}${a.count > 1 ? ` <em>(${a.count})</em>` : ''}${!keep && how === 'none' ? ` <span class="chip warn">${t("can't be reinstalled")}</span>` : ''}</b><span>${esc(a.desc)}</span></span>
+      <span class="db-sz">${szTxt(a.size)}</span></div>`; };
+  const appsHTML = () => {
+    const rm = DBX.removed || []; let h = '';
+    if (rm.length) h += `<div class="db-g rm"><div class="db-gh"><span class="db-gi">${ic('restore')}</span><span class="db-gt"><b>${t('Removed with StellarHub')} <em>${rm.length}</em></b><span>${t('Bring them back from here.')}</span></span></div>
+      ${rm.map(a => `<div class="db-it rmv" data-rm="${esc(a.name)}"><span class="db-sp"></span><span class="db-ic">${ic('package')}</span><span class="rt"><b>${esc(a.label)}</b><span>${esc(BACK_TXT[a.restore] || BACK_TXT.none)}</span></span>
+        ${a.restore === 'none' ? `<span class="chip">${t("can't be reinstalled")}</span>` : `<button class="btn ghost sm" data-rein="${esc(a.name)}">${ic('download')}${t('Reinstall')}</button>`}</div>`).join('')}</div>`;
+    for (const g of ['safe', 'choice', 'keep']) {
+      const list = DBX.apps.filter(a => a.g === g); if (!list.length) continue;
+      h += `<div class="db-g" data-g="${g}"><div class="db-gh">${g === 'keep' ? `<span class="db-gi">${ic('lock')}</span>` : `<button class="check grp" data-ga="${g}" aria-label="${esc(t('Select all in {group}', { group: DB_G[g][0] }))}">${ic('check')}</button>`}
+        <span class="db-gt"><b>${DB_G[g][0]} <em>${list.length}</em></b><span>${DB_G[g][1]}</span></span><em class="db-gs">${szTxt(list.reduce((s, a) => s + (a.size || 0), 0))}</em></div>${list.map(appRow).join('')}</div>`;
+    }
+    return h || `<div class="empty"><b>${t('No preinstalled apps to review')}</b>${t('The apps you installed yourself are in Program Remover.')}</div>`;
+  };
+  const twRow = x => { const off = x.state === 'off';
+    return `<div class="db-it tw${off ? ' done' : ''}" data-t="${x.id}">${off ? `<span class="db-ok">${ic('check')}</span>` : `<button class="check" aria-label="${esc(x.t)}">${ic('check')}</button>`}
+      <span class="rt"><b>${esc(x.t)}${x.admin && !state.admin && !off ? ` <span class="chip">${t('administrator')}</span>` : ''}${x.state === 'partial' ? ` <span class="chip warn">${t('partly applied')}</span>` : ''}</b><span>${esc(x.d)}</span></span>
+      ${off ? `<span class="db-st"><span class="chip ok">${t('Applied')}</span><button class="btn ghost xs" data-tu="${x.id}" title="${esc(x.ours ? t('Put back the value it had before StellarHub changed it') : t('Write the Windows default'))}">${ic('undo')}${x.ours ? t('Undo') : t('Restore default')}</button></span>` : '<span class="db-st"></span>'}</div>`; };
+  const twHTML = () => (DBX.groups || []).map(g => { const list = DBX.tweaks.filter(x => x.g === g.id); if (!list.length) return '';
+    return `<div class="db-g" data-tg="${g.id}"><div class="db-gh"><button class="check grp" data-tga="${g.id}" aria-label="${esc(t('Select all in {group}', { group: g.n }))}">${ic('check')}</button><span class="db-gt"><b>${esc(g.n)} <em>${list.length}</em></b></span></div>${list.map(twRow).join('')}</div>`; }).join('');
+  const sync = () => {
+    $$('.db-it[data-a]', root).forEach(r => { const on = dsel.apps.has(r.dataset.a); r.classList.toggle('sel', on); const c = $('.check', r); if (c) c.classList.toggle('on', on); });
+    $$('.db-it[data-t]', root).forEach(r => { const on = dsel.tw.has(r.dataset.t); r.classList.toggle('sel', on); const c = $('.check', r); if (c) c.classList.toggle('on', on); });
+    $$('[data-ga]', root).forEach(b => { const can = DBX.apps.filter(a => a.g === b.dataset.ga); setTri(b, can.filter(a => dsel.apps.has(a.id)).length, can.length); });
+    $$('[data-tga]', root).forEach(b => { const can = DBX.tweaks.filter(x => x.g === b.dataset.tga && x.state !== 'off'); setTri(b, can.filter(x => dsel.tw.has(x.id)).length, can.length); });
+    $('#dbNA', root).textContent = SH.fmtInt(dsel.apps.size); $('#dbNT', root).textContent = SH.fmtInt(dsel.tw.size);
+    const free = selApps().reduce((s, a) => s + (a.size || 0), 0);
+    $('#dbAC', root).textContent = free ? t('{size} selected', { size: gb(free) }) : t('{n} found', { n: DBX.apps.filter(a => a.g !== 'keep').length });
+    $('#dbTC', root).textContent = t('{n} of {total} applied', { n: DBX.tweaks.filter(x => x.state === 'off').length, total: DBX.tweaks.length });
+    $('#dbPrev', root).disabled = !dsel.apps.size && !dsel.tw.size;
+    $('#dbUndoAll', root).disabled = !DBX.tweaks.some(x => x.ours) && !(DBX.removed || []).length;
+  };
+  const draw = () => { $('#dbApps', root).innerHTML = appsHTML(); $('#dbTw', root).innerHTML = twHTML(); sync(); };
+  draw();
+  /* fresh lists after a change (in the app they're read again from Windows) */
+  const reload = async (...areas) => { if (REAL) { for (const a of areas) { try { await load(a, true); } catch (e) { /* keeps the last list */ } } } draw(); };
+  const busyBtn = (b, txt) => { b.disabled = true; b.dataset.html = b.innerHTML; b.innerHTML = `<span class="opt-spin sm"></span>${txt}`; };
+  const freeBtn = b => { b.disabled = false; if (b.dataset.html) b.innerHTML = b.dataset.html; };
+
+  root.addEventListener('click', async e => {
+    if (e.target.closest('#dbOv')) return;
+    if (e.target.closest('#dbRec')) {
+      dsel.apps = new Set(appsRec().map(a => a.id)); dsel.tw = new Set(twRec().map(x => x.id)); sync();
+      $$('.db-it.sel', root).forEach((r, i) => anim(r, [{ transform: 'translate3d(6px,0,0)' }, { transform: 'none' }], { d: 380, delay: Math.min(i, 20) * 18, e: EASE.spring }));
+      return;
+    }
+    if (e.target.closest('#dbNone')) { dsel.apps.clear(); dsel.tw.clear(); sync(); return; }
+    if (e.target.closest('#dbDep')) {
+      if (!deprov && !state.admin && !SH.requireAdmin(t('to remove apps for new users too.'))) return;
+      deprov = !deprov; $('#dbDep', root).classList.toggle('on', deprov); draw(); return;
+    }
+    if (e.target.closest('#dbPrev')) { preview(); return; }
+    const ua = e.target.closest('#dbUndoAll'); if (ua) { undoAll(ua); return; }
+    const ga = e.target.closest('[data-ga]');
+    if (ga) { const can = DBX.apps.filter(a => a.g === ga.dataset.ga), all = can.every(a => dsel.apps.has(a.id)); can.forEach(a => all ? dsel.apps.delete(a.id) : dsel.apps.add(a.id)); sync(); return; }
+    const tga = e.target.closest('[data-tga]');
+    if (tga) { const can = DBX.tweaks.filter(x => x.g === tga.dataset.tga && x.state !== 'off'), all = can.every(x => dsel.tw.has(x.id)); can.forEach(x => all ? dsel.tw.delete(x.id) : dsel.tw.add(x.id)); sync(); return; }
+    const tu = e.target.closest('[data-tu]');
+    if (tu) {
+      const x = twBy(tu.dataset.tu); if (!x) return;
+      if (x.admin && !state.admin && !SH.requireAdmin(t('to change settings for all users.'))) return;
+      busyBtn(tu, t('Undoing…'));
+      if (REAL) { try { await engD('tweak_undo', x.id); } catch (err) { freeBtn(tu); if (!err.needAdmin) SH.toast(err.message); return; } await reload('dbTweaks'); }
+      else { await wait(400); x.state = 'on'; x.ours = false; x.vals.forEach(v => { v.now = null; }); draw(); }
+      SH.toast(t('{name}: back as it was.', { name: x.t }));
+      if (REAL) SH.logActivity(t('Debloat setting undone'), { sub: x.t, ic: 'undo', go: 'optimizer', tab: 'debloat' });
+      return;
+    }
+    const rb = e.target.closest('[data-rein]');
+    if (rb) { reinstall(rb.dataset.rein, rb); return; }
+    const row = e.target.closest('.db-it');
+    if (!row) return;
+    if (row.dataset.a && !row.classList.contains('keep')) { const id = row.dataset.a; dsel.apps.has(id) ? dsel.apps.delete(id) : dsel.apps.add(id); sync(); }
+    else if (row.dataset.t && !row.classList.contains('done')) { const id = row.dataset.t; dsel.tw.has(id) ? dsel.tw.delete(id) : dsel.tw.add(id); sync(); }
+  });
+
+  async function reinstall(name, btn) {
+    const a = (DBX.removed || []).find(x => x.name === name); if (!a) return;
+    busyBtn(btn, t('Reinstalling…'));
+    let r;
+    if (REAL) { try { r = await jobD('reinstall', [name]); } catch (err) { freeBtn(btn); SH.toast(t("Couldn't reinstall {name}: {error}", { name: a.label, error: err.message })); return; } }
+    else { await wait(900); r = a.restore === 'none' ? { ok: false, gone: true } : { ok: true }; if (r.ok) DBX.removed = DBX.removed.filter(x => x !== a); }
+    if (r && r.ok) { SH.toast(t('{name} is back.', { name: a.label })); if (REAL) SH.logActivity(t('{name} reinstalled', { name: a.label }), { ic: 'download', go: 'optimizer', tab: 'debloat' }); }
+    else if (r && r.store) SH.toast(t('The Microsoft Store page of {name} is open: install it from there.', { name: a.label }), { ms: 8000 });
+    else if (r && r.gone) SH.toast(t("Microsoft no longer offers {name}: it can't be reinstalled.", { name: a.label }), { ms: 8000 });
+    else SH.toast(t("Couldn't reinstall {name}: {error}", { name: a.label, error: (r && r.msg) || t('Windows refused') }), { ms: 8000 });
+    await reload('dbApps');
+  }
+
+  async function undoAll(btn) {
+    /* everything at once needs a second click */
+    if (!btn.dataset.sure) {
+      btn.dataset.sure = '1'; btn.innerHTML = `${ic('alert')}${t('Click again to undo everything')}`;
+      anim(btn, [{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(0)' }], { d: 320 });
+      setTimeout(() => { if (btn.dataset.sure) { delete btn.dataset.sure; btn.innerHTML = `${ic('undo')}${t('Undo all debloat')}`; } }, 4000); return;
+    }
+    delete btn.dataset.sure;
+    if (DBX.tweaks.some(x => x.ours && x.admin) && !state.admin) SH.requireAdmin(t('to undo the settings that apply to all users. The rest is undone anyway.'));
+    btn.disabled = true; btn.innerHTML = `<span class="opt-spin sm"></span>${t('Undoing…')}`;
+    let r;
+    if (REAL) {
+      try { r = await jobD('undo_all', [], { onProgress: m => { if (m.text) btn.innerHTML = `<span class="opt-spin sm"></span>${esc(m.text)}`; } }); }
+      catch (err) { SH.toast(err.message); btn.innerHTML = `${ic('undo')}${t('Undo all debloat')}`; sync(); return; }
+      await reload('dbTweaks', 'dbApps');
+    } else {
+      await wait(1200);
+      const tw = DBX.tweaks.filter(x => x.ours); tw.forEach(x => { x.state = 'on'; x.ours = false; });
+      const back = DBX.removed.filter(a => a.restore !== 'none').map(a => a.label), gone = DBX.removed.filter(a => a.restore === 'none').map(a => a.label);
+      DBX.removed = DBX.removed.filter(a => a.restore === 'none');
+      r = { tweaks: tw.map(x => x.id), apps: back, appsGone: gone, appsStore: [], appsFailed: [], skippedAdmin: [], tweakFailed: [] };
+      draw();
+    }
+    btn.innerHTML = `${ic('undo')}${t('Undo all debloat')}`; sync();
+    const parts = [t('Undone: {n} settings and {m} apps.', { n: r.tweaks.length, m: r.apps.length })];
+    if ((r.appsStore || []).length) parts.push(t('Install from the Microsoft Store: {list}.', { list: r.appsStore.map(x => x.label).join(', ') }));
+    if ((r.appsGone || []).length) parts.push(t("Can't be reinstalled: {list}.", { list: r.appsGone.join(', ') }));
+    if ((r.skippedAdmin || []).length) parts.push(t('{n} need administrator mode.', { n: r.skippedAdmin.length }));
+    SH.toast(parts.join(' '), { ms: 9000 });
+    if (REAL) SH.logActivity(t('Debloat undone'), { ic: 'undo', go: 'optimizer', tab: 'debloat' });
+  }
+
+  /* ---- preview: exactly what will change, then run it ---- */
+  const closeOv = () => { root.classList.remove('prev'); ov.hidden = true; ov.innerHTML = ''; draw(); };
+  function preview() {
+    const apps = selApps(), tws = selTw(); if (!apps.length && !tws.length) return;
+    const expl = tws.some(x => x.explorer);
+    const adminTw = tws.filter(x => x.admin);
+    const step = (n, title, sub, body = '') => `<div class="db-step"><span class="db-sn">${n}</span><div class="db-sb"><b>${title}</b><span>${sub}</span>${body}</div></div>`;
+    let n = 0;
+    ov.innerHTML = `<div class="pan db-pv"><h4 class="pan-h">${t("Here's exactly what will change")} <em>${state.admin ? t('administrator mode') : t('in normal mode some steps are skipped')}</em></h4>
+      <div class="db-pv-b">
+        ${step(++n, t('Create a restore point'), state.admin ? t('To go back to how Windows is now, if you ever need to.') : t('Needs administrator mode, so it will be skipped. Every change below still has its own undo.'))}
+        ${apps.length ? step(++n, apps.length === 1 ? t('Remove {n} app', { n: apps.length }) : t('Remove {n} apps', { n: apps.length }), deprov ? t('For you and for new users of this PC.') : t('Only for your user. Other users and new users keep them.'),
+          `<div class="db-pl">${apps.map(a => { const how = backHow(a); return `<div class="db-pi"><span class="db-ic">${a.icon ? `<img src="${a.icon}" alt="">` : ic('package')}</span><span class="db-pn2"><b>${esc(a.label)}</b><span class="${how === 'none' ? 'warn-t' : 'faint'}">${BACK_TXT[how]}</span></span><span class="db-sz">${szTxt(a.size)}</span></div>`; }).join('')}</div>`) : ''}
+        ${tws.length ? step(++n, tws.length === 1 ? t('Change {n} Windows setting', { n: tws.length }) : t('Change {n} Windows settings', { n: tws.length }), t('The current values are saved first, so Undo puts back exactly what was there.'),
+          `<div class="db-pl tw">${tws.map(x => `<div class="db-pt"><b>${esc(x.t)}${x.admin && !state.admin ? ` <span class="chip warn">${t('skipped: needs administrator mode')}</span>` : ''}</b>${x.vals.map(v => `<div class="db-rv"><code title="${esc(v.path)}">${esc(v.path.replace(/^(HK..)\\.*\\([^\\]+)$/, '$1\\…\\$2'))}</code><span title="${esc(v.name)}">${esc(v.name)}</span><span class="db-ft">${esc(regVal(v.now))}</span><span class="db-ar">${ic('chev')}</span><b class="db-to">${esc(regVal(v.to))}</b></div>`).join('')}</div>`).join('')}</div>`) : ''}
+        ${expl ? step(++n, t('Restart File Explorer'), t('The taskbar and File Explorer pick up some changes only after it restarts. You can do it at the end; open windows of File Explorer close.')) : ''}
+      </div>
+      <div class="plan-acts"><button class="btn pri lg" id="dbGo">${ic('play')}${t('Apply changes')}</button><button class="btn ghost" id="dbBack">${t('Back')}</button></div></div>`;
+    ov.hidden = false; root.classList.add('prev');
+    anim($('.db-pv', ov), [{ opacity: 0, transform: 'translate3d(0,14px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring });
+    $$('.db-step', ov).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(14px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: 80 + i * 60, e: EASE.spring }));
+    $('#dbBack', ov).addEventListener('click', closeOv);
+    $('#dbGo', ov).addEventListener('click', () => {
+      if (!state.admin && (adminTw.length || deprov || REAL)) SH.requireAdmin(t('to create the restore point and change settings for all users. Without it, those steps are skipped.'));
+      run(apps, tws, expl);
+    });
+  }
+
+  async function run(apps, tws, expl) {
+    const phases = [['restore', t('Create a restore point')], ['apply', apps.length && tws.length ? t('Remove apps and change settings') : apps.length ? t('Remove apps') : t('Change settings')]];
+    ov.innerHTML = `<div class="pan db-pv"><h4 class="pan-h">${t('Debloating')} <em>${t('You can keep using your PC in the meantime.')}</em></h4><div class="phases">${phases.map(([id, n]) => `<div class="phase" data-ph="${id}"><span class="ph-dot"></span><div class="pt"><b>${esc(n)}</b><span class="ph-msg">${t('Waiting')}</span><div class="bar acc"><span style="transform:scaleX(0)"></span></div></div></div>`).join('')}</div></div>`;
+    const ph = id => $(`.phase[data-ph="${id}"]`, ov);
+    const begin = id => { const p = ph(id); p.classList.add('run'); return { msg: $('.ph-msg', p), setP: v => { $('.bar>span', p).style.transform = `scaleX(${Math.max(0, Math.min(1, v || 0))})`; }, done(ok) { p.classList.remove('run'); p.classList.add(ok ? 'done' : 'skip'); $('.bar>span', p).style.transform = 'scaleX(1)'; } }; };
+    const plan = { apps: apps.map(a => a.id), deprov: deprov && state.admin, tweaks: tws.map(x => x.id) };
+    let rp = begin('restore'), rpOk = false;
+    if (!state.admin) { rp.msg.textContent = t('Skipped: needs administrator mode'); rp.done(false); }
+    else if (REAL) {
+      rp.msg.textContent = t('Creating the restore point… (it can take a minute)');
+      try { const r = await engJob('restore_point', [t('StellarHub, before debloating')], { onProgress: m => rp.setP(m.pct) }); rpOk = !!(r && r.ok); rp.msg.textContent = rpOk ? t('Restore point created') : t("Windows didn't create it: {error}", { error: (r && r.msg) || '' }); }
+      catch (err) { rp.msg.textContent = t("Couldn't do it: {error}", { error: err.message }); }
+      rp.done(rpOk);
+    } else { rp.msg.textContent = t('Creating the restore point…'); await tween(0, 1, 1200, rp.setP); rp.msg.textContent = t('Restore point created'); rpOk = true; rp.done(true); }
+    const ap = begin('apply'); let res;
+    if (REAL) {
+      try { res = await jobD('apply', [plan], { onProgress: m => { ap.setP(m.pct); if (m.text) ap.msg.textContent = m.text; } }); }
+      catch (err) { ap.msg.textContent = t("Couldn't do it: {error}", { error: err.message }); ap.done(false); res = { removed: [], failed: [], tweaks: [], tweakFailed: [], skippedAdmin: [], error: err.message }; }
+    } else {
+      res = { removed: [], failed: [], tweaks: [], tweakFailed: [], skippedAdmin: [], explorer: false }; const total = apps.length + tws.length; let i = 0;
+      for (const a of apps) { ap.msg.textContent = t('Removing {name}…', { name: a.label }); await wait(260); ap.setP(++i / total); res.removed.push({ id: a.id, name: a.name, label: a.label, restore: backHow(a) }); }
+      for (const x of tws) { if (x.admin && !state.admin) { res.skippedAdmin.push(x.id); continue; } ap.msg.textContent = x.t; await wait(140); ap.setP(++i / total); res.tweaks.push(x.id); res.explorer = res.explorer || x.explorer; }
+      DBX.apps = DBX.apps.filter(a => !res.removed.some(r => r.id === a.id));
+      DBX.removed = [...res.removed.map(r => ({ name: r.name, label: r.label, restore: r.restore, t: Date.now() / 1000 })), ...DBX.removed];
+      res.tweaks.forEach(id => { const x = twBy(id); x.state = 'off'; x.ours = true; x.vals.forEach(v => { v.now = v.to; }); });
+    }
+    if (!res.error) { ap.msg.textContent = t('Done'); ap.done(!res.failed.length && !res.tweakFailed.length); }
+    dsel.apps.clear(); dsel.tw.clear();
+    if (REAL) { await reload('dbApps', 'dbTweaks'); SH.logActivity(t('Debloat applied'), { sub: t('{n} apps removed, {m} settings changed', { n: res.removed.length, m: res.tweaks.length }), ic: 'sparkle', go: 'optimizer', tab: 'debloat' }); }
+    await wait(350);
+    const lines = [
+      ...res.removed.map(r => ['ok', t('{name} removed', { name: r.label }), BACK_TXT[r.restore] || '']),
+      ...res.failed.map(f => { const a = apps.find(x => x.id === f.id); return ['skip', t("{name} wasn't removed", { name: a ? a.label : f.id }), f.error || '']; }),
+      ...res.tweaks.map(id => ['ok', (twBy(id) || tws.find(x => x.id === id) || { t: id }).t, t('Changed; the previous value is saved')]),
+      ...res.tweakFailed.map(f => ['skip', (tws.find(x => x.id === f.id) || { t: f.id }).t, t("Windows didn't accept the change: {error}", { error: f.error })]),
+      ...res.skippedAdmin.map(id => ['skip', (tws.find(x => x.id === id) || { t: id }).t, t('Skipped: turn on administrator mode to do it')]),
+    ];
+    const ranTw = res.tweaks.slice(), ranApps = res.removed.slice();
+    ov.innerHTML = `<div class="pan db-pv"><h4 class="pan-h">${t('Done')} <em>${rpOk ? t('with a restore point') : t('without a restore point')}</em></h4>
+      <div class="result"><div><b class="big">${SH.fmtInt(res.removed.length)}</b><span>${t('apps removed')}</span></div><div><b class="big">${SH.fmtInt(res.tweaks.length)}</b><span>${t('settings changed')}</span></div><div><b class="big">${SH.fmtInt(res.failed.length + res.tweakFailed.length + res.skippedAdmin.length)}</b><span>${t('skipped')}</span></div></div>
+      <div class="rows res-log db-pv-b">${lines.map(([k, a, b]) => `<div class="row"><span class="ri ${k}">${ic(k === 'ok' ? 'check' : 'shield')}</span><span class="rt"><b>${esc(a)}</b><span>${esc(b)}</span></span></div>`).join('')}</div>
+      <div class="plan-acts">${ranTw.length || ranApps.length ? `<button class="btn sec" id="dbUndoRun">${ic('undo')}${t('Undo these changes')}</button>` : ''}${res.explorer || (!REAL && expl) ? `<button class="btn ghost" id="dbExpl">${ic('folder')}${t('Restart File Explorer')}</button>` : ''}<button class="btn ghost" id="dbClose">${t('Close')}</button></div></div>`;
+    $$('.res-log .row', ov).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: 120 + Math.min(i, 16) * 45, e: EASE.spring }));
+    $('#dbClose', ov).addEventListener('click', closeOv);
+    const ex = $('#dbExpl', ov); if (ex) ex.addEventListener('click', async () => {
+      busyBtn(ex, t('Restarting…'));
+      if (REAL) { try { await engJob('repair', ['explorer']); } catch (err) { SH.toast(err.message); } } else await wait(800);
+      freeBtn(ex); ex.disabled = true; SH.toast(t('File Explorer restarted.'));
+    });
+    const un = $('#dbUndoRun', ov); if (un) un.addEventListener('click', async () => {
+      busyBtn(un, t('Undoing…')); const errs = [];
+      for (const id of ranTw) { const x = twBy(id) || { t: id };
+        if (REAL) { try { await engD('tweak_undo', id); } catch (err) { errs.push(x.t); } } else { x.state = 'on'; x.ours = false; } }
+      for (const a of ranApps) {
+        if (a.restore === 'none') { errs.push(a.label); continue; }
+        if (REAL) { try { const r = await jobD('reinstall', [a.name]); if (!r || !r.ok) errs.push(a.label); } catch (err) { errs.push(a.label); } }
+        else { DBX.removed = DBX.removed.filter(x => x.name !== a.name); }
+      }
+      if (REAL) await reload('dbTweaks', 'dbApps');
+      SH.toast(errs.length ? t('Undone, except: {list}.', { list: errs.join(', ') }) : t('Changes undone.'), { ms: 8000 });
+      closeOv();
+    });
+  }
+  rendered.debloat = draw;
+}
+
 /* ================= module registration ================= */
 let modCtx = null;
+/* what each tab needs from Windows */
+const NEED = { clean: ['clean'], startup: ['startup', 'boot'], services: ['services'], registry: ['registry'], performance: ['performance'], debloat: ['dbApps', 'dbTweaks'] };
 SH.module({
   id: 'optimizer',
   actions(el, ctx) {
@@ -973,17 +1420,28 @@ SH.module({
       setTimeout(() => { const t = ctx.tabEl('overview'); const btn = t && $(b.dataset.a === 'all' ? '#optAll' : '#optRescan', t); if (btn && !btn.disabled && !btn.hidden) btn.click(); }, 300); });
   },
   real: true,
+  /* Every tab draws at once: from the cache of the last visit if there is one (and reads Windows again in the
+     background), otherwise as a skeleton with the shape of the tab and the engine's progress. Areas load in parallel. */
   async renderTab(tab, el, ctx) {
-    const fn = ({ overview: renderOverview, clean: renderClean, startup: renderStartup, services: renderServices, registry: renderRegistry, repair: renderRepair, performance: renderPerformance })[tab];
-    const need = { clean: ['clean'], startup: ['startup', 'boot'], services: ['services'], registry: ['registry'], performance: ['performance'] }[tab];
-    if (need && await realP) {
-      if (need.some(n => !loaded[n])) el.innerHTML = loadingHTML(tab);
-      try { await Promise.all(need.map(n => load(n))); }
-      catch (e) { el.innerHTML = `<div class="empty"><b>${t("Couldn't read from Windows")}</b>${esc(e.message)}<div style="margin-top:14px"><button class="btn sec" id="optRetry">${ic('restore')}${t('Try again')}</button></div></div>`;
-        $('#optRetry', el).addEventListener('click', () => { el.innerHTML = ''; this.renderTab(tab, el, ctx); }); return; }
-      el.innerHTML = ''; fn(el, ctx); SH.assemble(el, 0, 30); return;
+    const fn = ({ overview: renderOverview, clean: renderClean, startup: renderStartup, services: renderServices, registry: renderRegistry, repair: renderRepair, performance: renderPerformance, debloat: renderDebloat })[tab];
+    const need = NEED[tab];
+    if (!need) { fn(el, ctx); return; }
+    el.innerHTML = skelHTML(tab);
+    if (!(await realP)) { el.innerHTML = ''; fn(el, ctx); return; }
+    const draw = () => { el.innerHTML = ''; fn(el, ctx); SH.assemble(el, 0, 30); };
+    const cached = need.every(hydrate);
+    if (cached) { draw(); setUpd(el, true); }
+    let changed = false;
+    try { changed = (await Promise.all(need.map(n => load(n)))).some(Boolean); }
+    catch (e) {
+      if (cached) { setUpd(el, false); SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message })); return; }
+      el.innerHTML = `<div class="empty"><b>${t("Couldn't read from Windows")}</b>${esc(e.message)}<div style="margin-top:14px"><button class="btn sec" id="optRetry">${ic('restore')}${t('Try again')}</button></div></div>`;
+      $('#optRetry', el).addEventListener('click', () => { el.innerHTML = ''; this.renderTab(tab, el, ctx); }); return;
     }
-    fn(el, ctx);
+    if (!cached) { draw(); return; }
+    setUpd(el, false);
+    /* fresh data differs from the cached one: drawn again, without the entrance animation */
+    if (changed && !el.querySelector('.db.prev, .cl-busy')) { el.innerHTML = ''; fn(el, ctx); anim(el, [{ opacity: .55 }, { opacity: 1 }], { d: 250 }); }
   },
   enter() { if (!modCtx) return; modCtx.setBadge('clean', DB.clean.filter(c => c.size > 0).length); modCtx.setBadge('registry', regCount()); },
   enterTab(tab, el) { if (tab !== 'overview' || !el) return; const r = $('.ring', el); if (r) anim(r, [{ transform: 'rotate(-24deg) scale(.94)', opacity: .5 }, { transform: 'none', opacity: 1 }], { d: 620, e: EASE.spring }); },
@@ -996,5 +1454,6 @@ SH.actions.add([
   { t: t('Check Windows files (SFC)'), go: 'optimizer', tab: 'repair', ic: 'shield' },
   { t: t('Reset the network and DNS'), go: 'optimizer', tab: 'repair', ic: 'wifi' },
   { t: t('Change the power plan'), go: 'optimizer', tab: 'performance', ic: 'bolt' },
+  { t: t('Remove preinstalled apps and ads'), go: 'optimizer', tab: 'debloat', ic: 'trash' },
 ]);
 })();
