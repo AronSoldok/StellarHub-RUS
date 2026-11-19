@@ -218,9 +218,34 @@ class Identity:
         if not text or not self.locations:
             return False
         t = os.path.expandvars(str(text)).lower().replace("/", "\\")
-        if any(_contains_path(t, fl) for fl in self.foreign_locs):
+        texts = [t]
+        if "~" in t:  # short names (C:\Users\JOHNSM~1\..., even mixed with long ones): also compare them expanded
+            texts.append(_DRIVE_PATH.sub(lambda m: norm_path(m.group(0)), t))
+        if any(_contains_path(x, f) for x in texts for fl in self.foreign_locs for f in _path_forms(fl)):
             return False
-        return any(_contains_path(t, loc) for loc in self.locations)
+        return any(_contains_path(x, f) for x in texts for loc in self.locations for f in _path_forms(loc))
+
+
+_DRIVE_PATH = re.compile(r'[a-z]:\\[^"*?<>|\r\n,;]*')
+
+
+@functools.lru_cache(maxsize=4096)
+def _path_forms(loc):
+    """A normalized folder (long names) plus its 8.3 short form: a command line or registry value may use either
+    (C:\\PROGRA~1\\Foo\\foo.exe)."""
+    forms = [loc]
+    if os.name == "nt":
+        try:
+            import ctypes
+            buf = ctypes.create_unicode_buffer(1024)
+            n = ctypes.windll.kernel32.GetShortPathNameW(loc, buf, 1024)
+            if 0 < n <= 1024:
+                s = os.path.normcase(buf.value).rstrip("\\")
+                if s and s != loc:
+                    forms.append(s)
+        except (AttributeError, OSError):
+            pass
+    return tuple(forms)
 
 
 def _is_game_library(d):
