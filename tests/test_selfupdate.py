@@ -125,6 +125,41 @@ class CheckAndDownload(unittest.TestCase):
         popen.assert_not_called()
         self.assertFalse(any(f.endswith(".exe") for f in os.listdir(self.tmp)))
 
+    def test_background_download_stops_at_staged_and_is_reused(self):
+        """New features download in the background and wait for the next start; the start reuses the file."""
+        sha = hashlib.sha256(self.payload).hexdigest()
+        s = self.serve(sha)
+        with self.env(s), mock.patch.object(su, "FROZEN", True), mock.patch.object(su, "per_machine", lambda: False), \
+                mock.patch.object(su, "_app_running", lambda: False), mock.patch.object(su.subprocess, "Popen") as popen:
+            os.makedirs(os.path.dirname(su._prefetch_flag()), exist_ok=True)
+            open(su._prefetch_flag(), "w").close()
+            self.assertEqual(su.run_updater(), 0)
+            self.assertEqual(su.state()["st"], "staged")
+            self.assertEqual(su.staged(), "9.9.9")
+            self.assertFalse(os.path.exists(su._prefetch_flag()))
+            popen.assert_not_called()
+            exe = os.path.join(su.update_dir(), "StellarHub-Setup-9.9.9.exe")
+            mtime = os.path.getmtime(exe)
+            # the next start: no flag, the same file (checked against the hash again) goes to the installer
+            os.remove(os.path.join(s.dir, "StellarHub-Setup-9.9.9.exe"))  # proves nothing is downloaded again
+            self.assertEqual(su.run_updater(), 0)
+            self.assertEqual(su.state()["st"], "installing")
+            self.assertEqual(os.path.getmtime(exe), mtime)
+            self.assertTrue(popen.call_args[0][0][0].endswith("StellarHub-Setup-9.9.9.exe"))
+
+    def test_a_tampered_staged_file_is_downloaded_again(self):
+        sha = hashlib.sha256(self.payload).hexdigest()
+        s = self.serve(sha)
+        with self.env(s), mock.patch.object(su, "FROZEN", True), mock.patch.object(su, "per_machine", lambda: False), \
+                mock.patch.object(su, "_app_running", lambda: False), mock.patch.object(su.subprocess, "Popen"):
+            os.makedirs(su.update_dir(), exist_ok=True)
+            exe = os.path.join(su.update_dir(), "StellarHub-Setup-9.9.9.exe")
+            with open(exe, "wb") as fh:
+                fh.write(b"something else")
+            self.assertEqual(su.run_updater(), 0)
+            with open(exe, "rb") as fh:
+                self.assertEqual(fh.read(), self.payload)
+
     def test_updater_does_nothing_when_up_to_date(self):
         s = Serve({})
         self.addCleanup(s.close)
@@ -192,10 +227,22 @@ class Portable(unittest.TestCase):
 class PortablePaths(unittest.TestCase):
     def test_data_next_to_the_program(self):
         from stellarhub import paths
-        with mock.patch.object(paths, "PORTABLE", True), mock.patch.dict(os.environ, {"STELLARHUB_PORTABLE_DATA": r"E:\StellarHub\Data"}):
-            self.assertEqual(paths.data_dir(), r"E:\StellarHub\Data")
-            self.assertEqual(paths.settings_file(), r"E:\StellarHub\Data\settings.json")
-            self.assertTrue(paths.local_dir().startswith(r"E:\StellarHub\Data"))
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        d = os.path.join(tmp, "StellarHub", "Data")
+        with mock.patch.object(paths, "PORTABLE", True), mock.patch.object(paths, "_portable_data", None), \
+                mock.patch.dict(os.environ, {"STELLARHUB_PORTABLE_DATA": d}):
+            self.assertEqual(paths.data_dir(), d)
+            self.assertEqual(paths.settings_file(), os.path.join(d, "settings.json"))
+            self.assertTrue(paths.local_dir().startswith(d))
+
+    def test_read_only_drive_falls_back_to_this_pc(self):
+        from stellarhub import paths
+        with mock.patch.object(paths, "PORTABLE", True), mock.patch.object(paths, "_portable_data", None), \
+                mock.patch.dict(os.environ, {"STELLARHUB_PORTABLE_DATA": r"Q:\nowhere\Data"}):
+            d = paths.data_dir()
+        self.assertIn("Portable-", d)
+        self.assertTrue(d.lower().startswith(os.environ["LOCALAPPDATA"].lower()))
 
 
 class PortableFinish(unittest.TestCase):

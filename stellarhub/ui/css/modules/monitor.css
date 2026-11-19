@@ -137,7 +137,25 @@ html[data-int=min] #v-monitor .slot.on .stick{animation:none}
 #v-monitor svg.ring{width:54px;height:54px;transform:rotate(-90deg);flex:none}
 #v-monitor .health-big b{display:block;font:500 20px var(--display);letter-spacing:-.02em}
 #v-monitor .health-big span{font-size:12px;color:var(--mute)}
+#v-monitor .health-big b{display:flex;align-items:baseline;gap:0;font-size:26px}
+#v-monitor .health-big b span{font:inherit;color:inherit}
+#v-monitor .health-big>div>span{display:block}
 #v-monitor .part{margin-bottom:14px}
+/* several disks: one health card each, volumes grouped under the disk name */
+#v-monitor .dcard+.dcard{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+#v-monitor .dname{margin:0 0 8px;font-size:12px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#v-monitor .dname em{font-style:normal;color:var(--accent2);margin-left:4px}
+#v-monitor #dVols .dname:not(:first-child){margin-top:16px}
+/* busy: DNS change, first processes reading */
+#v-monitor .m-spin{display:inline-block;vertical-align:-2px;width:12px;height:12px;margin-right:8px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;opacity:.85;animation:mSpin calc(800ms + 400ms*(1 - var(--f))) linear infinite}
+html[data-int=min] #v-monitor .m-spin{animation-duration:2.4s}
+@keyframes mSpin{to{transform:rotate(360deg)}}
+#v-monitor .seg.pending{cursor:progress}
+#v-monitor .seg.pending button:disabled{opacity:1}
+#v-monitor .seg.pending .ind{animation:mPend calc(900ms*var(--f) + 300ms) ease-in-out infinite alternate}
+html[data-int=min] #v-monitor .seg.pending .ind{animation:none}
+@keyframes mPend{from{opacity:1}to{opacity:.45}}
+#v-monitor .p-sk{padding:8px}
 #v-monitor .pl{display:flex;align-items:baseline;gap:8px;font-size:12.5px;margin-bottom:7px}
 #v-monitor .pl b{font-weight:500}
 #v-monitor .pl span{color:var(--faint);font-size:12px}
@@ -297,7 +315,7 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .g-mem>:nth-child(3) .pbody{justify-content:center}
 
 /* battery: two panels on top, the 24 h chart below */
-#v-monitor .g-bat{grid-template-rows:minmax(230px,1fr) minmax(190px,1fr)}
+#v-monitor .g-bat{grid-template-rows:minmax(230px,auto) minmax(190px,1fr)}
 #v-monitor .g-bat>:nth-child(1) .pbody{justify-content:space-around}
 #v-monitor .g-bat .batrow{margin-bottom:0}
 

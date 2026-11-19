@@ -106,9 +106,9 @@ conditions and what to do.
   classic menu. Closing the window keeps StellarHub running in the background.
 - **Backups and restore** in Settings: restore points (create, turn on protection, delete) and every backup StellarHub
   made, in one place.
-- **Updates itself**: when it opens, StellarHub checks this repository for a new release and asks you. One click
-  downloads it, checks its SHA-256, installs it silently and reopens the app where you were (no Windows prompt
-  when it was installed for all users). It can be turned off in *Settings > Updates*.
+- **Updates itself** from this repository's releases, always checking the file's SHA-256 first. Versions with new
+  features download in the background and install the next time you open StellarHub; big versions ask you first;
+  small fixes wait in *Settings > Updates*. All of it can be turned off there.
 - **Command palette** (`Ctrl K`) to jump to any tool or action by typing.
 - **Optional administrator mode**, and a permanent one if you want it (no Windows prompt on every launch).
 - **Settings for almost everything**: theme, colors, interface size, density, corners, starfield, animation
@@ -139,8 +139,13 @@ like any other program. Requires Windows 10 (1809) or 11, 64-bit; if your PC lac
 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/), the setup downloads it from Microsoft
 (and only runs it if it is signed by Microsoft).
 
-After that, StellarHub keeps itself up to date. New features (1.**2**.0, **2**.0.0) are announced with a window;
-small fixes (1.2.**3**) never interrupt you and wait in *Settings > Updates*.
+After that, StellarHub keeps itself up to date:
+
+| Version | Example | What happens |
+|---|---|---|
+| Big | **2**.0.0 | A window shows what's new and you choose when to update |
+| New features | 1.**2**.0 | Downloads in the background and installs the next time you open StellarHub (*Settings > Updates > Install new features automatically*) |
+| Small fixes | 1.2.**3** | Never interrupts you: it waits in *Settings > Updates* |
 
 ### ◇ Or take it with you (portable)
 
@@ -185,6 +190,11 @@ with the same script.
 
 StellarHub works without it, in limited mode. Installing drivers, cleaning system files, repairing Windows or
 reading the CPU temperature and disk SMART data require it; the app suggests it quietly when needed.
+
+Many PCs (especially desktop motherboards) don't report the CPU temperature to Windows at all. In that case
+StellarHub reads it from [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor),
+[HWiNFO](https://www.hwinfo.com/) (with *Shared Memory Support* on) or [Core Temp](https://www.alcpu.com/CoreTemp/)
+if one of them is running, and says which one it used.
 
 ## ⌨️ Keyboard shortcuts
 

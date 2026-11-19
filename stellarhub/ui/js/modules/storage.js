@@ -601,8 +601,9 @@ function setPathText(el, s) {
 
 /* animated scan: a ring with the real progress; when it finishes, the ring shrinks into the center and the map
    opens from there with a soft wave (everything used to pop in place at once) */
+let scanProg = null;
 async function runScan() {
-  if (TM.scanning) return; TM.scanning = true;
+  if (TM.scanning) return; TM.scanning = true; scanProg = null;
   const el = $(`#v-${ID} .tab[data-tab="map"]`); const sc = el && $('.st-scan', el);
   if (sc) {
     sc.classList.remove('done'); sc.classList.add('busy');
@@ -617,6 +618,7 @@ async function runScan() {
   const spEl = sc && $('.st-sp', sc), unitEl = sc && $('.st-sv span', sc); if (unitEl) unitEl.textContent = T('files read');
   try {
     t = await API.scan(p => {
+      scanProg = { files: p.files, frac: p.frac || 0, unit: p.unit }; paintScanWait();
       if (!sc) return;
       $('.st-sn', sc).textContent = fmtInt(p.files); setPathText(spEl, p.path || ' ');
       if (unitEl && p.unit) { const u = p.unit === 'entries' ? T('entries read') : T('files read'); if (unitEl.textContent !== u) unitEl.textContent = u; }
@@ -663,11 +665,26 @@ async function runScan() {
 let treeTarget = null; const openSet = new Set();
 /* before a scan (in real mode) the other tabs invite you to run one */
 const needScan = () => ST.real && !TREE;
+/* while the Map tab is scanning, the other tabs say so (with the progress) instead of offering to scan again */
+function paintScanWait() {
+  $$(`#v-${ID} .st-first.st-wait`).forEach(box => {
+    const f = scanProg ? Math.max(0, Math.min(1, scanProg.frac)) : 0, bar = $('.bar>span', box), tx = $('.st-fp', box);
+    if (bar) bar.style.setProperty('--v', f);
+    if (tx) tx.textContent = scanProg ? (scanProg.unit === 'entries' ? T('{n} entries read', { n: fmtInt(scanProg.files) }) : T('{n} files read', { n: fmtInt(scanProg.files) })) : T('Preparing the scan…');
+  });
+}
 function scanFirst(el, what) {
   el.classList.add('fill');
+  if (TM.scanning) {
+    el.innerHTML = `<div class="pan st-first st-wait" data-asm><span class="st-fi">${ic('storage')}</span><b>${T('Scanning… (see {tab})', { tab: T('Map') })}</b><span class="muted st-fp"></span><div class="bar st-fbar"><span></span></div>
+      <button class="btn sec" data-gomap>${ic('storage')}${T('Go to {tab}', { tab: T('Map') })}</button></div>`;
+    paintScanWait();
+    if (!el.dataset.b) { el.dataset.b = 1; el.addEventListener('click', e => { if (e.target.closest('[data-goscan]') && ctxRef) { ctxRef.setTab('map'); setTimeout(() => runScan(), 260); } else if (e.target.closest('[data-gomap]') && ctxRef) ctxRef.setTab('map'); }); }
+    return;
+  }
   el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi">${ic('storage')}</span><b>${T('Scan a drive first')}</b><span class="muted">${what}</span>
     <button class="btn pri" data-goscan>${ic('search')}${T('Scan {target}', { target: esc((ST.target || 'C:\\').replace(/\\$/, '')) })}</button></div>`;
-  if (!el.dataset.b) { el.dataset.b = 1; el.addEventListener('click', e => { if (e.target.closest('[data-goscan]') && ctxRef) { ctxRef.setTab('map'); setTimeout(() => runScan(), 260); } }); }
+  if (!el.dataset.b) { el.dataset.b = 1; el.addEventListener('click', e => { if (e.target.closest('[data-goscan]') && ctxRef) { ctxRef.setTab('map'); setTimeout(() => runScan(), 260); } else if (e.target.closest('[data-gomap]') && ctxRef) ctxRef.setTab('map'); }); }
 }
 function trow(n, depth, base) {
   const t = typeOf(n); const frac = base ? n.size / base : 0;
@@ -732,10 +749,17 @@ async function typesData() {
   const by = {}; files.forEach(f => { const b = by[f.type] ||= { size: 0, n: 0, ext: {} }; b.size += f.size; b.n++; b.ext[f.ext] = (b.ext[f.ext] || 0) + f.size; });
   return Object.entries(by).map(([k, b]) => [k, { ...b, n: Math.round(b.n * (['vm', 'ai', 'system', 'inst', 'archive'].includes(k) ? 1 : ['video', 'game'].includes(k) ? fFactor * .08 : fFactor)) }]);
 }
+/* a view whose data didn't arrive: say so and offer to try again (instead of a skeleton forever) */
+function loadErr(box, e, retry) {
+  box.innerHTML = `<div class="st-lerr" role="alert">${ic('alert')}<div><b>${T("Couldn't load this view.")}</b><span class="muted">${esc((e && e.message) || T('The engine did not answer.'))}</span></div><button class="btn sec sm" data-retry>${T('Try again')}</button></div>`;
+  $('[data-retry]', box).addEventListener('click', ev => { ev.stopPropagation(); retry(); }, { once: true });
+  console.error(e);
+}
 async function renderTypes(el) {
   if (needScan()) return scanFirst(el, T('See how much space each file type takes: videos, games, programs, caches…'));
   el.classList.add('fill'); el.innerHTML = '<div class="sk" style="height:60px;margin-bottom:14px"></div><div class="sk" style="height:300px"></div>';
-  const list = (await typesData()).filter(x => x[1].size > 0).sort((a, b) => b[1].size - a[1].size); const max = list[0] ? list[0][1].size : 1;
+  let data; try { data = await typesData(); } catch (e) { ST.types = undefined; el.classList.remove('fill'); loadErr(el, e, () => renderTypes(el)); return; }
+  const list = data.filter(x => x[1].size > 0).sort((a, b) => b[1].size - a[1].size); const max = list[0] ? list[0][1].size : 1;
   const tot = list.reduce((a, x) => a + x[1].size, 0);
   el.innerHTML = `<div class="st-tywrap"><div class="pan st-stack" data-asm><h4>${isWholeDrive() ? T('How drive {d} is split up', { d: esc(targetShort()) }) : T('How {name} is split up', { name: esc(targetShort()) })} <em>${T('{size} in {n} types', { size: fmtB(tot), n: list.length })}</em></h4>
       <div class="st-sbar">${list.map(([k, b]) => `<button data-ty="${k}" style="flex:${b.size};background:${T_(k).c}" title="${T_(k).n}, ${fmtB(b.size)}"></button>`).join('')}</div></div>
@@ -790,10 +814,12 @@ function askInRow(row, text, yesLabel) {
     setTimeout(() => { if (box.isConnected && $('.st-ask', box)) done(false); }, 7000);
   });
 }
-async function toTrash(path) {
+/* permanent=true only after the user answered "Delete permanently?" for something that can't go to the Recycle Bin
+   (the engine answers noBin:true and deletes nothing until then) */
+async function toTrash(path, permanent) {
   if (!ST.real) return { ok: true, size: 0 };
   const c = await SH.engine('storage', 'can_delete', path); if (!c.ok) return { ok: false, error: c.why };
-  return SH.engine('storage', 'trash', path);
+  return SH.engine('storage', 'trash', path, permanent === true);
 }
 async function fromTrash(path) { if (!ST.real) return { ok: true }; return SH.engine('storage', 'restore', path); }
 async function renderBig(el) {
@@ -807,7 +833,7 @@ async function renderBig(el) {
       <div class="st-blist st-scroll"><div class="sk" style="height:46px;margin:6px"></div><div class="sk" style="height:46px;margin:6px"></div></div></div>`;
   BIG.sort = 'size'; BIG.q = '';
   requestAnimationFrame(() => SH.placeSeg($('.st-bsort', el), true));
-  BIG.items = await bigItems();
+  try { BIG.items = await bigItems(); } catch (e) { ST.big = undefined; const l = $('.st-blist', el); if (l) loadErr(l, e, () => renderBig(el)); return; }
   const list = $('.st-blist', el);
   const total = () => { const l = bigList(); $('.st-btot', el).textContent = T('{n} files, {size}', { n: fmtInt(l.length), size: fmtB(l.reduce((a, n) => a + n.size, 0)) }); };
   const paint = () => { const l = bigList(); list.innerHTML = l.map(bigRow).join('') || `<div class="empty"><b>${T('Nothing matches')}</b>${T('Try another word.')}</div>`; total(); paintIcons(list); };
@@ -822,11 +848,21 @@ async function renderBig(el) {
     const tr = e.target.closest('[data-btrash]'); if (!tr) return;
     const id = +tr.dataset.btrash; const n = BIG.items.find(x => x.id === id); const row = tr.closest('.st-br'); if (!n || !row) return;
     if (!await askInRow(row, T('Recycle it?'), T('Recycle'))) return;
-    const path = fullPath(n); const r = await toTrash(path);
-    if (!r || !r.ok) { SH.toast((r && r.error) || T("Couldn't send it to the Recycle Bin.")); const b = $('.st-ba', row); if (b) b.innerHTML = $('.st-ba', document.createRange().createContextualFragment(bigRow(n))).innerHTML; return; }
+    const path = fullPath(n); let r = await toTrash(path); let perm = false;
+    const resetRow = () => { const b = $('.st-ba', row); if (b) b.innerHTML = $('.st-ba', document.createRange().createContextualFragment(bigRow(n))).innerHTML; };
+    if (r && r.noBin) {          // no Recycle Bin here: nothing was deleted; only an explicit yes deletes it for good
+      resetRow();
+      if (!await askInRow(row, T('This drive has no Recycle Bin. Delete permanently?'), T('Delete permanently'))) return;
+      r = await toTrash(path, true); perm = true;
+    }
+    if (!r || !r.ok) { SH.toast((r && r.error) || T("Couldn't send it to the Recycle Bin.")); resetRow(); return; }
     BIG.removed.add(id); const h = row.offsetHeight;
     anim(row, [{ opacity: 1, transform: 'none', height: h + 'px' }, { opacity: 0, transform: 'translate3d(30px,0,0)', height: h + 'px', offset: .5 }, { opacity: 0, transform: 'translate3d(30px,0,0)', height: '0px', paddingTop: '0px', paddingBottom: '0px' }], { d: 440 })
       .finished.then(() => { row.remove(); total2(); }).catch(() => {});
+    if (perm) {
+      SH.logActivity(T('{name} deleted permanently', { name: n.name }), { sub: T('{size} freed', { size: fmtB(n.size) }), ic: 'trash', go: ID, tab: 'largest' });
+      SH.toast(T('{name} deleted permanently.', { name: n.name })); return;
+    }
     SH.logActivity(T('{name} sent to the Recycle Bin', { name: n.name }), { sub: T('{size} freed', { size: fmtB(n.size) }), ic: 'trash', go: ID, tab: 'largest' });
     SH.toast(T('{name} sent to the Recycle Bin.', { name: n.name }), { action: { label: T('Undo'), run: async () => {
       const rr = await fromTrash(path); if (!rr || !rr.ok) { SH.toast((rr && rr.error) || T("Couldn't restore it.")); return; }
@@ -864,7 +900,7 @@ async function renderDups(el) {
   el.classList.add('fill');
   if (ST.real && !ST.dups) {
     el.innerHTML = `<div class="pan st-first st-dfind" data-asm><span class="st-fi">${ic('copy')}</span><b>${T('Find duplicate files')}</b>
-      <span class="muted">${T('Compares by size, then by a hash of the start and end, and finally by the full content. It skips Windows and the Recycle Bin.')}</span>
+      <span class="muted">${T('Compares by size, then by a hash of the start and end, and finally by the full content. It skips Windows, the Recycle Bin and program and game folders (Program Files, ProgramData, AppData, Steam, Epic, GOG, Xbox), where identical files are needed.')}</span>
       <div class="seg st-dmin"><span class="ind"></span>${[1, 10, 100].map(v => [v, T('From {n} MB', { n: v })]).map(([v, l]) => `<button data-min="${v}"${DUPMIN.v === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div>
       <button class="btn pri" data-dfind>${ic('search')}${T('Find')}</button>
       <div class="st-dprog" hidden><div class="bar"><span style="transform:scaleX(0)"></span></div><span class="faint st-dpt">&nbsp;</span><button class="btn sm ghost" data-dstop>${ic('x')}${T('Cancel')}</button></div></div>`;
@@ -881,6 +917,7 @@ async function renderDups(el) {
   el.innerHTML = `<div class="st-dup">
     <aside class="pan st-dsum" data-asm><h4>${T('Duplicate files')}${ST.real ? `<em><button class="btn sm ghost" data-dagain>${ic('updater')}${T('Search again')}</button></em>` : ''}</h4>
       <div class="big"><span class="st-dfree">0</span><small>${T('GB you can free up')}</small></div><p class="muted st-dsub"></p>
+      ${ST.real ? `<p class="faint st-dskip">${T('Program and game files are left out: identical files there are needed by the apps.')}</p>` : ''}
       <div class="st-dbars st-scroll">${DUPS.map(d => `<button class="st-dbr" data-dgo="${d.id}"><span class="st-dbn"><span>${esc(d.name)}</span><b>${fmtB(d.size * (d.copies.length - 1))}</b></span><span class="bar"><span style="transform:scaleX(${(d.size * (d.copies.length - 1) / mxd).toFixed(4)});background:${T_(dupType(d)).c}"></span></span></button>`).join('')}</div>
       <button class="btn danger" data-dall>${ic('trash')}${T('Delete all copies')}</button></aside>
     <div class="st-dgroups st-scroll">${DUPS.map(d => `<div class="pan st-dg${d.id < 2 ? ' open' : ''}" data-dg="${d.id}" data-asm>
@@ -933,27 +970,48 @@ function paintDupProg() {
 }
 async function cleanGroups(groups, el) {
   if (!groups.length) return;
-  let freed = 0; const moved = []; const failed = [];
+  let freed = 0; const moved = []; const failed = []; const nobin = [];
   for (const d of groups) {
-    const paths = d.copies.filter((c, j) => j !== d.keep).map(c => c[2] || (c[0] + '\\' + d.name));
-    let ok = 0;
-    for (const p of paths) { const r = await toTrash(p); if (r && r.ok) { ok++; moved.push(p); freed += d.size; } else failed.push(r && r.error); }
-    if (ok === paths.length) {
-      d.done = true; const b = $(`[data-dgo="${d.id}"]`, el); if (b) b.classList.add('done');
-      const g = $(`[data-dg="${d.id}"]`, el); const h = g.offsetHeight;
-      anim(g, [{ opacity: 1, transform: 'none', height: h + 'px' }, { opacity: 0, transform: 'scale(.97)', height: h + 'px', offset: .45 }, { opacity: 0, transform: 'scale(.97)', height: '0px', paddingTop: '0px', paddingBottom: '0px', marginBottom: '-14px' }], { d: 480 })
-        .finished.then(() => { g.style.display = 'none'; }).catch(() => {});
-    }
+    const paths = dupPaths(d);
+    let ok = 0; d.gone = d.gone || new Set();
+    for (const p of paths) { const r = await toTrash(p); if (r && r.ok) { ok++; moved.push(p); d.gone.add(p); freed += d.size; } else if (r && r.noBin) nobin.push({ d, p }); else failed.push(r && r.error); }
+    if (ok === paths.length) finishGroup(d, el);
   }
   updDups(el, 500);
+  if (nobin.length) {          // nothing was deleted from those: ask before deleting for good
+    SH.toast(nobin.length > 1 ? T('{n} copies are on a drive without a Recycle Bin, so they were not deleted.', { n: nobin.length }) : T('1 copy is on a drive without a Recycle Bin, so it was not deleted.'),
+      { ms: 12000, action: { label: T('Delete permanently'), run: () => deleteForGood(nobin, el) } });
+  }
   if (failed.length) { const why = failed.find(Boolean) || T('in use'); SH.toast(failed.length > 1 ? T("{n} copies couldn't be moved: {why}", { n: failed.length, why }) : T("1 copy couldn't be moved: {why}", { why })); }
   if (!moved.length) return;
   SH.logActivity(T('Duplicate copies sent to the Recycle Bin'), { sub: T('{size} freed', { size: fmtB(freed) }), ic: 'copy', go: ID, tab: 'duplicates' });
   SH.toast(T('{size} sent to the Recycle Bin.', { size: fmtB(freed) }), { ms: 7000, action: { label: T('Undo'), run: async () => {
     let back = 0; for (const p of moved) { const r = await fromTrash(p); if (r && r.ok) back++; }
-    groups.forEach(d => { d.done = false; const b = $(`[data-dgo="${d.id}"]`, el); if (b) b.classList.remove('done'); const g = $(`[data-dg="${d.id}"]`, el); if (g) { g.style.display = ''; g.getAnimations().forEach(a => a.cancel()); anim(g, [{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 400, e: EASE.spring }); } });
+    groups.forEach(d => { moved.forEach(p => d.gone && d.gone.delete(p)); d.done = false; const b = $(`[data-dgo="${d.id}"]`, el); if (b) b.classList.remove('done'); const g = $(`[data-dg="${d.id}"]`, el); if (g) { g.style.display = ''; g.getAnimations().forEach(a => a.cancel()); anim(g, [{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 400, e: EASE.spring }); } });
     updDups(el, 500); if (back < moved.length) SH.toast(T('Restored {n} of {total}. The rest are in the Recycle Bin.', { n: back, total: moved.length }));
   } } });
+}
+
+const dupPaths = d => d.copies.filter((c, j) => j !== d.keep).map(c => c[2] || (c[0] + '\\' + d.name));
+function finishGroup(d, el) {
+  d.done = true; const b = $(`[data-dgo="${d.id}"]`, el); if (b) b.classList.add('done');
+  const g = $(`[data-dg="${d.id}"]`, el); if (!g) return; const h = g.offsetHeight;
+  anim(g, [{ opacity: 1, transform: 'none', height: h + 'px' }, { opacity: 0, transform: 'scale(.97)', height: h + 'px', offset: .45 }, { opacity: 0, transform: 'scale(.97)', height: '0px', paddingTop: '0px', paddingBottom: '0px', marginBottom: '-14px' }], { d: 480 })
+    .finished.then(() => { g.style.display = 'none'; }).catch(() => {});
+}
+/* the user chose "Delete permanently" for copies that can't go to the Recycle Bin: no undo for these */
+async function deleteForGood(items, el) {
+  let freed = 0, n = 0; const hit = new Set(); const failed = [];
+  for (const { d, p } of items) {
+    const r = await toTrash(p, true);
+    if (r && r.ok) { n++; freed += d.size; d.gone = d.gone || new Set(); d.gone.add(p); hit.add(d); } else failed.push(r && r.error);
+  }
+  hit.forEach(d => { if (dupPaths(d).every(p => d.gone.has(p))) finishGroup(d, el); });
+  updDups(el, 500);
+  if (failed.length) SH.toast(T("{n} copies couldn't be deleted: {why}", { n: failed.length, why: failed.find(Boolean) || T('in use') }));
+  if (!n) return;
+  SH.logActivity(T('Duplicate copies deleted permanently'), { sub: T('{size} freed', { size: fmtB(freed) }), ic: 'copy', go: ID, tab: 'duplicates' });
+  SH.toast(T('{size} deleted permanently.', { size: fmtB(freed) }), { ms: 7000 });
 }
 
 /* ---------------- Compare ---------------- */
@@ -970,7 +1028,12 @@ const dshort = ms => new Date(ms).toLocaleDateString(SH.i18n.locale, { day: 'num
 async function renderCompare(el) {
   if (needScan()) return scanFirst(el, T("Every scan is saved. With two, you'll see which folders grew and which large files are new."));
   el.classList.add('fill');
-  const D = ST.real ? (ST.cmp !== undefined ? ST.cmp : (ST.cmp = await SH.engine('storage', 'compare'))) : CMP_MOCK;
+  let D;
+  if (ST.real && ST.cmp === undefined) {            // the comparison takes a moment: skeleton meanwhile, error box if it fails
+    el.innerHTML = `<div class="st-cmpsk" aria-busy="true"><p class="muted st-cmpl">${T('Comparing with the previous scan…')}</p><div class="sk" style="height:120px"></div><div class="sk" style="height:220px;margin-top:14px"></div></div>`;
+    try { D = ST.cmp = await SH.engine('storage', 'compare'); } catch (e) { ST.cmp = undefined; el.classList.remove('fill'); loadErr(el, e, () => renderCompare(el)); return; }
+    if (!D) { ST.cmp = undefined; el.classList.remove('fill'); loadErr(el, null, () => renderCompare(el)); return; }
+  } else D = ST.real ? ST.cmp : CMP_MOCK;
   const hist = (D.history || []).map(([w, s]) => [dshort(w * 1000), Math.round(s / GB)]);
   if (!D.prev) {
     el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi">${ic('grow')}</span><b>${T('This is the first scan of {name}', { name: esc(targetShort()) })}</b>
@@ -1045,7 +1108,7 @@ SH.module({
   enterTab(tab) {
     curTab = tab;
     if (tab === 'map') { TM.dirty = true; if (!TM.ready && !TM.scanning) setTimeout(() => runScan().then(() => { if (ST.real) rerenderOthers(); }), 250 * SH.motion()); else { renderLegend(); markLegend(); } }
-    else if (ST.real && TREE && RENDERED[tab] && $('.st-first [data-goscan]', RENDERED[tab])) RENDER[tab](RENDERED[tab]);
+    else if (ST.real && RENDERED[tab] && (TREE ? $('.st-first [data-goscan]', RENDERED[tab]) : ($('.st-first [data-goscan]', RENDERED[tab]) && TM.scanning) || ($('.st-first.st-wait', RENDERED[tab]) && !TM.scanning))) RENDER[tab](RENDERED[tab]);
     if (tab === 'tree' && treeTarget) { const n = treeTarget; treeTarget = null; setTimeout(() => revealInTree(n), 120); }
   },
   leaveTab() { TM.hover = TM.hoverTop = null; TM.tipA.set(0); },

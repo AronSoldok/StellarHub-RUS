@@ -174,17 +174,17 @@ class Tracking(Sandbox):
         self.assertFalse(P.tracking_state(loc, r.read))
 
     def test_turn_off_then_undo_restores_exactly(self):
-        bing = next(i for i in P.TRACKING if i["id"] == "bing")
+        bing = next(i for i in P.TRACKING if i["id"] == "searchhist")
         tips = next(i for i in P.TRACKING if i["id"] == "tips")
-        k_bing = ("HKCU", bing["vals"][1][1].lower(), "bingsearchenabled")
+        k_bing = ("HKCU", bing["vals"][0][1].lower(), "isdevicesearchhistoryenabled")
         k_tips = ("HKCU", tips["vals"][0][1].lower(), "subscribedcontent-338389enabled")
         fake = FakeReg({k_bing: (1, winreg.REG_DWORD), k_tips: (1, winreg.REG_DWORD)})
         before = dict(fake.d)
         with mock.patch.object(P, "REG", fake), mock.patch.object(P, "tracking_read", lambda: {"items": []}):
-            r = P.tracking_set(["bing", "tips"], False)
+            r = P.tracking_set(["searchhist", "tips"], False)
             self.assertFalse(P.tracking_state(bing, fake.read))
             self.assertFalse(P.tracking_state(tips, fake.read))
-            self.assertEqual(fake.d[("HKCU", bing["vals"][0][1].lower(), "disablesearchboxsuggestions")][0], 1)
+            self.assertEqual(fake.d[k_bing][0], 0)
             hist = P.history()
             self.assertEqual(hist[0]["id"], r["backup"])
             self.assertFalse(hist[0]["undone"])
@@ -192,6 +192,15 @@ class Tracking(Sandbox):
             self.assertEqual(fake.d, before)  # values that did not exist are gone again; the others are back
             self.assertTrue(P.history()[0]["undone"])
             self.assertTrue(P.undo(r["backup"]).get("already"))
+
+    def test_policies_under_hkcu_need_admin(self):
+        # HKCU\Software\Policies is admin-only for an ordinary user: "bing" must not claim otherwise
+        with mock.patch.object(P, "REG", FakeReg()), mock.patch.object(P, "_admin", return_value=False):
+            self.assertEqual(P.tracking_set(["bing"], False), {"needAdmin": True})
+            bing = next(i for i in P.tracking_read()["items"] if i["id"] == "bing")
+            self.assertTrue(bing["admin"])
+        self.assertTrue(P.user_needs_admin("HKCU", r"Software\Policies\Microsoft\Windows\Explorer"))
+        self.assertFalse(P.user_needs_admin("HKCU", r"Software\Microsoft\Windows"))
 
     def test_admin_settings_need_admin(self):
         with mock.patch.object(P, "REG", FakeReg()):

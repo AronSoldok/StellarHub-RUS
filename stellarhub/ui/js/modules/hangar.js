@@ -842,7 +842,7 @@ function kitCard(k, mine) {
     ${k.d ? `<p class="muted hg-kd">${esc(k.d)}</p>` : ''}
     ${stack(apps)}
     <div class="hg-kf">${mine ? `<button class="btn sm ghost" data-kshare="${esc(k.id)}" title="${esc(t('Share code'))}">${ic('hg-share')}<span>${t('Share')}</span></button><button class="btn sm ghost" data-kexport="${esc(k.id)}">${ic('download')}<span>${t('Export')}</span></button>` : `<button class="btn sm ghost" data-kcustom="${esc(k.id)}">${ic('sliders')}<span>${t('Customize')}</span></button>`}
-      <span class="sp"></span>${full ? `<span class="chip ok hg-kin">${ic('check')}${t('In your selection')}</span>` : `<button class="btn sm sec" data-kadd="${esc(k.id)}">${ic('plus')}${inSel ? t('Add the rest') : t('Add to selection')}</button>`}</div>
+      <span class="sp"></span>${full ? `<span class="chip ok hg-kin">${ic('check')}${t('In your selection')}</span>` : `<button class="btn sm sec" data-kadd="${esc(k.id)}">${ic('plus')}<span>${inSel ? t('Add the rest') : t('Add to selection')}</span></button>`}</div>
   </div>`;
 }
 const fdate = ms => new Date(ms).toLocaleDateString(SH.i18n.locale, { day: 'numeric', month: 'short', year: 'numeric' });

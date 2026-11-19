@@ -34,7 +34,8 @@
 #v-tester .k.warn{border-color:var(--warn);color:var(--warn)}
 #v-tester .k .rip{position:absolute;left:50%;top:50%;width:36px;height:36px;margin:-18px 0 0 -18px;border-radius:50%;background:var(--accent2);pointer-events:none}
 #v-tester .esc-ring{position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--warn);transform:scaleX(0);transform-origin:0 50%}
-#v-tester .kb-cover{position:absolute;inset:60px 0 0;display:grid;place-items:center;text-align:center;background:color-mix(in oklab,var(--deep) 78%,transparent);backdrop-filter:blur(3px);z-index:2}
+#v-tester .kb-stage{position:relative}
+#v-tester .kb-cover{position:absolute;inset:0;overflow:auto;padding:6px;display:grid;place-items:safe center;border-radius:14px;text-align:center;background:color-mix(in oklab,var(--deep) 78%,transparent);backdrop-filter:blur(3px);z-index:2}
 #v-tester .kb-cover>div{max-width:440px;display:flex;flex-direction:column;align-items:center;gap:10px}
 #v-tester .kb-cover b{font:500 19px var(--display);letter-spacing:-.02em}
 #v-tester .kb-cover span{color:var(--mute);font-size:12.5px;margin-bottom:8px}

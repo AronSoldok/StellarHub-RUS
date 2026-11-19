@@ -1,6 +1,6 @@
 {
   "Processor": "Processeur",
-  "Graphics": "Graphiques",
+  "Graphics": "Carte graphique",
   "GPU temperature": "Température du GPU",
   "Memory": "Mémoire",
   "of {n} GB": "sur {n} GB",

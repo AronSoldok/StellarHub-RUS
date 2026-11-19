@@ -263,5 +263,6 @@
  "History": "Histórico",
  "benchmark|Copy": "Cópia",
  "benchmark|Both": "Os dois",
- "Benchmark Testing": "Benchmark Testing"
+ "Benchmark Testing": "Benchmark Testing",
+ "This is your only result so far. Run the test again to see how it changes over time.": "Este é o seu único resultado até agora. Repita o teste para ver como ele muda ao longo do tempo."
 }

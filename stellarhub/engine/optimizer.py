@@ -10,6 +10,7 @@ import glob
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
@@ -26,9 +27,52 @@ from .removal import system as rsys
 EXPORTS = {"perf_read", "perf_set", "startup_set", "services_list", "services_apply", "services_undo",
            "registry_undo", "open_location", "open_startup_page", "boot_info", "bg_set", "power_plan_set",
            "startup_icons"}
-JOBS = {"clean_scan", "clean", "startup_list", "registry_scan", "registry_fix", "repair", "restore_point"}
+JOBS = {"clean_scan", "clean", "startup_list", "registry_scan", "registry_fix", "repair", "restore_point",
+        "services_undo_job", "registry_undo_job"}
 
+# Machine-wide copies (services, HKLM registry keys): they are only written and read by elevated runs, so
+# ProgramData's default permissions (read-only for ordinary users, nobody can tamper with them) are what we want.
 DATA = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "optimizer")
+# Per-user copies (HKCU registry keys, the Debloat and Privacy records). In the user's own profile: an elevated run
+# can never leave them read-only for the same user's later non-elevated runs, and other users can't read them.
+USER_DATA = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local"),
+                         "StellarHub", "optimizer")
+
+
+def new_bid():
+    """Backup id: second-resolution time plus 6 random hex digits, so two backups in the same second don't collide."""
+    return time.strftime("%Y%m%d-%H%M%S") + "-" + os.urandom(3).hex()
+
+
+def unique_bid(*folders):
+    """A backup id that doesn't exist yet in any of the folders."""
+    for _ in range(200):
+        bid = new_bid()
+        if not any(os.path.exists(os.path.join(f, bid)) or os.path.exists(os.path.join(f, bid + ".json")) for f in folders):
+            return bid
+    raise OSError("no free backup id")
+
+
+def write_json_atomic(path, data):
+    """Writes a JSON file through a temporary file. Raises OSError when it can't be written."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False)
+        os.replace(tmp, path)
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def user_needs_admin(hive, path):
+    """HKLM, and HKCU\\Software\\Policies (an ordinary user only has ReadKey there), need administrator rights."""
+    h = str(hive).upper()
+    return h == "HKLM" or (h == "HKCU" and (path or "").replace("/", "\\").lstrip("\\").lower().startswith("software\\policies"))
 
 
 def _admin():
@@ -484,7 +528,8 @@ def services_list():
         cur = "auto" if "auto" in modes else "manual" if "manual" in modes else "disabled"
         it = {k: e[k] for k in ("id", "bal", "max") if k in e}
         it.update({"name": tr(e["name"]), "desc": tr(e["desc"])})
-        it.update({"svc": [p["Name"] for p in present], "run": any(p.get("State") == "Running" for p in present), "start": cur})
+        it.update({"svc": [p["Name"] for p in present], "run": any(p.get("State") == "Running" for p in present), "start": cur,
+                   "delayed": cur == "auto" and any(_delayed(p["Name"]) for p in present)})
         if e.get("warn"):
             it["warn"] = tr(e["warn"])
         if e.get("printers"):
@@ -498,15 +543,46 @@ def services_list():
     return {"items": out, "admin": _admin()}
 
 
+def _delayed(name):
+    """True for an automatic service set to "Automatic (delayed start)": Win32_Service reports it as plain Auto."""
+    return registry.get_value(winreg.HKEY_LOCAL_MACHINE, rf"SYSTEM\CurrentControlSet\Services\{name}", "DelayedAutoStart", V64) == 1
+
+
+def _restore_service(svc, mode, delayed=False, was_running=False):
+    """Puts one service back: start type (delayed-auto through sc.exe, which Set-Service can't express) and running state."""
+    if mode == "auto" and delayed:
+        code, out = rsys.run(["sc.exe", "config", svc, "start=", "delayed-auto"], timeout=40)
+        ok = code == 0
+    else:
+        out = ps(f"Set-Service -Name '{svc}' -StartupType {_START_PS.get(mode, 'Manual')} -ErrorAction Stop; 'ok'", timeout=40)
+        ok = "ok" in (out or "").split()
+        if ok and mode == "auto":  # Set-Service doesn't clear a leftover delayed flag on every build
+            registry_set_delayed(svc, False)
+    if mode == "auto" or (was_running and mode != "disabled"):
+        ps(f"Start-Service -Name '{svc}' -ErrorAction SilentlyContinue", timeout=40)
+    return ok
+
+
+def registry_set_delayed(svc, on):
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, rf"SYSTEM\CurrentControlSet\Services\{svc}", 0,
+                            winreg.KEY_SET_VALUE | V64) as k:
+            winreg.SetValueEx(k, "DelayedAutoStart", 0, winreg.REG_DWORD, 1 if on else 0)
+    except OSError:
+        pass
+
+
 def services_apply(changes):
-    """changes: {catalog_id: 'auto'|'manual'|'disabled'}. Saves the previous state and returns its id for undo."""
+    """changes: {catalog_id: 'auto'|'manual'|'disabled'}. Saves the previous state (start type, delayed start and
+    whether it was running) BEFORE touching anything, and returns its id for undo. If the backup can't be
+    written, nothing is changed."""
     if not _admin():
         return _need_admin()
     cat = {e["id"]: e for e in SERVICES}
     before = ps_json("Get-CimInstance Win32_Service | Select-Object Name, StartMode, State", timeout=30, as_list=True)
-    prev = {r["Name"]: _START.get(r.get("StartMode"), "manual") for r in before}
-    backup = {"t": time.time(), "prev": {}}
-    results = []
+    prev = {r["Name"]: r for r in before}
+    backup = {"t": time.time(), "prev": {}, "delayed": [], "running": []}
+    todo = []
     for cid, mode in changes.items():
         e = cat.get(cid)
         if not e or mode not in _START_PS:
@@ -514,47 +590,134 @@ def services_apply(changes):
         for svc in e["svc"]:
             if svc not in prev:
                 continue
-            backup["prev"][svc] = prev[svc]
+            row = prev[svc]
+            backup["prev"][svc] = _START.get(row.get("StartMode"), "manual")
+            if backup["prev"][svc] == "auto" and _delayed(svc):
+                backup["delayed"].append(svc)
+            if row.get("State") == "Running":
+                backup["running"].append(svc)
+            todo.append((svc, mode))
+    try:
+        bid = unique_bid(os.path.join(DATA, "services"))
+        write_json_atomic(os.path.join(DATA, "services", bid + ".json"), backup)
+    except OSError as e:
+        return {"ok": False, "results": [], "backup": None, "error": tr("Nothing was changed: the backup of the services couldn't be saved ({error}).", error=e)}
+    results = []
+    for svc, mode in todo:
+        if mode == "auto":
+            cmd = f"Set-Service -Name '{svc}' -StartupType Automatic -ErrorAction Stop"
+        else:
             cmd = f"Set-Service -Name '{svc}' -StartupType {_START_PS[mode]} -ErrorAction Stop"
-            if mode == "disabled":
-                cmd += f"; Stop-Service -Name '{svc}' -Force -ErrorAction SilentlyContinue"
-            out = ps(cmd + "; 'ok'", timeout=40)
-            results.append({"svc": svc, "ok": "ok" in out.splitlines()[-1:] if out else False})
-    os.makedirs(os.path.join(DATA, "services"), exist_ok=True)
-    bid = time.strftime("%Y%m%d-%H%M%S")
-    with open(os.path.join(DATA, "services", bid + ".json"), "w", encoding="utf-8") as fh:
-        json.dump(backup, fh)
+        if mode == "disabled":
+            cmd += f"; Stop-Service -Name '{svc}' -Force -ErrorAction SilentlyContinue"
+        out = ps(cmd + "; 'ok'", timeout=40)
+        results.append({"svc": svc, "ok": "ok" in out.splitlines()[-1:] if out else False})
     return {"ok": all(r["ok"] for r in results), "results": results, "backup": bid}
 
 
-def services_undo(bid):
+def _services_undo(bid, say=None):
     if not _admin():
         return _need_admin()
     f = os.path.join(DATA, "services", os.path.basename(str(bid)) + ".json")
     with open(f, encoding="utf-8") as fh:
-        prev = json.load(fh)["prev"]
-    for svc, mode in prev.items():
-        ps(f"Set-Service -Name '{svc}' -StartupType {_START_PS.get(mode, 'Manual')} -ErrorAction SilentlyContinue", timeout=40)
-        if mode == "auto":
-            ps(f"Start-Service -Name '{svc}' -ErrorAction SilentlyContinue", timeout=40)
-    return {"ok": True, "restored": len(prev)}
+        data = json.load(fh)
+    prev, delayed, running = data["prev"], set(data.get("delayed") or []), set(data.get("running") or [])
+    items = list(prev.items())
+    bad = []
+    for n, (svc, mode) in enumerate(items):
+        if say:
+            say(n / max(1, len(items)), tr("Restoring {name} ({n} of {total})", name=svc, n=n + 1, total=len(items)))
+        if not _restore_service(svc, mode, svc in delayed, svc in running):
+            bad.append(svc)
+    return {"ok": not bad, "restored": len(items) - len(bad), "failed": bad}
+
+
+def services_undo(bid):
+    return _services_undo(bid)
+
+
+def services_undo_job(job, bid):
+    """services_undo as a job: about a second per service, so the interface can say which one is being restored."""
+    r = _services_undo(bid, lambda p, t: job.progress(p, t, force=True))
+    job.progress(1, tr("Done"), force=True)
+    return r
 
 
 # =============================================================== registry
-def _exists(p):
-    p = os.path.expandvars((p or "").strip().strip('"'))
-    return bool(p) and os.path.exists(p)
+def _drive_ready(root):
+    """True only for a local fixed drive that answers right now (not unplugged, not a locked BitLocker volume,
+    not removable, not a network drive)."""
+    try:
+        if ctypes.windll.kernel32.GetDriveTypeW(root) != 3:  # DRIVE_FIXED
+            return False
+    except Exception:
+        return False
+    try:
+        os.listdir(root)
+        return True
+    except OSError:
+        return False
 
 
-def _abs_missing(cmd):
-    """The executable of a command if it is an absolute path that no longer exists; otherwise None."""
+_SYS32 = re.compile(r"(?i)([\\/])system32(?=[\\/]|$)")
+
+
+def _variants(p, view):
+    """The paths a 32-bit program could mean (System32 is really SysWOW64 for it). 64-bit entries are checked as
+    they are; 32-bit ones, and the user's (HKCU is shared by both), both ways."""
+    out = [p]
+    if view != V64:
+        w = _SYS32.sub(r"\1SysWOW64", p)
+        if w != p:
+            out.append(w)
+    return out
+
+
+def _definitely_missing(path, view=0, expand=True):
+    """True only when `path` is surely gone. Unknown is never "missing": relative or UNC paths, drives that are
+    not a ready local fixed drive (unplugged, locked, network, removable) and anything we can't look at (access
+    denied) are left alone, so a healthy entry is never offered for deletion."""
+    p = (path or "").strip().strip('"')
+    if expand:
+        if view != V64:  # a 32-bit program's %ProgramFiles% is the x86 folder
+            for a, b in (("%ProgramFiles%", "%ProgramFiles(x86)%"), ("%CommonProgramFiles%", "%CommonProgramFiles(x86)%")):
+                p32 = re.sub(re.escape(a), lambda m: b, p, flags=re.I)
+                if p32 != p:
+                    p = p32
+                    break
+        p = os.path.expandvars(p)
+    if not p or p.startswith("\\\\") or p.startswith("//"):
+        return False
+    drive = os.path.splitdrive(p)[0]
+    if len(drive) != 2 or not os.path.isabs(p):
+        return False
+    if not _drive_ready(drive + "\\"):
+        return False
+    for cand in _variants(p, view):
+        try:
+            os.stat(cand)
+            return False
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError:
+            return False
+    return True
+
+
+def _exists(p, view=0):
+    """True when the path exists or we can't tell (so it's not treated as broken)."""
+    return not _definitely_missing(p, view)
+
+
+def _abs_missing(cmd, view=0):
+    """The executable of a command if it is an absolute path that surely no longer exists; otherwise None."""
     from .removal.safety import image_path
     exe = image_path(cmd or "")
     if not exe or not os.path.isabs(exe):
         return None
     if exe.lower().endswith(("msiexec.exe", "rundll32.exe")):
         return None
-    return exe if not os.path.exists(exe) else None
+    return exe if _definitely_missing(exe, view) else None
 
 
 def registry_scan(job):
@@ -575,9 +738,9 @@ def registry_scan(job):
             name = registry.get_value(root, p, "DisplayName", view)
             if not us or not name or registry.get_value(root, p, "SystemComponent", view) == 1:
                 continue
-            miss = _abs_missing(str(us))
+            miss = _abs_missing(str(us), view)
             loc = registry.get_value(root, p, "InstallLocation", view)
-            if miss and not (loc and _exists(str(loc))):
+            if miss and not (loc and _exists(str(loc), view)):
                 add("Broken uninstallers", RegRef(hive, p, view), tr('"{name}": the uninstaller {path} no longer exists.', name=name, path=miss))
     # 2. App Paths
     job.progress(.25, tr("App paths"))
@@ -589,14 +752,14 @@ def registry_scan(job):
             if not d:
                 continue
             target = os.path.expandvars(str(d).strip().strip('"'))
-            if os.path.isabs(target) and not os.path.exists(target):
+            if _definitely_missing(str(d), view):
                 add("Broken app paths", RegRef(hive, p, view), tr("Points to {path}, which no longer exists.", path=target))
     # 3. startup entries that point to nothing
     job.progress(.45, tr("Startup"))
     for hive, root, view in (("HKCU", winreg.HKEY_CURRENT_USER, 0), ("HKLM", HK, V64), ("HKLM", HK, V32)):
         base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
         for name, data, _ in registry.values(root, base, view):
-            miss = _abs_missing(str(data))
+            miss = _abs_missing(str(data), view)
             if miss:
                 add("Startup entries pointing nowhere", RegRef(hive, base, view, name), tr("Starts {path}, which doesn't exist.", path=miss))
     # 4. shared files that no longer exist
@@ -604,7 +767,7 @@ def registry_scan(job):
     for view in (V64, V32):
         base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\SharedDLLs"
         for name, data, _ in registry.values(HK, base, view):
-            if os.path.isabs(name) and not os.path.exists(name):
+            if _definitely_missing(name, view, expand=False):
                 add("Missing shared files", RegRef("HKLM", base, view, name), tr("The file no longer exists."))
     # 5. orphaned file types (the user's only)
     job.progress(.75, tr("File types"))
@@ -623,7 +786,7 @@ def registry_scan(job):
         if sub.startswith(".") or sub.startswith("{"):
             continue
         cmd = registry.get_value(cu, f"{cls}\\{sub}\\shell\\open\\command", "")
-        miss = _abs_missing(str(cmd)) if cmd else None
+        miss = _abs_missing(str(cmd), 0) if cmd else None
         if miss:
             add("Orphaned file types", RegRef("HKCU", f"{cls}\\{sub}"), tr("Class of a program that is gone ({path}).", path=miss))
     # 6. broken context menu entries
@@ -635,15 +798,16 @@ def registry_scan(job):
                 clsid = registry.get_value(root, f"{hp}\\{h}", "") or (h if h.startswith("{") else "")
                 if not clsid or not clsid.startswith("{"):
                     continue
-                dll = None
+                dll, dview = None, 0
                 for vroot, vbase, vview in ((HK, r"SOFTWARE\Classes", V64), (cu, r"Software\Classes", 0), (HK, r"SOFTWARE\Classes", V32)):
                     dll = registry.get_value(vroot, f"{vbase}\\CLSID\\{clsid}\\InprocServer32", "", vview)
                     if dll:
+                        dview = vview
                         break
                 if not dll:
                     continue
                 path = os.path.expandvars(str(dll).strip('"'))
-                if os.path.isabs(path) and not os.path.exists(path):
+                if _definitely_missing(str(dll), dview):
                     add("Broken context menu entries", RegRef(hive, f"{hp}\\{h}"), tr('Adds "{name}" to the right-click menu, but {file} no longer exists.', name=h, file=os.path.basename(path)))
     job.progress(1, tr("Done"))
     order = ["Broken uninstallers", "Broken app paths", "Orphaned file types", "Startup entries pointing nowhere",
@@ -651,21 +815,69 @@ def registry_scan(job):
     return [{"g": tr(g), "items": groups[g]} for g in order if g in groups]
 
 
+def _enc(d):
+    return {"hex": bytes(d).hex()} if isinstance(d, (bytes, bytearray)) else d
+
+
+def _dec(d):
+    return bytes.fromhex(d["hex"]) if isinstance(d, dict) and "hex" in d else d
+
+
+def _reg_root(ref):
+    """Where a registry backup goes: HKLM keys (elevated runs only) in ProgramData, the user's own in their profile."""
+    return DATA if ref.hive == "HKLM" else USER_DATA
+
+
 def registry_fix(job, ids):
-    """Exports each key to .reg and then deletes the broken entry. Returns the backup folder (for undo)."""
+    """Backs up and then deletes each broken entry. A single value is saved as (name, type, data) and put back
+    exactly like that; only when a whole key goes is the key exported to .reg. Each backup is written to disk
+    BEFORE its entry is deleted: if it can't be written nothing else is touched. Returns the backup id (undo)."""
     refs = [RegRef.from_str(i) for i in ids]
-    if any(r.hive == "HKLM" for r in refs) and not _admin():
+    if any(user_needs_admin(r.hive, r.path) for r in refs) and not _admin():
         return _need_admin()
-    bid = time.strftime("%Y%m%d-%H%M%S")
-    folder = os.path.join(DATA, "registry", bid)
-    os.makedirs(folder, exist_ok=True)
-    fixed, failed, manifest = 0, [], []
-    for n, ref in enumerate(refs):
+    roots = sorted({_reg_root(r) for r in refs})
+    try:
+        bid = unique_bid(*[os.path.join(r, "registry") for r in roots])
+    except OSError as e:
+        return {"fixed": 0, "failed": [tr("Nothing was changed: the backup couldn't be saved ({error}).", error=e)], "backup": None, "folder": None}
+    sess = {}  # root -> [folder, manifest]
+    fixed, failed, n = 0, [], 0
+    abort = None
+    for ref in refs:
         job.check()
         job.progress(n / max(1, len(refs)), ref.display())
-        f = os.path.join(folder, f"{n:03d}.reg")
-        if not registry.export_key(ref, f):
-            failed.append(ref.display())
+        n += 1
+        if abort:
+            failed.append(f"{ref.display()}: {abort}")
+            continue
+        root = _reg_root(ref)
+        if root not in sess:
+            sess[root] = [os.path.join(root, "registry", bid), []]
+        folder, man = sess[root]
+        mf = os.path.join(folder, "manifest.json")
+        appended = False
+        try:
+            os.makedirs(folder, exist_ok=True)
+            if ref.value is not None:
+                cur = registry.read_value_full(ref)
+                if cur is None:
+                    continue  # already gone: nothing to delete, nothing to restore
+                entry = {"kind": "value", "hive": ref.hive, "path": ref.path, "view": ref.view, "name": ref.value,
+                         "type": cur[1], "data": _enc(cur[0]), "k": ref.display()}
+            else:
+                f = os.path.join(folder, f"{len(man):03d}.reg")
+                if not registry.export_key(ref, f):
+                    failed.append(f"{ref.display()}: {tr('the key could not be saved')}")
+                    continue
+                entry = {"kind": "key", "file": f, "view": ref.view, "k": ref.display()}
+            man.append(entry)
+            appended = True
+            write_json_atomic(mf, man)
+        except OSError as e:
+            if appended:
+                man.pop()
+            abort = tr("not changed, its backup couldn't be saved ({error})", error=e)
+            failed.append(f"{ref.display()}: {abort}")
             continue
         try:
             if ref.value is not None:
@@ -673,26 +885,61 @@ def registry_fix(job, ids):
             else:
                 registry.delete_tree(ref)
             fixed += 1
-            manifest.append({"file": f, "view": ref.view, "k": ref.display()})
         except OSError as e:
+            man.pop()
+            try:
+                write_json_atomic(mf, man)
+            except OSError:
+                pass
             failed.append(f"{ref.display()}: {e}")
-    with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8") as fh:
-        json.dump(manifest, fh, ensure_ascii=False)
+    for root, (folder, man) in list(sess.items()):
+        if not man:  # nothing was saved there: don't leave an empty backup
+            shutil.rmtree(folder, ignore_errors=True)
+            del sess[root]
     job.progress(1, tr("Done"))
+    folder = sess[DATA][0] if DATA in sess else (next(iter(sess.values()))[0] if sess else None)
     return {"fixed": fixed, "failed": failed, "backup": bid, "folder": folder}
 
 
-def registry_undo(bid):
-    folder = os.path.join(DATA, "registry", os.path.basename(str(bid)))
-    with open(os.path.join(folder, "manifest.json"), encoding="utf-8") as fh:
-        man = json.load(fh)
+def _registry_undo(bid, say=None):
+    bid = os.path.basename(str(bid))
+    man, folders = [], []
+    for root in (DATA, USER_DATA):
+        folder = os.path.join(root, "registry", bid)
+        mf = os.path.join(folder, "manifest.json")
+        if os.path.isfile(mf):
+            with open(mf, encoding="utf-8") as fh:
+                man += json.load(fh)
+            folders.append(folder)
+    if not folders:
+        raise FileNotFoundError(tr("That backup is gone."))
     if any(m["k"].upper().startswith("HKLM") for m in man) and not _admin():
         return _need_admin()
     ok = 0
-    for m in man:
-        r, _ = registry.import_reg(m["file"], m.get("view", 0))
-        ok += bool(r)
-    return {"ok": ok == len(man), "restored": ok, "folder": folder}
+    for n, m in enumerate(man):
+        if say:
+            say(n / max(1, len(man)), tr("Restoring registry entries ({n} of {total})", n=n + 1, total=len(man)))
+        if m.get("kind") == "value":
+            try:
+                registry.set_value(RegRef(m["hive"], m["path"], m.get("view", 0), m["name"]), _dec(m["data"]), m["type"])
+                ok += 1
+            except OSError:
+                pass
+        else:
+            r, _ = registry.import_reg(m["file"], m.get("view", 0))
+            ok += bool(r)
+    return {"ok": ok == len(man), "restored": ok, "folder": folders[0]}
+
+
+def registry_undo(bid):
+    return _registry_undo(bid)
+
+
+def registry_undo_job(job, bid):
+    """registry_undo as a job, with one progress step per entry imported again."""
+    r = _registry_undo(bid, lambda p, t: job.progress(p, t, force=True))
+    job.progress(1, tr("Done"), force=True)
+    return r
 
 
 # =============================================================== repair
@@ -916,22 +1163,39 @@ def _restart_explorer(job):
 
 
 REPAIR_ADMIN = {"sfc", "dism", "chkdsk", "wu", "net"}
+# Repairs that erase something the user configured: never from an unattended routine.
+REPAIR_ATTENDED_ONLY = {"net"}
+WU_SERVICES = ["wuauserv", "cryptSvc", "bits", "msiserver"]
 
 
-def repair(job, rid):
-    if rid in REPAIR_ADMIN and not _admin():
-        return _need_admin()
-    win = os.environ.get("WINDIR", r"C:\Windows")
-    if rid == "sfc":
-        code = _stream(job, ["sfc", "/scannow"], tool="sfc")
-    elif rid == "dism":
-        code = _stream(job, ["DISM", "/Online", "/Cleanup-Image", "/RestoreHealth"], tool="dism")
-    elif rid == "chkdsk":
-        code = _stream(job, ["chkdsk", "C:", "/scan"], tool="chkdsk")
-    elif rid == "wu":
-        svcs = ["wuauserv", "cryptSvc", "bits", "msiserver"]
-        for i, s in enumerate(svcs):
+def _svc_running(name):
+    try:
+        import psutil
+        return psutil.win_service_get(name).status() == "running"
+    except Exception:
+        return False
+
+
+def _prune_old(job, base):
+    """Keeps only the newest <base>.old-* folder (the one just made); older ones are deleted."""
+    olds = sorted(d for d in glob.glob(base + ".old-*") if os.path.isdir(d))
+    for d in olds[:-1]:
+        job.check()
+        shutil.rmtree(d, ignore_errors=True)
+        if not os.path.exists(d):
+            job.log(tr("Deleted the older copy {name}", name=os.path.basename(d)))
+
+
+def _repair_wu(job, win):
+    """Stops the Windows Update services, renames its caches and starts the services again. The services are
+    always started again (also when it is cancelled or something fails half way) and only the newest renamed
+    copy of each folder is kept."""
+    was = {s: _svc_running(s) for s in WU_SERVICES}
+    touched = []
+    try:
+        for i, s in enumerate(WU_SERVICES):
             job.progress(.05 + i * .08, tr("Stopping {name}", name=s))
+            touched.append(s)
             _stream(job, ["net", "stop", s, "/y"], weight=(0, 0))
         stamp = time.strftime("%Y%m%d%H%M%S")
         for i, d in enumerate([os.path.join(win, "SoftwareDistribution"), os.path.join(win, "System32", "catroot2")]):
@@ -941,12 +1205,76 @@ def repair(job, rid):
                 job.log(f"{d} → {os.path.basename(d)}.old-{stamp}")
             except OSError as e:
                 job.log(tr("Couldn't rename {path}: {error}", path=d, error=e))
-        for i, s in enumerate(reversed(svcs)):
-            job.progress(.75 + i * .06, tr("Starting {name}", name=s))
-            _stream(job, ["net", "start", s], weight=(0, 0))
-        job.log(tr("Windows Update is ready to search again."))
-        code = 0
+            _prune_old(job, d)
+    finally:
+        # not _stream: once cancelled it would raise again before the services are back
+        for s in reversed(touched):
+            if s == "msiserver" and not was.get(s):
+                continue  # on demand; it wasn't running
+            code, _ = rsys.run(["net", "start", s], timeout=60)
+            job.log(tr("Starting {name}", name=s))
+    job.log(tr("Windows Update is ready to search again."))
+    return 0
+
+
+def _save_network_config(root=None):
+    """Saves every adapter's IP/DNS configuration before a network reset: a netsh script that puts it back
+    (`netsh -f restore.netsh`, as administrator), the plain-text listing and the structured data. Returns the
+    folder. Raises OSError when nothing usable was saved, so the reset is not run."""
+    root = root or USER_DATA
+    folder = os.path.join(root, "network", new_bid())
+    os.makedirs(folder, exist_ok=True)
+    code, dump = rsys.run(["netsh", "interface", "ip", "dump"], timeout=60)
+    code2, show = rsys.run(["netsh", "interface", "ip", "show", "config"], timeout=60)
+    if code != 0 or not (dump or "").strip() or code2 != 0 or not (show or "").strip():
+        shutil.rmtree(folder, ignore_errors=True)
+        raise OSError(tr("Windows didn't give the network configuration"))
+    try:
+        info = ps_json("Get-NetIPConfiguration -All | ForEach-Object { [pscustomobject]@{ alias=$_.InterfaceAlias; "
+                       "index=$_.InterfaceIndex; ipv4=@($_.IPv4Address | ForEach-Object { \"$($_.IPAddress)/$($_.PrefixLength)\" }); "
+                       "gateway=@($_.IPv4DefaultGateway | ForEach-Object { $_.NextHop }); "
+                       "dns=@($_.DNSServer | ForEach-Object { $_.ServerAddresses }); dhcp=[string]$_.NetIPv4Interface.Dhcp } }",
+                       timeout=40, as_list=True)
+    except Exception:
+        info = []
+    with open(os.path.join(folder, "restore.netsh"), "w", encoding="utf-8") as fh:
+        fh.write(dump)
+    with open(os.path.join(folder, "adapters.txt"), "w", encoding="utf-8") as fh:
+        fh.write(show)
+    write_json_atomic(os.path.join(folder, "adapters.json"), {"t": time.time(), "adapters": info})
+    return folder
+
+
+def repair(job, rid, unattended=False):
+    """unattended: called from an automatic routine. Repairs that erase user settings ("net") refuse to run then;
+    a job wrapped by Autopilot (it has a `parent`) counts as unattended even if the flag is not passed."""
+    if unattended or getattr(job, "parent", None) is not None:
+        if rid in REPAIR_ATTENDED_ONLY:
+            raise PermissionError(tr("The network reset erases static IP and DNS settings, so it only runs when you start it yourself from Super Optimizer."))
+    if rid in REPAIR_ADMIN and not _admin():
+        return _need_admin()
+    win = os.environ.get("WINDIR", r"C:\Windows")
+    extra = {}
+    if rid == "sfc":
+        code = _stream(job, ["sfc", "/scannow"], tool="sfc")
+    elif rid == "dism":
+        code = _stream(job, ["DISM", "/Online", "/Cleanup-Image", "/RestoreHealth"], tool="dism")
+    elif rid == "chkdsk":
+        drive = os.environ.get("SystemDrive") or "C:"
+        code = _stream(job, ["chkdsk", drive, "/scan"], tool="chkdsk")
+    elif rid == "wu":
+        code = _repair_wu(job, win)
     elif rid == "net":
+        job.progress(.05, tr("Saving your network settings"))
+        try:
+            folder = _save_network_config()
+        except OSError as e:
+            job.log(tr("Couldn't save your network settings ({error}). The reset was cancelled.", error=e))
+            job.progress(1, tr("Done"))
+            return {"code": 1, "error": tr("Couldn't save your network settings ({error}). The reset was cancelled.", error=e)}
+        msg = tr("Your network settings (static IP, DNS) were saved in {path}. To put them back, run restore.netsh from there as administrator.", path=folder)
+        job.log(msg)
+        extra = {"backup": folder, "msg": msg}
         job.progress(.1, "DNS")
         _stream(job, ["ipconfig", "/flushdns"], weight=(0, 0))
         job.progress(.4, "Winsock")
@@ -993,7 +1321,7 @@ def repair(job, rid):
     else:
         raise ValueError(rid)
     job.progress(1, tr("Done"))
-    return {"code": code}
+    return {"code": code, **extra}
 
 
 def restore_point(job, desc="StellarHub, before optimizing"):

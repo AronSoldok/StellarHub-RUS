@@ -148,3 +148,25 @@ html[data-int=min] .hv-bento *{animation:none!important}
 /* dynamic grid: bento.js builds it from the components this PC has */
 .hv-bento{grid-template-areas:none}
 .hv-bento .na{color:var(--faint)}
+
+/* ---------- small stage (the minimum window): tiles shrink their text, never overlap or spill ---------- */
+.hv-bento .nums{flex-wrap:wrap;gap:2px 14px}
+.hv-bento .nums small{white-space:nowrap}
+.hv-bento .bt{container-type:size}
+.hv-bento .meta .k,.hv-bento .lbar>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+@container (max-height:150px){
+  .hv-bento .tilt{padding:9px 12px 10px!important}
+  .hv-bento .art{display:none!important}
+  .hv-bento .meta .t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;font-size:12px}
+  .hv-bento .live{margin-top:3px}
+  .hv-bento .lbar{flex-wrap:nowrap;margin-bottom:0}
+}
+@container (max-height:150px) and (min-width:300px){
+  .hv-bento .a-dsp .meta .t{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+}
+@container (max-height:250px){
+  .hv-bento .meta .t{overflow:hidden;text-overflow:ellipsis}
+  .hv-bento .a-gpu .meta .t,.hv-bento .a-cpu .meta .t{display:block;white-space:nowrap}
+  .hv-bento .nums b.n{font-size:24px}
+  .hv-bento .nums{margin-bottom:5px}
+}

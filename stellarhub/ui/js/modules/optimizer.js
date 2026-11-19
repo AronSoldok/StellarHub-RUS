@@ -123,6 +123,8 @@ DB.clean.forEach(c => { c.sel = c.def && !c.busy; });
 DB.startup.forEach(s => s.orig = s.on);
 DB.services.forEach(s => { s.orig = s.start; s.cur = s.start; });
 let regDone = false;
+/* a registry restore is running (from the tab, its toast or the overview): a second one waits for it */
+let regBusy = false;
 /* Debloat: catalogued preinstalled apps (g: safe, choice, keep), Windows settings that add ads or clutter, and what
    StellarHub removed (with how it can come back: register, store or none). Same shape as engine/debloat.py. */
 const ADV = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Advanced', CDM = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\ContentDeliveryManager';
@@ -177,7 +179,7 @@ const DBX = {
     ['extensions', 'explorer', 1, 1, 'Show file extensions', "Shows .exe, .pdf and the rest, so a “photo.jpg.exe” can't fool you.", [sv(ADV, 'HideFileExt', 0, 0)]],
     ['hidden', 'explorer', 0, 1, 'Show hidden files', 'Shows hidden files and folders such as AppData. System files stay hidden.', [sv(ADV, 'Hidden', 2, 1)]],
     ['this_pc', 'explorer', 0, 1, 'Open File Explorer in This PC', 'Opens on your drives instead of Home with recent files.', [sv(ADV, 'LaunchTo', null, 1)]],
-  ].map(([id, g, rec, explorer, tt, d, vals]) => ({ id, g, rec: !!rec, explorer: !!explorer, t: t(tt), d: t(d), admin: vals.some(v => v.path.startsWith('HKLM')), vals,
+  ].map(([id, g, rec, explorer, tt, d, vals]) => ({ id, g, rec: !!rec, explorer: !!explorer, t: t(tt), d: t(d), admin: vals.some(v => v.path.startsWith('HKLM') || v.path.startsWith('HKCU\Software\Policies')), vals,
     state: vals.every(v => v.now === v.to) ? 'off' : 'on', ours: false })),
   provKnown: true,
 };
@@ -210,7 +212,10 @@ const jobD = (fn, args = [], o = {}) => SH.job('debloat', fn, args, o);
    cache: the last result is kept in localStorage and shown at once next time while a fresh read runs. Cleanup and
    registry are never shown from the cache: they're measurements, and the registry fix acts on what is listed. */
 const loadMsg = {};
-const onLoadMsg = area => m => { if (m && m.text) { loadMsg[area] = m.text; $$(`.opt-load[data-area~="${area}"] .opt-lm`).forEach(e => { e.textContent = m.text; }); } };
+/* loadWatch[area] = fn(m): someone else (a phase of a run) also follows that area's reading progress */
+const loadWatch = {};
+const onLoadMsg = area => m => { if (m && loadWatch[area]) { try { loadWatch[area](m); } catch (e) { console.error(e); } }
+  if (m && m.text) { loadMsg[area] = m.text; $$(`.opt-load[data-area~="${area}"] .opt-lm`).forEach(e => { e.textContent = m.text; }); } };
 const AREA = {
   clean: { fetch: () => engJob('clean_scan', [cleanOpts()], { onProgress: onLoadMsg('clean') }),
     put(r) { DB.clean = r.map(c => ({ ...c })); DB.clean.forEach(c => { applySkips(c); c.sel = c.def && !c.busy && c.size > 0 && (!c.admin || state.admin); }); publishJunk(); } },
@@ -316,6 +321,21 @@ function setUpd(el, on) {
   let u = $(':scope > .opt-upd', el);
   if (on && !u) { u = document.createElement('div'); u.className = 'opt-upd'; u.innerHTML = `<span class="opt-spin sm"></span>${t('Updating…')}`; el.appendChild(u); }
   else if (!on && u) u.remove();
+}
+/* a button at work: disabled, with a small spinner and what it is doing (call again to change the text);
+   freeBtn puts back what it said before */
+const busyBtn = (b, txt) => { if (!b) return; b.disabled = true; if (b.dataset.html == null) b.dataset.html = b.innerHTML; b.innerHTML = `<span class="opt-spin sm"></span>${esc(txt)}`; };
+const freeBtn = b => { if (!b) return; b.disabled = false; if (b.dataset.html != null) { b.innerHTML = b.dataset.html; delete b.dataset.html; } };
+/* elapsed time as m:ss (or h:mm:ss) */
+const clock = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
+/* a restore point gives no steps for a minute or more: the phase bar sweeps and its line counts the time.
+   msg is the phase's .ph-msg; returns stop() */
+function rpWait(msg) {
+  const bar = msg.parentNode && $('.bar', msg.parentNode), t0 = Date.now();
+  if (bar) { bar.classList.add('indet'); const s = $('span', bar); if (s) s.style.transform = ''; }
+  const tick = () => { msg.textContent = t('Creating the restore point ({time}). This can take a few minutes.', { time: clock((Date.now() - t0) / 1000) }); };
+  tick(); const iv = setInterval(tick, 1000);
+  return () => { clearInterval(iv); if (bar) bar.classList.remove('indet'); };
 }
 function swap(el, html, after) {
   const a = anim(el, [{ opacity: 1, transform: 'none', filter: 'blur(0px)' }, { opacity: 0, transform: 'translate3d(0,-8px,0)', filter: 'blur(6px)' }], { d: 170 });
@@ -446,7 +466,7 @@ function planSteps() {
   ];
 }
 function showPlan(el) {
-  if (running) return; ovMode = 'plan';
+  if (running || undoing) return; ovMode = 'plan';
   const steps = planSteps(); const right = $('#optRight', el);
   swap(right, `<h4 class="pan-h">${t("Here's what will happen")} <em>${state.admin ? t('administrator mode') : t('in normal mode some steps are skipped')}</em></h4>
     <div class="plan">${steps.map(s => `<div class="pstep${s.dis ? ' dis' : ''}" data-step="${s.id}"><button class="check${s.on && !s.dis ? ' on' : ''}"${s.lock || s.dis ? ' disabled' : ''} aria-label="${esc(s.t)}">${ic('check')}</button>
@@ -481,7 +501,7 @@ async function runPlan(el, steps) {
       anim($('.ph-dot', ph), [{ transform: 'scale(.4)' }, { transform: 'scale(1.35)', offset: .5 }, { transform: 'scale(1)' }], { d: 420 });
       continue;
     }
-    if (s.id === 'restore') { msg.textContent = t('Creating the restore point…'); await tween(0, 1, 1600, setP); msg.textContent = t('Restore point “{name}” created', { name: t('StellarHub, before optimizing') }); log.push(['ok', t('Restore point created')]); }
+    if (s.id === 'restore') { const stop = rpWait(msg); try { await wait(2600); } finally { stop(); } msg.textContent = t('Restore point “{name}” created', { name: t('StellarHub, before optimizing') }); log.push(['ok', t('Restore point created')]); }
     if (s.id === 'clean') {
       const ids = DB.clean.filter(c => c.sel && c.size > 0 && (!c.admin || state.admin)).map(c => c.id); const start = {}; ids.forEach(id => start[id] = DB.clean.find(c => c.id === id).size);
       const tot = Object.values(start).reduce((a, b) => a + b, 0);
@@ -509,7 +529,7 @@ async function runPlan(el, steps) {
     <div class="plan-acts"><button class="btn sec" id="optUndo">${ic('undo')}${t('Undo changes')}</button><button class="btn ghost" id="optBack">${t('Back to overview')}</button></div>`, () => {
     SH.countUp($('#rFreed', right), freed / 1e9, 1100, 1); SH.countUp($('#rBoot', right), gained, 1100, 1); SH.countUp($('#rFix', right), fixed, 900);
     $$('.res-log .row', right).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: 200 + i * 60, e: EASE.spring }));
-    $('#optUndo', right).addEventListener('click', () => undo(el)); $('#optBack', right).addEventListener('click', () => { ovMode = 'findings'; swap(right, findingsHTML()); });
+    $('#optUndo', right).addEventListener('click', e => undo(el, e.currentTarget)); $('#optBack', right).addEventListener('click', () => { ovMode = 'findings'; swap(right, findingsHTML()); });
   });
   $('#optState', el).textContent = t('Your PC is in good shape'); $('#optSub', el).textContent = t('Changes can be undone from here or with the restore point.');
   $('#optAll', el).disabled = false; $('#optRescan', el).hidden = false; running = false;
@@ -519,9 +539,9 @@ async function runPlan(el, steps) {
 /* one real step of “Optimize everything” */
 async function realStep(s, msg, setP) {
   if (s.id === 'restore') {
-    msg.textContent = t('Creating the restore point… (it can take a minute)');
     const name = t('StellarHub, before optimizing');
-    const r = await engJob('restore_point', [name], { onProgress: m => setP(m.pct) });
+    const stop = rpWait(msg); let r;
+    try { r = await engJob('restore_point', [name]); } finally { stop(); }
     if (!r.ok) throw new Error(r.msg || t("Windows didn't create it"));
     msg.textContent = t('Restore point “{name}” created', { name }); return { log: t('Restore point created') };
   }
@@ -549,7 +569,10 @@ async function realStep(s, msg, setP) {
     const ids = DB.registry.flatMap(g => g.items.map(i => i[2]));
     msg.textContent = t('Saving the .reg backup and fixing…');
     const r = await engJob('registry_fix', [ids], { onProgress: m => setP(m.pct) }); last.regBackup = r.backup;
-    await load('registry', true); regDone = !regCount();
+    msg.textContent = t('Checking again…');
+    loadWatch.registry = m => { if (m.text) msg.textContent = t('Checking again: {step}', { step: m.text }); };
+    try { await load('registry', true); } catch (e) { /* the fix is done; the list is read again next time */ } finally { delete loadWatch.registry; }
+    regDone = !regCount();
     msg.textContent = t('{n} entries fixed; backup in {path}', { n: r.fixed, path: r.folder }); return { log: t('Registry: {n} entries fixed', { n: r.fixed }) };
   }
   if (s.id === 'power') {
@@ -557,31 +580,60 @@ async function realStep(s, msg, setP) {
     msg.textContent = t('Best performance when plugged in'); return { log: t('Power mode: best performance when plugged in') };
   }
 }
-async function undo(el) {
-  if (REAL) {
-    const errs = [];
-    for (const s of last.startupChanged) { try { await eng('startup_set', s.ids, true); s.on = true; } catch (e) { errs.push(s.name); } }
-    last.startupChanged = [];
-    if (last.svcBackup) { try { await eng('services_undo', last.svcBackup); last.svcBackup = null; await load('services', true); } catch (e) { errs.push(t('services')); } }
-    if (last.regBackup) { try { await eng('registry_undo', last.regBackup); last.regBackup = null; await load('registry', true); } catch (e) { errs.push(t('registry')); } }
-    if (last.prevAc && last.prevAc !== DB.perf.ac) { try { Object.assign(DB.perf, await eng('perf_set', 'ac', last.prevAc)); } catch (e) { errs.push(t('power mode')); } }
-    score = calcScore(); SH.countUp($('#optScore', el), score, 900);
-    ['startup', 'services', 'registry', 'performance'].forEach(refresh); ovMode = 'findings'; swap($('#optRight', el), findingsHTML()); paintRing(el);
-    SH.toast(errs.length ? t('Undone, except: {list}.', { list: errs.join(', ') }) : t("Changes undone. Deleted files can't be recovered."));
-    SH.logActivity(t('Optimization undone'), { ic: 'restore', go: 'optimizer', tab: 'overview' });
-    return;
+/* Undo from the result of “Optimize everything”: one phase at a time, said on the button and under the title,
+   with the button locked until it ends (it can take up to a minute: about a second per service). */
+let undoing = false;
+async function undo(el, btn) {
+  if (undoing || running) return; undoing = true;
+  const right = $('#optRight', el), back = $('#optBack', right), all = $('#optAll', el), again = $('#optRescan', el);
+  const st = $('#optState', el), sub = $('#optSub', el), ring = $('.ring', el);
+  const phase = txt => { busyBtn(btn, txt); sub.textContent = txt; };
+  if (back) back.disabled = true; all.disabled = true; again.hidden = true; st.textContent = t('Working…'); ring.classList.add('scanning');
+  let ok = false;
+  try {
+    if (REAL) {
+      const errs = [];
+      if (last.startupChanged.length) phase(t('Putting startup apps back…'));
+      for (const s of last.startupChanged) { try { await eng('startup_set', s.ids, true); s.on = true; } catch (e) { errs.push(s.name); } }
+      last.startupChanged = [];
+      let svc = false, reg = false;
+      if (last.svcBackup) { phase(t('Restoring services…'));
+        try { await engJob('services_undo_job', [last.svcBackup], { onProgress: m => { if (m.text && m.kind === 'progress') sub.textContent = m.text; } }); last.svcBackup = null; svc = true; } catch (e) { errs.push(t('services')); } }
+      if (last.regBackup) { phase(t('Restoring registry entries…')); regBusy = true;
+        try { await engJob('registry_undo_job', [last.regBackup], { onProgress: m => { if (m.text && m.kind === 'progress') sub.textContent = m.text; } }); last.regBackup = null; reg = true; } catch (e) { errs.push(t('registry')); } finally { regBusy = false; } }
+      if (last.prevAc && last.prevAc !== DB.perf.ac) { try { Object.assign(DB.perf, await eng('perf_set', 'ac', last.prevAc)); } catch (e) { errs.push(t('power mode')); } }
+      if (svc || reg) {
+        phase(t('Checking again…'));
+        loadWatch.registry = m => { if (m.text) sub.textContent = m.text; };
+        try { if (svc) await load('services', true).catch(() => {}); if (reg) await load('registry', true).catch(() => {}); } finally { delete loadWatch.registry; }
+      }
+      score = calcScore(); SH.countUp($('#optScore', el), score, 900);
+      ['startup', 'services', 'registry', 'performance'].forEach(refresh); ovMode = 'findings'; swap(right, findingsHTML()); paintRing(el); ok = true;
+      SH.toast(errs.length ? t('Undone, except: {list}.', { list: errs.join(', ') }) : t("Changes undone. Deleted files can't be recovered."));
+      SH.logActivity(t('Optimization undone'), { ic: 'restore', go: 'optimizer', tab: 'overview' });
+      return;
+    }
+    /* sample mode: the same phases, slowed down so they can be seen */
+    for (const p of [t('Putting startup apps back…'), t('Restoring services…'), t('Restoring registry entries…'), t('Checking again…')]) { phase(p); await wait(650); }
+    DB.startup.forEach(s => s.on = s.orig); DB.services.forEach(s => s.cur = s.orig); regDone = false; DB.perf.ac = 'balanced';
+    score = 64 + Math.round((lastRun ? lastRun.freed : 0) / 1e9 * 1.2); SH.countUp($('#optScore', el), score, 900);
+    ['startup', 'services', 'registry', 'performance'].forEach(refresh); ovMode = 'findings'; swap(right, findingsHTML()); paintRing(el); ok = true;
+    SH.toast(t("Changes undone. Deleted files can't be recovered."));
+  } catch (e) { console.error(e); SH.toast(e.message); }
+  finally {
+    undoing = false; ring.classList.remove('scanning'); all.disabled = false; again.hidden = false;
+    if (ok) { st.textContent = score >= 85 ? t('Your PC is in good shape') : t('There is room to improve');
+      sub.textContent = score >= 85 ? t('Nothing urgent. Analyze again whenever you like.') : t('“Optimize everything” would get you to about {n} points.', { n: REAL ? projected() : 91 }); }
+    else { st.textContent = t('Your PC is in good shape'); sub.textContent = t('Changes can be undone from here or with the restore point.'); freeBtn(btn); if (back) back.disabled = false; }
   }
-  DB.startup.forEach(s => s.on = s.orig); DB.services.forEach(s => s.cur = s.orig); regDone = false; DB.perf.ac = 'balanced';
-  score = 64 + Math.round((lastRun ? lastRun.freed : 0) / 1e9 * 1.2); SH.countUp($('#optScore', el), score, 900);
-  ['startup', 'services', 'registry', 'performance'].forEach(refresh); ovMode = 'findings'; swap($('#optRight', el), findingsHTML()); paintRing(el);
-  SH.toast(t("Changes undone. Deleted files can't be recovered."));
 }
 
 /* ================= Cleanup ================= */
 const ST_CHIP = { in_use: ['warn', t('in use')], recent: ['', t('recent')], excluded: ['', t('skipped')], link: ['', t('link')], done: ['ok', t('cleaned')] };
 const dayTxt = d => d === 1 ? t('{n} day', { n: d }) : t('{n} days', { n: d });
 const ROWS_SHOWN = 80;
-const dur = s => s == null ? '' : s < 60 ? `${Math.max(1, Math.round(s))} s` : s < 3600 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min`;
+const dur = s => { if (s == null) return ''; s = Math.max(1, Math.round(s));
+  return s < 60 ? t('{n} s', { n: s }) : s < 3600 ? t('{m} min {s} s', { m: Math.floor(s / 60), s: s % 60 }) : t('{h} h {m} min', { h: Math.floor(s / 3600), m: Math.floor(s % 3600 / 60) }); };
 /* the per-folder preview of a temp category: what will be emptied, what is kept and why */
 function tempDetHTML(c) {
   const rows = c.rows || [], perm = permEx();
@@ -859,7 +911,7 @@ const START_N = { auto: tc('Automatic'), manual: tc('Manual'), disabled: tc('Dis
 function renderServices(el) {
   el.classList.add('fill');
   const PROF = { none: [t('No changes'), t('Everything as Windows left it.')], bal: [t('Balanced'), t("Turns off what you surely don't use: fax, retail demo, telemetry, offline maps and remote registry. Printing only if you have no printers.")], max: [tc('Maximum'), t('Also sets indexing, app preloading, Xbox and location to manual. Read the warnings: each one has a cost.')] };
-  let prof = 'none', filter = 'all'; const want = {};
+  let prof = 'none', filter = 'all', busy = false; const want = {};
   el.innerHTML = `<div class="sv">
     <div class="pan sv-l" data-asm><h4>${t('Profile')}</h4>
       <div class="sv-profs">${Object.entries(PROF).map(([k, [n, d]]) => `<button class="sv-pr${k === prof ? ' on' : ''}" data-v="${k}"><span class="sv-dot"></span><span><b>${n}</b><span>${d}</span></span></button>`).join('')}</div>
@@ -875,45 +927,77 @@ function renderServices(el) {
     const rows = DB.services.filter(s => filter === 'all' || (filter === 'run' ? s.run : (want[s.id] && want[s.id] !== s.cur)));
     list.innerHTML = rows.length ? rows.map(s => { const target = want[s.id] || s.cur; const changed = target !== s.cur;
       return `<div class="sv-it${changed ? ' chg' : ''}" data-id="${s.id}"><span class="ri">${ic('service')}</span>
-      <span class="rt"><b>${esc(s.name)} <em class="faint">${esc(s.id)}</em></b><span>${esc(s.desc)}${s.warn ? ` <em class="warn-t">${esc(s.warn)}</em>` : ''}</span></span>
+      <span class="rt"><b>${esc(s.name)} <em class="faint">${esc(s.id)}</em>${s.delayed ? ` <span class="chip" title="${esc(t('Starts a little after Windows is ready. It is kept that way when you undo.'))}">${t('Delayed start')}</span>` : ''}</b><span>${esc(s.desc)}${s.warn ? ` <em class="warn-t">${esc(s.warn)}</em>` : ''}</span></span>
       <span><span class="chip${s.run ? ' ok' : ''}">${s.run ? tc('Running') : tc('Stopped')}</span></span>
       <span class="sv-st">${changed ? `<s>${START_N[s.cur]}</s>` : ''}<span>${START_N[target]}</span></span>
       <button class="toggle${target !== 'disabled' ? ' on' : ''}" aria-label="${esc(s.name)}"><i></i></button></div>`; }).join('') : `<div class="empty"><b>${t('No services with changes')}</b>${t('Pick a profile or use the switches.')}</div>`;
     if (anims) $$('.sv-it', list).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 360, delay: i * 26, e: EASE.spring }));
-    const n = Object.keys(want).length; const ap = $('#svApply', el); ap.disabled = !n; ap.textContent = !n ? t('Apply changes') : n === 1 ? t('Apply {n} change', { n }) : t('Apply {n} changes', { n });
-    $('#svRun', el).textContent = DB.services.filter(s => s.run).length; $('#svPend', el).textContent = n;
+    const n = Object.keys(want).length; const ap = $('#svApply', el); $('#svRun', el).textContent = DB.services.filter(s => s.run).length; $('#svPend', el).textContent = n; if (busy) return; ap.disabled = !n; ap.textContent = !n ? t('Apply changes') : n === 1 ? t('Apply {n} change', { n }) : t('Apply {n} changes', { n });
   };
   draw(true);
-  $('.sv-profs', el).addEventListener('click', e => { const b = e.target.closest('.sv-pr'); if (!b || b.classList.contains('on')) return;
+  $('.sv-profs', el).addEventListener('click', e => { const b = e.target.closest('.sv-pr'); if (!b || busy || b.classList.contains('on')) return;
     $$('.sv-pr', el).forEach(x => x.classList.toggle('on', x === b)); prof = b.dataset.v;
     anim($('.sv-dot', b), [{ transform: 'scale(.3)' }, { transform: 'scale(1.3)', offset: .6 }, { transform: 'scale(1)' }], { d: 360 });
     Object.keys(want).forEach(k => delete want[k]); if (prof !== 'none') DB.services.forEach(s => { if (s[prof] && s[prof] !== s.cur) want[s.id] = s[prof]; });
     draw(false); $$('.sv-it.chg', list).forEach((r, i) => anim(r, [{ transform: 'translate3d(8px,0,0)' }, { transform: 'none' }], { d: 420, delay: i * 40, e: EASE.spring })); });
-  list.addEventListener('click', e => { const tg = e.target.closest('.toggle'); if (!tg) return; const s = DB.services.find(x => x.id === tg.closest('.sv-it').dataset.id);
+  list.addEventListener('click', e => { const tg = e.target.closest('.toggle'); if (!tg || busy) return; const s = DB.services.find(x => x.id === tg.closest('.sv-it').dataset.id);
     const cur = want[s.id] || s.cur; const nx = cur === 'disabled' ? (s.orig === 'disabled' ? 'manual' : s.orig) : 'disabled'; if (nx === s.cur) delete want[s.id]; else want[s.id] = nx; draw(false); });
   $('#svF', el).addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return; $$('#svF button', el).forEach(x => x.classList.toggle('on', x === b)); SH.placeSeg($('#svF', el)); filter = b.dataset.v; draw(true); });
+  /* one change at a time: while services are being changed or restored, both buttons are locked and say so */
+  const lockSv = on => { busy = on; el.classList.toggle('sv-busy', on); $('#svReset', el).disabled = on; if (on) $('#svApply', el).disabled = true; };
+  /* the toast's Undo: a “Restoring services…” toast that follows each service, then a fresh read */
+  const undoToast = async bid => {
+    if (busy) { SH.toast(t('Wait until the current change finishes.')); return; }
+    lockSv(true); const g = { group: 'svUndo', ms: 120000 };
+    SH.toast(t('Restoring services…'), g);
+    try {
+      if (REAL) {
+        await engJob('services_undo_job', [bid], { onProgress: m => { if (m.kind === 'progress' && m.text) SH.toast(m.text, g); } });
+        SH.toast(t('Checking again…'), g);
+        await load('services', true);
+      } else { await wait(900); DB.services.forEach(s => s.cur = s.orig); }
+      SH.toast(t('Services restored.'), { group: 'svUndo' });
+    } catch (e) { SH.toast(e.message, { group: 'svUndo' }); }
+    finally { lockSv(false); draw(false); refresh('overview'); }
+  };
   $('#svApply', el).addEventListener('click', async () => {
+    if (busy) return;
     if (!state.admin && !SH.requireAdmin(t('to change how Windows services start.'))) return;
-    const ids = Object.keys(want); const ap = $('#svApply', el); ap.disabled = true; ap.textContent = t('Applying…');
-    if (REAL) {
-      let r; try { r = await eng('services_apply', { ...want }); } catch (e) { SH.toast(e.message); draw(false); return; }
-      Object.keys(want).forEach(k => delete want[k]); const bid = r.backup; await load('services', true); draw(false); refresh('overview');
-      SH.logActivity(t('{n} services adjusted', { n: ids.length }), { ic: 'service', go: 'optimizer', tab: 'services' });
-      SH.toast(r.ok ? t('{n} services changed.', { n: ids.length }) : t("A service didn't accept the change."), { action: { label: t('Undo'), run: async () => { try { await eng('services_undo', bid); await load('services', true); draw(false); refresh('overview'); SH.toast(t('Services restored.')); } catch (e) { SH.toast(e.message); } } }, ms: 8000 });
-      return;
-    }
-    for (const id of ids) { const s = DB.services.find(x => x.id === id); await wait(220); s.cur = want[id]; if (s.cur === 'disabled') s.run = false; delete want[id]; draw(false); }
-    refresh('overview'); SH.toast(t('{n} services changed.', { n: ids.length }), { action: { label: t('Undo'), run: () => { DB.services.forEach(s => s.cur = s.orig); draw(false); refresh('overview'); } } });
+    const ids = Object.keys(want); const ap = $('#svApply', el);
+    lockSv(true); busyBtn(ap, t('Applying…'));
+    try {
+      if (REAL) {
+        let r; try { r = await eng('services_apply', { ...want }); } catch (e) { SH.toast(e.message); return; }
+        if (r && r.ok === false && !r.backup) { SH.toast(r.error || t("Nothing was changed: the backup of the services couldn't be saved."), { ms: 9000 }); return; }
+        Object.keys(want).forEach(k => delete want[k]); const bid = r.backup;
+        busyBtn(ap, t('Checking again…'));
+        try { await load('services', true); } catch (e) { SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message })); }
+        SH.logActivity(t('{n} services adjusted', { n: ids.length }), { ic: 'service', go: 'optimizer', tab: 'services' });
+        SH.toast(r.ok ? t('{n} services changed.', { n: ids.length }) : t("A service didn't accept the change."), { action: { label: t('Undo'), run: () => undoToast(bid) }, ms: 8000 });
+        return;
+      }
+      for (const id of ids) { const s = DB.services.find(x => x.id === id); await wait(220); s.cur = want[id]; if (s.cur === 'disabled') s.run = false; delete want[id]; }
+      SH.toast(t('{n} services changed.', { n: ids.length }), { action: { label: t('Undo'), run: () => undoToast(null) } });
+    } finally { delete ap.dataset.html; lockSv(false); draw(false); refresh('overview'); }
   });
   $('#svReset', el).addEventListener('click', async () => {
+    if (busy) return;
+    const rb = $('#svReset', el);
     Object.keys(want).forEach(k => delete want[k]); $$('.sv-pr', el).forEach(x => x.classList.toggle('on', x.dataset.v === 'none')); prof = 'none';
     const changed = DB.services.filter(s => s.cur !== s.orig);
-    if (REAL && changed.length) {
-      if (!state.admin && !SH.requireAdmin(t('to change how Windows services start.'))) { draw(false); return; }
-      const ch = {}; changed.forEach(s => ch[s.id] = s.orig);
-      try { await eng('services_apply', ch); await load('services', true); } catch (e) { SH.toast(e.message); }
-    } else DB.services.forEach(s => s.cur = s.orig);
-    draw(false); refresh('overview'); SH.toast(changed.length ? t('Services are back to how they were when StellarHub opened.') : t('There were no changes to undo.'));
+    if (changed.length && REAL && !state.admin && !SH.requireAdmin(t('to change how Windows services start.'))) { draw(false); return; }
+    let ok = true;
+    if (changed.length) {
+      lockSv(true); busyBtn(rb, t('Restoring…'));
+      try {
+        if (REAL) {
+          const ch = {}; changed.forEach(s => ch[s.id] = s.orig);
+          try { const rr = await eng('services_apply', ch); if (rr && rr.ok === false && !rr.backup) throw new Error(rr.error || t("Nothing was changed: the backup of the services couldn't be saved.")); busyBtn(rb, t('Checking again…')); await load('services', true); } catch (e) { ok = false; SH.toast(e.message); }
+        } else { await wait(900); DB.services.forEach(s => s.cur = s.orig); }
+      } finally { lockSv(false); freeBtn(rb); }
+    }
+    draw(false); refresh('overview');
+    if (ok) SH.toast(changed.length ? t('Services are back to how they were when StellarHub opened.') : t('There were no changes to undo.'));
   });
   requestAnimationFrame(() => SH.placeSeg($('#svF', el), true));
   rendered.services = () => draw(false);
@@ -923,49 +1007,94 @@ function renderServices(el) {
 function renderRegistry(el) {
   const kid = i => i[2] || i[0];
   let sel = new Set(DB.registry.flatMap(g => g.items.map(kid)));
+  let scanning = false;
+  /* the registry read again after a change: the tab shows its loading state, with the engine's steps */
+  const rescan = async () => {
+    scanning = true; el.innerHTML = skelHTML('registry');
+    try { await load('registry', true); } catch (e) { SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message })); }
+    finally { scanning = false; }
+    sel = new Set(DB.registry.flatMap(g => g.items.map(kid)));
+  };
+  /* puts a .reg backup back (the tab's button or the toast's Undo); say(text) shows each step */
+  const restore = async (bid, say) => {
+    if (regBusy) { SH.toast(t('Wait until the current change finishes.')); return false; }
+    regBusy = true; let ok = false;
+    try {
+      if (REAL) {
+        await engJob('registry_undo_job', [bid], { onProgress: m => { if (m.kind === 'progress' && m.text) say(m.text); } });
+        if (last.regBackup === bid) last.regBackup = null;
+        say(t('Checking again…')); await rescan();
+      } else { await wait(900); say(t('Checking again…')); await wait(500); }
+      regDone = false; ok = true;
+    } catch (e) { SH.toast(e.message); }
+    finally { regBusy = false; draw(); refresh('overview'); }
+    return ok;
+  };
   const draw = () => {
     if (regDone || (REAL && !regCount())) {
-      el.innerHTML = `<div class="empty rg-ok">${ic('check')}<b>${t('No broken entries')}</b>${last.regBackup ? `${t('The backup of what was fixed is in {path}.', { path: 'ProgramData\\StellarHub\\optimizer\\registry\\' + esc(last.regBackup) })}<div style="margin-top:14px"><button class="btn sec" id="rgUndo">${ic('undo')}${t('Restore the backup')}</button></div>` : REAL ? t('Nothing points to files that no longer exist.') : ''}</div>`;
+      el.innerHTML = `<div class="pan rg-empty"><div class="empty rg-ok">${ic('check')}<b>${t('No broken entries')}</b>${last.regBackup ? `${t('The backup of what was fixed is in {path}.', { path: 'ProgramData\\StellarHub\\optimizer\\registry\\' + esc(last.regBackup) })}<div style="margin-top:14px"><button class="btn sec" id="rgUndo">${ic('undo')}${t('Restore the backup')}</button></div>` : REAL ? t('Nothing points to files that no longer exist.') : t('Nothing points to files that no longer exist.')}</div></div>`;
       const u = $('#rgUndo', el); if (u) u.addEventListener('click', async () => {
-        if (REAL) { try { await eng('registry_undo', last.regBackup); last.regBackup = null; await load('registry', true); sel = new Set(DB.registry.flatMap(g => g.items.map(kid))); } catch (e) { SH.toast(e.message); return; } }
-        regDone = false; draw(); refresh('overview'); SH.toast(t('Registry restored from the backup.')); });
+        if (u.disabled) return;
+        busyBtn(u, t('Restoring registry entries…'));
+        if (await restore(last.regBackup, txt => { if (u.isConnected) busyBtn(u, txt); })) SH.toast(t('Registry restored from the backup.'));
+        else if (u.isConnected) freeBtn(u);
+      });
       return; }
     el.innerHTML = `<div class="rg">
       <div class="pan rg-note">${ic('info')}<div><b>${t('What gets fixed here')}</b><span>${t('Cleaning the registry barely speeds up Windows. Only genuinely broken entries are touched here, the ones pointing to files that no longer exist. A .reg backup is saved first so you can undo.')}</span></div>
         <div class="rg-n"><b id="rgN">${sel.size}</b><span class="muted">${t('selected')}</span></div><button class="btn pri" id="rgGo">${ic('wrench')}${t('Fix selected')}</button></div>
       <div class="rg-groups">${DB.registry.map((g, gi) => `<div class="pan rg-g"><h4><button class="check grp" data-gi="${gi}" aria-label="${esc(t('Select all in {group}', { group: g.g }))}">${ic('check')}</button><span>${esc(g.g)}</span> <em>${g.items.length}</em></h4>${g.items.map(i => `<div class="row rg-it" data-k="${esc(kid(i))}"><button class="check${sel.has(kid(i)) ? ' on' : ''}" aria-label="${t('Select')}">${ic('check')}</button><span class="rt"><b>${esc(i[0])}</b><span>${esc(i[1])}</span></span></div>`).join('')}</div>`).join('')}</div></div>`;
     $$('.rg .pan', el).forEach((p, i) => anim(p, [{ opacity: 0, transform: 'translate3d(0,12px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: i * 45, e: EASE.spring }));
+    let fixing = false;
     const syncSel = () => {
       $$('.rg-it', el).forEach(r => $('.check', r).classList.toggle('on', sel.has(r.dataset.k)));
       $$('.rg-g h4 .check', el).forEach(b => { const ks = DB.registry[+b.dataset.gi].items.map(kid); setTri(b, ks.filter(k => sel.has(k)).length, ks.length); });
-      $('#rgN', el).textContent = sel.size; $('#rgGo', el).disabled = !sel.size; };
+      $('#rgN', el).textContent = sel.size; $('#rgGo', el).disabled = fixing || !sel.size; };
     syncSel();
     $('.rg', el).addEventListener('click', e => {
+      if (fixing) return;
       const ga = e.target.closest('.rg-g h4 .check');
       if (ga) { const ks = DB.registry[+ga.dataset.gi].items.map(kid); const all = ks.every(k => sel.has(k)); ks.forEach(k => all ? sel.delete(k) : sel.add(k)); syncSel(); return; }
       const r = e.target.closest('.rg-it'); if (!r) return; const k = r.dataset.k; sel.has(k) ? sel.delete(k) : sel.add(k); syncSel(); });
     $('#rgGo', el).addEventListener('click', async () => {
-      const needA = REAL ? DB.registry.some(g => g.items.some(i => sel.has(kid(i)) && /^HKLM/i.test(i[0]))) : true;
+      if (fixing) return;
+      if (regBusy) { SH.toast(t('Wait until the current change finishes.')); return; }
+      const needA = REAL ? DB.registry.some(g => g.items.some(i => sel.has(kid(i)) && /^HKLM/i.test(i[0]) || /^HKCU\Software\Policies/i.test(i[0]))) : true;
       if (needA && !state.admin && !SH.requireAdmin(t('to fix system registry entries.'))) return;
-      const b = $('#rgGo', el); b.disabled = true; b.textContent = t('Saving the backup…');
-      if (REAL) {
-        const ids = [...sel]; let r;
-        try { r = await engJob('registry_fix', [ids], { onProgress: m => { if (m.pct > .02) b.textContent = t('Fixing… {pct}%', { pct: Math.round(m.pct * 100) }); } }); }
-        catch (e) { SH.toast(e.message); b.disabled = false; b.innerHTML = `${ic('wrench')}${t('Fix selected')}`; return; }
-        last.regBackup = r.backup;
-        for (const row of $$('.rg-it', el).filter(x => sel.has(x.dataset.k))) { anim(row, [{ opacity: 1, transform: 'none' }, { opacity: .25, transform: 'translate3d(18px,0,0)' }], { d: 260 }); }
-        await load('registry', true); sel = new Set(DB.registry.flatMap(g => g.items.map(kid))); regDone = !regCount(); refresh('overview'); draw();
-        SH.logActivity(t('{n} registry entries fixed', { n: r.fixed }), { sub: t('with a .reg backup'), ic: 'reg', go: 'optimizer', tab: 'registry' });
-        SH.toast(r.failed.length ? t("{n} fixed; {failed} couldn't be fixed.", { n: r.fixed, failed: r.failed.length }) : t('{n} entries fixed.', { n: r.fixed }), { action: { label: t('Undo'), run: async () => { try { await eng('registry_undo', r.backup); last.regBackup = null; await load('registry', true); sel = new Set(DB.registry.flatMap(g => g.items.map(kid))); regDone = false; draw(); refresh('overview'); } catch (e) { SH.toast(e.message); } } }, ms: 8000 });
-        return;
+      const b = $('#rgGo', el); fixing = true; regBusy = true; busyBtn(b, t('Saving the backup…'));
+      try {
+        if (REAL) {
+          const ids = [...sel]; let r;
+          try { r = await engJob('registry_fix', [ids], { onProgress: m => { if (m.pct > .02) busyBtn(b, t('Fixing… {pct}%', { pct: Math.round(m.pct * 100) })); } }); }
+          catch (e) { SH.toast(e.message); return; }
+          last.regBackup = r.backup || null;
+          for (const row of $$('.rg-it', el).filter(x => sel.has(x.dataset.k))) { anim(row, [{ opacity: 1, transform: 'none' }, { opacity: .25, transform: 'translate3d(18px,0,0)' }], { d: 260 }); }
+          busyBtn(b, t('Checking again…')); await wait(260);
+          await rescan(); regDone = !regCount();
+          SH.logActivity(t('{n} registry entries fixed', { n: r.fixed }), { sub: t('with a .reg backup'), ic: 'reg', go: 'optimizer', tab: 'registry' });
+          const g = { group: 'rgUndo', ms: 120000 };
+          const nf = (r.failed || []).length, first = nf ? String(r.failed[0]) : '';
+          const msg = !nf ? t('{n} entries fixed.', { n: r.fixed }) : !r.fixed ? t("Nothing was fixed: {error}", { error: first }) : t("{n} fixed; {failed} couldn't be fixed. First one: {error}", { n: r.fixed, failed: nf, error: first });
+          const undo = r.backup && r.fixed ? { action: { label: t('Undo'), run: async () => {
+            SH.toast(t('Restoring registry entries…'), g);
+            if (await restore(r.backup, txt => SH.toast(txt, g))) SH.toast(t('Registry restored from the backup.'), { group: 'rgUndo' });
+          } } } : {};
+          SH.toast(msg, { ...undo, ms: nf ? 12000 : 8000 });
+          return;
+        }
+        await wait(700); busyBtn(b, t('Fixing…'));
+        for (const r of $$('.rg-it', el).filter(r => sel.has(r.dataset.k))) { anim(r, [{ opacity: 1, transform: 'none' }, { opacity: .25, transform: 'translate3d(18px,0,0)' }], { d: 260 }); await wait(60); }
+        busyBtn(b, t('Checking again…')); await wait(500); const n = sel.size; regDone = true;
+        SH.toast(t('{n} entries fixed.', { n }), { action: { label: t('Undo'), run: async () => {
+          const g = { group: 'rgUndo', ms: 60000 }; SH.toast(t('Restoring registry entries…'), g);
+          if (await restore(null, txt => SH.toast(txt, g))) SH.toast(t('Registry restored from the backup.'), { group: 'rgUndo' });
+        } } });
+      } finally {
+        fixing = false; regBusy = false; draw(); refresh('overview');
       }
-      await wait(700); b.textContent = t('Fixing…');
-      for (const r of $$('.rg-it', el).filter(r => sel.has(r.dataset.k))) { anim(r, [{ opacity: 1, transform: 'none' }, { opacity: .25, transform: 'translate3d(18px,0,0)' }], { d: 260 }); await wait(60); }
-      await wait(300); const n = sel.size; regDone = true; refresh('overview'); draw();
-      SH.toast(t('{n} entries fixed.', { n }), { action: { label: t('Undo'), run: () => { regDone = false; draw(); refresh('overview'); } } });
     });
   };
-  draw(); rendered.registry = draw;
+  draw(); rendered.registry = () => { if (!scanning) draw(); };
 }
 
 /* ================= Repair ================= */
@@ -978,15 +1107,13 @@ const REPAIRS = [
     log: [['The type of the file system is NTFS.', 0], ['Stage 1: Examining basic file system structure…', .2], ['  1203456 file records processed.', .45], ['Stage 2: Examining file name linkage…', .6], ['Stage 3: Examining security descriptors…', .85], ['Windows has scanned the file system and found no problems.', 1, 'ok']] },
   { id: 'wu', ic: 'windows', t: t('Repair Windows Update'), need: t('to repair Windows Update.'), cmd: 'net stop wuauserv, ren SoftwareDistribution', d: t('Stops the update services, renames their cache and starts them again.'), when: t('Updates that fail again and again or get stuck at 0%.'), dur: t('1 min'), admin: true,
     log: [[t('Stopping Windows Update…'), .1], [t('Stopping the Background Intelligent Transfer Service (BITS)…'), .25], [t('Renaming SoftwareDistribution to SoftwareDistribution.old…'), .5], [t('Renaming catroot2…'), .65], [t('Starting the services…'), .85], [t('Windows Update is ready to search again.'), 1, 'ok']] },
-  { id: 'net', ic: 'wifi', t: t('Reset the network'), need: t('to reset the network.'), cmd: 'netsh winsock reset, netsh int ip reset, ipconfig /flushdns', d: t("Fixes connections that don't load pages or failing DNS."), when: t("There's Wi-Fi but pages don't load, or only some sites fail."), dur: '30 s', admin: true, reboot: true,
+  { id: 'net', ic: 'wifi', t: t('Reset the network'), need: t('to reset the network.'), cmd: 'netsh winsock reset, netsh int ip reset, ipconfig /flushdns', d: t("Fixes connections that don't load pages or failing DNS."), when: t("There's Wi-Fi but pages don't load, or only some sites fail."), dur: '30 s', admin: true, reboot: true, warn: t('This resets static IP and DNS settings. StellarHub saves them first and tells you where.'),
     log: [[t('Flushing the DNS cache…'), .2], ['Successfully flushed the DNS Resolver Cache.', .3], [t('Resetting the Winsock catalog…'), .55], ['Successfully reset the Winsock Catalog.', .7], [t('Resetting TCP/IP…'), .9], [t('Done. Restart the PC to finish.'), 1, 'warn']] },
   { id: 'icons', ic: 'grid', t: t('Rebuild icons and fonts'), need: t('to rebuild icons and fonts.'), cmd: 'ie4uinit -show, delete iconcache_*.db', d: t('For blank or wrong icons and fonts that look odd.'), when: t('Blank icons, stale thumbnails or text that looks wrong.'), dur: '20 s',
     log: [[t('Closing File Explorer…'), .15], [t('Deleting iconcache_*.db (14 files)…'), .4], [t('Deleting the font cache…'), .6], [t('Opening File Explorer…'), .9], [t('Icons rebuilt.'), 1, 'ok']] },
   { id: 'explorer', ic: 'folder', t: t('Restart File Explorer'), need: t('to restart File Explorer.'), cmd: 'taskkill /f /im explorer.exe && start explorer', d: t('If the taskbar or the Start menu hangs.'), when: t("The taskbar doesn't respond or the Start menu won't open."), dur: '5 s',
     log: [[t('Closing explorer.exe…'), .4], [t('Opening explorer.exe…'), .8], [t('File Explorer restarted.'), 1, 'ok']] },
 ];
-/* elapsed time as m:ss (or h:mm:ss) */
-const clock = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
 /* SFC, DISM and chkdsk report their own %; the rest move in fixed steps */
 const STREAMED = new Set(['sfc', 'dism', 'chkdsk']);
 function renderRepair(el) {
@@ -1018,6 +1145,7 @@ function renderRepair(el) {
   const paint = (animate) => {
     const r = REPAIRS.find(x => x.id === cur);
     right.innerHTML = `<div class="rp-h"><span class="rp-big">${ic(r.ic)}</span><div class="rt"><b>${esc(r.t)}</b><span>${esc(r.d)}</span></div><button class="btn pri lg rp-go"${busy ? ' disabled' : ''}>${ic(status[r.id] === 'ok' ? 'restore' : 'play')}${busy === r.id ? t('Running…') : status[r.id] === 'ok' ? t('Run again') : t('Run')}</button></div>
+      ${r.warn ? `<div class="rp-warn">${ic('alert')}<span>${esc(r.warn)}</span></div>` : ''}
       <div class="rp-facts"><div><span class="faint">${t('When to use it')}</span><b>${esc(r.when)}</b></div><div><span class="faint">${t('Duration')}</span><b>${esc(r.dur)}</b></div><div><span class="faint">${t('Needs')}</span><b>${r.admin ? (r.reboot ? t('Administrator mode, a restart') : t('Administrator mode')) : r.reboot ? t('A restart') : t('Nothing special')}</b></div></div>
       <div class="rp-prog"><div class="bar acc rp-bar"><span></span></div>
         <div class="rp-st"><span class="rp-pulse"></span><span class="rp-txt"><span class="rp-live"></span><span class="rp-sub faint"></span></span><b class="rp-pct"></b><span class="rp-el faint"></span></div></div>
@@ -1032,6 +1160,15 @@ function renderRepair(el) {
     if (!e.target.closest('.rp-go')) return; const r = REPAIRS.find(x => x.id === cur);
     if (busy) { SH.toast(t('Wait for the current repair to finish.')); return; }
     if (r.admin && !state.admin && !SH.requireAdmin(r.need)) return;
+    if (r.warn) {   /* a second click confirms: it erases settings */
+      const go = e.target.closest('.rp-go');
+      if (!go.dataset.sure) {
+        go.dataset.sure = '1'; go.innerHTML = `${ic('alert')}${t('Click again: static IP and DNS settings will be reset')}`;
+        anim(go, [{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(0)' }], { d: 320, keep: true });
+        SH.toast(r.warn);
+        setTimeout(() => { if (go.isConnected && go.dataset.sure && !busy) paint(false); }, 5000); return;
+      }
+    }
     busy = r.id; logs[r.id] = []; status[r.id] = 'run'; info[r.id] = { t0: Date.now(), lastOut: Date.now(), pct: 0, hasPct: false, live: '', quiet: null, act: '' };
     const I = info[r.id];
     const it = $(`.rp-it[data-r="${r.id}"]`, el); it.classList.remove('ok', 'err'); it.classList.add('run'); paint(false);
@@ -1062,8 +1199,12 @@ function renderRepair(el) {
             if (!raf) raf = requestAnimationFrame(flush); } });
       } catch (e) { err = e; }
       if (err) push(err.needAdmin ? t('Needs administrator mode.') : t('Error: {error}', { error: err.message }), 'err');
+      else if (res && res.error) push(res.error, 'err');
       else push(res && res.code ? t('Finished with code {code}. Check the output above.', { code: res.code }) : (r.reboot ? t('Done. Restart the PC to finish.') : t('Done.')), res && res.code ? 'warn' : (r.reboot ? 'warn' : 'ok'));
-      finish(err);
+      if (!err && res && res.msg) push(res.msg, 'ok');
+      const failed = err || (res && res.error);
+      finish(failed);
+      if (res && res.error && !err) { SH.toast(res.error, { ms: 9000 }); return; }
       if (!err) { SH.logActivity(t('{name}: done', { name: r.t }), { ic: r.ic, go: 'optimizer', tab: 'repair' }); SH.toast(r.reboot ? t('{name}: done. Restart to finish.', { name: r.t }) : t('{name}: done.', { name: r.t })); }
       return;
     }
@@ -1085,11 +1226,11 @@ function renderPerformance(el) {
   const P = DB.perf;
   const PM = [['efficiency', t('Efficiency')], ['balanced', t('Balanced')], ['best', t('Best performance')]];
   const VIS = [['auto', t('Let Windows choose')], ['appearance', t('Best appearance')], ['performance', t('Best performance')]];
-  const VIS_N = { auto: t('Let Windows choose what’s best'), appearance: t('Adjust for best appearance'), performance: t('Adjust for best performance') };
+  const VIS_N = { auto: t('Let Windows choose what’s best'), appearance: t('Adjust for best appearance'), performance: t('Adjust for best performance'), custom: t('Custom') };
   const BG = [['always', t('Always')], ['opt', t('Power optimized')], ['never', t('Never')]];
   /* toasts: one whole sentence per value (the label of the button is not reused inside a sentence) */
   const PM_L = { efficiency: t('efficiency'), balanced: t('balanced'), best: t('best performance') };
-  const VIS_L = { auto: t('let Windows choose'), appearance: t('best appearance'), performance: t('best performance') };
+  const VIS_L = { auto: t('let Windows choose'), appearance: t('best appearance'), performance: t('best performance'), custom: t('your own choice of effects') };
   const BG_T = { always: app => t('{app}: always in the background.', { app }), opt: app => t('{app}: power optimized in the background.', { app }), never: app => t('{app}: never in the background.', { app }) };
   const seg = (k, opts, v) => `<div class="seg" data-k="${k}"><span class="ind"></span>${opts.map(([o, n]) => `<button data-v="${o}"${v === o ? ' class="on"' : ''}>${n}</button>`).join('')}</div>`;
   const card = (o) => `<div class="pan pf-c" data-asm data-card="${o.id}">
@@ -1104,7 +1245,7 @@ function renderPerformance(el) {
         <div class="pf-plans"><span class="faint">${t('Power plans')} (powercfg /list)</span>${(P.plans && P.plans.length ? P.plans.map(p => [p.name, p.guid, p.on]) : [[t('Balanced'), '381b4222-…-a8a1-26dd2ec7e0f0', true], [t('High performance'), t('hidden on PCs with Modern Standby'), false], [t('Ultimate performance'), t('hidden on PCs with Modern Standby'), false]]).map(([n, g, on]) => `<button class="pf-plan${on ? ' on' : ''}" data-plan="${esc(g)}"><span class="pf-pd"></span><span><b>${esc(n)}</b><small>${esc(g)}</small></span>${on ? `<span class="chip ok">${tc('active')}</span>` : ''}</button>`).join('')}
         ${P.standby !== false ? `<p class="faint pf-pn">${SH.PC.type === 'laptop' ? t('Your laptop uses Modern Standby: Windows only keeps the Balanced plan and the modes above tune it from the inside.') : t('Your PC uses Modern Standby: Windows only keeps the Balanced plan and the modes above tune it from the inside.')}</p>` : ''}</div>`,
       d: t('This is the Windows 11 control, not a plan of our own. “Best performance” raises the clock speeds your processor can sustain, at the cost of more heat and noise.'), chips: [t('no restart')], open: 'ms-settings:powersleep' },
-    { id: 'visual', ic: 'eye', t: t('Visual effects'), where: t('System Properties › Advanced › Performance'), now: () => VIS_N[P.visual],
+    { id: 'visual', ic: 'eye', t: t('Visual effects'), where: t('System Properties › Advanced › Performance'), now: () => VIS_N[P.visual] || '—',
       ctl: seg('visual', VIS, P.visual), d: t('“Best performance” removes Windows shadows, window animations and transparency. It doesn’t affect StellarHub’s animations. On your PC the difference is small.'), chips: [t('no restart')], open: 'sysperf', openT: t('Open Performance Options') },
     { id: 'game', ic: 'gpu', t: t('Game Mode'), where: t('Settings › Gaming › Game Mode'), now: () => P.gameMode ? tc('On') : tc('Off'),
       ctl: `<div class="pf-tg"><span>${t('Game Mode')}</span><button class="toggle${P.gameMode ? ' on' : ''}" data-k="gameMode" aria-label="${t('Game Mode')}"><i></i></button></div>`,
@@ -1228,8 +1369,6 @@ function renderDebloat(el, ctx) {
   draw();
   /* fresh lists after a change (in the app they're read again from Windows) */
   const reload = async (...areas) => { if (REAL) { for (const a of areas) { try { await load(a, true); } catch (e) { /* keeps the last list */ } } } draw(); };
-  const busyBtn = (b, txt) => { b.disabled = true; b.dataset.html = b.innerHTML; b.innerHTML = `<span class="opt-spin sm"></span>${txt}`; };
-  const freeBtn = b => { b.disabled = false; if (b.dataset.html) b.innerHTML = b.dataset.html; };
 
   root.addEventListener('click', async e => {
     if (e.target.closest('#dbOv')) return;
@@ -1342,7 +1481,7 @@ function renderDebloat(el, ctx) {
   }
 
   async function run(apps, tws, expl) {
-    const phases = [['restore', t('Create a restore point')], ['apply', apps.length && tws.length ? t('Remove apps and change settings') : apps.length ? t('Remove apps') : t('Change settings')]];
+    const phases = [['restore', t('Create a restore point')], ['apply', apps.length && tws.length ? t('Remove apps and change settings') : apps.length ? t('Remove apps') : t('Change settings')], ['reload', t('Reading the apps again')]];
     ov.innerHTML = `<div class="pan db-pv"><h4 class="pan-h">${t('Debloating')} <em>${t('You can keep using your PC in the meantime.')}</em></h4><div class="phases">${phases.map(([id, n]) => `<div class="phase" data-ph="${id}"><span class="ph-dot"></span><div class="pt"><b>${esc(n)}</b><span class="ph-msg">${t('Waiting')}</span><div class="bar acc"><span style="transform:scaleX(0)"></span></div></div></div>`).join('')}</div></div>`;
     const ph = id => $(`.phase[data-ph="${id}"]`, ov);
     const begin = id => { const p = ph(id); p.classList.add('run'); return { msg: $('.ph-msg', p), setP: v => { $('.bar>span', p).style.transform = `scaleX(${Math.max(0, Math.min(1, v || 0))})`; }, done(ok) { p.classList.remove('run'); p.classList.add(ok ? 'done' : 'skip'); $('.bar>span', p).style.transform = 'scaleX(1)'; } }; };
@@ -1350,11 +1489,11 @@ function renderDebloat(el, ctx) {
     let rp = begin('restore'), rpOk = false;
     if (!state.admin) { rp.msg.textContent = t('Skipped: needs administrator mode'); rp.done(false); }
     else if (REAL) {
-      rp.msg.textContent = t('Creating the restore point… (it can take a minute)');
-      try { const r = await engJob('restore_point', [t('StellarHub, before debloating')], { onProgress: m => rp.setP(m.pct) }); rpOk = !!(r && r.ok); rp.msg.textContent = rpOk ? t('Restore point created') : t("Windows didn't create it: {error}", { error: (r && r.msg) || '' }); }
+      const stop = rpWait(rp.msg);
+      try { const r = await engJob('restore_point', [t('StellarHub, before debloating')]).finally(stop); rpOk = !!(r && r.ok); rp.msg.textContent = rpOk ? t('Restore point created') : t("Windows didn't create it: {error}", { error: (r && r.msg) || '' }); }
       catch (err) { rp.msg.textContent = t("Couldn't do it: {error}", { error: err.message }); }
       rp.done(rpOk);
-    } else { rp.msg.textContent = t('Creating the restore point…'); await tween(0, 1, 1200, rp.setP); rp.msg.textContent = t('Restore point created'); rpOk = true; rp.done(true); }
+    } else { const stop = rpWait(rp.msg); try { await wait(2600); } finally { stop(); } rp.msg.textContent = t('Restore point created'); rpOk = true; rp.done(true); }
     const ap = begin('apply'); let res;
     if (REAL) {
       try { res = await jobD('apply', [plan], { onProgress: m => { ap.setP(m.pct); if (m.text) ap.msg.textContent = m.text; } }); }
@@ -1369,7 +1508,14 @@ function renderDebloat(el, ctx) {
     }
     if (!res.error) { ap.msg.textContent = t('Done'); ap.done(!res.failed.length && !res.tweakFailed.length); }
     dsel.apps.clear(); dsel.tw.clear();
-    if (REAL) { await reload('dbApps', 'dbTweaks'); SH.logActivity(t('Debloat applied'), { sub: t('{n} apps removed, {m} settings changed', { n: res.removed.length, m: res.tweaks.length }), ic: 'sparkle', go: 'optimizer', tab: 'debloat' }); }
+    /* third phase: the lists are read again from Windows (Get-AppxPackage takes a while), with its own steps */
+    const rl = begin('reload'); rl.msg.textContent = t('Reading the installed apps…');
+    if (REAL) {
+      loadWatch.dbApps = m => { if (m.kind !== 'progress') return; if (m.text) rl.msg.textContent = m.text; if (m.pct != null) rl.setP(m.pct); };
+      try { await reload('dbApps', 'dbTweaks'); } finally { delete loadWatch.dbApps; }
+    } else { await tween(0, 1, 900, rl.setP); draw(); }
+    rl.msg.textContent = t('Done'); rl.done(true);
+    if (REAL) { SH.logActivity(t('Debloat applied'), { sub: t('{n} apps removed, {m} settings changed', { n: res.removed.length, m: res.tweaks.length }), ic: 'sparkle', go: 'optimizer', tab: 'debloat' }); }
     await wait(350);
     const lines = [
       ...res.removed.map(r => ['ok', t('{name} removed', { name: r.label }), BACK_TXT[r.restore] || '']),

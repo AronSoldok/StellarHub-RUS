@@ -263,5 +263,6 @@
  "History": "Cronologia",
  "benchmark|Copy": "Copia",
  "benchmark|Both": "Entrambi",
- "Benchmark Testing": "Benchmark Testing"
+ "Benchmark Testing": "Benchmark Testing",
+ "This is your only result so far. Run the test again to see how it changes over time.": "È il tuo unico risultato finora. Ripeti il test per vedere come cambia nel tempo."
 }

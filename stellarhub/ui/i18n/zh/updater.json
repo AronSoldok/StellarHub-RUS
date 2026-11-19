@@ -291,5 +291,16 @@
   "Failed": "失败",
   "Windows Update returned code {code}.": "Windows 更新返回了代码 {code}。",
   "Select all": "全选",
-  "Select all: {group}": "全选：{group}"
+  "Select all: {group}": "全选：{group}",
+  "Pinning…": "正在固定…",
+  "Unpinning…": "正在取消固定…",
+  "Unpinning {name}…": "正在取消固定 {name}…",
+  "winget isn't available on this PC, so StellarHub can't check your apps for updates. Install or update App Installer from the Microsoft Store, then check again.": "此电脑上没有 winget，因此 StellarHub 无法检查应用更新。请从 Microsoft Store 安装或更新 App Installer，然后再检查一次。",
+  "Open the Store": "打开商店",
+  "No results": "无结果",
+  "Your apps couldn't be checked.": "无法检查你的应用。",
+  "winget isn't available on this PC.": "此电脑上没有 winget。",
+  "Checking…": "正在检查…",
+  "{n} app, {m} optional": "{n} 个应用，{m} 个可选",
+  "{n} apps, {m} optional": "{n} 个应用，{m} 个可选"
 }

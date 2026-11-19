@@ -169,5 +169,6 @@
   "{n} keys marked as missing": "{n} tasti segnati come mancanti",
   "The key sent a second press a few milliseconds after a very short one, more than once, without you pressing it again. Usually a worn or dirty switch.": "Il tasto ha inviato una seconda pressione pochi millisecondi dopo una molto breve, più di una volta, senza che tu lo premessi di nuovo. Di solito è un interruttore usurato o sporco.",
   "{key}: possible chatter": "{key}: possibile rimbalzo",
-  "Possible chatter: {keys}": "Possibile rimbalzo: {keys}"
+  "Possible chatter: {keys}": "Possibile rimbalzo: {keys}",
+  "Windows uses {layout}, not this one": "Windows usa {layout}, non questo"
 }

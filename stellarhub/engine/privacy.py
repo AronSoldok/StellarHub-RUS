@@ -1,8 +1,9 @@
 """Privacy & Security engine: what can see you, what is open and how well Windows protects you.
 
 Read-only by default. Every change (Windows privacy settings, firewall profiles, UAC, SmartScreen, disabling an
-auto-start) first saves the previous state as JSON under ProgramData\\StellarHub\\privacy\\changes\\<user> (the same
-approach as the Super Optimizer's service backups) and can be undone from the history. Anything that needs
+auto-start) first saves the previous state as JSON under %LOCALAPPDATA%\\StellarHub\\privacy\\changes\\<user> (in the
+user's own profile: always writable for that user, elevated or not, and not readable by other users) and can be undone
+from the history. If the backup can't be written, the change is not made. Anything that needs
 administrator rights returns {"needAdmin": True} instead of failing halfway.
 
 Every area result carries "findings" (problems, each with a severity, a weight for the score and, when it is safe
@@ -16,6 +17,7 @@ import ipaddress
 import json
 import os
 import re
+import shutil
 import tempfile
 import threading
 import time
@@ -23,8 +25,8 @@ import winreg
 from concurrent.futures import ThreadPoolExecutor
 from ctypes import wintypes
 
-from ..i18n import tr
-from .optimizer import _admin, _need_admin
+from ..i18n import language, tr
+from .optimizer import USER_DATA, _admin, _need_admin, user_needs_admin
 from .optimizer import open_location as _open_location
 from .ps import ps, ps_json, run as ps_run
 from .removal import icons as ricons
@@ -37,7 +39,10 @@ EXPORTS = {"cached", "permissions", "perm_live", "tracking_read", "tracking_set"
            "fix", "persist_set", "icons", "open_location", "open_uri"}
 JOBS = {"protection", "persistence", "perm_details", "quick_scan"}
 
-DATA = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "privacy")
+DATA = os.path.join(os.path.dirname(USER_DATA), "privacy")
+_LEGACY = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "privacy")
+_DEFAULT_DATA = DATA
+_migrated = set()
 HKCU, HKLM, HKU = winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_USERS
 DW, QW, SZ = winreg.REG_DWORD, winreg.REG_QWORD, winreg.REG_SZ
 
@@ -46,7 +51,32 @@ def _user_tag():
     return re.sub(r"[^\w.-]", "_", os.environ.get("USERNAME") or "user")[:40] or "user"
 
 
+def _migrate_legacy():
+    """Once per run: copies this user's files from the old ProgramData folder (where an elevated run left them
+    read-only for the same user's non-elevated runs) into DATA. Never overwrites."""
+    if DATA != _DEFAULT_DATA or DATA in _migrated:
+        return
+    _migrated.add(DATA)
+    tag = _user_tag()
+    try:
+        for name in (f"cache-{tag}.json", f"appnames-{tag}.json", "signatures.json"):
+            src, dst = os.path.join(_LEGACY, name), os.path.join(DATA, name)
+            if os.path.isfile(src) and not os.path.exists(dst):
+                os.makedirs(DATA, exist_ok=True)
+                shutil.copy2(src, dst)
+        src = os.path.join(_LEGACY, "changes", tag)
+        if os.path.isdir(src):
+            dst = os.path.join(DATA, "changes", tag)
+            os.makedirs(dst, exist_ok=True)
+            for n in os.listdir(src):
+                if not os.path.exists(os.path.join(dst, n)):
+                    shutil.copy2(os.path.join(src, n), os.path.join(dst, n))
+    except OSError:
+        pass
+
+
 def _dpath(*parts):
+    _migrate_legacy()
     p = os.path.join(DATA, *parts)
     os.makedirs(os.path.dirname(p), exist_ok=True)
     return p
@@ -78,7 +108,7 @@ def _cache_file():
 def _cache_put(area, data):
     with _CACHE_LOCK:
         c = _read_json(_cache_file(), {}) or {}
-        c[area] = {"t": time.time(), "data": data}
+        c[area] = {"t": time.time(), "data": data, "lang": language()}
         try:
             _write_json(_cache_file(), c)
         except OSError:
@@ -89,6 +119,8 @@ def cached():
     """Last result of every area (instant), {area: {t, data}}. Only for showing something right away."""
     with _CACHE_LOCK:
         c = _read_json(_cache_file(), {}) or {}
+    # the saved findings hold text in the language they were measured in: only show them in that same language
+    c = {k: v for k, v in c.items() if isinstance(v, dict) and v.get("lang") == language()}
     c["admin"] = _admin()
     return c
 
@@ -167,21 +199,49 @@ def _dec(d):
 
 # =============================================================== change history (backup first, undo later)
 def _changes_dir():
+    _migrate_legacy()
     d = os.path.join(DATA, "changes", _user_tag())
     os.makedirs(d, exist_ok=True)
     return d
 
 
+def _L(key, tkeys=(), **kw):
+    """A history label kept as its English sentence plus values, so it is translated when it is shown (tkeys: the values
+    that are English names to translate too)."""
+    return {"lk": key, "lkw": kw, "lkt": list(tkeys)}
+
+
+def _lt(lab):
+    """The text of a label made with _L (or of an old plain-text one)."""
+    if isinstance(lab, dict) and "lk" in lab:
+        kw = {k: (tr(v) if k in lab.get("lkt", ()) else v) for k, v in (lab.get("lkw") or {}).items()}
+        return tr(lab["lk"], **kw)
+    return lab
+
+
+def _rec_label(rec):
+    return _lt(rec) if rec.get("lk") else rec.get("label")
+
+
+def _label_fields(lab):
+    return {**lab, "label": _lt(lab)} if isinstance(lab, dict) else {"label": lab}
+
+
 def _save_change(rec):
+    """Saves the backup of a change. Raises OSError (with a clear message) if it can't: callers do this BEFORE
+    changing anything, so a change without a backup is never made."""
     rec.setdefault("t", time.time())
     rec.setdefault("undone", False)
-    base = time.strftime("%Y%m%d-%H%M%S")
-    bid, n = base, 1
-    while os.path.exists(os.path.join(_changes_dir(), bid + ".json")):
-        n += 1
-        bid = f"{base}-{n:02d}"
-    rec["id"] = bid
-    _write_json(os.path.join(_changes_dir(), bid + ".json"), rec)
+    try:
+        base = time.strftime("%Y%m%d-%H%M%S")
+        bid, n = base, 1
+        while os.path.exists(os.path.join(_changes_dir(), bid + ".json")):
+            n += 1
+            bid = f"{base}-{n:02d}"
+        rec["id"] = bid
+        _write_json(os.path.join(_changes_dir(), bid + ".json"), rec)
+    except OSError as e:
+        raise OSError(tr("Not changed: the backup of the previous state couldn't be saved ({error}).", error=e)) from e
     return bid
 
 
@@ -212,7 +272,7 @@ def apply_writes(writes, label, extra=None):
         seen.add(k)
         ex, d, t = REG.read(hive, path, name)
         prev.append({"hive": hive, "path": path, "name": name, "exists": ex, "type": t, "data": _enc(d) if ex else None})
-    bid = _save_change({"kind": "reg", "label": label, "prev": prev, **(extra or {})})
+    bid = _save_change({"kind": "reg", **_label_fields(label), "prev": prev, **(extra or {})})
     try:
         for hive, path, name, typ, data in writes:
             if data is None:
@@ -237,7 +297,7 @@ def history(limit=30):
     for n in names:
         r = _read_json(os.path.join(_changes_dir(), n))
         if r:
-            out.append({"id": r.get("id"), "t": r.get("t"), "label": r.get("label"), "kind": r.get("kind"),
+            out.append({"id": r.get("id"), "t": r.get("t"), "label": _rec_label(r), "kind": r.get("kind"),
                         "area": r.get("area"), "undone": bool(r.get("undone"))})
     return out
 
@@ -245,10 +305,10 @@ def history(limit=30):
 def undo(bid):
     rec, f = _load_change(bid)
     if rec.get("undone"):
-        return {"ok": True, "already": True, "label": rec.get("label"), "area": rec.get("area")}
+        return {"ok": True, "already": True, "label": _rec_label(rec), "area": rec.get("area")}
     kind = rec.get("kind")
     if kind == "reg":
-        if any(p["hive"] == "HKLM" for p in rec["prev"]) and not _admin():
+        if any(user_needs_admin(p["hive"], p["path"]) for p in rec["prev"]) and not _admin():
             return _need_admin()
         _restore_reg(rec["prev"])
     elif kind == "firewall":
@@ -264,8 +324,11 @@ def undo(bid):
         raise ValueError(kind)
     rec["undone"] = True
     rec["undoneAt"] = time.time()
-    _write_json(f, rec)
-    out = {"ok": True, "label": rec.get("label"), "area": rec.get("area")}
+    try:
+        _write_json(f, rec)
+    except OSError:
+        pass  # it is undone; only the history mark couldn't be saved
+    out = {"ok": True, "label": _rec_label(rec), "area": rec.get("area")}
     if rec.get("area") == "tracking":
         out["tracking"] = tracking_read()
     return out
@@ -392,7 +455,7 @@ def tracking_read():
         locked = any(REG.read(*lk)[0] for lk in it.get("lock", []))
         items.append({"id": it["id"], "g": it["g"], "name": tr(it["name"]), "desc": tr(it["desc"]),
                       "on": tracking_state(it), "rec": it.get("rec", "off"), "w": it.get("w", 1),
-                      "admin": any(v[0] == "HKLM" for v in it["vals"]), "locked": locked, "page": it.get("page"),
+                      "admin": any(user_needs_admin(v[0], v[1]) for v in it["vals"]), "locked": locked, "page": it.get("page"),
                       "note": tr(it["note"]) if it.get("note") else ""})
     findings, passed = tracking_findings(items)
     res = {"items": items, "groups": {k: tr(v) for k, v in TRACKING_GROUPS.items()}, "admin": adm,
@@ -413,18 +476,17 @@ def tracking_set(ids, on):
     chosen = [c for c in chosen if not any(REG.read(*lk)[0] for lk in c.get("lock", []))]
     if not chosen:
         raise PermissionError(tr("Your organization manages this setting."))
-    if any(v[0] == "HKLM" for c in chosen for v in c["vals"]) and not _admin():
+    if any(user_needs_admin(v[0], v[1]) for c in chosen for v in c["vals"]) and not _admin():
         return _need_admin()
     on = bool(on)
     if len(chosen) == 1:
-        nm = tr(chosen[0]["name"])
-        label = tr("{name}: turned on", name=nm) if on else tr("{name}: turned off", name=nm)
+        label = _L("{name}: turned on" if on else "{name}: turned off", ("name",), name=chosen[0]["name"])
     else:
-        label = tr("{n} privacy settings turned on", n=len(chosen)) if on else tr("{n} privacy settings turned off", n=len(chosen))
+        label = _L("{n} privacy settings turned on" if on else "{n} privacy settings turned off", n=len(chosen))
     writes = [w for c in chosen for w in tracking_writes(c, on)]
     bid = apply_writes(writes, label, {"area": "tracking", "ids": [c["id"] for c in chosen], "on": on})
     r = tracking_read()
-    r.update(backup=bid, label=label)
+    r.update(backup=bid, label=_lt(label))
     return r
 
 
@@ -449,28 +511,28 @@ def fix(kind, arg=None):
         cur = ps_json("Get-NetFirewallProfile | ForEach-Object { [pscustomobject]@{ n=[string]$_.Name; on=([string]$_.Enabled -eq 'True') } }",
                       timeout=40, as_list=True)
         prev = {c["n"]: bool(c.get("on")) for c in cur if c.get("n") in profs}
-        label = tr("Windows Firewall turned on")
-        bid = _save_change({"kind": "firewall", "label": label, "prev": prev, "area": "protection"})
+        label = _L("Windows Firewall turned on")
+        bid = _save_change({"kind": "firewall", **_label_fields(label), "prev": prev, "area": "protection"})  # raises: nothing is changed
         ps(f"Set-NetFirewallProfile -Profile {','.join(profs)} -Enabled True", timeout=40)
-        return {"ok": True, "backup": bid, "label": label}
+        return {"ok": True, "backup": bid, "label": _lt(label)}
     if kind == "uac":
         if not _admin():
             return _need_admin()
-        label = tr("User Account Control back to the recommended level")
+        label = _L("User Account Control back to the recommended level")
         bid = apply_writes([("HKLM", _POL_SYS, "EnableLUA", DW, 1), ("HKLM", _POL_SYS, "ConsentPromptBehaviorAdmin", DW, 5),
                             ("HKLM", _POL_SYS, "PromptOnSecureDesktop", DW, 1)], label, {"area": "protection"})
-        return {"ok": True, "backup": bid, "label": label}
+        return {"ok": True, "backup": bid, "label": _lt(label)}
     if kind == "smartscreen":
         if not _admin():
             return _need_admin()
-        label = tr("SmartScreen for apps and files turned on")
+        label = _L("SmartScreen for apps and files turned on")
         bid = apply_writes([("HKLM", r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer", "SmartScreenEnabled", SZ, "Warn")],
                            label, {"area": "protection"})
-        return {"ok": True, "backup": bid, "label": label}
+        return {"ok": True, "backup": bid, "label": _lt(label)}
     if kind == "edgess":
-        label = tr("SmartScreen in Microsoft Edge turned on")
+        label = _L("SmartScreen in Microsoft Edge turned on")
         bid = apply_writes([("HKCU", r"Software\Microsoft\Edge", "SmartScreenEnabled", DW, 1)], label, {"area": "protection"})
-        return {"ok": True, "backup": bid, "label": label}
+        return {"ok": True, "backup": bid, "label": _lt(label)}
     raise ValueError(kind)
 
 
@@ -1853,15 +1915,19 @@ def persist_set(eid, enabled, name=""):
     if kind == "run" and eid.startswith("run|HKLM") and not _admin():
         return _need_admin()
     enabled = bool(enabled)
-    label = tr("{name}: enabled", name=name or eid) if enabled else tr("{name}: disabled", name=name or eid)
+    label = _L("{name}: enabled" if enabled else "{name}: disabled", name=name or eid)
+    bid = _save_change({"kind": "autostart", **_label_fields(label), "prev": [{"id": eid, "enabled": not enabled}], "area": "persistence"})
     try:
         _set_autostart(eid, enabled)
     except OSError:
+        try:
+            os.remove(os.path.join(_changes_dir(), bid + ".json"))  # nothing changed: no record
+        except OSError:
+            pass
         if not _admin():
             return _need_admin()
         raise
-    bid = _save_change({"kind": "autostart", "label": label, "prev": [{"id": eid, "enabled": not enabled}], "area": "persistence"})
-    return {"ok": True, "backup": bid, "label": label}
+    return {"ok": True, "backup": bid, "label": _lt(label)}
 
 
 def open_location(path):

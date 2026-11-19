@@ -37,7 +37,7 @@
   "to pause Windows Update.": "para pausar o Windows Update.",
   "to change Store automatic updates.": "para alterar as atualizações automáticas da Store.",
   "No answer from the engine": "O mecanismo não respondeu",
-  "{name} updated": "{name} atualizado",
+  "{name} updated": "Atualizado: {name}",
   "to version {v}": "para a versão {v}",
   "{n} update installed.": "{n} atualização instalada.",
   "{n} updates installed.": "{n} atualizações instaladas.",
@@ -291,5 +291,16 @@
   "Failed": "Falhou",
   "Windows Update returned code {code}.": "O Windows Update retornou o código {code}.",
   "Select all": "Selecionar tudo",
-  "Select all: {group}": "Selecionar tudo: {group}"
+  "Select all: {group}": "Selecionar tudo: {group}",
+  "Pinning…": "Fixando…",
+  "Unpinning…": "Desafixando…",
+  "Unpinning {name}…": "Desafixando {name}…",
+  "winget isn't available on this PC, so StellarHub can't check your apps for updates. Install or update App Installer from the Microsoft Store, then check again.": "O winget não está disponível neste PC, então o StellarHub não pode verificar atualizações dos seus apps. Instale ou atualize o App Installer pela Microsoft Store e verifique novamente.",
+  "Open the Store": "Abrir a Store",
+  "No results": "Nenhum resultado",
+  "Your apps couldn't be checked.": "Não foi possível verificar seus apps.",
+  "winget isn't available on this PC.": "O winget não está disponível neste PC.",
+  "Checking…": "Verificando…",
+  "{n} app, {m} optional": "{n} app, {m} opcional",
+  "{n} apps, {m} optional": "{n} apps, {m} opcionais"
 }

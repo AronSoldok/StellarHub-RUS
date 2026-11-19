@@ -55,5 +55,9 @@
   "Displays": "Pantallas",
   "Battery": "Batería",
   "Audio": "Audio",
-  "System": "Sistema"
+  "System": "Sistema",
+  "Disk {size}": "Disco de {size}",
+  "Updating to {v}…": "Actualizando a {v}…",
+  "Updating to {v}… {p}%": "Actualizando a {v}… {p} %",
+  "{v} GHz": "{v} GHz"
 }

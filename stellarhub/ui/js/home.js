@@ -77,7 +77,7 @@ const fit = () => { const el = $('#hModel'); if (!el) return; el.style.fontSize 
 addEventListener('resize', fit);
 
 /* ---------- live status ---------- */
-const fmtUp = s => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h >= 48 ? t('{d} days {h} h', { d: Math.floor(h / 24), h: h % 24 }) : h ? `${h} h ${m} min` : `${m} min`; };
+const fmtUp = SH.fmtUptime;
 function readVitals() {
   if (!built) return; const v = T.v;
   rows.forEach(r => { r.s.t = Math.max(0, Math.min(1, r.x.frac(v) || 0)); const [a, b] = r.x.val(v); r.vv.innerHTML = a === dash ? dash : `${a}<small>${b}</small>`; r.el.classList.toggle('hot', !!r.x.hot(v)); });
@@ -138,7 +138,7 @@ function renderNext() {
 }
 function renderRecent() {
   const box = $('#nxRecent'); if (!box) return; const a = (state.settings.activity || []).slice(0, 3);
-  box.innerHTML = a.length ? a.map(x => `<button class="nx"${x.go ? ` data-go="${x.go}" data-tab="${x.tab || ''}"` : ''}><span class="ni">${ic(x.ic || 'check')}</span><span class="nt"><b>${esc(t(x.t))}</b><span>${esc(t(x.sub || ''))}</span></span><span class="nw">${ago(x.at)}</span></button>`).join('')
+  box.innerHTML = a.length ? a.map(x => `<button class="nx"${x.go ? ` data-go="${x.go}" data-tab="${x.tab || ''}"` : ''}><span class="ni">${ic(x.ic || 'check')}</span><span class="nt"><b>${esc(SH.activityText(x).t)}</b><span>${esc(SH.activityText(x).sub)}</span></span><span class="nw">${ago(x.at)}</span></button>`).join('')
     : `<div class="nx-empty"><span>${t('What you do with StellarHub will show up here.')}</span></div>`;
 }
 SH.on('setting', ({ key }) => { if (key === 'activity') renderRecent(); if (key === 'autopilotRoutines') renderNext(); });

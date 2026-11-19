@@ -163,23 +163,19 @@ def parse_table(text):
     if hdr_i is None:
         return []
     hdr = lines[hdr_i]
-    starts = [m.start() for m in re.finditer(r"\S+(?: \S+)*", hdr)]
-    names = [m.group(0).lower() for m in re.finditer(r"\S+(?: \S+)*", hdr)]
-    keys = []
-    # header names in English and Spanish: winget prints them in the Windows display language
-    for n in names:
-        if n in ("name", "nombre"):
-            keys.append("name")
-        elif n in ("id", "identificador"):
-            keys.append("id")
-        elif n in ("version", "versión"):
-            keys.append("version")
-        elif n in ("available", "disponible"):
-            keys.append("available")
-        elif n in ("source", "origen", "fuente"):
-            keys.append("source")
+    starts, names = [], []
+    known = set().union(*_HEADERS.values())
+    for m in re.finditer(r"\S+(?: \S+)*", hdr):
+        words = list(re.finditer(r"\S+", m.group(0)))
+        # two headers only one space apart ("Available Source" when the column is exactly as wide as its title)
+        if len(words) > 1 and all(w.group(0).lower() in known for w in words):
+            for w in words:
+                starts.append(m.start() + w.start())
+                names.append(w.group(0).lower())
         else:
-            keys.append(n)
+            starts.append(m.start())
+            names.append(m.group(0).lower())
+    keys = _column_keys(names, lines[hdr_i + 2:])
     rows = []
     for ln in lines[hdr_i + 2:]:
         if not ln.strip():
@@ -191,13 +187,52 @@ def parse_table(text):
             a = starts[j]
             b = starts[j + 1] if j + 1 < len(starts) else len(ln)
             d[k] = ln[a:b].replace(_PAD, "").strip()
-        if not d.get("id") or " " in d["id"] and not d["id"].startswith(("ARP\\", "MSIX\\")):
-            # a summary line ("14 upgrades available.", also matched in Spanish) or something that is not a row
-            if re.search(r"\d+ (upgrades|actualizaciones|package|paquete)", ln, re.I):
+        wid = d.get("id") or ""
+        if not wid or (" " in wid and not wid.startswith(("ARP\\", "MSIX\\"))) or not _ID_LIKE.match(wid):
+            # a summary line ("14 upgrades available." in any language) or something that is not a package row
+            if re.match(r"^\s*\d+\s", ln):
                 break
             continue
+        d.setdefault("name", "")
         rows.append(d)
     return rows
+
+
+# a winget id ("Vendor.App"), a Store id ("9NBLGGH4NNS1"), or a winget list entry for an app outside winget
+_ID_LIKE = re.compile(r"^(ARP\\|MSIX\\|[0-9A-Z]{12}$|\S+\.\S+)", re.I)
+
+# column headers in the languages winget prints them in (it follows the Windows display language)
+_HEADERS = {
+    "name": {"name", "nombre", "nom", "nome", "名称", "名稱", "名前", "이름"},
+    "id": {"id", "identificador", "identifiant", "identificatore", "kennung", "標識碼"},
+    "version": {"version", "versión", "versão", "versione", "版本", "バージョン", "버전"},
+    "available": {"available", "disponible", "disponível", "disponibile", "verfügbar", "可用", "利用可能", "사용 가능", "доступно"},
+    "source": {"source", "origen", "fuente", "fonte", "origine", "quelle", "源", "ソース", "원본", "источник"},
+    "match": {"match", "coincidencia", "correspondance", "corrispondenza", "correspondência", "übereinstimmung", "匹配"},
+}
+
+
+def _column_keys(names, rows):
+    """The key for each header. Known words first; anything else by position, which is the same in every
+    language: Name, Id, Version, [Available], [Source]. A lone 4th column is the source if it only holds source
+    names (winget, msstore)."""
+    keys = []
+    for i, n in enumerate(names):
+        k = next((key for key, words in _HEADERS.items() if n in words), None)
+        keys.append(k)
+    pos = ["name", "id", "version"]
+    for i in range(min(3, len(keys))):
+        if keys[i] is None:
+            keys[i] = pos[i]
+    if len(keys) >= 4:
+        last = len(keys) - 1
+        if keys[last] is None:
+            vals = {ln[len(ln) and 0:].split()[-1].lower() for ln in rows[:15] if ln.strip()} if rows else set()
+            keys[last] = "source" if len(keys) >= 5 or vals <= {"winget", "msstore"} else "available"
+        for i in range(3, last):
+            if keys[i] is None:
+                keys[i] = "available"
+    return [k or f"col{i}" for i, k in enumerate(keys)]
 
 
 # ---------------------------------------------------------------- categories

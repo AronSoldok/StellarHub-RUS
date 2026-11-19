@@ -95,6 +95,18 @@
 #v-remover .ck span.s{font-size:12px;color:var(--mute)}
 #v-remover .ck .n{margin-left:auto;font-size:12.5px;color:var(--mute)}
 @keyframes rvSpin{to{transform:rotate(360deg)}}
+/* busy buttons, bars without a known end, elapsed time */
+#v-remover .rv-spin{display:inline-block;width:12px;height:12px;flex:none;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;opacity:.85;animation:rvSpin calc(800ms + 400ms*(1 - var(--f))) linear infinite}
+html[data-int=min] #v-remover .rv-spin{animation-duration:2.4s}
+#v-remover .btn.rv-busy{cursor:progress;max-width:260px}
+#v-remover .btn.rv-busy:disabled{opacity:.9}
+#v-remover .rv-bl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#v-remover .bar.rv-indet{overflow:hidden}
+#v-remover .bar.rv-indet>span{width:32%;transform:none;transition:none;animation:rvIndet calc(1400ms*var(--f) + 300ms) cubic-bezier(.45,0,.2,1) infinite}
+html[data-int=min] #v-remover .bar.rv-indet>span{animation:none;width:100%;opacity:.35}
+@keyframes rvIndet{from{transform:translateX(-110%)}to{transform:translateX(320%)}}
+#v-remover .rv-wait{margin-top:10px;font-size:12.5px;font-variant-numeric:tabular-nums}
+#v-remover .rv-wt:empty{display:none}
 #v-remover .unin{display:flex;align-items:center;gap:26px;max-width:760px}
 #v-remover .unin .orb{width:120px;height:120px;flex:none;position:relative;display:grid;place-items:center}
 #v-remover .unin .orb svg.p{position:absolute;inset:0;width:100%;height:100%}
@@ -269,7 +281,8 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .hv-stats div{padding:12px;border-radius:14px;background:var(--raise);border:1px solid var(--line)}
 #v-remover .hv-stats b{display:block;font:500 24px var(--display);letter-spacing:-.03em}
 #v-remover .hv-stats span{font-size:12px;color:var(--mute)}
-#v-remover .hv-legend{margin-top:auto;padding-top:16px;display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--mute)}
+#v-remover .hv-side{align-self:start}
+#v-remover .hv-legend{margin-top:0;padding-top:18px;display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--mute)}
 #v-remover .hv-legend span{display:flex;align-items:center;gap:9px}
 #v-remover .hv-legend i{width:10px;height:10px;border-radius:50%;flex:none}
 @media (max-width:1180px){#v-remover .qz-grid,#v-remover .hv-grid{grid-template-columns:1fr}}
@@ -293,3 +306,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .check.some::after{content:"";grid-area:1/1;width:8px;height:2px;border-radius:2px;background:var(--on-accent)}
 #v-remover .rg h5>.rv-all{margin:0 6px 0 8px}
 #v-remover .tbl-head>.rv-all{justify-self:start}
+
+/* files in use leave at the next restart */
+#v-remover .rm-restart, .rm-restart { display:flex; gap:8px; align-items:flex-start; margin-top:10px; padding:10px 12px; border-radius:var(--r-s); background:color-mix(in srgb, var(--warn) 12%, transparent); color:var(--ink); font-size:13px; line-height:1.45; }
+.rm-restart svg { flex:none; width:16px; height:16px; color:var(--warn); margin-top:1px; }

@@ -41,7 +41,28 @@ def protected_exact():
     # roots of every drive
     for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
         out.append(f"{letter}:\\")
+    # the same shared folders on the other drives: an installer that records "D:\Program Files" or "E:\Games" as
+    # its install location must never get that whole folder offered as its leftovers
+    for root in _drives():
+        out += [os.path.join(root, n) for n in _SHARED_ON_EVERY_DRIVE]
     return {norm_path(p) for p in out if p}
+
+
+_SHARED_ON_EVERY_DRIVE = ("Program Files", "Program Files (x86)", os.path.join("Program Files", "Common Files"),
+                          "Games", "SteamLibrary", "XboxGames", "Epic Games", "Riot Games", "GOG Games",
+                          "Program Files (Arm)", "Programs", "Apps", "Software", "Tools")
+_SYSTEM_ON_EVERY_DRIVE = ("$Recycle.Bin", "System Volume Information", "WindowsApps", "$WinREAgent", "Recovery",
+                          os.path.join("Program Files", "WindowsApps"), os.path.join("Program Files", "ModifiableWindowsApps"))
+
+
+def _drives():
+    """The drive letters that exist right now (GetLogicalDrives: no disk is touched)."""
+    try:
+        import ctypes
+        mask = ctypes.windll.kernel32.GetLogicalDrives()
+    except Exception:
+        return []
+    return [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
 
 
 def forbidden_trees():
@@ -66,7 +87,46 @@ def forbidden_trees():
         _j(sysd, "System Volume Information"), _j(sysd, "$Recycle.Bin"), _j(sysd, "Recovery"), _j(sysd, "Boot"),
         _j(sysd, "PerfLogs"), _j(sysd, "$WinREAgent"), _j(sysd, "Config.Msi"),
     ]
+    for root in _drives():  # the recycle bin, restore data and Store apps of every drive, not only C:
+        out += [os.path.join(root, n) for n in _SYSTEM_ON_EVERY_DRIVE]
     return {norm_path(p) for p in out if p}
+
+
+_PERSONAL = ("Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos", "SavedGames", "OneDrive", "Public",
+             "PublicDesktop", "StartMenu", "CommonStartMenu", "Programs", "CommonPrograms", "Startup", "CommonStartup")
+
+
+def temp_root_problem(root, system_temp=False):
+    """Why `root` must NOT be emptied as a temp folder, or None if it is acceptable (message already translated).
+
+    Refuses: nothing/relative/missing/link, a drive root, the user profile or a parent of it, any shell folder
+    (Documents, Desktop, Downloads, OneDrive...) or anything inside one, and any folder that is or contains a
+    protected_exact()/forbidden_trees() path. system_temp=True (the Windows temp folder) may live inside the Windows tree.
+    """
+    if not root or not isinstance(root, str):
+        return tr("Skipped for safety: the temporary folder could not be found")
+    n = norm_path(root)
+    if not os.path.isabs(root) or len(n) < 3 or n[1:2] != ":":
+        return tr("Skipped for safety: the temporary folder could not be found")
+    if len(n) <= 3:
+        return tr("Skipped for safety: the temporary folder is a whole drive ({path})", path=root)
+    if not os.path.isdir(root) or paths.is_reparse_point(root):
+        return tr("Skipped for safety: the temporary folder ({path}) does not exist or is a link", path=root)
+    k = paths.known_folders()
+    for name in _PERSONAL:
+        f = k.get(name)
+        if f and is_within(root, f):
+            return tr("Skipped for safety: the temporary folder ({path}) is a personal folder or inside one", path=root)
+    prot = list(protected_exact())
+    if os.path.basename(n) in ("temp", "tmp"):   # the normal temp folders are protected against deletion; emptying them is the point
+        prot = [p for p in prot if p != n]
+    for p in prot:
+        if p and is_within(p, root):
+            return tr("Skipped for safety: the temporary folder ({path}) is, or contains, a protected folder", path=root)
+    for p in forbidden_trees():
+        if p and (is_within(p, root) or (not system_temp and is_within(root, p))):
+            return tr("Skipped for safety: the temporary folder ({path}) is, or contains, a protected folder", path=root)
+    return None
 
 
 def forbidden_exceptions():

@@ -357,7 +357,7 @@ function sectionHTML(id) {
       <div class="set"><div class="lbl">${t('Colors')}</div><div class="sw-row" id="swatches">${ACCENTS.map(([a, b, n]) => `<button class="swatch${st.accent === a && st.accent2 === b ? ' on' : ''}" style="--s:${a};--s2:${b}" data-a="${a}" data-b="${b}" aria-label="${n}" title="${n}"></button>`).join('')}
         <button class="swatch custom${ACCENTS.some(([a, b]) => st.accent === a && st.accent2 === b) ? '' : ' on'}" id="swCustom" style="--s:${st.accent};--s2:${st.accent2}" aria-label="${t('Custom colors')}" title="${t('Custom colors')}"><span>${ic('plus')}</span></button></div>
         <div class="cpick-row" id="cpickRow"${ACCENTS.some(([a, b]) => st.accent === a && st.accent2 === b) ? ' hidden' : ''}><span>${t('Primary')}</span><input type="color" data-color="accent" value="${st.accent}" aria-label="${t('Primary color')}"><span>${t('Secondary')}</span><input type="color" data-color="accent2" value="${st.accent2}" aria-label="${t('Secondary color')}"></div></div>
-      <div class="set"><div class="lbl"><div>${t('Interface size')}<span>${t('Automatic picks the one that best fits your screen ({pct}%).', { pct: Math.round(autoZoom * 100) })}</span></div><button class="btn sm sec" data-act="autozoom">${ic('sparkle')}${t('Automatic')}</button></div>${seg('zoom', ZOOMS)}</div>
+      <div class="set"><div class="lbl"><div>${t('Interface size')}<span>${t('Automatic picks the one that best fits your screen ({pct}%).', { pct: Math.round(autoZoom * 100) })}</span><span class="zn" id="zoomNote">${zoomNote()}</span></div><button class="btn sm sec" data-act="autozoom">${ic('sparkle')}${t('Automatic')}</button></div>${seg('zoom', ZOOMS)}</div>
       <div class="set"><div class="lbl">${t('Density')}</div>${seg('density', [['comfortable', t('Comfortable')], ['compact', t('Compact')]])}</div>
       <div class="set"><div class="lbl">${t('Corners')}</div>${seg('corners', [['soft', t('Very round')], ['mid', t('Round')], ['sharp', t('Square')]])}</div>
       ${rng('panelAlpha', t('Solid panels'), t('Raise it so the stars show less behind the panels.'), 1, 2, .05, RNG_FMT.panelAlpha)}`;
@@ -396,14 +396,15 @@ function sectionHTML(id) {
       ${tog('trayOnClose', t('Close to the tray'), t('The X hides the window; StellarHub keeps running in the tray. To quit: right-click the icon > Quit.'))}
       ${tog('sounds', t('Sounds'), t('A soft sound when long tasks finish.'))}
       ${tog('confirmDanger', t('Confirm anything that cannot be undone'), t('Everything else always has an undo button.'))}
-      <div class="set"><div class="lbl"><div>${t('Live data refresh rate')}<span>${t('Faster is smoother; slower uses less power.')}</span></div></div>${seg('teleRate', [['500', t('Fast')], ['1000', t('Normal')], ['2000', t('Saver')]])}</div>`;
+      <div class="set"><div class="lbl"><div>${t('Live data refresh rate')}<span>${t('Faster is smoother; slower uses less power.')}</span></div></div>${seg('teleRate', [['500', t('Fast')], ['1000', t('Normal')], ['2000', t('Saver')]])}</div>
+      ${tog('measurePing', t('Measure the connection latency'), t('Every 2 seconds while StellarHub is open, it opens a connection to 1.1.1.1 (Cloudflare) and times it. Nothing is sent. Turn it off and latency shows as —.'))}`;
     case 'tools': return `<h3>${t('Windows tools')}</h3><p>${t('The system tools that are usually hidden away, one click away.')}</p>
       <div class="tools">${TOOLS.map(([k, n, i]) => `<button class="tool" data-tool="${k}"><span class="ti">${ic(i)}</span>${n}</button>`).join('')}</div>`;
     case 'data': return `<h3>${t('Data')}</h3><p>${t('Your settings and the data StellarHub keeps on this PC.')}</p>
       <div class="set inline"><div class="lbl"><div>${t('Export settings')}<span>${t('A .json file to take them to another PC.')}</span></div></div><button class="btn sec" data-act="export">${ic('upload')}${t('Export')}</button></div>
       <div class="set inline"><div class="lbl"><div>${t('Import settings')}<span>${t('From a file you exported before.')}</span></div></div><button class="btn sec" data-act="import">${ic('download')}${t('Import')}</button></div>
       <div class="set inline"><div class="lbl"><div>${t('Data folder')}<span>${t('Settings, logs and quarantine.')}</span></div></div><button class="btn sec" data-act="datadir">${ic('folder')}${t('Open')}</button></div>
-      <div class="set inline"><div class="lbl"><div>${t('Reset settings')}<span>${t('Puts everything back the way it came. You can undo it.')}</span></div></div><button class="btn danger" data-act="reset">${t('Reset')}</button></div>`;
+      <div class="set inline"><div class="lbl"><div>${t('Reset settings')}<span>${t('Puts the settings back the way they came. Your Autopilot routines, history and kits are kept. You can undo it.')}</span></div></div><button class="btn danger" data-act="reset">${t('Reset')}</button></div>`;
     case 'keys': return `<h3>${t('Shortcuts')}</h3><p>${t('To get around without the mouse.')}</p>
       <div class="keys">${[['Ctrl K', t('Search for a tool or action')], ['Ctrl ,', t('Open settings')], [t('Ctrl 1 to 9'), t('Go to a module')], ['Alt ← / Alt →', t('Back and forward')], [t('Mouse side buttons'), t('Back and forward')], ['Esc', t('Close or go back Home')], [t('Double-click the top bar'), t('Maximize or restore')]].map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>`;
     case 'admin': return `<h3>${t('Administrator')}</h3><p>${t('Installing drivers, cleaning system files and repairing Windows need administrator rights. Without them, StellarHub runs in limited mode.')}</p>
@@ -413,7 +414,8 @@ function sectionHTML(id) {
     case 'updates': return `<h3>${t('Updates')}</h3><p>${t('StellarHub updates itself from its GitHub repository.')}</p>
       <div class="set inline"><div class="lbl"><div>${t('Installed version')}<span>StellarHub ${state.version}${state.portable ? ' · ' + t('portable') : ''}</span></div></div><button class="btn sec" data-act="checkupd">${ic('updater')}${t('Check now')}</button></div>
       <div class="upd-state" id="updState"></div>
-      ${tog('autoUpdate', t('Check for updates automatically'), t('When the app opens and every few hours. Only new features (like 1.2.0 or 2.0.0) are announced with a window; small fixes (like 1.2.3) wait here. StellarHub always asks before updating.'))}`;
+      ${tog('autoUpdate', t('Check for updates automatically'), t('When the app opens and every few hours. Big versions (like 2.0.0) are announced with a window, and small fixes (like 1.2.3) wait here.'))}
+      ${tog('autoUpdateFeatures', t('Install new features automatically'), t('Versions with new features (like 1.2.0) download in the background and install the next time you open StellarHub. Turn it off to choose each time.'))}`;
     case 'about': return `<div class="about-h"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.4"/><circle cx="20.2" cy="8.3" r="1.5" style="fill:var(--accent2)"/></svg>
         <div><h3>StellarHub</h3><p>${t('Version {v}. The control center for your PC.', { v: state.version + (state.portable ? ' ' + t('(portable)') : '') })}</p></div></div>
       <div class="set inline"><div class="lbl"><div>${t('Created by')}<span>${t('Esteban Arosemena and Claude')}</span></div></div></div>
@@ -432,11 +434,11 @@ function variantCards() {
 SH.on('variant:registered', () => { const c = $('#vcards'); if (c) c.innerHTML = variantCards(); });
 let secOn = 'look'; const secInd = new Spring(0, 380, 30);
 const sheet = $('#sheet');
-sheet.innerHTML = `<nav><h2>${SH.t('Settings')}</h2><span class="ind" id="secInd"></span>${SECTIONS.map(([id, n, i]) => `<button data-sec="${id}"${id === secOn ? ' class="on"' : ''}>${ic(i)}${n}</button>`).join('')}<div class="ver">StellarHub ${state.version}</div></nav>
+sheet.innerHTML = `<nav><h2>${SH.t('Settings')}</h2><span class="ind" id="secInd"></span>${SECTIONS.map(([id, n, i]) => `<button data-sec="${id}" title="${n}"${id === secOn ? ' class="on"' : ''}>${ic(i)}<span>${n}</span></button>`).join('')}<div class="ver">StellarHub ${state.version}</div></nav>
   <div class="body" id="setBody"></div><button class="iconbtn x" data-close aria-label="${SH.t('Close')}">${ic('x')}</button>`;
 function showSection(id, first) {
   secOn = id; $$('nav [data-sec]', sheet).forEach(b => b.classList.toggle('on', b.dataset.sec === id));
-  const b = $(`nav [data-sec="${id}"]`, sheet); secInd.t = b.offsetTop; if (first) secInd.set(secInd.t);
+  const b = $(`nav [data-sec="${id}"]`, sheet); b.scrollIntoView({ block: 'nearest' }); secInd.t = b.offsetTop; if (first) secInd.set(secInd.t);
   const body = $('#setBody'); body.innerHTML = `<div class="sec">${sectionHTML(id)}</div>`;
   $$('.sec > *', body).forEach((el, i) => anim(el, [{ opacity: 0, transform: 'translate3d(14px,0,0)' }, { opacity: 1, transform: 'translate3d(0,0,0)' }], { d: 380, delay: 30 + i * 35, e: EASE.spring }));
   requestAnimationFrame(() => $$('.seg', body).forEach(s => placeSeg(s, true)));
@@ -467,7 +469,11 @@ sheet.addEventListener('click', e => {
 });
 async function runAct(a) {
   if (a === 'admin') askAdmin(true);
-  else if (a === 'checkupd') { const b = $('[data-act="checkupd"]'); if (SH.selfUpdate) { if (b) b.disabled = true; try { await SH.selfUpdate.check(true); } finally { if (b) b.disabled = false; } } }
+  else if (a === 'checkupd') {
+    const b = $('[data-act="checkupd"]'); if (!SH.selfUpdate || (b && b.disabled)) return;
+    const html = b && b.innerHTML; if (b) { b.disabled = true; b.classList.add('su-busy'); b.innerHTML = `<span class="su-spin"></span>${SH.t('Checking GitHub…')}`; }
+    try { await SH.selfUpdate.check(true); } finally { if (b && b.isConnected) { b.disabled = false; b.classList.remove('su-busy'); b.innerHTML = html; } }
+  }
   else if (a === 'github') { if (await SH.call('open_url', 'https://github.com/estebanarosemena/StellarHub') === undefined) window.open('https://github.com/estebanarosemena/StellarHub'); }
   else if (a === 'autozoom') {
     const v = String(autoZoom); const s = $('.seg[data-key="zoom"]', sheet);
@@ -482,8 +488,14 @@ async function runAct(a) {
     else if (d) { Object.assign(state.settings, d); applyAll(); showSection(secOn); toast(SH.t('Settings imported.')); }
   } else if (a === 'reset') {
     const old = { ...state.settings }; await SH.call('reset_settings'); try { localStorage.removeItem('sh.settings'); } catch {}
-    Object.keys(state.settings).forEach(k => delete state.settings[k]); Object.assign(state.settings, SH.DEFAULTS); applyAll(); showSection(secOn);
-    toast(SH.t('Settings reset.'), { action: { label: SH.t('Undo'), run: async () => { await SH.call('settings_set', old); Object.assign(state.settings, old); applyAll(); showSection(secOn); } }, ms: 7000 });
+    /* the engine keeps the user's data (and turns off the startup entry and the always-admin task itself): same here */
+    const kept = {}; RESET_KEEP.forEach(k => { if (old[k] !== undefined) kept[k] = old[k]; });
+    Object.keys(state.settings).forEach(k => delete state.settings[k]); Object.assign(state.settings, SH.DEFAULTS, kept); applyAll(); showSection(secOn);
+    toast(SH.t('Settings reset. Your routines, history and kits were kept.'), { action: { label: SH.t('Undo'), run: async () => {
+      await SH.call('settings_set', old); Object.assign(state.settings, old); applyAll(); showSection(secOn);
+      if (old.startWithWindows) SH.call('set_autostart', true).then(r => { if (r === false) toast(SH.t('Windows did not allow changing automatic startup.')); });
+      if (old.alwaysAdmin) alwaysAdminOn();
+    } }, ms: 7000 });
   }
 }
 sheet.addEventListener('input', e => {
@@ -523,15 +535,32 @@ function applySetting(key, val) {
   if (key === 'teleRate' && SH.tele.setRate) SH.tele.setRate(+val);
   /* turning it on in normal mode asks Windows once, right now (the elevated copy then sets up the task, and
      from then on it opens as administrator without asking); turning it off removes the task */
-  if (key === 'alwaysAdmin') {
-    if (val && !state.admin) askAdmin(true);
-    else SH.call('set_always_admin', !!val).then(r => { if (r === false) toast(SH.t('Could not set up starting as administrator.')); });
-  }
+  if (key === 'alwaysAdmin') { if (val) alwaysAdminOn(); else SH.call('set_always_admin', false).then(r => { if (r === false) toast(SH.t('Could not set up starting as administrator.')); }); }
 }
+function alwaysAdminOn() {
+  if (!state.admin) askAdmin(true);
+  else SH.call('set_always_admin', true).then(r => { if (r === false) toast(SH.t('Could not set up starting as administrator.')); });
+}
+/* what Reset settings keeps: the user's data, not preferences (engine side: app.py reset_settings, same list) */
+const RESET_KEEP = ['autopilotRoutines', 'autopilotLog', 'autopilotSchema', 'autopilotNotify', 'activity', 'pending', 'hangarKits', 'updIgnored', 'updSchedule', 'cleanExclusions', 'testerKbMissing', 'cpsBest', 'uiPort', 'language'];
 /* Automatic size: the largest zoom at which the layouts still have the room they are designed for, measured on
    the window itself (not the screen), so it adapts when the window is resized or moved to another monitor. */
 const DESIGN_W = 1440, DESIGN_H = 820;
-let autoZoom = 1, curZoom = 1;
+/* ...and the least room any layout can work with. A size the user picked is capped so the window never has
+   less than this many CSS pixels (at the minimum window, 1100 x 700, 125% would leave 880 x 560: lists with one
+   row, the dock over the content). The cap is temporary: the choice is kept and applies again in a bigger window. */
+const MIN_VW = 1000, MIN_VH = 640, ZSTEPS = [1.4, 1.25, 1.15, 1.1, 1, .92, .85];
+let autoZoom = 1, curZoom = 1, zoomCapped = 0;
+function effectiveZoom() {
+  zoomCapped = 0;
+  if (isAutoZoom()) return autoZoom;
+  const want = +S().zoom, w = innerWidth * curZoom, h = innerHeight * curZoom; // the window's size at 100 %
+  const z = ZSTEPS.find(x => x <= want && w / x >= MIN_VW && h / x >= MIN_VH) || ZSTEPS[ZSTEPS.length - 1];
+  if (z < want) zoomCapped = z;
+  return Math.min(z, want);
+}
+function zoomNote() { return zoomCapped ? SH.t('Reduced to {pct}% while the window is this small, so everything fits.', { pct: Math.round(zoomCapped * 100) }) : ''; }
+function paintZoomNote() { const n = $('#zoomNote'); if (n) n.textContent = zoomNote(); }
 function computeAutoZoom() {
   const w = innerWidth * curZoom, h = innerHeight * curZoom; // the window's size at 100 %
   autoZoom = [1.25, 1.15, 1.1, 1, .92, .85].find(z => w / z >= DESIGN_W && h / z >= DESIGN_H) || .85;
@@ -540,14 +569,12 @@ let zoomTimer = 0;
 addEventListener('resize', () => {
   clearTimeout(zoomTimer);
   zoomTimer = setTimeout(() => {
-    if (!isAutoZoom()) return;
-    const before = autoZoom; computeAutoZoom();
-    if (autoZoom !== before || autoZoom !== curZoom) applyZoom();
+    computeAutoZoom(); applyZoom();
   }, 350);
 });
 const isAutoZoom = () => S().zoom === 'auto' || !ZOOMS.some(z => z[0] === String(S().zoom));
 function applyZoom() {
-  const z = isAutoZoom() ? autoZoom : +S().zoom;
+  const z = effectiveZoom(); paintZoomNote(); SH.zoom = { wanted: isAutoZoom() ? 'auto' : +S().zoom, effective: z, capped: !!zoomCapped };
   if (z === curZoom && SH.booted) return;
   curZoom = z; SH.call('set_zoom', z);
 }
@@ -577,14 +604,20 @@ $('#gearBtn').addEventListener('click', () => state.setOpen ? closeSettings() : 
 $$('.overlay').forEach(o => o.addEventListener('click', e => { if (e.target.closest('[data-close]')) o.id === 'palO' ? closePal() : closeSettings(); }));
 
 /* ================= administrator mode ================= */
-const note = $('#adminNote'); let noteShown = false, lastHint = 0;
-function showNote(reason) {
+/* The suggestion is a small card under the mode pill. It never stays: it goes away by itself after a few seconds
+   (not while the pointer is on it), on a click anywhere else, with Esc, and when you move to another module or tab,
+   so it cannot sit over the buttons of whatever you open. Started by the app, it shows once per session. */
+const note = $('#adminNote'); let noteShown = false, lastHint = 0, noteTimer = 0;
+const armNote = ms => { clearTimeout(noteTimer); noteTimer = setTimeout(hideNote, ms * (S().intensity === 'min' ? 1.4 : 1)); };
+function showNote(reason, auto) {
   if (state.admin || noteShown) return; noteShown = true; lastHint = Date.now();
+  armNote(auto ? 6000 : 10000);
   $('#noteReason').textContent = SH.t(reason || 'to install drivers, clean system files and repair Windows. Without it, StellarHub runs in limited mode.');
   note.classList.add('on');
   anim(note, [{ opacity: 0, transform: 'translate3d(0,-8px,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'translate3d(0,0,0) scale(1)', filter: 'blur(0px)' }], { d: 420, e: EASE.spring });
 }
 function hideNote() {
+  clearTimeout(noteTimer);
   if (!noteShown) return; noteShown = false; note.classList.remove('on');
   anim(note, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'translate3d(0,-6px,0) scale(.96)' }], { d: 180 });
   if ($('#noteNever').classList.contains('on')) SH.setSetting('adminHints', false);
@@ -610,6 +643,10 @@ function setAdmin(on) {
   anim(pill, [{ transform: 'scale(1)' }, { transform: 'scale(1.08)', offset: .35 }, { transform: 'scale(1)' }], { d: 460 });
 }
 $('#modePill').addEventListener('click', () => { if (state.admin) { openSettings('admin'); return; } noteShown ? hideNote() : showNote(); });
+note.addEventListener('pointerenter', () => clearTimeout(noteTimer));
+note.addEventListener('pointerleave', () => { if (noteShown) armNote(4000); });
+addEventListener('pointerdown', e => { if (noteShown && !note.contains(e.target) && !e.target.closest('#modePill')) hideNote(); }, true);
+SH.on('view', () => { if (noteShown) hideNote(); }); SH.on('tab', () => { if (noteShown) hideNote(); });
 $('#adminYes').addEventListener('click', () => askAdmin(true));
 $('#adminNo').addEventListener('click', hideNote);
 $('#noteNever').addEventListener('click', e => e.currentTarget.classList.toggle('on'));
@@ -682,13 +719,15 @@ SH.boot = async () => {
   await SH.loadSettings();
   const [info, pc] = await Promise.all([SH.call('info'), SH.call('pc_info')]);
   if (pc && pc.components) { Object.assign(SH.PC, pc); SH.PC.real = true; }
-  if (info) { state.version = info.version; state.portable = !!info.portable; if (info.admin) { state.admin = true; $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
+  if (info) { state.version = info.version; state.portable = !!info.portable; const ver = $('#sheet nav .ver'); if (ver) ver.textContent = `StellarHub ${info.version}`; if (info.admin) { state.admin = true; $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
   applyLook(); applyZoom();
   MODS.filter(m => m.id !== 'home').forEach(buildModule);
   SH.on('module:registered', def => { if (def.id !== 'home' && modById(def.id)) buildModule(modById(def.id)); });
   anim($('.top'), [{ opacity: 0, transform: 'translate3d(0,-10px,0)' }, { opacity: 1, transform: 'none' }], { d: 600, delay: 300 });
   anim(dock, [{ opacity: 0, transform: 'translateX(-50%) translate3d(0,30px,0) scale(.9)' }, { opacity: 1, transform: 'translateX(-50%) translate3d(0,0,0) scale(1)' }], { d: 800, delay: 900, e: EASE.spring });
-  if (!state.admin && S().adminHints) setTimeout(() => showNote(), 4200);
+  /* once per session: reloading for a language change does not bring it back */
+  let seen = false; try { seen = !!sessionStorage.getItem('sh.noteAuto'); } catch {}
+  if (!state.admin && S().adminHints && !seen) setTimeout(() => { try { sessionStorage.setItem('sh.noteAuto', '1'); } catch {} if (!state.setOpen && !state.palOpen) showNote(undefined, true); }, 4200);
   SH.emit('boot');
   SH.booted = true; requestAnimationFrame(() => SH.call('ui_ready'));  /* startup time goes to the log */
   bootDone();

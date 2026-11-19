@@ -81,12 +81,28 @@ def _known_folder(guid):
             ctypes.windll.ole32.CoTaskMemFree(path)
 
 
+def user_temp_dir():
+    """The user's temp folder as Windows itself resolves it (GetTempPathW honours TMP/TEMP/USERPROFILE), falling
+    back to the Temp folder of LocalAppData. NOT validated here: the cleaner must run safety.temp_root_problem() on it."""
+    try:
+        buf = ctypes.create_unicode_buffer(32768)
+        n = ctypes.windll.kernel32.GetTempPathW(len(buf), buf)
+        if 0 < n < len(buf) and buf.value:
+            p = buf.value
+            return p.rstrip("\\") if len(p) > 3 else p
+    except Exception:
+        pass
+    if os.environ.get("TEMP"):
+        return os.environ["TEMP"]
+    local = _known_folder(KNOWN["LocalAppData"]) or os.environ.get("LOCALAPPDATA")
+    return os.path.join(local, "Temp") if local else None
+
+
 @lru_cache(maxsize=1)
 def known_folders():
     out = {k: _known_folder(g) for k, g in KNOWN.items()}
     env = os.environ
-    out.setdefault("Temp", None)
-    out["Temp"] = env.get("TEMP")
+    out["Temp"] = user_temp_dir()
     if not out.get("OneDrive"):
         out["OneDrive"] = env.get("OneDrive")
     out["SystemDrive"] = (env.get("SystemDrive", "C:") + "\\")
@@ -169,6 +185,46 @@ def folder_size(path, limit_files=None):
 
 
 _REPARSE, _DIRECTORY = 0x400, 0x10
+
+
+def walk_nolinks(root):
+    """Bottom-up walk that NEVER enters a link or junction (os.walk does on Windows).
+
+    Yields (dirpath, files, dirs, links): `links` are reparse points (file or folder) found directly in dirpath;
+    they are reported, never descended into. Delete a link with remove_link(), which never touches its target.
+    """
+    def visit(d):
+        files, dirs, links = [], [], []
+        try:
+            with os.scandir(d) as it:
+                for e in it:
+                    try:
+                        attrs = e.stat(follow_symlinks=False).st_file_attributes
+                    except OSError:
+                        continue
+                    if attrs & _REPARSE:
+                        links.append(e.path)
+                    elif attrs & _DIRECTORY:
+                        dirs.append(e.path)
+                    else:
+                        files.append(e.path)
+        except OSError:
+            return
+        for sub in dirs:
+            yield from visit(sub)
+        yield d, files, dirs, links
+    yield from visit(root)
+
+
+def remove_link(path):
+    """Remove the link itself (junction, directory or file symlink), never its target."""
+    try:
+        if os.stat(path, follow_symlinks=False).st_file_attributes & _DIRECTORY:
+            os.rmdir(path)
+            return
+    except OSError:
+        pass
+    os.remove(path)
 
 
 def path_size(path):

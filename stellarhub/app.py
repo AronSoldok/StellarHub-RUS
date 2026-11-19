@@ -110,8 +110,31 @@ class Api:
     def info(self):
         return {"version": VERSION, "admin": is_admin(), "portable": PORTABLE}
 
+    _reveal_pending = False
+
+    def _reveal(self):
+        """The start screen gives way to the window: show it, fade the page in, fade the card out."""
+        if not self._reveal_pending:
+            return
+        self._reveal_pending = False
+        self._js("window.SH && SH.enter && SH.enter()")
+        try:  # from off screen to the primary monitor, where show_main maximizes it
+            import ctypes.wintypes as wt
+            wa = wt.RECT()
+            ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(wa), 0)
+            self._window.move(wa.left + 60, wa.top + 40)
+        except Exception as e:
+            print("reveal:", e)
+        self.show_main()
+        try:
+            from . import splash
+            threading.Timer(.12, splash.close).start()
+        except Exception:
+            pass
+
     def ui_ready(self):
         """The interface finished its first frame: logs how long the start took, from the process launch."""
+        self._reveal()
         try:
             import psutil
             secs = time.time() - psutil.Process().create_time()
@@ -123,25 +146,24 @@ class Api:
     # ---------- settings ----------
     def settings_get(self):
         try:
-            with open(SETTINGS, encoding="utf-8") as fh:
-                data = json.load(fh)
-                return data if isinstance(data, dict) else {}
-        except (OSError, ValueError):
+            return _load_settings_strict()
+        except OSError:
             return {}
 
     def settings_set(self, changes):
         if not isinstance(changes, dict):
             return False
         with self._lock:
-            data = self.settings_get()
+            try:
+                data = _load_settings_strict()
+            except OSError:
+                return False  # the file is there but can't be read right now: never overwrite it with less
             data.update(changes)
-            os.makedirs(DATA_DIR, exist_ok=True)
-            tmp = SETTINGS + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, ensure_ascii=False, indent=2)
-            os.replace(tmp, SETTINGS)
+            _write_json(SETTINGS, data)
         if "language" in changes:
             self._language_changed(changes["language"])
+        if "measurePing" in changes and self._sampler:
+            self._sampler.ping_on = changes["measurePing"] is not False
         return True
 
     def _language_changed(self, pref):
@@ -249,7 +271,11 @@ class Api:
         self.widget_close()
         if self._tray is not None:
             self._tray.stop()
-        threading.Timer(0.05, lambda: self._window.destroy()).start()
+        delay = 0.05
+        if self._visible:
+            self._js("window.SH && SH.leave && SH.leave()")
+            delay = 0.3
+        threading.Timer(delay, lambda: self._window.destroy()).start()
         return True
 
     def _on_closing(self):
@@ -310,10 +336,17 @@ class Api:
         w, h = max(160, min(1100, int(width or 400))), max(32, min(600, int(height or 190)))
         x = y = None
         try:
-            scr = webview.screens[0]
-            x, y = scr.width - w - 28, 72
+            import ctypes.wintypes as wt
+            wa = wt.RECT()
+            ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(wa), 0)  # SPI_GETWORKAREA (primary)
+            dpi = ctypes.windll.user32.GetDpiForSystem() / 96 if hasattr(ctypes.windll.user32, "GetDpiForSystem") else 1
+            x, y = int(wa.right / dpi) - w - 28, int(wa.top / dpi) + 72
         except Exception:
-            pass
+            try:
+                scr = webview.screens[0]
+                x, y = scr.width - w - 28, 72
+            except Exception:
+                pass
         self._widget = webview.create_window(
             tr("StellarHub widget"), url=os.path.join(UI_DIR, "widget.html"), js_api=self,
             width=w, height=h, x=x, y=y, frameless=True, easy_drag=True, on_top=True, min_size=(120, 30),
@@ -504,6 +537,7 @@ class Api:
                     self._panel_shown = False
                     self._panel_hidden_at = time.time()
                     form.Hide()
+                    self._tele_refresh()
             form.BeginInvoke(Action(lambda: form.add_Deactivate(EventHandler(on_deactivate))))
         except Exception as e:
             print("tray panel setup:", e)
@@ -569,6 +603,7 @@ class Api:
             return False
         self._panel_shown = False
         self._panel_hidden_at = time.time()
+        self._tele_refresh()
         try:
             from System import Action
             form = pw.native
@@ -659,8 +694,8 @@ class Api:
         if self._sampler:
             stats = self.settings_get().get("widgetStats") or []
             gpu_in_widget = any(s.startswith("gpu") or s == "vram" for s in stats)
-            self._sampler.set_active(self._visible or self._widget is not None,
-                                     gpu=self._visible or (self._widget is not None and gpu_in_widget))
+            self._sampler.set_active(self._visible or self._widget is not None or self._panel_shown,
+                                     gpu=self._visible or self._panel_shown or (self._widget is not None and gpu_in_widget))
 
     # ---------- permanent administrator mode ----------
     def set_always_admin(self, on):
@@ -746,13 +781,30 @@ class Api:
         self.settings_set(data)
         return data
 
+    # what "Reset settings" keeps: the user's own data (routines and their log, history, kits, ignored updates,
+    # exclusions, test results), not preferences
+    KEEP_ON_RESET = ("autopilotRoutines", "autopilotLog", "autopilotSchema", "autopilotNotify", "activity", "pending",
+                     "hangarKits", "updIgnored", "updSchedule", "cleanExclusions", "testerKbMissing", "cpsBest", "uiPort",
+                     "language")
+
     def reset_settings(self):
-        """Returns the saved settings (so it can be undone) and deletes them."""
+        """Puts the preferences back to their defaults and returns the old settings (so it can be undone). The user's
+        data in the settings file is kept, and what lives outside it follows: no Windows startup entry and no
+        always-as-administrator task once their switches are off."""
         old = self.settings_get()
-        try:
-            os.remove(SETTINGS)
-        except OSError:
-            pass
+        keep = {k: old[k] for k in self.KEEP_ON_RESET if k in old}
+        with self._lock:
+            try:
+                _write_json(SETTINGS, keep)
+            except OSError:
+                return old
+        if old.get("startWithWindows"):
+            self.set_autostart(False)
+        if old.get("alwaysAdmin"):
+            try:
+                _delete_admin_task()
+            except Exception:
+                pass
         return old
 
     def open_url(self, url):
@@ -878,6 +930,7 @@ def _log_to_file():
 
 
 ADMIN_TASK = r"StellarHub\Open as administrator"
+_START_HIDDEN = os.path.join(paths.local_dir(), "start-hidden")  # see _elevate_on_start
 LEGACY_ADMIN_TASKS = (r"StellarHub\Abrir como administrador",)  # name used by earlier versions
 
 
@@ -895,7 +948,7 @@ def _ensure_admin_task():
     exe, args = _launch_cmd("--from-task")
     task_cmd = f'"{exe}" {args}'
     r = subprocess.run(["schtasks", "/create", "/tn", ADMIN_TASK, "/tr", task_cmd, "/sc", "once", "/st", "00:00",
-                        "/sd", "01/01/2000", "/rl", "highest", "/it", "/f"],
+                        "/rl", "highest", "/it", "/f"],
                        capture_output=True, text=True, creationflags=0x08000000)
     if r.returncode == 0:  # replace tasks left by earlier versions under another name
         for old in LEGACY_ADMIN_TASKS:
@@ -914,6 +967,7 @@ def _elevate_on_start():
     (first through the scheduled task, with no prompt; if it does not exist, with the UAC prompt). Returns True if we must exit."""
     if is_admin() or ISOLATED or "--no-elevate" in sys.argv or "--from-task" in sys.argv:
         return False
+    hidden = "--tray" in sys.argv
     try:
         with open(SETTINGS, encoding="utf-8") as fh:
             if not json.load(fh).get("alwaysAdmin"):
@@ -921,12 +975,18 @@ def _elevate_on_start():
     except (OSError, ValueError):
         return False
     import subprocess
+    if hidden:  # the task can't take arguments: the elevated copy reads this note and stays in the tray
+        try:
+            os.makedirs(os.path.dirname(_START_HIDDEN), exist_ok=True)
+            open(_START_HIDDEN, "w").close()
+        except OSError:
+            pass
     if not PORTABLE and _task_opens_this_copy(ADMIN_TASK) and subprocess.run(
             ["schtasks", "/run", "/tn", ADMIN_TASK], capture_output=True, creationflags=0x08000000).returncode == 0:
         return True
     # no task, or it opens another copy (e.g. the source version before installing): ask Windows once;
     # the elevated copy then points the task at itself
-    exe, args = _launch_cmd("--no-elevate")
+    exe, args = _launch_cmd("--no-elevate" + (" --tray" if hidden else ""))
     if ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, args, base_dir(), 1) > 32:
         return True
     return False  # the user said no: stay in normal mode
@@ -944,7 +1004,7 @@ def _task_opens_this_copy(name):
     if r.returncode != 0:
         return False
     raw = r.stdout
-    xml = raw.decode("utf-16", "replace") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("mbcs", "replace")
+    xml = raw.decode("utf-16", "replace") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("oem", "replace")
     exe, _args = _launch_cmd()
     cmd = re.search(r"<Command>(.*?)</Command>", xml, re.S)
     arg = re.search(r"<Arguments>(.*?)</Arguments>", xml, re.S)
@@ -1093,6 +1153,28 @@ def _uninstall_cleanup():
         pass
 
 
+def _let_windows_shut_down(api):
+    """Closing the window normally hides it to the tray (_on_closing cancels the close). When Windows is signing out,
+    restarting or shutting down, that cancel would block it ("StellarHub is preventing restart"), so on SessionEnding
+    StellarHub marks itself as quitting and lets every close through."""
+    try:
+        import clr  # noqa: F401
+        clr.AddReference("System")
+        from Microsoft.Win32 import SystemEvents, SessionEndingEventHandler
+
+        def ending(sender, args):
+            api._quitting = True
+            try:
+                from .engine import autopilot
+                autopilot.stop()
+            except Exception:
+                pass
+        SystemEvents.SessionEnding += SessionEndingEventHandler(ending)
+        api._session_handler = ending  # keep a reference so it is not collected
+    except Exception as e:
+        print("session end hook:", e)
+
+
 _WV2 = r"Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 
 
@@ -1117,6 +1199,75 @@ def _no_webview2():
     if ctypes.windll.user32.MessageBoxW(None, msg, "StellarHub", 0x04 | 0x30) == 6:  # Yes/No with a warning icon; IDYES
         import webbrowser
         webbrowser.open("https://go.microsoft.com/fwlink/p/?LinkId=2124703")
+
+
+def _install_staged_update(splash_on):
+    """A version with new features (x.Y.0) downloaded in the background is installed here, at the start, before
+    the window: the start screen says "Updating to…" and StellarHub opens again already updated. Never with
+    "Install new features automatically" off, and never blocks the start if anything is off."""
+    if not FROZEN or ISOLATED and not os.environ.get("STELLARHUB_UPDATE_URL"):
+        return False
+    try:
+        from .engine import selfupdate
+        if not selfupdate.staged():
+            return False
+        if _load_settings_strict().get("autoUpdateFeatures") is False:
+            return False
+        say = None
+        if splash_on:
+            from . import splash
+            say = splash.status
+        if not selfupdate.apply_staged_at_start(say=say):
+            if say:
+                say("")
+            return False
+        if splash_on:
+            from . import splash
+            splash.close()
+            time.sleep(.35)
+        return True
+    except Exception as e:
+        print("staged update:", e)
+        return False
+
+
+def _load_settings_strict():
+    """settings.json as a dict. Missing: {}. Unreadable for a moment (antivirus, backup software): a few retries,
+    then OSError. Damaged: kept as settings.json.bad and {} (so it is never silently overwritten)."""
+    for i in range(6):
+        try:
+            with open(SETTINGS, encoding="utf-8") as fh:
+                data = json.load(fh)
+            return data if isinstance(data, dict) else {}
+        except FileNotFoundError:
+            return {}
+        except ValueError:
+            try:
+                shutil.copy2(SETTINGS, SETTINGS + ".bad")
+            except OSError:
+                pass
+            return {}
+        except OSError:
+            if i == 5:
+                raise
+            time.sleep(.05)
+    return {}
+
+
+def _write_json(path, data):
+    """Writes through a temp file and os.replace, retrying while another program has the file open for a moment."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+    for i in range(20):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if i == 19:
+                raise
+            time.sleep(.05)
 
 
 UI_PORT = 47822  # the interface's local web server. pywebview's default (42001) is shared by every pywebview app
@@ -1144,16 +1295,27 @@ def _ui_port():
     if ISOLATED:
         return port
     try:
-        data = _read_settings()
+        data = _load_settings_strict()
         data["uiPort"] = port
-        with open(SETTINGS, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=2)
+        _write_json(SETTINGS, data)
     except OSError:
         pass
     return port
 
 
-SINGLE_PORT = 47821  # single instance: a second copy asks the first one to show itself, then exits
+def _session_id():
+    sid = ctypes.c_ulong(0)
+    try:
+        if ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(sid)):
+            return sid.value
+    except Exception:
+        pass
+    return 0
+
+
+# single instance: a second copy asks the first one to show itself, then exits. One port per Windows session, so
+# a second user signed in on the same PC (fast user switching, Remote Desktop) gets their own StellarHub
+SINGLE_PORT = 47830 + _session_id() % 70
 if ISOLATED:
     SINGLE_PORT = 47900 + os.getpid() % 90
 
@@ -1278,6 +1440,23 @@ def main():
     if not _claim_single_instance():
         _show_running_copy()
         return
+    start_hidden = "--tray" in sys.argv
+    if "--from-task" in sys.argv and os.path.exists(_START_HIDDEN):
+        start_hidden = True
+    try:
+        os.remove(_START_HIDDEN)
+    except OSError:
+        pass
+    splash_on = not start_hidden and os.environ.get("STELLARHUB_NO_SPLASH") != "1"
+    if splash_on:  # the start screen, while everything below loads (StellarHub opens with it, like FL Studio)
+        try:
+            from . import splash
+            splash.show()
+        except Exception as e:
+            print("splash:", e)
+            splash_on = False
+    if not start_hidden and _install_staged_update(splash_on):
+        return  # the installer (or the new portable copy) takes over and opens StellarHub again, updated
     if not ISOLATED:  # a test copy never takes over the user's "open with Windows" entry or administrator task
         threading.Thread(target=_sync_launch_entries, daemon=True).start()
     if PORTABLE:
@@ -1303,20 +1482,27 @@ def main():
     title = tr("StellarHub (administrator)") if is_admin() else "StellarHub"
     from .chrome import Chrome
 
-    start_hidden = "--tray" in sys.argv
     window = webview.create_window(
         title, url=os.path.join(UI_DIR, "index.html"), js_api=api,
         width=1600, height=960, min_size=(1100, 700), frameless=True, easy_drag=False, shadow=True,
         background_color=BG, text_select=False, hidden=start_hidden,
+        x=-32000 if splash_on else None, y=-32000 if splash_on else None,
     )
     api._attach(window)
+    if splash_on:
+        api._reveal_pending = True
+        t = threading.Timer(45, api._reveal)  # whatever happens, never leave only the start screen
+        t.daemon = True
+        t.start()
 
     def on_state(maxed):  # called from the window thread: never wait here
         api._js(f"window.SH && SH.emit('win', {{max: {'true' if maxed else 'false'}}})")
 
     api._chrome = Chrome(window, on_state)
-    window.events.shown += lambda: (api._chrome.setup(start_max=True), _grant_media(window))
+    # with the start screen up, the window is placed and maximized when it is revealed (Api._reveal)
+    window.events.shown += lambda: (None if api._reveal_pending else api._chrome.setup(start_max=True), _grant_media(window))
     window.events.closing += api._on_closing
+    _let_windows_shut_down(api)
 
     from .tray import Tray
     try:
@@ -1336,6 +1522,7 @@ def main():
         api._sampler = Sampler(api._tele_push)
         rate = float(api.settings_get().get("teleRate") or 1000) / 1000
         api._sampler.set_rate(rate)
+        api._sampler.ping_on = api.settings_get().get("measurePing", True) is not False
         api._visible = not start_hidden
         window.events.loaded += lambda: (api._sampler.start(), api._tele_refresh())
     except Exception as e:

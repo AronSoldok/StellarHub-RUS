@@ -1,6 +1,7 @@
 {
   "Ads and promotions": "Anúncios e promoções",
   "Diagnostics and activity": "Diagnóstico e atividade",
+  "Not changed: the backup of the previous state couldn't be saved ({error}).": "Não foi alterado: não foi possível guardar a cópia do estado anterior ({error}).",
   "Start, search and Settings": "Iniciar, pesquisa e Configurações",
   "Speech, inking and typing": "Fala, escrita à tinta e digitação",
   "Find my device": "Localizar meu dispositivo",
@@ -425,5 +426,9 @@
   "Windows Firewall is off: {list}": "O Firewall do Windows está desativado: {list}",
   "1 setting shares data that Windows works fine without": "1 configuração compartilha dados de que o Windows não precisa",
   "{n} settings share data that Windows works fine without": "{n} configurações compartilham dados de que o Windows não precisa",
-  "Protection level, out of 100": "Nível de proteção, de 100"
+  "Protection level, out of 100": "Nível de proteção, de 100",
+  "{n} s": "{n} s",
+  "{n} min": "{n} min",
+  "{n} h": "{n} h",
+  "Applying…": "Aplicando…"
 }

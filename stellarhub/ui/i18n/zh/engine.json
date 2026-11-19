@@ -55,5 +55,9 @@
   "Displays": "显示器",
   "Battery": "电池",
   "Audio": "音频",
-  "System": "系统"
+  "System": "系统",
+  "Disk {size}": "{size} 磁盘",
+  "Updating to {v}…": "正在更新到 {v}…",
+  "Updating to {v}… {p}%": "正在更新到 {v}… {p}%",
+  "{v} GHz": "{v} GHz"
 }

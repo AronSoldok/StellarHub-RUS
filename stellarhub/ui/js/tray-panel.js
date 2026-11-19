@@ -29,7 +29,11 @@ function build() {
   $('#quit').innerHTML = ic('power'); $('#quit').title = t('Quit StellarHub');
 }
 
+/* no battery (desktop): its tile goes away once real telemetry says so, and the other three share the row */
+const noBattery = v => !SH.tele.simulated && !ok(v.battery) && !(SH.PC && SH.PC.real && SH.PC.components.some(c => c.id === 'battery'));
 function paint(v) {
+  const nb = noBattery(v), vit = $('#vit');
+  if (vit && vit.dataset.nb !== String(nb)) { vit.dataset.nb = String(nb); const b = $('.vt[data-k="battery"]', vit); if (b) b.hidden = nb; vit.style.gridTemplateColumns = nb ? 'repeat(3,1fr)' : ''; }
   VITALS.forEach(([k, , val, frac, hot]) => {
     const el = $(`.vt[data-k="${k}"]`); if (!el) return;
     const [a, u] = val(v); el.querySelector('b').innerHTML = a === '—' ? '—' : `${a}<small>${u}</small>`;
@@ -65,7 +69,13 @@ document.addEventListener('click', e => {
   const a = e.target.closest('.qa button');
   if (a) {
     const act = a.dataset.a;
-    if (act === 'widget') { SH.call('widget_toggle').then(open => { const tog = $('#wTog'); if (tog) tog.classList.toggle('on', !!open); }); return; }
+    if (act === 'widget') {
+      if (a.dataset.busy) return;                 // the window is still being created or closed: ignore the extra click
+      a.dataset.busy = '1'; a.setAttribute('aria-busy', 'true');
+      SH.call('widget_toggle').then(open => { const tog = $('#wTog'); if (tog) tog.classList.toggle('on', !!open); })
+        .catch(() => {}).finally(() => { delete a.dataset.busy; a.removeAttribute('aria-busy'); });
+      return;
+    }
     if (act === 'optimize') go('optimizer', 'overview');
     if (act === 'updates') go('updater', 'overview');
     if (act === 'disk') go('storage', 'map');

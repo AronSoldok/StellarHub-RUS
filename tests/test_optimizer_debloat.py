@@ -240,9 +240,10 @@ class TweakJobs(unittest.TestCase):
     def test_apply_then_undo_one_and_all(self):
         reg = FakeReg()
         with mock.patch.object(D, "_admin", return_value=False):
-            r = D.apply(self.Job(), {"tweaks": ["tb_left", "web_search", "widgets"]}, reg=reg)
-            self.assertEqual(sorted(r["tweaks"]), ["tb_left", "web_search"])
-            self.assertEqual(r["skippedAdmin"], ["widgets"])  # HKLM needs administrator mode
+            r = D.apply(self.Job(), {"tweaks": ["tb_left", "search_highlights", "web_search", "widgets"]}, reg=reg)
+            self.assertEqual(sorted(r["tweaks"]), ["search_highlights", "tb_left"])
+            # HKLM and HKCU\Software\Policies (read-only for ordinary users) need administrator mode
+            self.assertEqual(r["skippedAdmin"], ["web_search", "widgets"])
             self.assertTrue(r["explorer"])
             listed = {x["id"]: x for x in D.tweaks_list(reg)["items"]}
             self.assertEqual(listed["tb_left"]["state"], "off")
@@ -251,8 +252,9 @@ class TweakJobs(unittest.TestCase):
             self.assertEqual(D.tweak_undo("tb_left", reg)["ok"], True)
             self.assertEqual(D.tweak_state(T["tb_left"], reg)[0], "on")
             self.assertEqual(D.tweak_undo("widgets", reg), {"needAdmin": True})
+            self.assertEqual(D.tweak_undo("web_search", reg), {"needAdmin": True})
             u = D.undo_all(self.Job(), reg=reg)
-            self.assertEqual(u["tweaks"], ["web_search"])
+            self.assertEqual(u["tweaks"], ["search_highlights"])
         self.assertEqual(reg.vals, {})
         self.assertEqual(D.history(), {"tweaks": [], "apps": []})
 

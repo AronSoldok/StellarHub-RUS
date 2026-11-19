@@ -123,14 +123,21 @@ function kbRebuild(el, animate) {
   updKb(el);
   if (animate) $$('.k', box).forEach((k, i) => anim(k, [{ opacity: 0, transform: 'scale(.6)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: Math.min(i * 4, 260), e: EASE.spring }));
 }
+/* what Windows uses: a green check when it is the layout drawn here, a neutral warning when the chosen one differs */
+function kbDetChip(el) {
+  const chip = $('#kbDet', el); if (!chip || !kb.detected || !KB_LANGS[kb.detected]) return;
+  const same = kbLang() === kb.detected;
+  chip.hidden = false; chip.classList.toggle('ok', same); chip.classList.toggle('warn', !same);
+  chip.innerHTML = `${ic(same ? 'check' : 'alert')}${same ? t('Windows uses {layout}', { layout: esc(KB_LANGS[kb.detected].n) }) : t('Windows uses {layout}, not this one', { layout: esc(KB_LANGS[kb.detected].n) })}`;
+}
 async function kbDetect(el) {
   try {
     if (!navigator.keyboard || !navigator.keyboard.getLayoutMap) return;
     const m = await navigator.keyboard.getLayoutMap(); const g = c => (m.get(c) || '').toLowerCase();
     const d = g('KeyQ') === 'a' ? 'fr-FR' : g('KeyY') === 'z' ? 'de-DE' : g('Semicolon') === 'ñ' ? (g('Backquote') === 'º' ? 'es-ES' : 'es-419') : g('Semicolon') === 'ç' ? 'pt-BR' : g('Backslash') === '#' ? 'en-GB' : 'en-US';
-    kb.detected = d; const chip = $('#kbDet', el);
-    if (chip) { chip.hidden = false; chip.innerHTML = `${ic('check')}${t('Windows uses {layout}', { layout: esc(KB_LANGS[d].n) })}`; }
+    kb.detected = d; kbDetChip(el);
     if (!state.settings.testerKbLang && d !== 'es-ES') { $('#kbLang', el).value = d; kbRebuild(el, true); }
+    kbDetChip(el);
   } catch {}
 }
 function renderKeyboard(el) {
@@ -155,11 +162,12 @@ function renderKeyboard(el) {
       <div class="kb-acts" data-asm><button class="btn sec" id="kbReset">${ic('reset')}${t('Reset')}</button><button class="btn ghost" id="kbStop" hidden>${t('End the test')}</button></div>
     </div></div>`;
   kb.el = el;
+  { const st = $('#kbStage', el), cv = $('#kbCover', el); if (st && cv) st.appendChild(cv); }  /* the cover lives on the keyboard area, whatever height the toolbar takes */
   kbRebuild(el, false);
   new ResizeObserver(() => kbFit(el)).observe($('#kbStage', el));
   requestAnimationFrame(() => SH.placeSeg($('#kbFmt', el), true));
   $('#kbFmt', el).addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return; $$('#kbFmt button', el).forEach(x => x.classList.toggle('on', x === b)); SH.placeSeg($('#kbFmt', el)); SH.setSetting('testerKbFormat', b.dataset.v); kbRebuild(el, true); });
-  $('#kbLang', el).addEventListener('change', e => { SH.setSetting('testerKbLang', e.target.value); kbRebuild(el, true); });
+  $('#kbLang', el).addEventListener('change', e => { SH.setSetting('testerKbLang', e.target.value); kbRebuild(el, true); kbDetChip(el); });
   $('#kbSugYes', el).addEventListener('click', e => { const b = $(`#kbFmt [data-v="${e.currentTarget.dataset.to || 'full'}"]`, el); b && b.click(); hideSug(el); });
   $('#kbMiss', el).addEventListener('click', () => setMarking(el, !kb.marking));
   $('#kbMissDone', el).addEventListener('click', () => setMarking(el, false));

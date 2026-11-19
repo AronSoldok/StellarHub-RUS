@@ -62,6 +62,12 @@
 #v-updater .u-notes ul{margin:8px 0 4px 66px;padding:10px 14px 10px 28px;border-radius:10px;background:var(--raise);border:1px solid var(--line);color:var(--mute);font-size:12.5px;display:flex;flex-direction:column;gap:4px}
 #v-updater .u-spin{width:13px;height:13px;flex:none;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:uspin calc(800ms + 400ms*(1 - var(--f))) linear infinite;opacity:.8}
 @keyframes uspin{to{transform:rotate(360deg)}}
+/* busy buttons: the refresh icon keeps turning; lists from the previous search look dimmed while a new one runs */
+#v-updater .btn.u-busy svg{animation:uspin calc(800ms + 400ms*(1 - var(--f))) linear infinite}
+html[data-int=min] #v-updater .btn.u-busy svg{animation-duration:2.4s}
+#v-updater .btn.u-busy:disabled{cursor:progress}
+#v-updater .u-groups,#v-updater .u-applist{transition:opacity calc(240ms*var(--f))}
+#v-updater.u-rescan .u-groups,#v-updater.u-rescan .u-applist{opacity:.55}
 
 /* selection bar */
 #v-updater .u-list .u-selbar{position:static;margin:0 4px 10px;flex:none}
@@ -173,7 +179,7 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-hist .ri svg{width:14px;height:14px}
 
 /* components */
-#v-updater .u-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:minmax(min-content,1fr);gap:14px;align-content:stretch;padding:2px 6px 12px 2px}
+#v-updater .u-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:auto;gap:14px;align-content:start;padding:2px 6px 12px 2px}
 #v-updater .u-cards>.u-card{min-height:min-content}
 #v-updater .u-card{display:flex;flex-direction:column;padding:16px;transition:transform calc(220ms*var(--f)) cubic-bezier(.2,.9,.3,1.25),border-color calc(200ms*var(--f))}
 #v-updater .u-card:hover{transform:translateY(-3px);border-color:var(--line2)}
@@ -323,8 +329,10 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-cbtns{display:flex;justify-content:flex-end;gap:8px}
 
 /* development: long package lists with their own scroll */
-#v-updater .u-dev{height:100%;min-height:0}
-#v-updater .u-dcol{min-height:0;overflow:hidden}
+#v-updater .u-dev{height:100%;min-height:0;grid-template-rows:minmax(0,1fr);align-items:start}
+#v-updater .u-dcol{min-height:0;max-height:100%;overflow:hidden}
+#v-updater .u-dcol>.u-dsub{flex:none}
+#v-updater .u-dsub:has(.u-pkwrap){flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 #v-updater .u-dsub{min-height:0}
 #v-updater .u-dsh{display:flex;align-items:center;justify-content:space-between;gap:8px}
 #v-updater .u-dsh h5 em{font-style:normal;color:var(--faint);margin-left:4px}
@@ -373,3 +381,13 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-clist>div>.u-tile.img{padding:4px}
 #v-updater .u-clist>div>.u-tile svg{width:14px;height:14px}
 #v-updater .u-tile.img img{max-width:100%;max-height:100%}
+
+/* no size known for any item (winget does not give it): the column is not shown at all */
+#v-updater.u-nosz .u-size,#v-updater.u-nosz .u-th span:nth-of-type(3){display:none}
+@media (max-width:1280px){
+  #v-updater .u-row .u-ver,#v-updater .u-th span:nth-of-type(2){width:min(190px,30%)}
+  #v-updater .u-row{column-gap:10px;padding:8px 6px}
+  #v-updater .u-th span:nth-of-type(4){width:130px}
+  #v-updater .u-name{min-width:120px}
+  #v-updater .u-ov,#v-updater .u-apps,#v-updater .u-rt{grid-template-columns:minmax(0,1fr) clamp(240px,24vw,300px)}
+}

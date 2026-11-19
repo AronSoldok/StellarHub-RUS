@@ -21,12 +21,22 @@ def is_admin():
         return False
 
 
+def _text(raw):
+    """Console tools (powercfg, sc, schtasks...) write UTF-8 or the OEM code page depending on the tool and the
+    Windows version: "Höchstleistung" or "Économies d'énergie" must not come out as "H�chstleistung"."""
+    if not raw:
+        return ""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("oem", "replace")
+
+
 def run(args, timeout=120, **kw):
     """subprocess without a window; return (code, output)."""
     try:
-        r = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           creationflags=NOWIN, timeout=timeout, **kw)
-        return r.returncode, (r.stdout or "") + (r.stderr or "")
+        r = subprocess.run(args, capture_output=True, creationflags=NOWIN, timeout=timeout, **kw)
+        return r.returncode, _text(r.stdout) + _text(r.stderr)
     except subprocess.TimeoutExpired:
         return -1, tr("Timed out")
     except OSError as e:

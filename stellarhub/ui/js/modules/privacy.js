@@ -42,7 +42,7 @@ const TRACK0 = [
   ['settingsads', 'start', 'Suggested content in Settings', 'The Settings app shows suggestions and offers for Microsoft products.', true, 1],
   ['tips', 'start', 'Tips and suggestions', 'Notifications with tips, tricks and suggestions while you use Windows.', false, 1],
   ['welcome', 'start', 'Welcome screens after updates', 'After some updates Windows shows what is new and suggests finishing setting up your device.', true, .5],
-  ['bing', 'start', 'Web results in Start search', 'What you type in Start search is also sent to Bing to show web results.', true, 1.5],
+  ['bing', 'start', 'Web results in Start search', 'What you type in Start search is also sent to Bing to show web results.', true, 1.5, true],
   ['searchhist', 'start', 'Search history on this device', 'Windows remembers what you searched for to improve suggestions.', true, .5],
   ['cloudsearch', 'start', 'Search your online accounts', 'Start search includes content from your Microsoft account, such as OneDrive and Outlook.', true, .5],
   ['speech', 'input', 'Online speech recognition', 'Your voice is sent to Microsoft to be recognized when you dictate or talk to apps.', false, 1],
@@ -208,7 +208,12 @@ function ago(ts) {
   return RTF ? RTF.format(Math.round(s / k), u) : new Date(ts * 1000).toLocaleDateString(LOC);
 }
 const isoTs = s => { const v = s ? Date.parse(s) : NaN; return isNaN(v) ? null : v / 1000; };
-function dur(sec) { if (sec == null || sec < 0) return '—'; if (sec < 60) return Math.max(1, Math.round(sec)) + ' s'; if (sec < 3600) return Math.round(sec / 60) + ' min'; return SH.fmt1(sec / 3600) + ' h'; }
+function dur(sec) { if (sec == null || sec < 0) return '—'; if (sec < 60) return t('{n} s', { n: Math.max(1, Math.round(sec)) }); if (sec < 3600) return t('{n} min', { n: Math.round(sec / 60) }); return t('{n} h', { n: SH.fmt1(sec / 3600) }); }
+/* a fix button while Windows applies it: spinner + "Applying…", not clickable; returns how to put it back */
+function fixBusy(b) {
+  const html = b.innerHTML; b.disabled = true; b.classList.add('pv-busy'); b.innerHTML = `<span class="pv-bspin"></span>${t('Applying…')}`;
+  return () => { if (!b.isConnected) return; b.disabled = false; b.classList.remove('pv-busy'); b.innerHTML = html; };
+}
 const SEV = { bad: 0, warn: 1, info: 2 };
 const sortF = l => [...l].sort((a, b) => (SEV[a.sev] ?? 3) - (SEV[b.sev] ?? 3) || (b.w || 0) - (a.w || 0));
 const findings = () => sortF(AREAS.flatMap(a => (D[a] && D[a].findings) || []).filter(f => !String(f.id).startsWith('inuse-')));
@@ -330,11 +335,11 @@ function findingRow(f) {
 let ovEl = null, ovMode = 'list', passOpen = false;
 function ovState() {
   const pending = AREAS.filter(a => !has(a));
-  const fs = findings(), sc = score(), fixes = fs.filter(f => f.fix);
+  const fs = findings(), sc = score(), fixes = fs.filter(f => f.fix), nChanges = fixes.reduce((a, f) => a + (f.fix.kind === 'tracking' && Array.isArray(f.fix.arg) ? f.fix.arg.length : 1), 0);
   if (pending.length === AREAS.length) return { title: t('Checking your PC…'), sub: t('Read-only: nothing changes while we look.') };
   const title = pending.length ? t('Checking your PC…') : sc >= 90 ? t('Well protected') : sc >= 75 ? t('Good, with a few things to look at') : sc >= 55 ? t('Some things need your attention') : t('Your PC needs attention');
-  const sub = !fs.length ? t('Everything we checked is fine. Nothing to do.') : fixes.length ? (fixes.length === 1 ? t('1 fix can be applied safely, and undone.') : t('{n} fixes can be applied safely, and undone.', { n: fixes.length })) : t('Nothing can be fixed automatically; open each one to see what to do.');
-  return { title, sub, fixes };
+  const sub = !fs.length ? t('Everything we checked is fine. Nothing to do.') : fixes.length ? (nChanges === 1 ? t('1 fix can be applied safely, and undone.') : t('{n} fixes can be applied safely, and undone.', { n: nChanges })) : t('Nothing can be fixed automatically; open each one to see what to do.');
+  return { title, sub, fixes, nChanges };
 }
 function renderOverview(el, ctx) {
   ovEl = el; el.classList.add('fill');
@@ -353,9 +358,10 @@ function renderOverview(el, ctx) {
     const u = e.target.closest('[data-uri]'); if (u) { openUri(u.dataset.uri); return; }
     if (e.target.closest('#pvPass')) { passOpen = !passOpen; const p = $('.pv-pass', el); if (p) { p.classList.toggle('open', passOpen); if (passOpen) setTimeout(() => { const r = $('#pvRight', el); r.scrollTo({ top: r.scrollHeight, behavior: state.settings.intensity === 'min' ? 'auto' : 'smooth' }); }, 200); } return; }
     const fb = e.target.closest('[data-fix]'); if (fb) {
-      const f = findings().find(x => x.id === fb.dataset.fix); if (!f) return; fb.disabled = true;
+      if (fb.disabled) return;
+      const f = findings().find(x => x.id === fb.dataset.fix); if (!f) return; const back = fixBusy(fb);
       try { const r = await applyFix(f); if (r) { undoToast(r.label || t('Fixed'), r, f.area); logAct(r.label || f.title, { ic: 'privacy', go: 'privacy', tab: 'overview' }); } }
-      catch (err) { if (!err.needAdmin) SH.toast(err.message); } finally { fb.disabled = false; }
+      catch (err) { if (!err.needAdmin) SH.toast(err.message); } finally { back(); }
       return;
     }
     if (e.target.closest('#pvFixAll')) { showPlan(); return; }
@@ -384,7 +390,7 @@ function paintOverview(first) {
   if (!ovEl) return;
   paintRadar();
   const st = ovState(); $('#pvSt', ovEl).textContent = st.title; $('#pvSub', ovEl).textContent = st.sub;
-  const btn = $('#pvFixAll', ovEl), nfix = (st.fixes || []).length; btn.disabled = !nfix; $('span', btn).textContent = nfix ? t('Fix what is safe ({n})', { n: nfix }) : t('Fix what is safe');
+  const btn = $('#pvFixAll', ovEl), nfix = st.nChanges || 0; btn.disabled = !nfix; $('span', btn).textContent = nfix ? t('Fix what is safe ({n})', { n: nfix }) : t('Fix what is safe');
   const right = $('#pvRight', ovEl);
   const fs = findings(), ps = passed(), pending = AREAS.filter(a => !has(a));
   const upd = AREAS.filter(has).length ? Math.min(...AREAS.filter(has).map(a => TS[a])) : null;
@@ -524,7 +530,7 @@ function renderProtection(el) {
     const u = e.target.closest('[data-uri]'); if (u) { openUri(u.dataset.uri); return; }
     if (e.target.closest('#pvScan')) { quickScan(); return; }
     if (e.target.closest('#pvScanX')) { scan && scan.p && scan.p.cancel && scan.p.cancel(); scan && (scan.stop = true); return; }
-    const fb = e.target.closest('[data-fixk]'); if (fb) { const f = ((D.protection || {}).findings || []).find(x => x.fix && x.fix.kind === fb.dataset.fixk); if (f) { fb.disabled = true; applyFix(f).then(r => { if (r) undoToast(r.label, r, 'protection'); }).catch(err => { if (!err.needAdmin) SH.toast(err.message); }).finally(() => { fb.disabled = false; }); } }
+    const fb = e.target.closest('[data-fixk]'); if (fb) { const f = ((D.protection || {}).findings || []).find(x => x.fix && x.fix.kind === fb.dataset.fixk); if (f && !fb.disabled) { const back = fixBusy(fb); applyFix(f).then(r => { if (r) undoToast(r.label, r, 'protection'); }).catch(err => { if (!err.needAdmin) SH.toast(err.message); }).finally(back); } }
   });
   paintProt(true);
   on(a => { if (a === 'protection') paintProt(); });
@@ -784,7 +790,7 @@ function paintPs(animate) {
   }
   delete list.dataset.sk;
   const P = D.persistence, items = P.items;
-  const cnt = r => items.filter(e => e.risk === r).length;
+  const cnt = r => items.filter(e => e.risk === r && e.on !== false).length;  /* the same count as the overview: what still runs */
   const th = `<div class="pv-pss">${['high', 'medium', 'low'].map(r => `<button class="pv-rk ${RISK[r][0]}${psRisk === r ? ' on' : ''}" data-rk="${r}"><b class="big">${cnt(r)}</b><span>${RISK[r][1]}</span></button>`).join('')}
     <div class="pv-psx"><b>${cnt('high') ? t('Some things start by themselves that are worth checking') : t('Nothing suspicious starts by itself')}</b><span>${t('Read-only: nothing is changed unless you disable it, and that can be undone.')}</span><span class="faint">${esc(stamp('persistence'))}</span></div></div>`;
   if (top.dataset.sig !== th) { top.dataset.sig = th; top.innerHTML = th; }

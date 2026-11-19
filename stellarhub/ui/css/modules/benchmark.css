@@ -295,6 +295,13 @@ html[data-int=min] #v-benchmark .bm-run svg{animation:none}
 #v-benchmark .bm-hch canvas{flex:1;min-height:0;width:100%;cursor:crosshair}
 #v-benchmark .bm-hce{position:absolute;inset:60px 0 0;display:grid;place-items:center;font-size:12.5px}
 #v-benchmark .bm-hls{display:flex;flex-direction:column;min-height:0}
+#v-benchmark .bm-hi2.few{align-items:start}
+#v-benchmark .bm-hi2.few .bm-hch:not(.one){align-self:stretch}
+#v-benchmark .bm-hch.one canvas{display:none}
+#v-benchmark .bm-hone{text-align:center;padding:26px 10px 20px}
+#v-benchmark .bm-hone b{display:block;font:500 40px/1.1 var(--display);letter-spacing:-.03em;color:var(--accent)}
+#v-benchmark .bm-hone span{display:block;font-size:12.5px;color:var(--mute);margin-top:6px}
+#v-benchmark .bm-hone p{max-width:360px;margin:14px auto 0;font-size:12.5px;line-height:1.5}
 #v-benchmark .bm-hlist{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:2px}
 #v-benchmark .bm-hrow{padding:8px 10px;gap:12px}
 #v-benchmark .bm-hrow .ri svg{width:16px;height:16px}

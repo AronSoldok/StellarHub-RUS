@@ -24,7 +24,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ...i18n import tr
-from . import paths, system
+from . import paths, safety, system
 
 RECENT_GRACE = 3600        # legacy file-level grace (seconds) when grace=True is passed to _walk
 TEMP_GRACE_DAYS = 7        # default for temp folders; the user can choose 1, 7 or 30 days
@@ -56,10 +56,10 @@ def categories():
     local, roam, win = paths.kf("LocalAppData") or "", paths.kf("RoamingAppData") or "", paths.kf("Windows") or ""
     pd = paths.kf("ProgramData") or ""
     c = {
-        "user_temp": {"label": "User temporary files", "group": "Windows", "globs": [paths.kf("Temp")],
+        "user_temp": {"label": "User temporary files", "group": "Windows", "globs": [],
                       "grace": True, "temp": True, "default": True,
                       "desc": "Files programs leave in %TEMP%. Folders used recently or by a running program are kept."},
-        "win_temp": {"label": "Windows temporary files", "group": "Windows", "globs": [os.path.join(win, "Temp")],
+        "win_temp": {"label": "Windows temporary files", "group": "Windows", "globs": [],
                      "grace": True, "temp": True, "default": True, "admin": True},
         "thumbs": {"label": "Thumbnail cache", "group": "Windows", "default": True,
                    "files": [os.path.join(local, "Microsoft", "Windows", "Explorer", "thumbcache_*.db"),
@@ -99,6 +99,16 @@ def categories():
                    "desc": "Games rebuild it; after cleaning, the first session may take longer to load."},
         "recycle": {"label": "Recycle Bin", "group": "Windows", "default": True, "recycle": True},
     }
+    # the temp roots are emptied (first-level entries, permanently): validate them before they become a glob
+    for k, root, sysd in (("user_temp", paths.user_temp_dir(), False),
+                          ("win_temp", os.path.join(win, "Temp") if win else None, True)):
+        why = safety.temp_root_problem(root, system_temp=sysd)
+        if why:
+            c[k]["refused"] = why          # no globs: nothing is scanned or deleted in this category
+            c[k]["desc"] = why
+            c[k]["default"] = False
+        else:
+            c[k]["globs"] = [root]
     for k, v in c.items():
         v.setdefault("default", v.get("group") != "Apps" or k in ("discord", "steam_web"))
         v.setdefault("desc", "")
@@ -106,13 +116,20 @@ def categories():
     return c
 
 
+def _absolute(g):
+    """Only absolute drive paths: an empty known folder must never turn a glob into one relative to the cwd."""
+    return bool(g) and os.path.isabs(g) and g[1:2] == ":"
+
+
 def _expand(cat):
     dirs, files = [], []
+    if cat.get("refused"):
+        return dirs, files
     for g in cat.get("globs", []):
-        if g:
+        if _absolute(g):
             dirs += [d for d in glob.glob(g) if os.path.isdir(d) and not paths.is_reparse_point(d)]
     for g in cat.get("files", []):
-        if g:
+        if _absolute(g):
             files += [f for f in glob.glob(g) if os.path.isfile(f)]
     return dirs, files
 
@@ -456,6 +473,10 @@ def scan(progress=None, on_item=None, days=TEMP_GRACE_DAYS, exclude=()):
                     "count": count, "default": c["default"] and size > 0,
                     "needs_admin": bool(c.get("admin")) and not admin,
                     "busy": running(c.get("process"), procs), "process": c.get("process", "")}
+            if c.get("refused"):
+                item["skipped"] = True
+                item["skipReason"] = c["refused"]
+                item["desc"] = c["refused"]    # already translated; the UI shows desc under the row
             if rows is not None:
                 item["rows"] = _public_rows(rows)
                 kept = [r for r in rows if r["status"] != "clean"]

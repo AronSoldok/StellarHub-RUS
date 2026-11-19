@@ -715,5 +715,19 @@
   "“{name}” was cancelled.": "“{name}” foi cancelada.",
   "“{name}” was skipped.": "“{name}” foi ignorada.",
   "“{name}”: Spotify couldn’t be updated because it was open.": "“{name}”: o Spotify não pôde ser atualizado porque estava aberto.",
-  "“{path}” doesn’t exist": "“{path}” não existe"
+  "“{path}” doesn’t exist": "“{path}” não existe",
+  "Running for {time}": "Em execução há {time}",
+  "Starting…": "Iniciando…",
+  "Running. This can take several minutes.": "Em execução. Isso pode levar vários minutos.",
+  "Elapsed {time}": "Decorrido: {time}",
+  "{drive} (not found on this PC)": "{drive} (não encontrado neste PC)",
+  "This drive isn't connected now. Choose another one, or connect it again.": "Esta unidade não está conectada agora. Escolha outra ou conecte-a novamente.",
+  "skipped: this action wasn’t approved in administrator mode. Open StellarHub and save this routine again to allow it": "ignorado: esta ação não foi aprovada no modo administrador. Abra o StellarHub e salve esta rotina de novo para permiti-la",
+  "would be skipped: not approved in administrator mode. Save the routine again to allow it": "seria ignorada: não aprovada no modo administrador. Salve a rotina de novo para permiti-la",
+  "the downloads folder ({path}) isn’t a safe place to clean, so nothing was touched": "a pasta de downloads ({path}) não é um lugar seguro para limpar, por isso nada foi tocado",
+  "{n} old downloads sent to the Recycle Bin, {k} left alone (they can’t go to the Recycle Bin)": "{n} downloads antigos enviados para a Lixeira, {k} deixados em paz (não podem ir para a Lixeira)",
+  "Full network reset (no longer runs on its own)": "Redefinição completa da rede (não é mais executada sozinha)",
+  "flush the DNS cache (a full network reset is never run by a routine)": "limpar o cache DNS (uma rotina nunca redefine a rede por completo)",
+  "A full network reset is never run by a routine. Run it from Super Optimizer.": "Uma rotina nunca redefine a rede por completo. Faça isso no Super Otimizador.",
+  "The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.": "O cache DNS foi limpo, mas uma rotina nunca redefine a rede por completo. Faça isso no Super Otimizador."
 }

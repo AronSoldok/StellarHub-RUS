@@ -165,9 +165,37 @@ def _adapters():
         return []
 
 
+_VIRTUAL_NIC = re.compile(r"vethernet|hyper-v|tap-|tap |wintun|wireguard|tunnel|wan miniport|isatap|teredo|virtual|vpn|"
+                          r"zerotier|tailscale|loopback|npcap|kernel debug|pseudo", re.I)
+_VIRTUAL_GPU = ("remote display", "virtual", "parsec", "indirect", "basic display", "basic render", "citrix", "vmware",
+                "virtualbox", "hyper-v", "spacedesk", "displaylink", "idd ")
+
+
+def gpu_kind(name):
+    """'discrete', 'integrated' or 'virtual' from the adapter's name. Intel "Arc Graphics" / "Arc 140V" (Core Ultra)
+    and Radeon 780M / Vega 8 (Ryzen) are integrated even though the names look like graphics cards."""
+    n = (name or "").lower()
+    if not n or any(k in n for k in _VIRTUAL_GPU):
+        return "virtual"
+    if "nvidia" in n:
+        return "discrete"
+    if "intel" in n:
+        return "discrete" if re.search(r"arc(\(tm\))?\s+(pro\s+)?[ab]\d{3}", n) else "integrated"
+    if "radeon" in n or "amd" in n:
+        if re.search(r"radeon(\(tm\))?\s*(rx|pro|vii|r[579]\b|hd\s*\d{4})|firepro|instinct", n):
+            return "discrete"
+        return "integrated"
+    return "discrete"
+
+
+def gpu_rank(name):
+    """Which discrete card is the main one: NVIDIA, then AMD, then Intel Arc, then anything else."""
+    n = (name or "").lower()
+    return 0 if "nvidia" in n else 1 if ("radeon" in n or "amd" in n) else 2 if "intel" in n else 3
+
+
 def _is_integrated(name):
-    n = name.lower()
-    return ("intel" in n and "arc" not in n) or "radeon(tm) graphics" in n or n.endswith("radeon graphics")
+    return gpu_kind(name) == "integrated"
 
 
 # ---------- PnP power state of the display adapters (SetupAPI: read from the PnP manager, no wake-up) ----------
@@ -440,12 +468,16 @@ class Sampler:
         # network: PDH rates (~0.1 ms) instead of psutil.net_io_counters (~6 ms of CPU per call on Windows)
         rx, tx = self._pdh.array("rx"), self._pdh.array("tx")
         net = None if (rx or tx) else psutil.net_io_counters()
+        # only physical adapters: a VPN, Hyper-V switch or WSL counts the same traffic again on its virtual adapter
+        rx = [(i, v) for i, v in rx if not _VIRTUAL_NIC.search(i or "")] or rx
+        tx = [(i, v) for i, v in tx if not _VIRTUAL_NIC.search(i or "")] or tx
         d = {"read": 0.0, "write": 0.0, "down": sum(v for _, v in rx) * 8 / 1e6, "up": sum(v for _, v in tx) * 8 / 1e6}
         if self._last_io:
             lt, lio, lnet = self._last_io
             dt = max(0.05, now - lt)
-            d["read"] = max(0, io.read_bytes - lio.read_bytes) / dt / 1e6
-            d["write"] = max(0, io.write_bytes - lio.write_bytes) / dt / 1e6
+            if io and lio:  # None when no disk reports performance counters (some VMs, RAID drivers, diskperf -n)
+                d["read"] = max(0, io.read_bytes - lio.read_bytes) / dt / 1e6
+                d["write"] = max(0, io.write_bytes - lio.write_bytes) / dt / 1e6
             if net and lnet:
                 d["down"] = max(0, net.bytes_recv - lnet.bytes_recv) / dt * 8 / 1e6
                 d["up"] = max(0, net.bytes_sent - lnet.bytes_sent) / dt * 8 / 1e6
@@ -459,7 +491,7 @@ class Sampler:
         g = self._gpu(on_battery=bool(bat and not bat.power_plugged))
         return {
             "cpu": round(cpu, 1), "threads": [round(x / 100, 3) for x in per], "cpuFreq": round(freq, 2) if freq else None,
-            "cpuTemp": self._acpi_temp(),
+            **self._cpu_temp(),
             "ram": round((vm.total - vm.available) / GB, 2), "ramTotal": round(vm.total / GB, 1),
             "ramCache": round(pi.SystemCache * page / GB, 2) if pi else None,
             "ramCommit": round(pi.CommitTotal * page / GB, 2) if pi else None,
@@ -485,8 +517,9 @@ class Sampler:
             self._adapters = _adapters()
             self._adapters_at = now
         names = dict(self._adapters)
-        dgpu = next((k for k, n in self._adapters if n and not _is_integrated(n) and "basic" not in n.lower()), None)
-        igpu = next((k for k, n in self._adapters if n and _is_integrated(n)), None)
+        discrete = sorted((gpu_rank(n), i, k) for i, (k, n) in enumerate(self._adapters) if gpu_kind(n) == "discrete")
+        dgpu = discrete[0][2] if discrete else None
+        igpu = next((k for k, n in self._adapters if gpu_kind(n) == "integrated"), None)
         per_engine = {}
         for inst, v in self._pdh.array("eng", nonzero=True):
             m = _RE_LUID.search(inst)
@@ -569,6 +602,22 @@ class Sampler:
         return dict(self._bat_static)
 
     # ---------- CPU temperature: ACPI thermal zones only, with the classic fake values discarded ----------
+    _acpi_missing = False
+
+    def _cpu_temp(self):
+        """{cpuTemp, cpuTempSrc}: the ACPI thermal zones, else what the slow loop last read from a hardware monitor
+        the user runs (engine/sensors.py)."""
+        t = self._acpi_temp()
+        self._acpi_missing = t is None
+        if t is not None:
+            return {"cpuTemp": t, "cpuTempSrc": "acpi"}
+        try:
+            from . import sensors
+            t, src = sensors.peek()
+        except Exception:
+            t, src = None, None
+        return {"cpuTemp": t, "cpuTempSrc": src}
+
     def _acpi_temp(self):
         temps = []
         for _inst, v in self._pdh.array("tz"):
@@ -578,13 +627,24 @@ class Sampler:
         return round(max(temps)) if temps else None
 
     # ---------- slow data: every few seconds ----------
+    ping_on = True  # Settings > General: "Measure latency" (a TCP connection to 1.1.1.1, nothing is sent)
+
     def _slow_loop(self):
         n = 0
         while not self._stop.is_set():
             if self.active:
-                self._ping()
+                if self.ping_on:
+                    self._ping()
+                else:
+                    self._slow["ping"] = None
                 if n % 5 == 0:
                     self._wifi()
+                if self._acpi_missing:
+                    try:  # a hardware monitor the user runs (it can take a moment, so not on the fast loop)
+                        from . import sensors
+                        sensors.cpu_temp(max_age=0)
+                    except Exception:
+                        pass
                 n += 1
             self._stop.wait(2.0)
 
@@ -604,9 +664,9 @@ class Sampler:
             try:
                 out = raw.decode("utf-8")  # netsh writes UTF-8 on Windows 11
             except UnicodeDecodeError:
-                out = raw.decode("cp850", "replace")
-            # "Señal" / "Signal": the label is localized, so both are matched (detection pattern, not UI text)
-            m = re.search(r"(?:Se.al|Signal)\s*:\s*(\d+)\s*%", out)
+                out = raw.decode("oem", "replace")
+            # the label is localized (Signal, Señal, Sinal, Segnale, 信号...), but the signal is the only "NN %" value
+            m = re.search(r":\s*(\d{1,3})\s*%", out)
             self._slow["wifiSignal"] = int(m.group(1)) if m else None
         except Exception:
             self._slow["wifiSignal"] = None

@@ -39,7 +39,7 @@ $av = @(Get-CimInstance -Namespace root\SecurityCenter2 AntiVirusProduct -ErrorA
 }""", timeout=40) or {}
     return r
 
-CACHE_VERSION = 3  # bump when labels or fields change, so an old cache is not shown
+CACHE_VERSION = 5  # bump when labels or fields change, so an old cache is not shown
 _CACHE = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "pcinfo.json")
 _lock = threading.Lock()
 _mem = None
@@ -76,9 +76,16 @@ def _T(text, ctx=None, **kw):
     return d
 
 
+def _numfmt(v):
+    """A number the engine measured, written with the interface language's decimal separator."""
+    from ..i18n import language
+    txt = f"{v['num']:.{v.get('d', 1)}f}"
+    return txt.replace(".", ",") if language() in ("es", "pt", "it", "fr") else txt
+
+
 def _tv(x):
     if isinstance(x, dict) and "tr" in x:
-        kw = x.get("kw") or {}
+        kw = {k: _numfmt(v) if isinstance(v, dict) and "num" in v else v for k, v in (x.get("kw") or {}).items()}
         return tc(x["ctx"], x["tr"], **kw) if x.get("ctx") else tr(x["tr"], **kw)
     return x
 
@@ -101,6 +108,16 @@ def _localize(info):
     return out
 
 
+_PLACEHOLDERS = {"", "system product name", "system manufacturer", "system version", "to be filled by o.e.m.",
+                 "to be filled by oem", "o.e.m.", "oem", "default string", "not applicable", "not specified", "none",
+                 "invalid", "all series", "base board product name", "base board manufacturer", "x.x", "unknown"}
+
+
+def _placeholder(s):
+    """A BIOS default instead of a real name."""
+    return (s or "").strip().lower() in _PLACEHOLDERS
+
+
 def _virtual(maker, model):
     s = f"{maker} {model}".lower()
     for k in ("virtualbox", "vmware", "virtual machine", "qemu", "kvm", "parallels", "hyper-v", "xen"):
@@ -111,6 +128,7 @@ def _virtual(maker, model):
 
 SCRIPT = r"""
 $cs = Get-CimInstance Win32_ComputerSystem; $en = Get-CimInstance Win32_SystemEnclosure; $os = Get-CimInstance Win32_OperatingSystem
+$bb = Get-CimInstance Win32_BaseBoard | Select-Object -First 1
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1; $bios = Get-CimInstance Win32_BIOS
 $disp = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion')
 $mons = @(Get-CimInstance -Namespace root\wmi WmiMonitorID -ErrorAction SilentlyContinue | ForEach-Object {
@@ -121,12 +139,13 @@ $conn = @(Get-CimInstance -Namespace root\wmi WmiMonitorConnectionParams -ErrorA
 [pscustomobject]@{
   maker=$cs.Manufacturer; model=$cs.Model; family=$cs.SystemFamily; chassis=@($en.ChassisTypes); pcType=$cs.PCSystemType
   os=$os.Caption; osVer=$disp.DisplayVersion; build=$os.BuildNumber; ubr=$disp.UBR; installDate=$os.InstallDate
-  bios=$bios.SMBIOSBIOSVersion; biosDate=$bios.ReleaseDate; board=(Get-CimInstance Win32_BaseBoard).Product
-  cpu=[pscustomobject]@{ name=$cpu.Name.Trim(); cores=$cpu.NumberOfCores; threads=$cpu.NumberOfLogicalProcessors; maxMhz=$cpu.MaxClockSpeed; l2=$cpu.L2CacheSize; l3=$cpu.L3CacheSize; socket=$cpu.SocketDesignation }
+  bios=$bios.SMBIOSBIOSVersion; biosDate=$bios.ReleaseDate; board=$bb.Product; boardMaker=$bb.Manufacturer
+  cpu=[pscustomobject]@{ name="$($cpu.Name)".Trim(); cores=$cpu.NumberOfCores; threads=$cpu.NumberOfLogicalProcessors; maxMhz=$cpu.MaxClockSpeed; l2=$cpu.L2CacheSize; l3=$cpu.L3CacheSize; socket=$cpu.SocketDesignation }
   gpus=@(Get-CimInstance Win32_VideoController | ForEach-Object { [pscustomobject]@{ name=$_.Name; driver=$_.DriverVersion; driverDate=$_.DriverDate; ram=$_.AdapterRAM; w=$_.CurrentHorizontalResolution; h=$_.CurrentVerticalResolution; hz=$_.CurrentRefreshRate } })
-  ram=@(Get-CimInstance Win32_PhysicalMemory | ForEach-Object { [pscustomobject]@{ cap=$_.Capacity; speed=$_.Speed; maker=$_.Manufacturer; part=$_.PartNumber.Trim(); slot=$_.DeviceLocator; type=$_.SMBIOSMemoryType } })
+  ram=@(Get-CimInstance Win32_PhysicalMemory | ForEach-Object { [pscustomobject]@{ cap=$_.Capacity; speed=$_.Speed; maker=$_.Manufacturer; part="$($_.PartNumber)".Trim(); slot=$_.DeviceLocator; type=$_.SMBIOSMemoryType } })
   slots=(Get-CimInstance Win32_PhysicalMemoryArray | Measure-Object -Property MemoryDevices -Sum).Sum
-  disks=@(Get-PhysicalDisk | ForEach-Object { [pscustomobject]@{ name=$_.FriendlyName; media="$($_.MediaType)"; bus="$($_.BusType)"; size=$_.Size; health="$($_.HealthStatus)" } })
+  sysDisk=(Get-Partition -DriveLetter $env:SystemDrive[0] -ErrorAction SilentlyContinue | Select-Object -First 1).DiskNumber
+  disks=@(Get-PhysicalDisk | ForEach-Object { [pscustomobject]@{ id="$($_.DeviceId)"; name=$_.FriendlyName; media="$($_.MediaType)"; bus="$($_.BusType)"; size=$_.Size; health="$($_.HealthStatus)" } })
   nets=@(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up' | ForEach-Object { [pscustomobject]@{ name=$_.InterfaceDescription; speed=$_.LinkSpeed; media="$($_.PhysicalMediaType)" } })
   audio=@(Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEach-Object { $_.Name })
   monitors=$mons; monSizes=$sizes; monConn=$conn
@@ -152,27 +171,25 @@ def _gpu_vram(name):
 
 
 def _programs_count():
+    """The same count as the Program Remover's Programs tab: every Win32 entry it lists (not just the ones with a unique
+    name) plus the Microsoft Store apps it knows about."""
+    from .removal import programs as _pm, settings as _rs
     seen = set()
-    for hive, path in ((winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
-                       (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
-                       (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")):
-        try:
-            with winreg.OpenKey(hive, path) as k:
-                for i in range(winreg.QueryInfoKey(k)[0]):
-                    try:
-                        with winreg.OpenKey(k, winreg.EnumKey(k, i)) as s:
-                            name = winreg.QueryValueEx(s, "DisplayName")[0]
-                            try:
-                                if winreg.QueryValueEx(s, "SystemComponent")[0] == 1:
-                                    continue
-                            except OSError:
-                                pass
-                            seen.add(name.strip().lower())
-                    except OSError:
-                        pass
-        except OSError:
-            pass
-    return len(seen)
+    try:
+        for hive, view in _pm.SOURCES:
+            for keyname in _pm.registry.subkeys(_pm.registry.HIVES[hive], _pm.UNINSTALL, view):
+                p = _pm._read_entry(hive, view, keyname)
+                if p:
+                    seen.add((p["name"].lower(), p["version"].lower(), p["user"]))
+    except Exception:
+        pass
+    n = len(seen)
+    try:
+        if _rs.load().get("show_store", True):
+            n += len(_pm.cached_store_apps())
+    except Exception:
+        pass
+    return n
 
 
 def _drivers_count():
@@ -246,28 +263,43 @@ def _build():
                                     "Laptop" if r.get("pcType") == 2 else "Desktop"))
     if _virtual(maker, model):
         ptype, pname = "virtual", "Virtual machine"  # typeName: translated in _localize
-    nice = family if family and family.lower() not in ("to be filled by o.e.m.", "default string", "") else model
-    BRANDS = {"asustek": "ASUS", "hewlett-packard": "HP", "hp": "HP", "lenovo": "Lenovo", "dell": "Dell", "acer": "Acer",
+    # many desktop boards leave the BIOS defaults in the system name ("System Product Name", "To be filled by
+    # O.E.M."): then the motherboard says what the PC is, e.g. "ASUS ROG STRIX Z790-E GAMING WIFI"
+    board, board_maker = (r.get("board") or "").strip(), (r.get("boardMaker") or "").strip()
+    if _placeholder(maker) and not _placeholder(board_maker):
+        maker = board_maker
+    if _placeholder(model):
+        model = "" if _placeholder(board) else board
+    if _placeholder(family):
+        family = ""
+    nice = family or model
+    BRANDS = {"asustek": "ASUS", "asus": "ASUS", "asrock": "ASRock", "biostar": "Biostar", "evga": "EVGA", "nzxt": "NZXT",
+              "intel": "Intel", "medion": "Medion", "fujitsu": "Fujitsu", "alienware": "Alienware", "framework": "Framework",
+              "gigabyte technology": "Gigabyte","hewlett-packard": "HP", "hp": "HP", "lenovo": "Lenovo", "dell": "Dell", "acer": "Acer",
               "micro-star": "MSI", "msi": "MSI", "gigabyte": "Gigabyte", "samsung": "Samsung", "microsoft": "Microsoft",
               "apple": "Apple", "razer": "Razer", "huawei": "Huawei", "xiaomi": "Xiaomi", "lg": "LG", "toshiba": "Toshiba"}
     first = (maker.split() or [""])[0].lower().strip(",.")
     brand = BRANDS.get(first, maker.split()[0].title() if maker else "")
-    if brand and not nice.lower().startswith(brand.lower()):
+    if brand and nice and not nice.lower().startswith(brand.lower()):
         nice = f"{brand} {nice}"
     code = model.split("_")[-1] if "_" in model else (model if model != nice else "")
     osname = (r.get("os") or "Windows").replace("Microsoft ", "").strip()
     os_full = f"{osname} {r.get('osVer') or ''}".strip()
     cpu = r.get("cpu") or {}
     gpus = [g for g in (r.get("gpus") or []) if g.get("name")]
-    dgpu = next((g for g in gpus if any(k in g["name"].lower() for k in ("nvidia", "radeon rx", "arc"))), gpus[0] if gpus else {})
-    igpu = next((g for g in gpus if g is not dgpu), None)
+    from .telemetry import gpu_kind, gpu_rank
+    real = [g for g in gpus if gpu_kind(g["name"]) != "virtual"] or gpus
+    discrete = sorted((gpu_rank(g["name"]), i) for i, g in enumerate(real) if gpu_kind(g["name"]) == "discrete")
+    dgpu = real[discrete[0][1]] if discrete else (real[0] if real else {})
+    igpu = next((g for g in real if g is not dgpu and gpu_kind(g["name"]) == "integrated"), None)
     rams = r.get("ram") or []
     ram_total = sum(int(m.get("cap") or 0) for m in rams)
     ram_speed = max((int(m.get("speed") or 0) for m in rams), default=0)
     ram_type = {34: "DDR5", 26: "DDR4", 24: "DDR3", 35: "LPDDR5", 30: "LPDDR4"}.get((rams[0].get("type") if rams else 0), "")
     slots = int(r.get("slots") or len(rams) or 1)
     disks = r.get("disks") or []
-    sysd = disks[0] if disks else {}
+    sd = str(r.get("sysDisk") if r.get("sysDisk") is not None else "")
+    sysd = next((d for d in disks if str(d.get("id")) == sd), disks[0] if disks else {})
     du = psutil.disk_usage("C:\\")
     nets = r.get("nets") or []
     net = nets[0] if nets else {}
@@ -280,14 +312,14 @@ def _build():
         sz = sizes.get(m["inst"]) or {}
         diag = round(((sz.get("w") or 0) ** 2 + (sz.get("h") or 0) ** 2) ** .5 / 2.54) if sz.get("w") else None
         vendor = PNP_VENDORS.get((m.get("maker") or "").upper(), m.get("maker") or "")
-        internal = conn.get(m["inst"]) in (11, 0x80000000, -2147483648)  # internal (eDP/LVDS)
+        internal = conn.get(m["inst"]) in (6, 11, 13, 0x80000000, -2147483648)  # internal: LVDS, eDP, UDI embedded
         label = (m.get("name") or "").strip()
         mons.append({"vendor": vendor, "name": label, "code": m.get("code"), "inches": diag, "internal": internal})
     batt = psutil.sensors_battery()
     comps = []
     comps.append({"id": "cpu", "name": "Processor", "title": _clean(cpu.get("name", "")),
                   "rows": [[N_("Cores"), str(cpu.get("cores", "–"))], [N_("Threads"), str(cpu.get("threads", "–"))],
-                           [N_("Base clock"), f"{(cpu.get('maxMhz') or 0) / 1000:.1f} GHz"],
+                           [N_("Base clock"), _T("{v} GHz", v={"num": (cpu.get('maxMhz') or 0) / 1000, "d": 1})],
                            [N_("L3 cache"), f"{round((cpu.get('l3') or 0) / 1024)} MB"]]})
     if dgpu:
         vr = _gpu_vram(dgpu["name"])
@@ -300,8 +332,10 @@ def _build():
                            [N_("Modules"), _T("{n} of {slots} slots, free slots available" if slots > len(rams) else "{n} of {slots} slots",
                                               n=len(rams), slots=slots)]],
                   "slots": slots, "modules": len(rams)})
-    tb = f"{round((sysd.get('size') or 0) / 1e12, 1):g}"
-    comps.append({"id": "ssd", "name": "Storage", "title": f"{sysd['name']} {tb} TB" if sysd.get("name") else _T("Disk {size} TB", size=tb),
+    size = sysd.get("size") or 0
+    # 256 GB is "256 GB", not "0.3 TB"
+    cap = f"{round(size / 1e12, 1):g} TB" if size >= 0.95e12 else f"{round(size / 1e9):d} GB"
+    comps.append({"id": "ssd", "name": "Storage", "title": f"{sysd['name']} {cap}" if sysd.get("name") else _T("Disk {size}", size=cap),
                   "rows": [[N_("Type"), f"{sysd.get('media', '')} {sysd.get('bus', '')}".strip() or "–"],
                            [N_("Used on C:"), f"{round(du.used / GB)} GB"], [N_("Free on C:"), f"{round(du.free / GB)} GB"],
                            [N_("Disks"), str(len(disks))]], "bar": round(du.used / du.total, 3)})

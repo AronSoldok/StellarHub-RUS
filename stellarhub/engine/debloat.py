@@ -22,14 +22,39 @@ import winreg
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
+import shutil
+
 from ..i18n import tr
+from .optimizer import USER_DATA, user_needs_admin, write_json_atomic
 from .ps import ps, ps_json
 
 EXPORTS = {"tweaks_list", "tweak_undo", "history", "open_store"}
 JOBS = {"apps_scan", "apply", "reinstall", "undo_all"}
 
-STATE_DIR = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "optimizer", "debloat")
+# What StellarHub changed for THIS user (HKCU values, removed apps) lives in the user's own profile: a folder in
+# ProgramData created by an elevated run is read-only for the same user's later non-elevated runs, so the records
+# could not be saved. Other users can't read it either.
+STATE_DIR = os.path.join(USER_DATA, "debloat")
+_LEGACY_DIR = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "optimizer", "debloat")
+_DEFAULT_STATE_DIR = STATE_DIR
 _state_lock = threading.Lock()
+_migrated = set()
+
+
+def _migrate_legacy():
+    """Once per run: copies this user's records from the old ProgramData folder to STATE_DIR (never overwrites)."""
+    if STATE_DIR != _DEFAULT_STATE_DIR or STATE_DIR in _migrated:
+        return
+    _migrated.add(STATE_DIR)
+    user = re.sub(r"[^A-Za-z0-9._-]", "_", os.environ.get("USERNAME") or "user")
+    for name in (f"state-{user}.json", "sizes.json"):
+        src, dst = os.path.join(_LEGACY_DIR, name), os.path.join(STATE_DIR, name)
+        try:
+            if os.path.isfile(src) and not os.path.exists(dst):
+                os.makedirs(STATE_DIR, exist_ok=True)
+                shutil.copy2(src, dst)
+        except OSError:
+            pass
 
 
 def _admin():
@@ -258,6 +283,7 @@ def _size_cache_path():
 
 
 def _load_json(p, default):
+    _migrate_legacy()
     try:
         with open(p, encoding="utf-8") as f:
             return json.load(f)
@@ -266,14 +292,8 @@ def _load_json(p, default):
 
 
 def _save_json(p, data):
-    try:
-        os.makedirs(os.path.dirname(p), exist_ok=True)
-        tmp = p + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
-        os.replace(tmp, p)
-    except OSError:
-        pass
+    """Raises OSError when the file can't be written (callers that hold an undo record must not carry on)."""
+    write_json_atomic(p, data)
 
 
 def _installed():
@@ -333,7 +353,10 @@ def apps_scan(job):
         for _ in ex.map(one, items):
             done += 1
             job.progress(.35 + .6 * done / max(1, len(items)), tr("Measuring the apps…"))
-    _save_json(_size_cache_path(), {k: v for k, v in sizes.items() if any(k == i["id"] for i in items)})
+    try:
+        _save_json(_size_cache_path(), {k: v for k, v in sizes.items() if any(k == i["id"] for i in items)})
+    except OSError:
+        pass  # only a cache of folder sizes
     # “keep” entries that are several packages (media extensions, language packs) are shown as one row
     merged, out = {}, []
     for it in items:
@@ -543,20 +566,35 @@ def tweak_state(tw, reg):
     return st, vals
 
 
-def apply_tweak(tw, reg):
-    """Debloats one tweak. Returns the backup needed to undo it exactly. If a value can't be written, what was
-    already written is put back and the error is raised."""
+def tweak_backup(tw, reg):
+    """What is needed to undo a tweak exactly (previous values, keys that will be created). Reads only."""
     rec = {"id": tw["id"], "t": time.time(), "prev": [], "created": []}
+    seen = set()
+    for v in tw["v"]:
+        cur = reg.get(v["hive"], v["key"], v["name"])
+        rec["prev"].append({"hive": v["hive"], "key": v["key"], "name": v["name"],
+                            "existed": cur is not None, "type": cur[0] if cur else None, "data": cur[1] if cur else None})
+        for k in _missing_keys(reg, v["hive"], v["key"]):
+            if (v["hive"], k.lower()) not in seen:
+                seen.add((v["hive"], k.lower()))
+                rec["created"].append({"hive": v["hive"], "key": k})
+    return rec
+
+
+def apply_tweak(tw, reg, save=None):
+    """Debloats one tweak. Returns the backup needed to undo it exactly. `save(rec)` is called with the backup
+    BEFORE anything is written; if it raises, nothing is changed. If a value can't be written, what was already
+    written is put back and the error is raised."""
+    rec = tweak_backup(tw, reg)
+    if save:
+        save(rec)
+    done = {"prev": [], "created": rec["created"]}
     try:
-        for v in tw["v"]:
-            cur = reg.get(v["hive"], v["key"], v["name"])
-            created = _missing_keys(reg, v["hive"], v["key"])
-            rec["prev"].append({"hive": v["hive"], "key": v["key"], "name": v["name"],
-                                "existed": cur is not None, "type": cur[0] if cur else None, "data": cur[1] if cur else None})
+        for v, p in zip(tw["v"], rec["prev"]):
             reg.set(v["hive"], v["key"], v["name"], v["type"], v["value"])
-            rec["created"] += [{"hive": v["hive"], "key": k} for k in created]
+            done["prev"].append(p)
     except OSError:
-        undo_tweak(rec, reg)
+        undo_tweak(done, reg)
         raise
     return rec
 
@@ -588,7 +626,8 @@ def default_tweak(tw, reg):
 
 
 def needs_admin(tw):
-    return any(v["hive"] == HKLM for v in tw["v"])
+    """HKLM, and HKCU\\Software\\Policies (an ordinary user only has ReadKey there)."""
+    return any(user_needs_admin(v["hive"], v["key"]) for v in tw["v"])
 
 
 # =============================================================== state (what StellarHub changed)
@@ -664,7 +703,10 @@ def tweak_undo(tid, reg=None):
         st = _state()
         rec = st["tweaks"].pop(tid, None)
         errors = undo_tweak(rec, reg) if rec else (default_tweak(tw, reg) or [])
-        _save_state(st)
+        try:
+            _save_state(st)
+        except OSError as e:
+            errors.append(tr("The undo was done but the record couldn't be updated ({error}).", error=e))
     if not isinstance(reg, WinReg):
         return {"ok": not errors, "errors": errors}
     _broadcast()
@@ -712,18 +754,33 @@ def apply(job, plan, reg=None):
                "version": r.get("Version") or "", "store": c.get("store") or "", "gone": bool(c.get("gone")),
                "loc": loc, "manifest": os.path.join(loc, "AppxManifest.xml") if loc else "",
                "wasProv": (r["Name"] in prov) if prov is not None else None, "deprov": deprov, "t": time.time()}
+        # the record that lets the app be brought back is saved BEFORE removing it; without it, nothing is removed
+        with _state_lock:
+            st = _state()
+            before = list(st["apps"])
+            st["apps"] = [a for a in before if a.get("name") != rec["name"]] + [rec]
+            try:
+                _save_state(st)
+            except OSError as e:
+                msg = tr("Not removed: its restore record couldn't be saved ({error}).", error=e)
+                job.log(f"{label}: {msg}")
+                res["failed"].append({"id": full, "error": msg})
+                continue
         try:
             ok, out = _ps_ok(remove_script(full, r["Name"], deprov), "removed")
         except ValueError as e:
             ok, out = False, str(e)
         if not ok:
+            with _state_lock:  # it is still installed: drop its record again
+                st = _state()
+                st["apps"] = before
+                try:
+                    _save_state(st)
+                except OSError:
+                    pass
             job.log(out)
             res["failed"].append({"id": full, "error": out.splitlines()[-1] if out else tr("Windows didn't remove it.")})
             continue
-        with _state_lock:
-            st = _state()
-            st["apps"] = [a for a in st["apps"] if a.get("name") != rec["name"]] + [rec]
-            _save_state(st)
         rec["restore"] = restore_plan(rec, os.path.isfile(rec["manifest"]) if rec["manifest"] else False)
         res["removed"].append({"id": full, "name": r["Name"], "label": label, "restore": rec["restore"]})
         job.log(tr("{name} removed.", name=label))
@@ -740,15 +797,33 @@ def apply(job, plan, reg=None):
         job.progress((n - 1) / total, tr(tw["t"]), current=tr(tw["t"]))
         with _state_lock:
             st = _state()
+            added = []
+            failed_save = []
+
+            def save(rec):
+                # keep the oldest backup: it is the state before StellarHub touched anything
+                if tid not in st["tweaks"]:
+                    st["tweaks"][tid] = rec
+                    added.append(tid)
+                try:
+                    _save_state(st)
+                except OSError as e:
+                    failed_save.append(e)
+                    raise
             try:
-                rec = apply_tweak(tw, reg)
+                apply_tweak(tw, reg, save)
             except OSError as e:
+                if failed_save:
+                    e = tr("Not changed: its backup couldn't be saved ({error}).", error=failed_save[0])
+                elif added:  # the values were put back: the backup is not needed
+                    st["tweaks"].pop(tid, None)
+                    try:
+                        _save_state(st)
+                    except OSError:
+                        pass
                 res["tweakFailed"].append({"id": tid, "error": str(e)})
                 job.log(f"{tr(tw['t'])}: {e}")
                 continue
-            # keep the oldest backup: it is the state before StellarHub touched anything
-            st["tweaks"].setdefault(tid, rec)
-            _save_state(st)
         res["tweaks"].append(tid)
         res["explorer"] = res["explorer"] or bool(tw.get("explorer"))
         job.log(tr("Changed: {name}", name=tr(tw["t"])))

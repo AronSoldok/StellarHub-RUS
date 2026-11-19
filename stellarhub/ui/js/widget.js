@@ -18,9 +18,10 @@ const STATS = {
   cpuTemp: { n: t('CPU temp.'), ic: 'temp', h: 'cpuTemp', max: 100, val: v => [R(v.cpuTemp), '°C'], hot: v => v.cpuTemp > 88 },
   gpu: { n: 'GPU', ic: 'gpu', h: 'gpu', max: 100, val: v => [R(v.gpu), '%'], hot: v => v.gpu > 95 },
   gpuTemp: { n: t('GPU temp.'), ic: 'temp', h: 'gpuTemp', max: 100, val: v => [R(v.gpuTemp), '°C'], hot: v => v.gpuTemp > 84 },
-  gpuPower: { n: SH.tc('widget', 'GPU power'), ic: 'bolt', h: 'gpuPower', max: 120, val: v => [R(v.gpuPower), 'W'], hot: () => false },
-  ram: { n: 'RAM', ic: 'ram', h: 'ram', max: 16, val: v => [R(v.ram, SH.fmt1), 'GB'], hot: v => v.ram / v.ramTotal > .9 },
-  vram: { n: 'VRAM', ic: 'layers', h: 'vram', max: 8, val: v => [R(v.vram, SH.fmt1), 'GB'], hot: () => false },
+  /* scales from this PC (32-64 GB of RAM, a 450 W desktop GPU), not from a mid-range laptop */
+  gpuPower: { n: SH.tc('widget', 'GPU power'), ic: 'bolt', h: 'gpuPower', max: v => v.gpuPowerLimit || 0, val: v => [R(v.gpuPower), 'W'], hot: () => false },
+  ram: { n: 'RAM', ic: 'ram', h: 'ram', max: v => v.ramTotal || 0, val: v => [R(v.ram, SH.fmt1), 'GB'], hot: v => v.ram / v.ramTotal > .9 },
+  vram: { n: 'VRAM', ic: 'layers', h: 'vram', max: v => v.vramTotal || 0, val: v => [R(v.vram, SH.fmt1), 'GB'], hot: () => false },
   down: { n: SH.tc('widget', 'Download'), ic: 'download', h: 'down', max: 0, val: v => [R(v.down, SH.fmt1), 'Mb/s'], hot: () => false },
   up: { n: t('Upload'), ic: 'upload', h: 'up', max: 0, val: v => [R(v.up, SH.fmt1), 'Mb/s'], hot: () => false },
   ping: { n: t('Latency'), ic: 'globe', h: 'ping', max: 0, val: v => [R(v.ping), 'ms'], hot: v => v.ping > 80 },
@@ -33,8 +34,8 @@ SH.widgetSize = conf => {
   const n = Math.max(1, (conf.widgetStats || DEF.widgetStats).filter(k => STATS[k]).length), L = conf.widgetLayout || 'grid';
   if (conf.widgetMode === 'mini') return { w: 46 + n * 96 + 84, h: 38 };
   if (L === 'row') return { w: Math.min(900, 24 + n * 112 + (n - 1) * 6), h: 132 };
-  if (L === 'list') return { w: 300, h: 56 + n * 32 };
-  const rows = Math.ceil(n / 2); return { w: 400, h: 54 + rows * 64 + (rows - 1) * 6 };
+  if (L === 'list') return { w: 300, h: 60 + n * 32 };
+  const rows = Math.ceil(n / 2); return { w: 400, h: 58 + rows * 64 + (rows - 1) * 6 };
 };
 if (!document.getElementById('rows')) return; // the main window only needs widgetSize
 
@@ -115,7 +116,7 @@ function limits() {
     return { minW: chrome + tight + GAP * (n - 1) + 2, maxW: chrome + natural + 34 * (n - 1), minH: 38, maxH: 38,
              comfy: chrome + natural + 16 * (n - 1) };
   }
-  const pad = 24, head = 54;
+  const pad = 24, head = 58;
   if (w.classList.contains('L-grid')) {
     const c = Math.min(2, n), lines = Math.ceil(n / c);
     return { minW: pad + c * 104 + (c - 1) * GAP, minH: head + lines * 34 + (lines - 1) * GAP,
@@ -137,11 +138,23 @@ function draw(r) {
   const box = r.c.getBoundingClientRect(); const w = Math.max(10, box.width), h = Math.max(10, box.height);
   const d = Math.min(2, devicePixelRatio || 1); if (r.c.width !== Math.round(w * d) || r.c.height !== Math.round(h * d)) { r.c.width = w * d; r.c.height = h * d; }
   const ctx = r.ctx; ctx.setTransform(d, 0, 0, d, 0, 0); ctx.clearRect(0, 0, w, h);
-  const data = SH.tele.hist[r.s.h].slice(-48); const max = r.s.max || Math.max(1, ...data) * 1.15;
+  const data = SH.tele.hist[r.s.h].slice(-48);
+  const fixed = typeof r.s.max === 'function' ? r.s.max(SH.tele.v) : r.s.max;
+  /* usage in % is drawn on its 0-100 scale. A quantity with a total (RAM, VRAM, power) sits near the top most of the
+     time: drawn from 0 to the total, it was a flat line with everything under it filled, a solid block. It is drawn
+     around what it did lately instead (at least 10 % of the total tall, so noise does not look like a spike). */
+  let lo = 0, max = fixed || Math.max(1, ...data) * 1.15;
+  if (typeof r.s.max === 'function' && fixed) {
+    const mn = Math.min(...data), mx = Math.max(...data), span = Math.max(mx - mn, fixed * .1);
+    lo = Math.max(0, (mn + mx) / 2 - span * .75); max = lo + span * 1.5;
+  }
   const col = getComputedStyle(document.documentElement).getPropertyValue(r.el.classList.contains('hot') ? '--warn' : '--accent2').trim();
-  ctx.beginPath(); data.forEach((v, i) => { const x = i / (data.length - 1) * w, y = h - 1.5 - Math.min(1, v / max) * (h - 4); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.beginPath(); data.forEach((v, i) => { const x = i / (data.length - 1) * w, y = h - 1.5 - Math.max(0, Math.min(1, (v - lo) / (max - lo))) * (h - 4); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
   ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.lineJoin = 'round'; ctx.stroke();
-  ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); ctx.globalAlpha = .16; ctx.fillStyle = col; ctx.fill(); ctx.globalAlpha = 1;
+  /* the area fades out toward the bottom: it never reads as a solid block */
+  ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
+  const gr = ctx.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, col); gr.addColorStop(1, 'transparent');
+  ctx.globalAlpha = .22; ctx.fillStyle = gr; ctx.fill(); ctx.globalAlpha = 1;
 }
 function paint(v) { rows.forEach(r => { const [a, b] = r.s.val(v); r.v.innerHTML = a === '—' ? '—' : `${a}<small>${b}</small>`; r.el.classList.toggle('hot', !!r.s.hot(v)); draw(r); }); }
 SH.tele.on(paint);
@@ -156,7 +169,14 @@ function fitWindow(st) {
     if (st.widgetMode === 'mini') sz = { w: saved ? saved[0] : L.comfy, h: 38 };
     else sz = saved ? { w: saved[0], h: saved[1] } : SH.widgetSize(st);
     limitsSent = ''; sendLimits();
-    SH.call('widget_resize', Math.round(clamp(sz.w, L.minW, L.maxW)), Math.round(clamp(sz.h, L.minH, L.maxH)));
+    const W = Math.round(clamp(sz.w, L.minW, L.maxW)), H = Math.round(clamp(sz.h, L.minH, L.maxH));
+    SH.call('widget_resize', W, H);
+    /* if the window came out smaller than asked (Windows keeps part of the size for its own frame), ask again for the
+       difference once: the last row must never be cut off */
+    setTimeout(() => {
+      const lack = H - innerHeight;
+      if (st.widgetMode !== 'mini' && !saved && lack > 3 && lack < 80) SH.call('widget_resize', W, Math.min(L.maxH + lack, H + lack));
+    }, 450);
   });
 }
 /* resize handles: Windows' own resize loop does the dragging */

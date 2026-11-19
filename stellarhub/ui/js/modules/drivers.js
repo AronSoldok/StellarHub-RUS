@@ -215,10 +215,11 @@ const DATA = {
   async install(todo, onStep) {
     if (!REAL) {
       onStep('rp', 'run'); const rp = await API.restorePoint(); onStep('rp', rp.ok ? 'done' : 'skip', rp); let reboot = false;
+      onStep('search', 'search', { text: t('Asking Windows Update for the selected drivers') }); await wait(1600);
       for (const u of todo) { const r = await API.install(u, (ph, p) => onStep(u.id, ph === 'done' ? 'done' : ph, { p })); reboot = reboot || r.reboot; onStep(u.id, 'done', { result: { ok: true, reboot: r.reboot } }); }
       return { results: todo.map(u => ({ id: u.id, ok: true, reboot: u.reboot })), reboot, restorePoint: rp };
     }
-    return SH.job('drivers', 'install', [todo.map(u => u.id), true], { onProgress: m => { const d = m.data || {}; if (m.kind === 'progress' && d.step) onStep(d.step, d.phase, d); } });
+    return SH.job('drivers', 'install', [todo.map(u => u.id), true], { onProgress: m => { const d = m.data || {}; if (m.kind === 'progress' && d.step) onStep(d.step, d.phase, { ...d, text: m.text }); } });
   },
   async problems() {
     if (!REAL) return { errors: [], disabled: [], ghosts: API.ghosts.map(g => ({ ...g, lastText: g.last })) };
@@ -275,6 +276,24 @@ function swap(el, html, dir = 1) {
 const stagger = (els, base = 0, step = 35) => els.forEach((el, i) => anim(el, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: base + Math.min(i, 16) * step, e: EASE.spring }));
 const skRows = n => `<div class="sk-rows">${Array.from({ length: n }, (_, k) => `<div class="sk-row"><div class="sk a" style="--dl:${k * .1}s"></div><div class="sk b" style="--w:${[44, 36, 52, 30, 41, 47][k % 6]}%;--dl:${k * .1}s"></div><div class="sk c"></div></div>`).join('')}</div>`;
 const errBox = (msg, retry) => `<div class="empty"><b>${t('Could not read it')}</b>${esc(msg)}${retry ? `<div style="margin-top:12px"><button class="btn sec sm" data-retry>${t('Try again')}</button></div>` : ''}</div>`;
+/* ---- things that take time always show it: a spinner, what is happening and for how long ---- */
+const SPIN = '<span class="dv-spin" aria-hidden="true"></span>';
+const mmss = s => `${Math.floor(s / 60)}:${pad(s % 60)}`;
+const secsText = s => s < 60 ? t('{s} s', { s }) : t('{m} min {s} s', { m: Math.floor(s / 60), s: s % 60 });
+/* calls fn(seconds) now and every half second; returns the function that stops it */
+function clock(fn) { const t0 = performance.now(); const tick = () => fn(Math.floor((performance.now() - t0) / 1000)); tick(); const id = setInterval(tick, 500); return () => clearInterval(id); }
+/* a button that is working: spinner + text, disabled so it cannot run twice. freeBtn puts it back as it was. */
+function busyBtn(b, txt) {
+  if (!b) return; if (b.dataset.idle === undefined) b.dataset.idle = b.innerHTML;
+  b.disabled = true; b.classList.add('busy'); b.setAttribute('aria-busy', 'true'); b.innerHTML = `${SPIN}<span class="bt">${txt}</span>`;
+}
+const busyText = (b, txt) => { const s = b && $('.bt', b); if (s) s.textContent = txt; };
+function freeBtn(b) {
+  if (!b) return; if (b.dataset.idle !== undefined) { b.innerHTML = b.dataset.idle; delete b.dataset.idle; }
+  b.disabled = false; b.classList.remove('busy'); b.removeAttribute('aria-busy');
+}
+/* sample mode: a pretend job that reports the same steps as the engine */
+async function fakeJob(steps, onProgress) { for (const [text, ms, data] of steps) { onProgress({ kind: 'progress', text, data: data || {} }); await wait(ms); } }
 
 /* ================= Updates ================= */
 function renderUpdates(el, ctx) {
@@ -337,7 +356,7 @@ function renderUpdates(el, ctx) {
     if (st.busy) return; st.busy = true; syncBar(); setSearchBtn(true); lastPhase = -1;
     const radar = $('#duRadar', el); radar.classList.add('on'); $$('.blip', radar).forEach(b => b.remove());
     $('#duIndet', el).classList.add('on');
-    t0 = performance.now(); timer = setInterval(() => { const s = Math.floor((performance.now() - t0) / 1000); $('#duTime', el).textContent = s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; }, 250);
+    t0 = performance.now(); timer = setInterval(() => { $('#duTime', el).textContent = secsText(Math.floor((performance.now() - t0) / 1000)); }, 250);
     list.innerHTML = skRows(4); stagger($$('.sk-row', list));
     $('#duTitle', el).textContent = t('Looking for new drivers');
     st.searching = DATA.search((txt, i) => { if (i === lastPhase || !txt) return; lastPhase = i; phaseText(txt); if (i >= 2) blips(radar); });
@@ -368,6 +387,8 @@ function renderUpdates(el, ctx) {
     st.busy = true; syncBar(); sbtn.disabled = true;
     $('#duTitle', el).textContent = n === 1 ? t('Installing {n} driver', { n }) : t('Installing {n} drivers', { n }); $('#duPhase', el).textContent = t('Do not turn off the PC. You can keep using StellarHub.');
     $('#duRadar', el).classList.add('on');
+    /* elapsed time for the whole installation (restore point, asking Windows Update again, each driver) */
+    const stopTime = clock(s => { $('#duTime', el).textContent = secsText(s); });
     const steps = [{ id: 'rp', name: t('Restore point'), sub: t('To go back if something goes wrong') }, ...todo.map(u => ({ id: u.id, name: u.d.name, sub: `${fmt1(u.mb)} MB`, u }))];
     list.innerHTML = `<div class="du-inst">${steps.map(s => `<div class="du-step" data-s="${s.id}"><span class="st">${ic(s.id === 'rp' ? 'restore' : 'download')}</span><div><b>${esc(s.name)}</b><span class="sub">${esc(s.sub)}</span></div><div class="bar"><span style="transform:scaleX(0)"></span></div><span class="res"><span class="chip">${t('Queued')}</span></span></div>`).join('')}</div>`;
     stagger($$('.du-step', list), 40, 50);
@@ -378,6 +399,21 @@ function renderUpdates(el, ctx) {
     const markOk = id => { const ok = $(`.du-step[data-s="${id}"] .st`, list); if (ok) { ok.innerHTML = ic('check'); anim(ok, [{ transform: 'scale(.6)' }, { transform: 'scale(1)' }], { d: 420, e: EASE.spring }); } };
     const seen = {};
     let rpMade = false;
+    /* the restore point takes one to three minutes: a moving bar, "this can take a few minutes" and the seconds so far */
+    let rpStop = null;
+    const rpRun = () => {
+      const row = $('.du-step[data-s="rp"]', list); if (!row) return;
+      setRes('rp', `<span class="chip acc">${t('Creating')}<span class="du-el">0:00</span></span>`, 'run'); row.classList.add('indet');
+      const s = $('.sub', row); if (s) s.textContent = t('This can take a few minutes.');
+      if (rpStop) rpStop(); rpStop = clock(n => { const e = $('.du-el', row); if (e) e.textContent = mmss(n); });
+    };
+    const rpEnd = () => { if (!rpStop) return; rpStop(); rpStop = null; const row = $('.du-step[data-s="rp"]', list); if (!row) return; row.classList.remove('indet'); const s = $('.sub', row); if (s) s.textContent = t('To go back if something goes wrong'); };
+    /* after the restore point Windows Update is asked again for the selected drivers: the phase line says so */
+    const restPhase = t('Do not turn off the PC. You can keep using StellarHub.');
+    const searchStep = (phase, d) => {
+      if (phase === 'search') { phaseText(d.text || t('Asking Windows Update for the selected drivers')); $('#duIndet', el).classList.add('on'); }
+      else { $('#duIndet', el).classList.remove('on'); if (phase === 'none') $('#duPhase', el).textContent = d.text || t('Those drivers are no longer available'); else $('#duPhase', el).textContent = restPhase; }
+    };
     /* why the restore point was not created (engine/backups.py reason codes), with the way to fix it */
     const rpWhy = d => {
       const row = $('.du-step[data-s="rp"]', list); if (!row) return; row.classList.add('rpwarn');
@@ -389,19 +425,23 @@ function renderUpdates(el, ctx) {
       s.after(b); anim(b, [{ opacity: 0, transform: 'translate3d(0,4px,0)' }, { opacity: 1, transform: 'none' }], { d: 260, e: EASE.spring });
       b.addEventListener('click', async () => {
         if (fix === 'protect') { SH.go('settings', { section: 'backups' }); return; }
-        b.disabled = true; setRes('rp', `<span class="chip acc">${t('Creating')}</span>`, 'run');
+        if (b.disabled) return; b.disabled = true; rpRun();
         let r;
         try { r = REAL ? await SH.job('backups', 'create_point', [t('StellarHub: before installing drivers')]) : await API.restorePoint(); }
         catch (e) { r = { ok: false, reason: 'failed', msg: e.message }; }
-        if (r && r.ok) { rpMade = true; b.remove(); row.classList.remove('rpwarn'); if (s) s.textContent = t('To go back if something goes wrong'); setRes('rp', `<span class="chip ok">${t('Created')}</span>`, 'ok'); markOk('rp'); }
+        finally { rpEnd(); }
+        if (r && r.ok) { rpMade = true; b.remove(); row.classList.remove('rpwarn'); setRes('rp', `<span class="chip ok">${t('Created')}</span>`, 'ok'); markOk('rp'); }
         else { setRes('rp', `<span class="chip warn">${t('Not created')}</span>`, 'ok'); rpWhy(r || {}); }
       });
     };
     const onStep = (id, phase, d = {}) => {
+      if (id === 'search') { if (seen.search !== phase) { seen.search = phase; searchStep(phase, d); } return; }
       const sp = springs.get(id); if (!sp || seen[id] === phase) return; seen[id] = phase;
+      if (seen.search === 'search') searchStep('found', d);
       if (id === 'rp') {
-        if (phase === 'run') { setRes('rp', `<span class="chip acc">${t('Creating')}</span>`, 'run'); sp.t = .6; }
-        else if (phase === 'done') { sp.t = 1; rpMade = true; setRes('rp', `<span class="chip ok">${t('Created')}</span>`, 'ok'); markOk('rp'); }
+        if (phase === 'run') { rpRun(); sp.t = .6; return; }
+        rpEnd();
+        if (phase === 'done') { sp.t = 1; rpMade = true; setRes('rp', `<span class="chip ok">${t('Created')}</span>`, 'ok'); markOk('rp'); }
         else if (phase === 'skip') { sp.t = 1; setRes('rp', `<span class="chip warn">${t('Not created')}</span>`, 'ok'); rpWhy(d); }
         return;
       }
@@ -412,7 +452,8 @@ function renderUpdates(el, ctx) {
     };
     let out = null, err = null;
     try { out = await DATA.install(todo, onStep); } catch (e) { err = e; }
-    await wait(400); tickers.delete(tk);
+    finally { stopTime(); rpEnd(); $('#duIndet', el).classList.remove('on'); }
+    await wait(400); tickers.delete(tk); $('#duTime', el).textContent = '';
     $('#duRadar', el).classList.remove('on'); st.busy = false; sbtn.disabled = false;
     if (out && out.needAdmin) { SH.requireAdmin(t('to install drivers.')); }
     const results = (out && out.results) || [];
@@ -450,7 +491,7 @@ async function renderAll(el) {
       ${segHTML([['all', t('All')], ['2', t('Over 2 years')], ['5', t('Over 5 years')], ['inbox', t('From Windows')], ['bad', t('With problems')]], 'all')}<span class="cnt" id="daCnt">${t('Reading…')}</span></div>
       <div class="da-scroll" id="daScroll">${skRows(9)}</div></div>
     <div class="pan da-detail" id="daDetail" data-asm><div class="dd-empty"><div>${ic('drivers')}<div>${t('Choose a driver to see its details,<br>go back to a previous version or disable it.')}</div></div></div></div>`;
-  const scroll = $('#daScroll', el); let q = '', age = 'all', selected = null, ALL = [];
+  const scroll = $('#daScroll', el); let q = '', age = 'all', selected = null, ALL = [], busyOp = false;
   wireSeg($('.seg', el), v => { age = v; filter(); });
   async function load(fresh) {
     try { ALL = await DATA.drivers(fresh); } catch (e) { scroll.innerHTML = errBox(e.message, true); return; }
@@ -508,17 +549,52 @@ async function renderAll(el) {
     if (b.dataset.rb) {
       if (REAL && !SH.state.admin) { SH.requireAdmin(t('to go back to a previous driver version.')); return; }
       if (!await ask(t('Go back to the previous version'), t('{name} will switch to the <b>{pkg}</b> package. A restore point is created first. It may ask for a restart.', { name: esc(d.name), pkg: esc(b.dataset.rb) }), t('Go back to this one'))) return;
-      b.disabled = true; b.innerHTML = `${ic('restore')}${t('Installing…')}`;
-      try { const r = REAL ? await SH.job('drivers', 'rollback', [d.instance, b.dataset.rb, d.hw]) : { ok: true }; if (needAdmin(r, t('to roll back a driver.'))) return;
-        SH.toast(r.ok ? (r.reboot ? t('{name}: previous version installed. Restart to finish.', { name: d.name }) : t('{name}: previous version installed.', { name: d.name })) : t('It did not work: {msg}', { msg: r.msg })); if (r.ok) { SH.logActivity(t('Driver rolled back'), { sub: d.name, ic: 'restore', go: 'drivers', tab: 'all' }); drvCache = null; await load(true); }
+      if (busyOp) { SH.toast(t('Another change is still running. Wait for it to finish.')); return; } busyOp = true;
+      /* a restore point (1 to 3 min), the install and reading the drivers again: a status line with the step and the time */
+      const box = $('#ddVers', el); $$('[data-rb],[data-a="toggle"]', $('#daDetail', el)).forEach(x => { x.disabled = true; });
+      busyBtn(b, t('Installing…'));
+      const line = document.createElement('div'); line.className = 'dd-status'; line.setAttribute('role', 'status');
+      line.innerHTML = `${SPIN}<span class="tx">${esc(t('Creating a restore point'))}…</span><span class="tm">0:00</span>`;
+      (box || b.parentElement).after(line);
+      const say = txt => { const s = $('.tx', line); if (s && txt) s.textContent = txt + '…'; };
+      const stop = clock(s => { const e = $('.tm', line); if (e) e.textContent = mmss(s); });
+      let ok = false;
+      try {
+        const onProgress = m => { if (m.kind === 'progress' && m.text) say(m.text); };
+        let r;
+        if (REAL) r = await SH.job('drivers', 'rollback', [d.instance, b.dataset.rb, d.hw], { onProgress });
+        else { await fakeJob([[t('Creating a restore point'), 2200], [t('Installing the previous version'), 1400]], onProgress); r = { ok: true }; }
+        if (needAdmin(r, t('to roll back a driver.'))) return;
+        SH.toast(r.ok ? (r.reboot ? t('{name}: previous version installed. Restart to finish.', { name: d.name }) : t('{name}: previous version installed.', { name: d.name })) : t('It did not work: {msg}', { msg: r.msg }));
+        if (r.ok) {
+          ok = true; SH.logActivity(t('Driver rolled back'), { sub: d.name, ic: 'restore', go: 'drivers', tab: 'all' });
+          say(t('Reading drivers again')); $('#daCnt', el).textContent = t('Reading…'); drvCache = null;
+          await load(true);
+        }
       } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message })); }
+      finally {
+        stop(); line.remove(); busyOp = false; freeBtn(b);
+        $$('[data-rb],[data-a="toggle"]', $('#daDetail', el)).forEach(x => { if (!x.classList.contains('busy')) x.disabled = false; });
+        /* show the driver as it is now (new version, new list of stored versions) */
+        if (ok && selected === d) { const nd = ALL.find(x => x.instance && x.instance === d.instance) || ALL.find(x => x.id === d.id); const row = nd && $(`.da-row[data-d="${nd.id}"]`, scroll); if (row) select(nd.id, row); }
+      }
       return;
     }
     if (b.dataset.a === 'toggle') {
       const enable = d.status === 'off';
       if (REAL && !SH.state.admin) { SH.requireAdmin(t('to disable or enable devices.')); return; }
       if (!enable && !await ask(t('Disable the device'), t('{name} will stop working until you enable it again here or from Device Manager.', { name: esc(d.name) }), t('Disable'), true)) return;
-      const apply = async en => { const r = REAL ? await SH.job('drivers', 'set_enabled', [d.instance, en]) : { ok: true }; if (needAdmin(r, t('to disable devices.'))) return false; if (!r.ok) { SH.toast(t('Windows did not allow it: {msg}', { msg: r.msg || '' })); return false; } d.status = en ? 'ok' : 'off'; const row = $(`.da-row[data-d="${d.id}"]`, scroll); if (row && selected === d) swap($('#daDetail', el), detailHTML(d)); return true; };
+      const apply = async en => {
+        if (busyOp) { SH.toast(t('Another change is still running. Wait for it to finish.')); return false; } busyOp = true;
+        const tb = selected === d ? $('#daDetail [data-a="toggle"]', el) : null; busyBtn(tb, en ? t('Enabling…') : t('Disabling…'));
+        try {
+          const r = REAL ? await SH.job('drivers', 'set_enabled', [d.instance, en]) : (await wait(700), { ok: true });
+          if (needAdmin(r, t('to disable devices.'))) return false;
+          if (!r.ok) { SH.toast(t('Windows did not allow it: {msg}', { msg: r.msg || '' })); return false; }
+          d.status = en ? 'ok' : 'off'; const row = $(`.da-row[data-d="${d.id}"]`, scroll); if (row && selected === d) swap($('#daDetail', el), detailHTML(d)); return true;
+        } catch (er) { SH.toast(t('Windows did not allow it: {msg}', { msg: er.message })); return false; }
+        finally { busyOp = false; if (tb && tb.isConnected) freeBtn(tb); }
+      };
       if (await apply(enable)) SH.toast(enable ? t('Device enabled.') : t('Device disabled.'), { action: { label: t('Undo'), run: () => apply(!enable) } });
     }
   });
@@ -547,43 +623,74 @@ async function renderProblems(el) {
     </div></div>`;
   SH.assemble(el, 0, 40);
   setTimeout(() => playRing($('.dp-hero svg', el)), 300 * SH.motion());
-  $('#dpRe', el).addEventListener('click', () => renderProblems(el));
+  /* one listener per render, on the wrapper this render created: "Check again" replaces it, so actions never run twice */
+  const wrap = $('.du-wrap', el); let running = 0;
+  $('#dpRe', el).addEventListener('click', () => { if (running) { SH.toast(t('Another change is still running. Wait for it to finish.')); return; } renderProblems(el); });
   const box = $('#dpG', el); let ghostsLeft = P.ghosts.length;
-  const rmOne = async row => { const r = REAL ? await SH.job('drivers', 'remove_device', [row.dataset.id]) : { ok: true }; if (needAdmin(r, t('to remove devices from Windows.'))) return false; if (!r.ok) { SH.toast(t('Windows did not remove it: {msg}', { msg: r.msg || '' })); return false; } removeRow(row, box); ghostsLeft = Math.max(0, ghostsLeft - 1); $('#dpGn', el).textContent = ghostsLeft; return true; };
-  el.addEventListener('click', async e => {
-    const b = e.target.closest('[data-act]'); if (!b) return; const row = b.closest('.row');
+  /* -> true (removed), false (Windows refused or it failed) or 'admin' (needs administrator rights) */
+  const rmOne = async row => {
+    const b = $('[data-act="rm"]', row); busyBtn(b, t('Removing…')); let ok = false;
+    try {
+      const r = REAL ? await SH.job('drivers', 'remove_device', [row.dataset.id]) : (await wait(500), { ok: true });
+      if (needAdmin(r, t('to remove devices from Windows.'))) return 'admin';
+      if (!r.ok) { SH.toast(t('Windows did not remove it: {msg}', { msg: r.msg || '' })); return false; }
+      ok = true; removeRow(row, box); ghostsLeft = Math.max(0, ghostsLeft - 1); $('#dpGn', el).textContent = ghostsLeft; return true;
+    } catch (er) { SH.toast(t('Windows did not remove it: {msg}', { msg: er.message })); return false; }
+    finally { if (!ok) freeBtn(b); }
+  };
+  wrap.addEventListener('click', async e => {
+    const b = e.target.closest('[data-act]'); if (!b || b.disabled) return; const row = b.closest('.row');
     if (b.dataset.act === 'devmgmt') { if (await SH.call('run_tool', 'devmgmt') === undefined) SH.toast(t('This only works inside the app.')); }
     else if (b.dataset.act === 'search') { SH.go('drivers', { tab: 'updates' }); setTimeout(() => { const v = $('#v-drivers'); v && v._searchDrivers && v._searchDrivers(); }, 400); }
     else if (b.dataset.act === 'enable') {
       if (REAL && !SH.state.admin) { SH.requireAdmin(t('to enable devices.')); return; }
-      const r = REAL ? await SH.job('drivers', 'set_enabled', [row.dataset.id, true]) : { ok: true }; if (needAdmin(r, t('to enable devices.'))) return;
-      if (r.ok) { SH.toast(t('Device enabled.')); removeRow(row, row.parentElement); } else SH.toast(t('Windows did not allow it: {msg}', { msg: r.msg || '' }));
+      busyBtn(b, t('Enabling…')); running++; let ok = false;
+      try {
+        const r = REAL ? await SH.job('drivers', 'set_enabled', [row.dataset.id, true]) : (await wait(600), { ok: true }); if (needAdmin(r, t('to enable devices.'))) return;
+        if (r.ok) { ok = true; SH.toast(t('Device enabled.')); removeRow(row, row.parentElement); } else SH.toast(t('Windows did not allow it: {msg}', { msg: r.msg || '' }));
+      } catch (er) { SH.toast(t('Windows did not allow it: {msg}', { msg: er.message })); }
+      finally { running--; if (!ok) freeBtn(b); }
     } else if (b.dataset.act === 'rm') {
       if (REAL && !SH.state.admin) { SH.requireAdmin(t('to remove devices from Windows.')); return; }
       if (!await ask(t('Remove the device'), t('Windows will forget <b>{name}</b>. If you connect it again, it installs again by itself.', { name: esc($('b', row).textContent) }), t('Remove'))) return;
-      if (await rmOne(row)) SH.toast(t('Device removed.'));
+      running++; try { if (await rmOne(row) === true) SH.toast(t('Device removed.')); } finally { running--; }
     }
   });
   const all = $('#dpAll', el);
   if (all) all.addEventListener('click', async () => {
+    if (all.disabled) return;
     if (REAL && !SH.state.admin) { SH.requireAdmin(t('to remove devices from Windows.')); return; }
-    const rows = $$('.row', box); if (!await ask(rows.length === 1 ? t('Remove {n} disconnected device', { n: rows.length }) : t('Remove {n} disconnected devices', { n: rows.length }), t('Windows will forget them. Any you connect again reinstall by themselves.'), t('Remove all'))) return;
-    all.disabled = true; let n = 0; for (const r of rows) { if (await rmOne(r)) n++; await wait(60); }
+    const rows = $$('.row', box).filter(r => !$('[data-act="rm"].busy', r)); if (!rows.length) return;
+    if (!await ask(rows.length === 1 ? t('Remove {n} disconnected device', { n: rows.length }) : t('Remove {n} disconnected devices', { n: rows.length }), t('Windows will forget them. Any you connect again reinstall by themselves.'), t('Remove all'))) return;
+    const total = rows.length; let n = 0, k = 0; running++;
+    busyBtn(all, t('Removing {n} of {total}…', { n: 1, total }));
+    /* the rows still waiting cannot be removed one by one at the same time */
+    rows.forEach(r => { const x = $('[data-act="rm"]', r); if (x) x.disabled = true; });
+    try {
+      for (const r of rows) {
+        k++; busyText(all, t('Removing {n} of {total}…', { n: k, total }));
+        const res = await rmOne(r); if (res === 'admin') break; if (res === true) n++;
+        await wait(60);
+      }
+    } finally {
+      running--;
+      rows.forEach(r => { const x = $('[data-act="rm"]', r); if (x && r.isConnected && !x.classList.contains('busy')) x.disabled = false; });
+      freeBtn(all); if (!ghostsLeft) all.disabled = true;
+    }
     SH.toast(n === 1 ? t('{n} device removed.', { n }) : t('{n} devices removed.', { n })); if (n) SH.logActivity(t('Disconnected devices removed'), { sub: n === 1 ? t('{n} device', { n }) : t('{n} devices', { n }), ic: 'usb', go: 'drivers', tab: 'problems' });
   });
 }
 
 /* ================= Backup ================= */
 async function renderBackup(el) {
-  const dest0 = REAL ? (await SH.engine('drivers', 'default_backup_dir')) : 'C:\\Users\\user\\Documents\\StellarHub\\Driver backups';
-  let drv = []; try { drv = await DATA.drivers(); } catch { drv = []; }
-  const third = new Set(drv.filter(d => !d.inbox && /^oem\d+\.inf$/i.test(d.inf || '')).map(d => d.inf.toLowerCase())).size || 187;
+  /* the tab appears at once; the folder and the number of drivers (3 to 15 s on a real PC) fill in when they arrive */
+  let third = null;
   el.innerHTML = `<div class="du-wrap">
     <div class="pan db-hero" data-asm>
-      <div><h3>${t('Driver backup')}</h3><p>${t('Saves the {n} manufacturer drivers on this PC (NVIDIA, Intel, Realtek, ASUS…) to a folder. If you reinstall Windows or something breaks, you can reinstall them all from here without hunting for anything. The Windows drivers do not need saving: they come with Windows.', { n: third })}</p>
-        <div class="db-dest"><label class="field">${ic('folder')}<input id="dbPath" value="${esc(dest0)}" spellcheck="false"></label><button class="btn sec" id="dbPick">${t('Choose…')}</button></div></div>
+      <div><h3>${t('Driver backup')}</h3><p>${t('Saves the {n} manufacturer drivers on this PC (NVIDIA, Intel, Realtek, ASUS…) to a folder. If you reinstall Windows or something breaks, you can reinstall them all from here without hunting for anything. The Windows drivers do not need saving: they come with Windows.', { n: '<span id="dbThird" class="db-n">…</span>' })}</p>
+        <div class="db-dest"><label class="field">${ic('folder')}<input id="dbPath" value="" placeholder="${esc(t('Reading…'))}" spellcheck="false"></label><button class="btn sec" id="dbPick">${t('Choose…')}</button></div></div>
       <button class="btn pri lg" id="dbGo">${ic('download')}${t('Create backup')}</button>
-      <div class="db-prog" id="dbProg"><div class="big"><span id="dbN">0</span><small>${t('of {total}', { total: `<span id="dbT">${third}</span>` })}</small></div><div class="w"><div class="bar"><span id="dbBar" style="transform:scaleX(0)"></span></div><div class="f" id="dbF">${t('Preparing…')}</div></div></div>
+      <div class="db-prog" id="dbProg"><div class="big"><span id="dbN">0</span><small>${t('of {total}', { total: '<span id="dbT">…</span>' })}</small></div><div class="w"><div class="bar"><span id="dbBar" style="transform:scaleX(0)"></span></div><div class="ft"><div class="f" id="dbF">${t('Preparing…')}</div><span class="tm" id="dbTm"></span></div></div></div>
     </div>
     <div class="db-lower"><div class="pan db-list" data-asm><h4>${t('Saved backups')} <em id="dbCount">–</em></h4>
       <div class="tbl-head db-cols"><span>${t('Date')}</span><span>${t('Drivers')}</span><span>${t('Size')}</span><span>${t('Folder')}</span><span></span></div><div class="rows" id="dbRows">${skRows(2)}</div></div>
@@ -594,25 +701,45 @@ async function renderBackup(el) {
   const rows = $('#dbRows', el); let LIST = [];
   const rowHTML = (b, i) => `<div class="db-row db-cols" data-i="${i}"><b style="font-weight:500">${fmtDateCol(b.date)}</b><span class="muted">${b.count}</span><span class="muted">${fmt1(b.gb)} GB</span><span class="p" title="${esc(b.path)}">${esc(b.path)}</span><span class="a"><button class="btn sm sec" data-a="restore">${ic('restore')}${t('Restore')}</button><button class="btn sm ghost" data-a="open" title="${t('Open folder')}">${ic('folder')}</button><button class="btn sm ghost" data-a="del" title="${t('Send to the Recycle Bin')}">${ic('trash')}</button></span></div>`;
   async function loadList(anim_) {
-    try { LIST = await DATA.backups(); } catch { LIST = []; }
+    try { LIST = [...((await DATA.backups()) || [])]; } catch { LIST = []; }  // a copy: deleting marks entries without shifting the rows' indexes
     rows.innerHTML = LIST.length ? LIST.map(rowHTML).join('') : emptyBox(t('No backups yet'), t('Create the first one with the button above. It takes a minute or two.'), 'download');
     $('#dbCount', el).textContent = LIST.length; if (anim_) stagger($$('.db-row', rows), 0, 40);
   }
+  /* one long operation at a time (create a backup, reinstall one): the others wait, visibly disabled */
+  let op = null;
   loadList(true);
+  (async () => {
+    let dest0 = ''; try { dest0 = REAL ? (await SH.engine('drivers', 'default_backup_dir')) || '' : 'C:\\Users\\user\\Documents\\StellarHub\\Driver backups'; } catch { dest0 = ''; }
+    const inp = $('#dbPath', el); if (inp && !inp.value) inp.value = dest0; if (inp) inp.placeholder = '';
+    let drv = []; try { drv = await DATA.drivers(); } catch { drv = []; }
+    const n = new Set(drv.filter(d => !d.inbox && /^oem\d+\.inf$/i.test(d.inf || '')).map(d => d.inf.toLowerCase())).size;
+    third = n || (REAL ? null : 187);
+    const s = $('#dbThird', el); if (s) s.textContent = third == null ? '–' : SH.fmtInt(third);
+    if (!op) $('#dbT', el).textContent = third == null ? '–' : third;
+  })();
+  const lock = on => { op = on || null; $('#dbGo', el).disabled = !!op; $$('.db-row:not(.busy) [data-a="restore"],.db-row:not(.busy) [data-a="del"]', rows).forEach(b => { if (!b.classList.contains('busy')) b.disabled = !!op; }); };
+  /* the progress panel under the hero: count "of {total}", bar, the file being handled and the elapsed time */
+  function progress(total, first) {
+    const prog = $('#dbProg', el); prog.classList.add('on'); anim(prog, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, e: EASE.spring });
+    $('#dbN', el).textContent = 0; $('#dbT', el).textContent = total == null ? '…' : total; $('#dbF', el).textContent = first || t('Preparing…'); $('#dbBar', el).style.transform = 'scaleX(0)';
+    const sp = new Spring(0, 110, 18); const tk = dt => { sp.step(dt); $('#dbBar', el).style.transform = `scaleX(${sp.v.toFixed(4)})`; }; tickers.add(tk);
+    const stop = clock(s => { $('#dbTm', el).textContent = mmss(s); });
+    return {
+      set(n, tot, text, pct) { if (tot) { $('#dbN', el).textContent = n || 0; $('#dbT', el).textContent = tot; } if (text) $('#dbF', el).textContent = text; if (pct != null) sp.t = pct; else if (tot) sp.t = (n || 0) / tot; },
+      async end() { stop(); await wait(400); tickers.delete(tk); anim(prog, [{ opacity: 1 }, { opacity: 0 }], { d: 200 }).finished.then(() => { if (!op) prog.classList.remove('on'); }).catch(() => {}); },
+    };
+  }
   $('#dbPick', el).addEventListener('click', async () => { if (!REAL) { SH.toast(t('The folder picker only works inside the app.')); return; } const p = await SH.engine('drivers', 'pick_folder', $('#dbPath', el).value); if (p) $('#dbPath', el).value = p; });
   $('#dbGo', el).addEventListener('click', async e => {
-    const btn = e.currentTarget; if (btn.disabled) return;
+    const btn = e.currentTarget; if (btn.disabled || op) return;
     if (REAL && !SH.state.admin) { SH.requireAdmin(t('to copy the system drivers (Windows requires it).')); return; }
-    btn.disabled = true;
-    const prog = $('#dbProg', el); prog.classList.add('on'); anim(prog, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, e: EASE.spring });
-    const sp = new Spring(0, 110, 18); const tk = dt => { sp.step(dt); $('#dbBar', el).style.transform = `scaleX(${sp.v.toFixed(4)})`; }; tickers.add(tk);
+    lock('create'); const pg = progress(third);
     let r = null;
     try {
-      if (REAL) r = await SH.job('drivers', 'export', [$('#dbPath', el).value.trim() || null], { onProgress: m => { const d = m.data || {}; if (d.total) { $('#dbN', el).textContent = d.n || 0; $('#dbT', el).textContent = d.total; } if (m.text) $('#dbF', el).textContent = m.text; sp.t = m.pct || 0; } });
-      else { const x = await API.exportDrivers(true, (i, t, f) => { $('#dbN', el).textContent = i; $('#dbT', el).textContent = t; $('#dbF', el).textContent = f; sp.t = i / t; }); r = { ok: true, count: x.count, gb: x.gb }; API.backups.unshift({ id: 'b' + Date.now(), date: new Date().toISOString().slice(0, 10), count: x.count, gb: x.gb, path: $('#dbPath', el).value + '\\' + new Date().toISOString().slice(0, 10) }); }
+      if (REAL) r = await SH.job('drivers', 'export', [$('#dbPath', el).value.trim() || null], { onProgress: m => { if (m.kind !== 'progress') return; const d = m.data || {}; pg.set(d.n, d.total, m.text, m.pct || 0); } });
+      else { const x = await API.exportDrivers(true, (i, tot, f) => pg.set(i, tot, f)); r = { ok: true, count: x.count, gb: x.gb }; API.backups.unshift({ id: 'b' + Date.now(), date: new Date().toISOString().slice(0, 10), count: x.count, gb: x.gb, path: $('#dbPath', el).value + '\\' + new Date().toISOString().slice(0, 10) }); }
     } catch (er) { r = { ok: false, msg: er.message }; }
-    await wait(400); tickers.delete(tk); btn.disabled = false;
-    anim(prog, [{ opacity: 1 }, { opacity: 0 }], { d: 200 }).finished.then(() => prog.classList.remove('on')).catch(() => {});
+    finally { lock(null); await pg.end(); }
     if (needAdmin(r, t('to copy the drivers.'))) return;
     if (!r || !r.ok) { SH.toast(t('The backup could not be created: {msg}', { msg: (r && r.msg) || t('unknown error') })); return; }
     await loadList(false); const nr = rows.firstElementChild; if (nr) { nr.classList.add('fresh'); anim(nr, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring }); setTimeout(() => nr.classList.remove('fresh'), 2400); }
@@ -632,7 +759,7 @@ async function renderBackup(el) {
   };
   async function loadStore(fresh) {
     let r; try { r = REAL ? await SH.engine('drivers', 'store_packages', !!fresh) : API.store; } catch { r = null; }
-    OLD = (r && r.old) || []; dsSel.clear(); OLD.forEach(o => dsSel.add(o.inf));
+    OLD = (r && r.old) || []; dsSel.clear();  /* nothing starts checked: removing copies is the user's decision */
     $('#dsCount', el).textContent = OLD.length;
     ds.innerHTML = !r ? emptyBox(t('The driver store could not be read'), t('Try again in a moment.'), 'alert')
       : r.supported === false ? emptyBox(t('Not available on this Windows version'), t('It needs Windows 11 22H2 or newer.'), 'info')
@@ -662,15 +789,16 @@ async function renderBackup(el) {
       ? t('{n} old copy ({mb} MB) will be removed from the driver store. The current versions stay installed. Removed copies cannot be used to roll a driver back, so create a backup above first if you might want them.', { n: pick.length, mb: fmt1(mb) })
       : t('{n} old copies ({mb} MB) will be removed from the driver store. The current versions stay installed. Removed copies cannot be used to roll a driver back, so create a backup above first if you might want them.', { n: pick.length, mb: fmt1(mb) });
     if (!await ask(t('Remove old driver copies'), askTxt, t('Remove'), true)) return;
-    btn.disabled = true; btn.innerHTML = `${ic('trash')}${t('Removing…')}`;
+    busyBtn(btn, t('Removing…'));
     let r;
     try { r = REAL ? await SH.job('drivers', 'delete_packages', [pick.map(o => o.inf)], { onProgress: m => { if (m.text) $('#dsSum', el).textContent = m.text; } }) : { ok: true, results: pick.map(o => ({ inf: o.inf, ok: true })), freedMb: mb }; }
     catch (er) { r = { ok: false, msg: er.message }; }
-    btn.innerHTML = `${ic('trash')}${t('Remove selected')}`;
-    if (needAdmin(r, t('to remove packages from the driver store.'))) { dsSync(); return; }
+    if (needAdmin(r, t('to remove packages from the driver store.'))) { freeBtn(btn); dsSync(); return; }
     const okN = ((r && r.results) || []).filter(x => x.ok).length, bad = ((r && r.results) || []).filter(x => !x.ok);
     if (!REAL) { API.store.old = API.store.old.filter(o => !dsSel.has(o.inf)); API.store.mb = 0; }
-    await loadStore(true);
+    /* the store is read again before the button comes back, so the same copies cannot be sent twice */
+    busyText(btn, t('Reading…'));
+    try { await loadStore(true); } finally { freeBtn(btn); dsSync(); }
     const freed = fmt1((r && r.freedMb) || 0);
     if (okN) SH.logActivity(t('Old driver copies removed'), { sub: okN === 1 ? t('{n} package, {mb} MB', { n: okN, mb: freed }) : t('{n} packages, {mb} MB', { n: okN, mb: freed }), ic: 'trash', go: 'drivers', tab: 'backup' });
     SH.toast(okN ? (okN === 1 ? t('Removed {n} old copy ({mb} MB).', { n: okN, mb: freed }) : t('Removed {n} old copies ({mb} MB).', { n: okN, mb: freed })) + (bad.length ? ' ' + t('{n} kept: Windows reported them in use.', { n: bad.length }) : '')
@@ -678,21 +806,40 @@ async function renderBackup(el) {
   });
 
   rows.addEventListener('click', async e => {
-    const b = e.target.closest('[data-a]'); if (!b) return; const row = b.closest('.db-row'); const bk = LIST[+row.dataset.i]; if (!bk) return;
+    const b = e.target.closest('[data-a]'); if (!b || b.disabled) return; const row = b.closest('.db-row'); if (!row || row.classList.contains('busy')) return;
+    const i = +row.dataset.i, bk = LIST[i]; if (!bk) return;
     if (b.dataset.a === 'open') { if (!REAL || !await SH.engine('drivers', 'open_folder', bk.path)) SH.toast(REAL ? t('That folder no longer exists.') : t('Only inside the app.')); }
     if (b.dataset.a === 'restore') {
+      if (op) return;
       if (REAL && !SH.state.admin) { SH.requireAdmin(t('to reinstall drivers from a backup.')); return; }
       if (!await ask(t('Reinstall from the backup'), t('The {n} drivers from the {date} backup will be installed. Any that are already the same or newer stay as they are. It may ask for a restart.', { n: bk.count, date: fmtDateS(bk.date) }), t('Reinstall'))) return;
-      b.disabled = true; b.innerHTML = `${ic('restore')}${t('Reinstalling…')}`;
-      try { const r = REAL ? await SH.job('drivers', 'restore_backup', [bk.path]) : { ok: true }; if (needAdmin(r, t('to reinstall drivers.'))) return; SH.toast(r.ok ? (r.reboot ? t('Backup reinstalled. Restart to finish.') : t('Backup reinstalled.')) : t('It did not work: {msg}', { msg: r.msg })); if (r.ok) { drvCache = null; SH.logActivity(t('Drivers reinstalled from a backup'), { sub: fmtDateS(bk.date), ic: 'restore', go: 'drivers', tab: 'backup' }); } }
-      catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message })); }
-      b.disabled = false; b.innerHTML = `${ic('restore')}${t('Restore')}`;
+      if (op) return;
+      /* pnputil goes through every INF in the backup (2 to 10 min): the same panel as "Create backup" shows how far it is */
+      busyBtn(b, t('Reinstalling…')); lock('restore'); const pg = progress(bk.count || null);
+      try {
+        let r;
+        if (REAL) r = await SH.job('drivers', 'restore_backup', [bk.path], { onProgress: m => { if (m.kind !== 'progress') return; const d = m.data || {}; pg.set(d.n, d.total, m.text, m.pct); } });
+        else { const list = DRIVERS.filter(d => !d.inbox), tot = bk.count || 120; for (let k = 1; k <= tot; k++) { const d = list[k % list.length]; pg.set(k, tot, `${d.inf}  ${d.name}`); await wait(12 + rnd() * 14); } r = { ok: true }; }
+        if (needAdmin(r, t('to reinstall drivers.'))) return;
+        SH.toast(r.ok ? (r.reboot ? t('Backup reinstalled. Restart to finish.') : t('Backup reinstalled.')) : t('It did not work: {msg}', { msg: r.msg }));
+        if (r.ok) { drvCache = null; SH.logActivity(t('Drivers reinstalled from a backup'), { sub: fmtDateS(bk.date), ic: 'restore', go: 'drivers', tab: 'backup' }); }
+      } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message })); }
+      finally { freeBtn(b); lock(null); await pg.end(); }
     }
     if (b.dataset.a === 'del') {
+      if (op) return;
       if (!await ask(t('Send the backup to the Recycle Bin'), t('The {date} backup ({gb} GB) will go to the Recycle Bin. You can recover it from there.', { date: fmtDateS(bk.date), gb: fmt1(bk.gb) }), t('Send to the Recycle Bin'), true)) return;
-      const r = REAL ? await SH.job('drivers', 'delete_backup', [bk.path]) : { ok: true };
-      if (r && r.ok) { if (!REAL) API.backups.splice(API.backups.indexOf(bk), 1); removeRow(row, rows); $('#dbCount', el).textContent = Math.max(0, LIST.length - 1); SH.toast(t('Backup sent to the Recycle Bin.')); }
-      else SH.toast(t('It did not work: {msg}', { msg: (r && r.msg) || '' }));
+      if (op || row.classList.contains('busy')) return;
+      /* a big folder takes a while to move (5 to 60 s): the row says so and its buttons wait */
+      row.classList.add('busy'); const btns = $$('.a .btn', row); btns.forEach(x => { x.disabled = true; });
+      busyBtn(b, ''); const p = $('.p', row), pHTML = p.innerHTML; p.innerHTML = `${SPIN}<span>${esc(t('Moving to the Recycle Bin…'))}</span>`;
+      let ok = false;
+      try {
+        const r = REAL ? await SH.job('drivers', 'delete_backup', [bk.path]) : (await wait(1200), { ok: true });
+        if (r && r.ok) { ok = true; if (!REAL) API.backups.splice(API.backups.indexOf(bk), 1); LIST[i] = null; removeRow(row, rows); $('#dbCount', el).textContent = LIST.filter(Boolean).length; SH.toast(t('Backup sent to the Recycle Bin.')); }
+        else SH.toast(t('It did not work: {msg}', { msg: (r && r.msg) || '' }));
+      } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message })); }
+      finally { if (!ok) { row.classList.remove('busy'); p.innerHTML = pHTML; freeBtn(b); btns.forEach(x => { x.disabled = !!op && x.dataset.a !== 'open'; }); } }
     }
   });
 }

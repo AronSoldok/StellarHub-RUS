@@ -66,6 +66,8 @@ WizardSmallImageFile={#A}wizard-small-58.png,{#A}wizard-small-77.png,{#A}wizard-
 SetupIconFile={#A}StellarHub.ico
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
+; Inno names the uninstaller unins000.exe; keep it out of sight in its own folder (it is used from Settings > Apps)
+UninstallFilesDir={app}\uninstall
 
 OutputDir=..\dist
 OutputBaseFilename=StellarHub-Setup-{#AppVersion}
@@ -270,8 +272,12 @@ chinesesimplified.RunNotes=查看 %1 版本的新功能
 chinesesimplified.UninstRemoveData=是否同时删除 StellarHub 的设置和 Autopilot 历史记录？%n%n选择“否”可将其保留，供以后安装时使用。
 
 [InstallDelete]
-; an update replaces the runtime folder completely, so no file from an older version is left behind
+; an update replaces the runtime folder completely (the old one is kept as _internal.bak until the new one is in
+; place, see CurStepChanged), so no file from an older version is left behind
 Type: filesandordirs; Name: "{app}\_internal"
+; versions before 1.0.1 kept the uninstaller next to the program
+Type: files; Name: "{app}\unins000.exe"
+Type: files; Name: "{app}\unins000.dat"
 
 [Files]
 Source: "..\build\dist\StellarHub\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -314,6 +320,9 @@ var
   HadSettings, WasDesktop, WasStartup, WasAdmin, WasWidget, WasUpdate: Boolean;
   { /SELFUPDATE: reached the end of the installation }
   SelfUpdateDone: Boolean;
+  { the previous runtime, kept aside while the new one is copied: put back if the installation does not finish }
+  AppDirAtInstall: String;
+  RuntimeBackedUp, RuntimeInstalled: Boolean;
   WasLang: String;
 
 function BoolArg(B: Boolean): String;
@@ -720,8 +729,23 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
-  if CurStep = ssPostInstall then
-    ApplyOptions
+  if CurStep = ssInstall then
+  begin
+    { a full disk, a locked file or an antivirus can stop the copy halfway; Inno rolls back the files it copied but
+      not [InstallDelete], so the old runtime is moved aside instead of deleted, and comes back if anything fails }
+    AppDirAtInstall := ExpandConstant('{app}');
+    if DirExists(AppDirAtInstall + '\_internal.bak') then
+      DelTree(AppDirAtInstall + '\_internal.bak', True, True, True);
+    if DirExists(AppDirAtInstall + '\_internal') then
+      RuntimeBackedUp := RenameFile(AppDirAtInstall + '\_internal', AppDirAtInstall + '\_internal.bak');
+  end
+  else if CurStep = ssPostInstall then
+  begin
+    RuntimeInstalled := True;
+    if RuntimeBackedUp then
+      DelTree(AppDirAtInstall + '\_internal.bak', True, True, True);
+    ApplyOptions;
+  end
   else if CurStep = ssDone then
   begin
     SelfUpdateDone := True;
@@ -731,6 +755,12 @@ end;
 
 procedure DeinitializeSetup;
 begin
+  if RuntimeBackedUp and not RuntimeInstalled and DirExists(AppDirAtInstall + '\_internal.bak') then
+  begin
+    Log('The installation did not finish: putting the previous version back.');
+    DelTree(AppDirAtInstall + '\_internal', True, True, True);
+    RenameFile(AppDirAtInstall + '\_internal.bak', AppDirAtInstall + '\_internal');
+  end;
   if not SelfUpdateDone then
     WriteSelfUpdateState('failed');
 end;

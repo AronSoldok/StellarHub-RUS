@@ -8,12 +8,20 @@ function syncButtons() {
   $$('[data-widget-btn]').forEach(b => { b.classList.toggle('on', SH.widgetOn); b.setAttribute('aria-pressed', SH.widgetOn); });
   $$('.toggle[data-act="widget"]').forEach(t => t.classList.toggle('on', SH.widgetOn));
 }
+/* while the window is being created or closed, more clicks are ignored (a double click used to open and close it) */
+let inFlight = false;
 async function toggleWidget(quiet) {
-  const sz = SH.widgetSize(state.settings);
-  const r = await SH.call('widget_toggle', sz.w, sz.h);
-  if (r === undefined) { SH.toast(SH.t('The widget only opens inside the app.')); return; }
-  SH.widgetOn = !!r; syncButtons();
-  if (quiet !== true) SH.toast(r ? SH.t('Widget open. Drag it wherever you like.') : SH.t('Widget closed.'), { group: 'widget' });
+  if (inFlight) return;
+  inFlight = true; $$('[data-widget-btn], .toggle[data-act="widget"]').forEach(b => { b.setAttribute('aria-busy', 'true'); b.classList.add('busy'); });
+  try {
+    const sz = SH.widgetSize(state.settings);
+    const r = await SH.call('widget_toggle', sz.w, sz.h);
+    if (r === undefined) { SH.toast(SH.t('The widget only opens inside the app.')); return; }
+    SH.widgetOn = !!r; syncButtons();
+    if (quiet !== true) SH.toast(r ? SH.t('Widget open. Drag it wherever you like.') : SH.t('Widget closed.'), { group: 'widget' });
+  } finally {
+    inFlight = false; $$('[data-widget-btn], .toggle[data-act="widget"]').forEach(b => { b.removeAttribute('aria-busy'); b.classList.remove('busy'); });
+  }
 }
 /* at startup: only if the setting asks for it or it was open when the app closed (off on a fresh install) */
 SH.on('boot', () => { const s = state.settings; if (s.widgetWasOpen) /* remembered: open if it was left open */ setTimeout(() => SH.call('widget_is_open').then(v => { if (v === false) toggleWidget(true); }), 1500); });

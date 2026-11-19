@@ -338,7 +338,8 @@ class OptimizerBackups(unittest.TestCase):
                 json.dump({"t": 1794959234.5, "prev": {"Spooler": "auto", "DiagTrack": "auto"}}, fh)
             with open(os.path.join(d, "services", "broken.json"), "w") as fh:
                 fh.write("{")
-            os.makedirs(os.path.join(d, "debloat", "20261117-1000"))
+            os.makedirs(os.path.join(d, "debloat", "20261117-1000"))  # Debloat's undo records: not a backup to delete
+            os.makedirs(os.path.join(d, "network", "20261117-1100-ab12"))
             out = {b["id"]: b for b in B.optimizer_backups(d)}
             reg = out["opt-registry|20261118-161722"]
             self.assertEqual((reg["count"], reg["sample"]), (1, [r"HKCU\Software\Classes\.apk"]))
@@ -346,7 +347,8 @@ class OptimizerBackups(unittest.TestCase):
             svc = out["opt-services|20261118-004716"]
             self.assertEqual((svc["count"], svc["sample"], svc["ts"]), (2, ["DiagTrack", "Spooler"], 1794959234.5))
             self.assertEqual(out["opt-services|broken"]["count"], 0)
-            self.assertIn("opt-other|debloat|20261117-1000", out)
+            self.assertNotIn("opt-other|debloat|20261117-1000", out)
+            self.assertIn("opt-other|network|20261117-1100-ab12", out)
             self.assertEqual(B.optimizer_backups(os.path.join(d, "missing")), [])
         finally:
             shutil.rmtree(d)

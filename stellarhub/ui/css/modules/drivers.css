@@ -115,7 +115,8 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .db-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px 26px;align-items:end;padding:20px 22px}
 #v-drivers .db-hero h3{font:500 20px var(--display);letter-spacing:-.02em}
 #v-drivers .db-hero p{color:var(--mute);margin-top:4px;max-width:560px}
-#v-drivers .db-dest{display:flex;gap:8px;margin-top:16px;max-width:620px}
+#v-drivers .db-dest{display:flex;align-items:stretch;gap:8px;margin-top:16px;max-width:620px}
+#v-drivers .db-dest .btn{height:auto;padding:0 18px}
 #v-drivers .db-dest .field{flex:1}
 #v-drivers .db-opts{display:flex;align-items:center;gap:12px;margin-top:14px;font-size:13px;color:var(--mute)}
 #v-drivers .db-prog{grid-column:1 / -1;display:none;align-items:center;gap:20px;padding-top:6px}
@@ -244,3 +245,30 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .check.some::after{content:"";grid-area:1/1;width:8px;height:2px;border-radius:2px;background:var(--on-accent)}
 #v-drivers .db-store>h4>#dsAll{margin:0 4px 0 12px}
 #v-drivers .db-store>h4>#dsAll[hidden]{display:none}
+
+/* ---------- work in progress: spinners, busy buttons, elapsed time ---------- */
+#v-drivers .dv-spin{width:13px;height:13px;flex:none;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;opacity:.85;
+  animation:duSpin calc(800ms + 400ms*(1 - var(--f))) linear infinite}
+html[data-int=min] #v-drivers .dv-spin{animation-duration:2.4s}
+/* a busy button stays readable (it is working, not unavailable) */
+#v-drivers .btn.busy[disabled]{opacity:.85}
+#v-drivers .btn.busy .bt:empty{display:none}
+/* restore point while it is being created: a light sweeping over the bar and the time so far in the chip */
+#v-drivers .du-step.indet .bar{position:relative}
+#v-drivers .du-step.indet .bar::after{content:"";position:absolute;inset:0;width:34%;border-radius:9px;
+  background:linear-gradient(90deg,transparent,color-mix(in oklab,var(--ink) 55%,transparent),transparent);
+  animation:duIndet calc(1400ms*var(--f) + 300ms) cubic-bezier(.5,0,.3,1) infinite}
+html[data-int=min] #v-drivers .du-step.indet .bar::after{animation:none;opacity:0}
+#v-drivers .du-el{font-variant-numeric:tabular-nums;color:var(--faint);margin-left:2px}
+/* all drivers: what the rollback is doing right now */
+#v-drivers .dd-status{display:flex;align-items:center;gap:8px;margin-top:10px;padding:9px 12px;border-radius:10px;font-size:12px;
+  color:var(--accent2);background:color-mix(in oklab,var(--accent2) 9%,transparent)}
+#v-drivers .dd-status .tx{flex:1;min-width:0;color:var(--ink)}
+#v-drivers .dd-status .tm{font-variant-numeric:tabular-nums;color:var(--mute)}
+/* backup: file line and elapsed time under the bar; a row that is going to the Recycle Bin */
+#v-drivers .db-prog .ft{display:flex;align-items:baseline;gap:12px}
+#v-drivers .db-prog .ft .f{flex:1;min-width:0}
+#v-drivers .db-prog .tm{font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+#v-drivers .db-row.busy{opacity:.75}
+#v-drivers .db-row.busy .p{display:flex;align-items:center;gap:8px;color:var(--accent2)}
+#v-drivers .db-row.busy .p span:last-child{color:var(--mute)}

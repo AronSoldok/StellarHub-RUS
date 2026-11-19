@@ -19,7 +19,7 @@ from ..i18n import tr
 from .ps import ps_json
 
 EXPORTS = {"processes", "end_process", "open_location", "disks", "network", "public_ip", "dns_test", "set_dns",
-           "battery_report", "health", "gpu_info", "memory_info", "icons"}
+           "dns_undo", "battery_report", "health", "gpu_info", "memory_info", "icons"}
 
 NO_WINDOW = 0x08000000
 MB = 1024 ** 2
@@ -172,6 +172,18 @@ class _PdhArray:
     def collect(self):
         return self.ok and self.pdh.PdhCollectQueryData(self.q) == 0
 
+    def healthy(self):
+        """Usable for the processes list: the query opened and the counter that names every process is there."""
+        return self.ok and "pid" in self.c
+
+    def close(self):
+        try:
+            if self.ok:
+                self.pdh.PdhCloseQuery(self.q)
+        except Exception:
+            pass
+        self.ok = False
+
     def array(self, key):
         """List of (instance, value) for the counter."""
         h = self.c.get(key)
@@ -193,45 +205,106 @@ class _PdhArray:
 
 
 _pdh = None
+_pdh_next = 0.0      # monotonic time before which a failed PDH setup is not tried again
+PDH_RETRY = 60       # seconds between attempts to set the counters up again after they failed
+_ps_io = {}          # fallback: pid -> (bytes read+written, time)
 PDH_PATHS = {"pid": r"\Process(*)\ID Process", "cpu": r"\Process(*)\% Processor Time",
              "ram": r"\Process(*)\Working Set - Private", "io": r"\Process(*)\IO Data Bytes/sec",
              "gpu": r"\GPU Engine(*)\Utilization Percentage"}
 
 
+def _read_pdh(pdh):
+    """(inst, vals, gpu) from the performance counters, or None when they gave nothing usable (corrupted
+    counters, the "ID Process" counter missing...)."""
+    if not pdh.collect():
+        return None
+    # NOTE: processes with the same name (svchost, chrome...) come with the SAME instance name, without "#n".
+    # The lists of all counters come in the same order: they are paired by position, not by name.
+    pid_arr = pdh.array("pid")
+    if not pid_arr:
+        return None
+    inst = [(name, int(v)) for name, v in pid_arr]
+    vals = {}
+    for k in ("cpu", "ram", "io"):
+        arr = pdh.array(k)
+        if len(arr) == len(pid_arr) and all(a[0] == b[0] for a, b in zip(arr, pid_arr)):
+            vals[k] = {pid: arr[i][1] for i, (_, pid) in enumerate(inst)}
+        else:  # different order (rare): only the ones with a unique name
+            uniq = {}
+            for n, pid in inst:
+                uniq[n] = None if n in uniq else pid
+            vals[k] = {uniq[n]: v for n, v in arr if uniq.get(n)}
+    inst = [(n, pid) for n, pid in inst if pid > 0]
+    gpu = {}
+    for name, v in pdh.array("gpu"):
+        m = re.match(r"pid_(\d+)_", name)
+        if m:
+            pid = int(m.group(1))
+            gpu[pid] = max(gpu.get(pid, 0.0), v)
+    return inst, vals, gpu
+
+
+def _read_psutil():
+    """Fallback when the performance counters don't work: the same (inst, vals, gpu) from psutil. CPU is % of one
+    core (the first reading of a process is 0: psutil keeps the Process objects between calls), RAM the process'
+    private bytes, disk the read+write rate since the previous call. No GPU per process. The attributes are read
+    together (one system query per process instead of three)."""
+    now = time.monotonic()
+    inst, cpu, ram, io, alive = [], {}, {}, {}, set()
+    for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_info", "io_counters"]):
+        i = p.info
+        pid = i["pid"]
+        if not pid:
+            continue
+        alive.add(pid)
+        inst.append((os.path.splitext(i["name"] or "")[0], pid))
+        cpu[pid] = float(i["cpu_percent"] or 0.0)
+        mem = i["memory_info"]
+        ram[pid] = float(getattr(mem, "private", None) or getattr(mem, "rss", 0) or 0) if mem else 0.0
+        c = i["io_counters"]
+        io[pid] = 0.0
+        if c is not None:
+            total = c.read_bytes + c.write_bytes
+            prev = _ps_io.get(pid)
+            if prev:
+                io[pid] = max(0.0, (total - prev[0]) / max(0.001, now - prev[1]))
+            _ps_io[pid] = (total, now)
+    for pid in list(_ps_io):
+        if pid not in alive:
+            _ps_io.pop(pid, None)
+    return inst, {"cpu": cpu, "ram": ram, "io": io}, {}
+
+
 def processes(known=None):
     """Processes grouped by program (like Task Manager), read in one go with Windows performance counters:
     CPU in % of the total, private RAM in MB, disk in MB/s, GPU in %, network = open connections.
+    If the counters don't work (corrupted performance counters) it falls back to psutil (no GPU per process)
+    and tries to set the counters up again every PDH_RETRY seconds.
     The icon is only sent for programs the interface does not know yet (`known`)."""
-    global _pdh
+    global _pdh, _pdh_next
     known = set(known or [])
     with _lock:
-        if _pdh is None:
+        data = None
+        if _pdh is None and time.monotonic() >= _pdh_next:
             _pdh = _PdhArray(PDH_PATHS)
-            time.sleep(0.25)
-        if not _pdh.collect():
-            return {"list": [], "total": 0, "gpuPerProcess": False, "admin": _admin(), "error": "counters not available"}
+            if _pdh.healthy():
+                time.sleep(0.25)
+            else:
+                _pdh.close()
+                _pdh, _pdh_next = None, time.monotonic() + PDH_RETRY
+        if _pdh is not None:
+            data = _read_pdh(_pdh)
+            if data is None:  # it stopped working: drop it and retry later (never cache a failed query forever)
+                _pdh.close()
+                _pdh, _pdh_next = None, time.monotonic() + PDH_RETRY
+        gpu_pp = data is not None and _pdh is not None and "gpu" in _pdh.c
+        if data is None:
+            try:
+                data = _read_psutil()
+            except Exception:
+                return {"list": [], "total": 0, "gpuPerProcess": False, "admin": _admin(), "error": "counters not available"}
         ncpu = psutil.cpu_count() or 1
-        # NOTE: processes with the same name (svchost, chrome...) come with the SAME instance name, without "#n".
-        # The lists of all counters come in the same order: they are paired by position, not by name.
-        pid_arr = _pdh.array("pid")
-        inst = [(name, int(v)) for name, v in pid_arr]
-        vals = {}
-        for k in ("cpu", "ram", "io"):
-            arr = _pdh.array(k)
-            if len(arr) == len(pid_arr) and all(a[0] == b[0] for a, b in zip(arr, pid_arr)):
-                vals[k] = {pid: arr[i][1] for i, (_, pid) in enumerate(inst)}
-            else:  # different order (rare): only the ones with a unique name
-                uniq = {}
-                for n, pid in inst:
-                    uniq[n] = None if n in uniq else pid
-                vals[k] = {uniq[n]: v for n, v in arr if uniq.get(n)}
-        inst = [(n, pid) for n, pid in inst if pid > 0]
-        gpu = {}
-        for name, v in _pdh.array("gpu"):
-            m = re.match(r"pid_(\d+)_", name)
-            if m:
-                pid = int(m.group(1))
-                gpu[pid] = max(gpu.get(pid, 0.0), v)
+        inst, vals, gpu = data
         conns = {}
         try:
             for c in psutil.net_connections("inet"):
@@ -281,7 +354,7 @@ def processes(known=None):
             if OWN in g["pids"]:
                 g["own"] = True
             out.append(g)
-        return {"list": out, "total": len(alive), "gpuPerProcess": "gpu" in _pdh.c, "admin": _admin()}
+        return {"list": out, "total": len(alive), "gpuPerProcess": gpu_pp, "admin": _admin()}
 
 
 def icons(specs, budget=1.5):
@@ -541,13 +614,71 @@ def dns_test(router=None):
 
 
 DNS = {"cloudflare": ("1.1.1.1", "1.0.0.1"), "google": ("8.8.8.8", "8.8.4.4")}
+DNS_BACKUPS = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "StellarHub", "monitor", "dns")
+
+
+def _current_dns(alias):
+    """(dhcp, [servers]) of the adapter's IPv4 DNS, or None when it can't be read."""
+    row = ps_json("Get-DnsClientServerAddress -InterfaceAlias '%s' -AddressFamily IPv4 | Select-Object -ExpandProperty ServerAddresses"
+                  % alias.replace("'", "''"), timeout=20, as_list=True)
+    servers = [str(x) for x in (row or []) if x]
+    dhcp = ps_json("(Get-NetIPInterface -InterfaceAlias '%s' -AddressFamily IPv4).Dhcp" % alias.replace("'", "''"), timeout=20)
+    if dhcp is None:
+        return None
+    return str(dhcp).lower() in ("enabled", "1", "true"), servers
+
+
+def _dns_cmds(alias, dhcp, servers):
+    if dhcp or not servers:
+        return [["netsh", "interface", "ipv4", "set", "dnsservers", f"name={alias}", "source=dhcp"]]
+    cmds = [["netsh", "interface", "ipv4", "set", "dnsservers", f"name={alias}", "source=static", f"address={servers[0]}", "validate=no"]]
+    cmds += [["netsh", "interface", "ipv4", "add", "dnsservers", f"name={alias}", f"address={s}", f"index={i}", "validate=no"]
+             for i, s in enumerate(servers[1:], 2)]
+    return cmds
+
+
+def _save_dns(alias, dhcp, servers):
+    """Saves the previous DNS of the adapter before it changes. Raises OSError if it can't be written."""
+    from .optimizer import new_bid, write_json_atomic
+    bid = new_bid()
+    write_json_atomic(os.path.join(DNS_BACKUPS, bid + ".json"),
+                      {"t": time.time(), "alias": alias, "dhcp": dhcp, "servers": servers})
+    return bid
+
+
+def dns_undo(bid):
+    """Puts back the DNS an earlier set_dns replaced. Needs administrator."""
+    if not _admin():
+        return {"needAdmin": True}
+    import json
+    with open(os.path.join(DNS_BACKUPS, os.path.basename(str(bid)) + ".json"), encoding="utf-8") as fh:
+        d = json.load(fh)
+    for c in _dns_cmds(d["alias"], d["dhcp"], d["servers"]):
+        r = subprocess.run(c, capture_output=True, timeout=15, creationflags=NO_WINDOW)
+        if r.returncode != 0:
+            return {"ok": False, "error": r.stdout.decode("cp850", "replace").strip() or tr("netsh failed.")}
+    subprocess.run(["ipconfig", "/flushdns"], capture_output=True, timeout=10, creationflags=NO_WINDOW)
+    return {"ok": True}
 
 
 def set_dns(alias, mode):
-    """Changes the adapter's IPv4 DNS: 'auto' (the router's, DHCP), 'cloudflare' or 'google'. Needs administrator."""
+    """Changes the adapter's IPv4 DNS: 'auto' (the router's, DHCP), 'cloudflare' or 'google'. Needs administrator.
+    The previous DNS is saved first (and nothing changes if that fails); the result carries `backup`, the id
+    `dns_undo` takes to put it back."""
     if not _admin():
         return {"needAdmin": True}
     alias = str(alias)
+    if mode not in ("auto",) + tuple(DNS):
+        return {"ok": False, "error": tr("Unknown DNS mode.")}
+    cur = _current_dns(alias)
+    if cur is None:
+        return {"ok": False, "error": tr("Not changed: the current DNS couldn't be read to save it first.")}
+    if mode == "auto" and cur[0]:
+        return {"ok": True, "backup": None}  # already automatic
+    try:
+        backup = _save_dns(alias, cur[0], cur[1])
+    except OSError as e:
+        return {"ok": False, "error": tr("Not changed: the previous DNS couldn't be saved ({error}).", error=e)}
     if mode == "auto":
         cmds = [["netsh", "interface", "ipv4", "set", "dnsservers", f"name={alias}", "source=dhcp"]]
     elif mode in DNS:
@@ -561,7 +692,7 @@ def set_dns(alias, mode):
         if r.returncode != 0:
             return {"ok": False, "error": r.stdout.decode("cp850", "replace").strip() or tr("netsh failed.")}
     subprocess.run(["ipconfig", "/flushdns"], capture_output=True, timeout=10, creationflags=NO_WINDOW)
-    return {"ok": True}
+    return {"ok": True, "backup": backup}
 
 
 # ======================================================================================= battery

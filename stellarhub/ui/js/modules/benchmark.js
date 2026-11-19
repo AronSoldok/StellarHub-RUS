@@ -1092,12 +1092,16 @@ function renderHistory(el, ctx) {
   HI.el = el; el.classList.add('fill');
   const M = [['score', t('Score')], ['cpu', t('Processor')], ['gpu', t('Graphics')], ['memory', t('Memory')], ['disk', t('Disk')]];
   el.innerHTML = `<div class="bm-hi2">
-    <div class="pan bm-hch" data-asm><div class="bm-hch-h"><h4 class="pan-h">${t('Over time')}</h4><div class="seg" data-m><span class="ind"></span>${M.map(([v, n]) => `<button data-v="${v}"${v === HI.metric ? ' class="on"' : ''}>${n}</button>`).join('')}</div></div><canvas data-hc></canvas><div class="bm-hce faint" hidden data-hce>${t('No results for this yet.')}</div></div>
+    <div class="pan bm-hch" data-asm><div class="bm-hch-h"><h4 class="pan-h">${t('Over time')}</h4><div class="seg" data-m><span class="ind"></span>${M.map(([v, n]) => `<button data-v="${v}"${v === HI.metric ? ' class="on"' : ''}>${n}</button>`).join('')}</div></div><canvas data-hc></canvas><div class="bm-hce faint" hidden data-hce>${t('No results for this yet.')}</div><div class="bm-hone" hidden data-hone></div></div>
     <div class="pan bm-hls" data-asm><h4>${t('All runs')}<em data-n></em></h4><div class="bm-hlist" data-list>${[0, 1, 2, 3, 4].map(k => `<div class="sk-row"><div class="sk a" style="--dl:${k * .1}s"></div><div class="sk b" style="--w:${[44, 36, 52, 30, 41][k]}%;--dl:${k * .1}s"></div><div class="sk c"></div></div>`).join('')}</div></div>
   </div>`;
   const seg = $('[data-m]', el); requestAnimationFrame(() => SH.placeSeg(seg, true));
   const chart = timeChart($('[data-hc]', el), () => { const k = HI.metric; const L = k === 'score' ? (H.runs || []).filter(r => r.kind === 'full' && r.score) : runsOf(k);
-    const pts2 = L.map(r => [r.at, k === 'score' ? r.score : r[k].score]).filter(p => !nil(p[1])); $('[data-hce]', el).hidden = !!pts2.length || !H.runs; return [{ col: k === 'score' ? '--accent' : '--accent2', fill: true, pts: pts2 }]; }, { axis: true, pad: 16, fmt: v => t('{n} points', { n: fmtInt(v) }) });
+    const pts2 = L.map(r => [r.at, k === 'score' ? r.score : r[k].score]).filter(p => !nil(p[1])); $('[data-hce]', el).hidden = !!pts2.length || !H.runs;
+    /* one single result is not a chart: show it as a number, with a hint, and let the panel be as small as its content */
+    const one = pts2.length === 1, ho = $('[data-hone]', el), hp = $('.bm-hch', el); hp.classList.toggle('one', one); ho.hidden = !one;
+    if (one) { const sig = `${pts2[0][0]}|${pts2[0][1]}`; if (ho.dataset.sig !== sig) { ho.dataset.sig = sig; ho.innerHTML = `<b>${fmtN(pts2[0][1])}</b><span>${esc(fmtDate(pts2[0][0]))}</span><p class="muted">${t('This is your only result so far. Run the test again to see how it changes over time.')}</p>`; } }
+    return [{ col: k === 'score' ? '--accent' : '--accent2', fill: true, pts: pts2 }]; }, { axis: true, pad: 16, fmt: v => t('{n} points', { n: fmtInt(v) }) });
   seg.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return; $$('button', seg).forEach(x => x.classList.toggle('on', x === b)); SH.placeSeg(seg); HI.metric = b.dataset.v; chart.replay(); });
   $('[data-list]', el).addEventListener('click', async e => {
     const d = e.target.closest('[data-del]'); if (!d) return; const id = d.dataset.del; const r = (H.runs || []).find(x => x.id === id); if (!r) return;
@@ -1118,6 +1122,7 @@ function runSummary(r) {
 }
 function hiPaint() {
   const el = HI.el; if (!el || !H.runs) return; const L = H.runs; const box = $('[data-list]', el);
+  $('.bm-hi2', el).classList.toggle('few', L.length <= 6);
   $('[data-n]', el).textContent = L.length ? (L.length === 1 ? t('{n} run', { n: 1 }) : t('{n} runs', { n: L.length })) : '';
   box.innerHTML = L.length ? L.map(r => { const [n, i] = KIND[r.kind] || [r.kind, 'benchmark'];
     const val = r.kind === 'network' ? `${fmtV(r.network.down)}<small>Mbps</small>` : r.kind === 'stress' ? `<span class="chip ${r.stress.reason || r.stress.errors ? 'bad' : (r.stress.throttle || []).length ? 'warn' : 'ok'}">${r.stress.reason ? t('Stopped') : r.stress.errors ? t('Unstable') : (r.stress.throttle || []).length ? t('Throttled') : t('Stable')}</span>` : fmtN(r.score);

@@ -89,7 +89,16 @@ const CLEAN = ['Windows temporary files', 'User temporary files', 'Browser cache
 const CLEAN_O = CLEAN.map(c => [c, tr(c)]);   // the English names are the saved values (the engine maps them)
 /* option values saved by older Spanish builds → current values */
 const OLD_OPT = { 'Cualquier juego': 'Any game', 'Temporales de Windows': CLEAN[0], 'Temporales del usuario': CLEAN[1], 'Cachés de navegadores': CLEAN[2], 'Miniaturas': CLEAN[3], 'Volcados de errores': CLEAN[4], 'Restos de Windows Update': CLEAN[5], 'Optimización de distribución': CLEAN[6], 'Cachés de sombreadores': CLEAN[7], 'Registros antiguos': CLEAN[8], 'Restos de programas': CLEAN[9] };
+/* drives offered in the pickers: this PC's real ones inside the app (storage engine), C: and D: in the design preview */
 const DRIVES = [['C:', 'C:'], ['D:', 'D:']];
+let drivesReal = false;
+function loadDrives() {
+  SH.engine('storage', 'drives').then(list => {
+    if (!Array.isArray(list) || !list.length) return;
+    DRIVES.splice(0, DRIVES.length, ...list.map(d => [d.letter, d.label ? `${d.letter} ${d.label}` : d.letter])); drivesReal = true;
+    if (rEl && rEl.isConnected && $$('select.pi', rEl).some(s => /^[A-Z]:$/.test(s.value))) drawStage(0);
+  }).catch(() => {});
+}
 const opts = o => o.map(x => Array.isArray(x) ? x : [x, x]);
 const num = (def, min, max, unit, label, step) => ({ type: 'num', def, min, max, unit, label, step });
 
@@ -201,7 +210,7 @@ const ACT = [
     { k: 'restore', t: tr('Create a restore point'), ic: 'restore', mod: 'Super Optimizer', admin: 1, est: 45, say: () => tr('create a restore point') },
     { k: 'sfc', t: tr('Check Windows files'), ic: 'shield', mod: 'Super Optimizer', admin: 1, est: 900, p: { kind: { type: 'select', def: 'sfc', opts: [['sfc', 'SFC'], ['dism', 'DISM'], ['both', tr('SFC and DISM')]] } },
       say: p => tr('check Windows with {tool}', { tool: p.kind === 'both' ? tr('SFC and DISM') : p.kind.toUpperCase() }) },
-    { k: 'net', t: tr('Repair the network'), ic: 'globe', mod: 'Super Optimizer', est: 20, p: { kind: { type: 'select', def: 'dns', opts: [['dns', tr('Flush the DNS cache')], ['full', tr('Full network reset')]] } }, say: p => p.kind === 'dns' ? tr('flush the DNS cache') : tr('fully reset the network') },
+    { k: 'net', t: tr('Repair the network'), ic: 'globe', mod: 'Super Optimizer', est: 20, p: { kind: { type: 'select', def: 'dns', opts: [['dns', tr('Flush the DNS cache')]], legacy: [['full', tr('Full network reset (no longer runs on its own)')]] } }, say: p => p.kind === 'full' ? tr('flush the DNS cache (a full network reset is never run by a routine)') : tr('flush the DNS cache') },
     { k: 'explorer', t: tr('Restart File Explorer'), ic: 'folder', mod: 'Super Optimizer', est: 5, say: () => tr('restart File Explorer') },
     { k: 'scanDisk', t: tr('Analyze a drive'), ic: 'storage', mod: 'Storage Checker', est: 60, p: { drive: { type: 'select', def: 'C:', opts: DRIVES, label: tr('Drive') }, gb: num(10, 1, 200, 'GB', tr('Warn if it grew by more than')) }, say: p => tr('analyze {drive} and warn if it grew by more than {gb} GB', { drive: p.drive, gb: p.gb }) },
   ]],
@@ -307,7 +316,18 @@ function ensure() {
   NT = { toast: true, tray: true, sound: false, when: 'decide', quiet: true, qFrom: '23:00', qTo: '08:00', noGame: true, weekly: true, weeklyDay: 6, batterySaver: true, ...(st.autopilotNotify || {}) };
 }
 let saveT = 0;
-const save = () => { clearTimeout(saveT); saveT = setTimeout(() => SH.setSetting('autopilotRoutines', clone(R)), 350); };
+/* save(r): r is the routine the user just edited. In administrator mode the engine only runs a command / open-app action
+   that was saved from here, so those routines are sent to be approved (never the others: a program that edited the
+   settings file must not get approved by the user editing something else) */
+const PEND = new Set();
+const save = r => {
+  if (r && r.id) PEND.add(r.id);
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    SH.setSetting('autopilotRoutines', clone(R));
+    if (REAL && PEND.size) { const l = R.filter(x => PEND.has(x.id)).map(clone); PEND.clear(); if (l.length) SH.engine('autopilot', 'approve', l).catch(() => {}); }
+  }, 350);
+};
 const saveLog = () => REAL || SH.setSetting('autopilotLog', LOG.slice(0, 100).map(l => ({ ...l, when: l.when.toISOString(), fresh: false })));
 const saveNT = () => SH.setSetting('autopilotNotify', { ...NT });
 const cur = () => R.find(r => r.id === sel);
@@ -393,7 +413,14 @@ function paramH(s, i, k, spec, v) {
     case 'date': return `<label class="pp">${lab}<input type="date" class="field pi" data-path="${path}" value="${esc(v)}" min="${iso(new Date())}"></label>`;
     case 'text': return `<label class="pp grow">${lab}<input type="text" class="field pi" data-path="${path}" value="${esc(v)}" placeholder="${esc(spec.ph || '')}" spellcheck="false"></label>`;
     case 'num': return `<span class="pp">${lab}<span class="ap-num"><button data-step="-1" data-path="${path}" aria-label="${esc(tr('Less'))}">${ic('minus')}</button><input type="number" class="pi" data-path="${path}" value="${v}" min="${spec.min}" max="${spec.max}" step="${spec.step || 1}"><em>${esc(spec.unit || '')}</em><button data-step="1" data-path="${path}" aria-label="${esc(tr('More'))}">${ic('plus')}</button></span></span>`;
-    case 'select': return `<label class="pp">${lab}<span class="ap-selw"><select class="pi" data-path="${path}">${opts(spec.opts).map(([ov, ol]) => `<option value="${esc(ov)}"${String(v) === String(ov) ? ' selected' : ''}>${esc(ol)}</option>`).join('')}</select>${ic('chevd')}</span></label>`;
+    case 'select': {
+      const o = opts(spec.opts);
+      /* a saved drive this PC no longer has: kept, selected and flagged */
+      (spec.legacy || []).forEach(l => { if (String(v) === String(l[0])) o.push(l); });   /* an old value stays visible, but can't be picked for new routines */
+      const gone = spec.opts === DRIVES && drivesReal && v && !o.some(([ov]) => String(ov) === String(v));
+      if (gone) o.unshift([v, tr('{drive} (not found on this PC)', { drive: v })]);
+      return `<label class="pp">${lab}<span class="ap-selw${gone ? ' gone' : ''}"${gone ? ` title="${esc(tr("This drive isn't connected now. Choose another one, or connect it again."))}"` : ''}><select class="pi" data-path="${path}">${o.map(([ov, ol]) => `<option value="${esc(ov)}"${String(v) === String(ov) ? ' selected' : ''}>${esc(ol)}</option>`).join('')}</select>${ic('chevd')}</span></label>`;
+    }
     case 'days': return `<span class="pp">${lab}<span class="ap-days">${DAYS.map((d, j) => `<button class="ap-day${v.includes(j) ? ' on' : ''}" data-path="${path}" data-day="${j}" title="${esc(cap(DAYN[j]))}">${esc(d)}</button>`).join('')}</span></span>`;
     case 'multi': return `<span class="pp wide">${lab}<span class="ap-multi">${opts(spec.opts).map(([ov, ol]) => `<button class="ap-mc${v.includes(ov) ? ' on' : ''}" data-path="${path}" data-opt="${esc(ov)}">${ic('check')}${esc(ol)}</button>`).join('')}</span></span>`;
   }
@@ -461,8 +488,9 @@ function cardH(r) {
   const bad = problems(r).length;
   const first = r.triggers.length ? cap(sayOf('t', r.triggers[0])) : '';
   const tl = !r.triggers.length ? tr('No time chosen') : r.triggers.length > 1 ? tr('{list} and {n} more', { list: first, n: r.triggers.length - 1 }) : first;
-  return `<div class="ap-card${r.id === sel ? ' sel' : ''}${r.on ? '' : ' off'}" data-id="${r.id}" style="--c:${colorOf(r)}"><i class="ap-dot"></i>
-    <div class="ap-ct"><b>${esc(r.name)}${r.priority === 'high' ? ` <span class="ap-pr">${tr('high')}</span>` : ''}</b><span>${esc(tl)}</span><span class="ap-next${bad ? ' warn' : ''}">${bad ? esc(tr('Incomplete: {problem}', { problem: lcFirst(problems(r)[0][1]) })) : esc(nextText(r))}</span></div>
+  const run = RUN[r.id];
+  return `<div class="ap-card${r.id === sel ? ' sel' : ''}${r.on ? '' : ' off'}${run ? ' running' : ''}" data-id="${r.id}" style="--c:${colorOf(r)}"><i class="ap-dot"></i>
+    <div class="ap-ct"><b>${esc(r.name)}${r.priority === 'high' ? ` <span class="ap-pr">${tr('high')}</span>` : ''}</b><span>${esc(tl)}</span><span class="ap-next${bad && !run ? ' warn' : ''}">${run ? esc(runFor(run)) : bad ? esc(tr('Incomplete: {problem}', { problem: lcFirst(problems(r)[0][1]) })) : esc(nextText(r))}</span></div>
     ${togH('', r.on, tr('Turn on {name}', { name: r.name }))}</div>`;
 }
 function drawList(anims) {
@@ -473,7 +501,7 @@ function drawList(anims) {
 }
 function refreshCard(r) { const c = $(`.ap-card[data-id="${r.id}"]`, rEl); if (!c) return; const t = document.createElement('div'); t.innerHTML = cardH(r); const n = t.firstElementChild; c.replaceWith(n); $('#apCount', rEl).textContent = tr('{n} of {total} active', { n: R.filter(x => x.on).length, total: R.length }); }
 function addRoutine(r, quiet) {
-  const first = !R.length; R.unshift(r); sel = r.id; step = r.triggers.length ? 't' : 't'; save();
+  const first = !R.length; R.unshift(r); sel = r.id; step = r.triggers.length ? 't' : 't'; save(r);
   if (first) { drawRoutines(); } else { drawList(); drawEditor(false); }
   const c = $(`.ap-card[data-id="${r.id}"]`, rEl); if (c) anim(c, [{ opacity: 0, transform: 'translate3d(0,-12px,0) scale(.95)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 520, e: EASE.spring });
   if (!quiet) SH.toast(tr('“{name}” created.', { name: r.name }));
@@ -501,13 +529,14 @@ function drawEditor(soft) {
           </div></div>
       </div>
     </div>
+    <div class="ap-live" id="apLive" role="status" aria-live="polite" hidden><span class="ap-spin"></span><span class="apl-t"><b></b><span></span></span><span class="apl-el"></span></div>
     <p class="ap-sum" id="apSum">${esc(summary(r))}</p>
     <nav class="ap-steps" id="apSteps"><span class="ind"></span>${STEPS.map((s, i) => `<button data-step="${s.id}"${s.id === step ? ' class="on"' : ''}><span class="sn">${ic(s.ic)}</span><span class="sl">${esc(s.n)}</span><em data-c="${s.id}"></em></button>`).join('')}</nav>
     <div class="ap-stage" id="apStage"></div>
     <footer class="ape-foot" id="apFoot"></footer>
     <div class="ap-dry" id="apDryP" hidden></div>`;
   const done = () => {
-    ed.innerHTML = html; refreshMeta(); refreshCounts(); drawStage(0); refreshFoot(); bindEditor(ed);
+    ed.innerHTML = html; refreshMeta(); refreshCounts(); drawStage(0); refreshFoot(); bindEditor(ed); paintRun(r.id);
     requestAnimationFrame(() => placeStepInd(true));
   };
   if (soft) { done(); return; }
@@ -535,7 +564,7 @@ function setStep(s) {
   $$('#apSteps button', rEl).forEach(b => b.classList.toggle('on', b.dataset.step === s)); placeStepInd(); drawStage(ni > old ? 1 : -1); refreshFoot();
 }
 function changed(opt = {}) {
-  const r = cur(); save();
+  const r = cur(); save(r);
   const s = $('#apSum', rEl); if (s) { const t = summary(r); if (s.textContent !== t) { s.textContent = t; anim(s, [{ opacity: .45 }, { opacity: 1 }], { d: 260 }); } }
   refreshCounts(); refreshFoot(); refreshCard(r); if (opt.meta) refreshMeta(); if (calDirty) calDirty();
 }
@@ -802,49 +831,97 @@ async function dryRun(r) {
     if (e.target.closest('[data-close]')) anim(box, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(0,10px,0) scale(.98)' }], { d: 180 }).finished.then(() => { box.hidden = true; }).catch(() => { box.hidden = true; });
   };
 }
-async function runNow(r) {
-  if (!r.acts.length) { SH.toast(tr('This routine doesn’t do anything yet. Add an action to it.'), { action: { label: tr('Add'), run: () => setStep('a') } }); return; }
-  const b = $('#apRun', rEl); const card = () => $(`.ap-card[data-id="${r.id}"]`, rEl);
-  if (b) b.disabled = true; card() && card().classList.add('running');
-  if (REAL) { await runReal(r, card); return; }
-  const steps = []; let gb = 0, upd = 0;
-  for (let i = 0; i < r.acts.length; i++) {
-    const x = r.acts[i], d = byK.a[x.k];
-    const bb = $('#apRun', rEl); if (bb) bb.innerHTML = `${ic('clock')}<span class="lbl">${tr('Step {n} of {total}', { n: i + 1, total: r.acts.length })}</span>`;
-    await wait(x.k === 'wait' ? 500 : 520 + Math.random() * 700);
-    const what = { say: ['a', x.k, clone(x.p)] };
-    const addStep = (k, m) => steps.push([k, msgEn(m), m]);
-    if (d.admin && !state.admin) { addStep('skip', M('{name}: {result}', { name: what, result: M('skipped, needs administrator mode') })); continue; }
-    if (d.decide && d.decide(x.p)) { addStep('decide', M('{name}: {result}', { name: what, result: M('{n} waiting for your approval', { n: 2 }) })); continue; }
-    if (x.k === 'clean') { const g = 1.2 + Math.random() * 5; gb += g; addStep('ok', M('{name}: {result}', { name: M('Cleanup'), result: M('{gb} GB freed', { gb: { n1: g } }) })); continue; }
-    if (x.k === 'apps') { upd += 3; addStep('ok', M('{name}: {result}', { name: M('Apps'), result: M('{n} updated', { n: 3 }) })); continue; }
-    addStep('ok', M('{name}: {result}', { name: what, result: M('done (simulated)') }));
+/* ---------- "Run now" live status: the button (step), a line under the editor head (what it is doing now, the last
+   output line, elapsed time) and the card. Kept per routine, so switching routines and back still shows it. ---------- */
+const RUN = {};                          // routine id -> { t0, btn, text, line }
+let runTimer = 0;
+const clock = s => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = String(s % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${x}` : `${m}:${x}`; };
+const runSecs = x => (Date.now() - x.t0) / 1000;
+const runFor = x => tr('Running for {time}', { time: clock(runSecs(x)) });
+function paintRun(id) {
+  if (!rEl) return;
+  const x = RUN[id], r = cur();
+  if (r && r.id === id) {
+    const b = $('#apRun', rEl);
+    if (b) {
+      b.disabled = !!x; b.classList.toggle('busy', !!x);
+      const lbl = x ? (x.btn || tr('Starting…')) : tr('Run now');
+      if (b.dataset.lbl !== lbl) { b.dataset.lbl = lbl; b.innerHTML = `${x ? '<span class="ap-spin"></span>' : ic('play')}<span class="lbl">${esc(lbl)}</span>`; }
+      b.title = x ? tr('Running. This can take several minutes.') : tr('Run now');
+    }
+    const l = $('#apLive', rEl);
+    if (l) {
+      l.hidden = !x;
+      if (x) {
+        $('.apl-t b', l).textContent = x.text || tr('Starting…');
+        const sub = $('.apl-t span', l); sub.textContent = x.line || ''; sub.hidden = !x.line;
+        $('.apl-el', l).textContent = tr('Elapsed {time}', { time: clock(runSecs(x)) });
+      }
+    }
   }
-  const st = steps.some(s => s[0] === 'bad') ? 'bad' : steps.some(s => s[0] === 'skip' || s[0] === 'decide') ? 'warn' : 'ok';
-  const res = []; if (gb) res.push(M('{gb} GB freed', { gb: { n1: gb } })); if (upd) res.push(M('{n} apps updated', { n: upd })); const sk = steps.filter(s => s[0] === 'skip').length; if (sk) res.push(sk === 1 ? M('{n} step skipped', { n: 1 }) : M('{n} steps skipped', { n: sk }));
-  if (!res.length) res.push(M('Done'));
-  LOG.unshift({ rid: r.id, when: new Date(), name: r.name, color: r.color || 0, st, gb, upd, manual: true, res: res.map(msgEn), resM: res, steps, fresh: true });
-  saveLog();
-  const bb = $('#apRun', rEl); if (bb) { bb.disabled = false; bb.innerHTML = `${ic('play')}<span class="lbl">${tr('Run now')}</span>`; }
-  card() && card().classList.remove('running'); refreshCard(r); refreshMeta();
-  if (lEl) drawLog(true); if (mctx) mctx.setBadge('log', LOG.filter(l => l.st === 'warn' || l.st === 'bad').length);
-  SH.toast(tr('“{name}” finished.', { name: r.name }), { action: { label: tr('View the log'), run: () => SH.go('autopilot', { tab: 'log' }) } });
+  const c = $(`.ap-card[data-id="${id}"]`, rEl);
+  if (c) { c.classList.toggle('running', !!x); if (x) { const n = $('.ap-next', c); if (n) { n.classList.remove('warn'); n.textContent = runFor(x); } } }
+}
+function runBegin(id) {
+  RUN[id] = { t0: Date.now(), btn: '', text: '', line: '' }; paintRun(id);
+  if (!runTimer) runTimer = setInterval(() => { const ids = Object.keys(RUN); if (!ids.length) { clearInterval(runTimer); runTimer = 0; return; } ids.forEach(paintRun); }, 1000);
+}
+function runSet(id, o) { if (RUN[id]) { Object.assign(RUN[id], o); paintRun(id); } }
+function runEnd(id) { delete RUN[id]; paintRun(id); }
+
+async function runNow(r) {
+  if (RUN[r.id]) return;                 // already running: a second click does nothing
+  if (!r.acts.length) { SH.toast(tr('This routine doesn’t do anything yet. Add an action to it.'), { action: { label: tr('Add'), run: () => setStep('a') } }); return; }
+  runBegin(r.id);
+  let ended = false;
+  try {
+    if (REAL) { await runReal(r, () => { runEnd(r.id); ended = true; }); return; }
+    const steps = []; let gb = 0, upd = 0;
+    for (let i = 0; i < r.acts.length; i++) {
+      const x = r.acts[i], d = byK.a[x.k];
+      runSet(r.id, { btn: tr('Step {n} of {total}', { n: i + 1, total: r.acts.length }), text: cap(sayOf('a', x)), line: '' });
+      await wait(x.k === 'wait' ? 500 : 520 + Math.random() * 700);
+      const what = { say: ['a', x.k, clone(x.p)] };
+      const addStep = (k, m) => steps.push([k, msgEn(m), m]);
+      if (d.admin && !state.admin) { addStep('skip', M('{name}: {result}', { name: what, result: M('skipped, needs administrator mode') })); continue; }
+      if (d.decide && d.decide(x.p)) { addStep('decide', M('{name}: {result}', { name: what, result: M('{n} waiting for your approval', { n: 2 }) })); continue; }
+      if (x.k === 'clean') { const g = 1.2 + Math.random() * 5; gb += g; addStep('ok', M('{name}: {result}', { name: M('Cleanup'), result: M('{gb} GB freed', { gb: { n1: g } }) })); continue; }
+      if (x.k === 'apps') { upd += 3; addStep('ok', M('{name}: {result}', { name: M('Apps'), result: M('{n} updated', { n: 3 }) })); continue; }
+      addStep('ok', M('{name}: {result}', { name: what, result: M('done (simulated)') }));
+    }
+    const st = steps.some(s => s[0] === 'bad') ? 'bad' : steps.some(s => s[0] === 'skip' || s[0] === 'decide') ? 'warn' : 'ok';
+    const res = []; if (gb) res.push(M('{gb} GB freed', { gb: { n1: gb } })); if (upd) res.push(M('{n} apps updated', { n: upd })); const sk = steps.filter(s => s[0] === 'skip').length; if (sk) res.push(sk === 1 ? M('{n} step skipped', { n: 1 }) : M('{n} steps skipped', { n: sk }));
+    if (!res.length) res.push(M('Done'));
+    LOG.unshift({ rid: r.id, when: new Date(), name: r.name, color: r.color || 0, st, gb, upd, manual: true, res: res.map(msgEn), resM: res, steps, fresh: true });
+    saveLog();
+    runEnd(r.id); ended = true;
+    refreshCard(r); refreshMeta();
+    if (lEl) drawLog(true); if (mctx) mctx.setBadge('log', LOG.filter(l => l.st === 'warn' || l.st === 'bad').length);
+    SH.toast(tr('“{name}” finished.', { name: r.name }), { action: { label: tr('View the log'), run: () => SH.go('autopilot', { tab: 'log' }) } });
+  } finally {
+    if (!ended) { runEnd(r.id); refreshCard(r); }      // the button always comes back, whatever happened
+  }
 }
 
-/* "Run now" inside the app: the engine runs the routine as a job (live progress); the result lands in its log */
-async function runReal(r, card) {
-  const btn = h => { const bb = $('#apRun', rEl); if (bb) bb.innerHTML = h; };
+/* "Run now" inside the app: the engine runs the routine as a job (live progress and output); the result lands in its log */
+async function runReal(r, done) {
   let entry = null, err = null;
   try {
-    entry = await SH.job('autopilot', 'run', [r.id, true, clone(r), ''], { onProgress: m => {
-      const d = m.data || {}; if (m.kind === 'progress' && d.total) btn(`${ic('clock')}<span class="lbl">${tr('Step {n} of {total}', { n: Math.min(d.step + 1, d.total), total: d.total })}</span>`); } });
+    entry = await SH.job('autopilot', 'run', [r.id, true, clone(r), ''], {
+      onProgress: m => {
+        const d = m.data || {}, o = {};
+        if (d.total) o.btn = tr('Step {n} of {total}', { n: Math.min((d.step || 0) + 1, d.total), total: d.total });
+        if (m.text) o.text = m.text;      // the engine's live text (already translated), sub-jobs included
+        runSet(r.id, o);
+      },
+      onLog: lines => { const last = (lines || []).map(x => String(x).trim()).filter(Boolean).pop(); if (last) runSet(r.id, { line: last }); },
+    });
   } catch (e) { err = e; }
-  const bb = $('#apRun', rEl); if (bb) { bb.disabled = false; bb.innerHTML = `${ic('play')}<span class="lbl">${tr('Run now')}</span>`; }
-  card() && card().classList.remove('running');
+  done();
   await loadLog(true); refreshCard(r); refreshMeta();
   if (err) { SH.toast(err.cancelled ? tr('“{name}” was cancelled.', { name: r.name }) : tr('“{name}” couldn’t run: {error}', { name: r.name, error: err.message })); return; }
-  const done = { ok: '“{name}” finished.', warn: '“{name}” finished with warnings.', bad: '“{name}” had a problem.', skip: '“{name}” was skipped.' }[entry && entry.st] || '“{name}” finished.';
-  SH.toast(tr(done, { name: r.name }), { action: { label: tr('View the log'), run: () => SH.go('autopilot', { tab: 'log' }) } });
+  const fin = { ok: '“{name}” finished.', warn: '“{name}” finished with warnings.', bad: '“{name}” had a problem.', skip: '“{name}” was skipped.' }[entry && entry.st] || '“{name}” finished.';
+  SH.toast(tr(fin, { name: r.name }), { action: { label: tr('View the log'), run: () => SH.go('autopilot', { tab: 'log' }) } });
 }
 /* the engine's log (real runs, scheduled or manual) */
 async function loadLog(animate) {
@@ -859,6 +936,7 @@ async function loadLog(animate) {
 }
 SH.apiReady.then(a => {
   REAL = !!a; if (!REAL) return;
+  loadDrives();
   SH.engine('autopilot', 'capabilities').then(c => { if (c) NA = { t: c.t || {}, c: c.c || {}, a: c.a || {} }; }).catch(() => {});
   SH.engine('autopilot', 'start').catch(() => {});      // safe if the app already started it
   loadLog(false);

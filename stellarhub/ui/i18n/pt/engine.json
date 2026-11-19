@@ -55,5 +55,9 @@
   "Displays": "Telas",
   "Battery": "Bateria",
   "Audio": "Áudio",
-  "System": "Sistema"
+  "System": "Sistema",
+  "Disk {size}": "Disco de {size}",
+  "Updating to {v}…": "Atualizando para {v}…",
+  "Updating to {v}… {p}%": "Atualizando para {v}… {p}%",
+  "{v} GHz": "{v} GHz"
 }

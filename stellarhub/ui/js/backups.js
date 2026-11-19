@@ -167,20 +167,44 @@ function message(text, kind) {
   if (text) anim(m, [{ opacity: 0, transform: 'translate3d(0,-4px,0)' }, { opacity: 1, transform: 'none' }], { d: 260, e: EASE.spring });
 }
 const lock = on => $$('[data-bk],[data-del],[data-own]', root).forEach(b => { b.disabled = on; });
-/* one operation at a time, with the bar in the card; sample mode pretends */
-async function runOp(fn, args, sample) {
+/* elapsed time as m:ss */
+const clock = s => { s = Math.max(0, Math.round(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+/* the bar sweeps instead of filling: for a step that gives no progress of its own (a restore point) */
+function indet(on) { const g = $('#bkProg', root); if (!g) return; g.classList.toggle('indet', on); if (on) $('.bar>span', g).style.transform = ''; }
+/* the button that started an operation: a small spinner (and a text, if the button has one) until it ends */
+function btnBusy(b, txt) {
+  if (!b || b.dataset.html != null) return;
+  b.dataset.html = b.innerHTML; b.classList.add('bk-wait');
+  b.innerHTML = `<span class="bk-spin" aria-hidden="true"></span>${txt ? esc(txt) : ''}`;
+}
+function btnFree(b) { if (!b || b.dataset.html == null || !b.isConnected) return; b.innerHTML = b.dataset.html; delete b.dataset.html; b.classList.remove('bk-wait'); }
+/* one operation at a time, with the bar in the card; sample mode pretends.
+   fn: a backups job name, or a function (onProgress) => promise for a job of another module.
+   o.slow(seconds) → text: the long step is shown with the time so far and the bar sweeping, until the engine
+   reports its last step (pct ≥ .9). o.btn: the button that started it. */
+async function runOp(fn, args, sample, o = {}) {
   if (busy) return null; busy = true; lock(true); message('');
-  progress(true, .04, t('Starting…'));
+  btnBusy(o.btn, o.btnText);
+  progress(true, .04, o.start || t('Starting…'));
+  const t0 = Date.now(); let lastPct = 0, iv = null;
+  if (o.slow) { indet(true); const tick = () => { if (lastPct < .9) progress(true, null, o.slow((Date.now() - t0) / 1000)); }; tick(); iv = setInterval(tick, 1000); }
+  const onP = m => { lastPct = m.pct || 0; if (o.slow) { if (lastPct >= .9) { indet(false); progress(true, m.pct, m.text); } } else progress(true, m.pct, m.text); };
   let r;
-  try { r = REAL ? await job(fn, args, m => progress(true, m.pct, m.text)) : await (async () => { for (let i = 1; i <= 5; i++) { await wait(260); progress(true, i / 5, t('Working…')); } return sample; })(); }
-  catch (e) { r = { ok: false, reason: 'failed', msg: e.message }; }
-  busy = false; if (live()) { progress(false); lock(false); }
+  try {
+    r = !REAL ? await (async () => { const n = o.slow ? 12 : 5; for (let i = 1; i <= n; i++) { await wait(260); if (!o.slow) progress(true, i / n, o.start || t('Working…')); } return sample; })()
+      : typeof fn === 'function' ? await fn(onP) : await job(fn, args, onP);
+  } catch (e) { r = { ok: false, reason: 'failed', msg: e.message }; }
+  finally {
+    clearInterval(iv); busy = false;
+    if (live()) { indet(false); progress(false); lock(false); btnFree(o.btn); }
+  }
   return r || { ok: false, reason: 'failed' };
 }
 
 async function createPoint() {
   const name = (($('#bkName', root) || {}).value || '').trim();
-  const r = await runOp('create_point', [name], { ok: true, reason: 'created', seq: 32 });
+  const r = await runOp('create_point', [name], { ok: true, reason: 'created', seq: 32 },
+    { btn: $('[data-bk="create-go"]', root), btnText: t('Creating…'), slow: s => t('Creating the restore point ({time}). This can take a few minutes.', { time: clock(s) }) });
   if (!r) return;
   if (r.ok) {
     createOpen = false; SH.toast(t('Restore point created.'));
@@ -190,10 +214,10 @@ async function createPoint() {
     await loadStatus();
   } else if (live()) message(r.msg || REASON[r.reason] || REASON.failed, 'warn');
 }
-async function protect(resizeOnly) {
+async function protect(resizeOnly, btn) {
   const d = sysDrive() || { drive: 'C:' };
   if (REAL && !SH.requireAdmin(t('to change System Protection.'))) return;
-  const r = await runOp('protect', [d.drive, pct], { ok: true, msg: t('System Protection is on for {drive}.', { drive: d.drive }) });
+  const r = await runOp('protect', [d.drive, pct], { ok: true, msg: t('System Protection is on for {drive}.', { drive: d.drive }) }, { btn });
   if (!r) return;
   if (r.ok) {
     protectOpen = false; SH.toast(r.msg || t('System Protection is on for {drive}.', { drive: d.drive }));
@@ -219,12 +243,12 @@ function paintPoints() {
   const el = $('#bkPoints', root); if (el) el.innerHTML = pointsHTML();
   const s = cache.status, c = $('#bkPtCount', root); if (c) c.textContent = s && s.admin && s.points && s.points.length ? SH.fmtInt(s.points.length) : '';
 }
-async function deletePoint(seq) {
+async function deletePoint(seq, btn) {
   const p = ((cache.status || {}).points || []).find(x => String(x.seq) === String(seq)); if (!p) return;
   if (REAL && !SH.requireAdmin(t('to delete restore points.'))) return;
   const ok = await ask(t('Delete this restore point?'), t('<b>{name}</b>, from {date}. Only this restore point is deleted; the others stay as they are. This cannot be undone.', { name: esc(p.desc || typeOf(p.type)[0]), date: esc(fmtDate(p.t)) }), t('Delete restore point'));
   if (!ok) return;
-  const r = await runOp('delete_point', [p.seq, p.shadow || null], { ok: true });
+  const r = await runOp('delete_point', [p.seq, p.shadow || null], { ok: true }, { btn });
   if (r && r.ok) {
     SH.toast(t('Restore point deleted.')); if (!REAL) SAMPLE.status.points = SAMPLE.status.points.filter(x => x.seq !== p.seq);
     const row = live() && $(`.bk-row[data-seq="${p.seq}"]`, root);
@@ -275,22 +299,24 @@ function ownHTML() {
 }
 function paintOwn() { const el = $('#bkOwn', root); if (el) el.innerHTML = ownHTML(); }
 function findOwn(id) { const o = cache.own || {}; return [...(o.optimizer || []), ...(o.drivers || []), ...(o.quarantine || [])].find(b => b.id === id); }
-async function deleteOwn(list, title) {
+async function deleteOwn(list, title, btn) {
   if (!list.length || busy) return;
   const tot = list.reduce((a, b) => a + (b.size || 0), 0);
   const body = list.length === 1 ? t('<b>{name}</b>, from {date} ({size}), goes to the Recycle Bin. You can recover it from there.', { name: esc(itemText(list[0])[0]), date: esc(fmtDate(list[0].ts)), size: size(tot) })
     : t('{n} backups older than {days} days ({size} in total) go to the Recycle Bin. You can recover them from there.', { n: list.length, days: OLD_DAYS, size: size(tot) });
   if (!await ask(title, body, t('Move to the Recycle Bin'))) return;
   const ids = list.map(b => b.id);
-  busy = true; lock(true);
-  const r = REAL ? await job('delete_own', [ids]).catch(e => ({ ok: false, deleted: [], failed: ids, msg: e.message })) : { ok: true, deleted: ids, failed: [] };
-  busy = false; if (live()) lock(false);
+  /* a driver backup can take a while (it is large): the bar in the card follows each folder, the button spins */
+  const r = await runOp('delete_own', [ids], { ok: true, deleted: ids, failed: [] },
+    { btn, btnText: btn && btn.dataset.bk === 'old' ? t('Moving to the Recycle Bin…') : '', start: t('Moving to the Recycle Bin…') });
+  if (!r) return;
   const n = (r.deleted || []).length;
   if (!REAL) ['optimizer', 'drivers'].forEach(k => { SAMPLE.own[k] = SAMPLE.own[k].filter(b => !ids.includes(b.id)); });
   SH.toast(r.ok ? (n === 1 ? t('Backup moved to the Recycle Bin.') : t('{n} backups moved to the Recycle Bin.', { n })) : t('Some backups could not be deleted.'));
   await loadOwn();
 }
-async function undoOptimizer(b) {
+async function undoOptimizer(b, btn) {
+  if (busy) return;
   const svc = b.kind === 'opt-services';
   if (REAL && svc && !SH.requireAdmin(t('to change services.'))) return;
   const ok = await ask(svc ? t('Put these services back?') : t('Put these registry entries back?'),
@@ -298,9 +324,11 @@ async function undoOptimizer(b) {
       : t('The registry entries Super Optimizer removed on {date} are imported again from their copy.', { date: esc(fmtDate(b.ts)) }), t('Put them back'), false);
   if (!ok) return;
   const bid = b.id.split('|')[1];
-  let r;
-  try { r = REAL ? await SH.engine('optimizer', svc ? 'services_undo' : 'registry_undo', bid) : { ok: true }; } catch (e) { r = { ok: false, msg: e.message }; }
-  if (r && r.needAdmin) { SH.requireAdmin(t('to change services.')); return; }
+  /* about a second per service: the bar in the card says which one is being put back */
+  const r = await runOp(onP => SH.job('optimizer', svc ? 'services_undo_job' : 'registry_undo_job', [bid], { onProgress: m => { if (m.kind === 'progress') onP(m); } }), [], { ok: true },
+    { btn, start: svc ? t('Putting the services back…') : t('Putting the registry entries back…') });
+  if (!r) return;
+  if (r.needAdmin) { SH.requireAdmin(svc ? t('to change services.') : t('to make this change in Windows.')); return; }
   SH.toast(r && r.ok ? t('Changes undone.') : t('It did not work: {msg}', { msg: (r && r.msg) || t('Windows did not accept some of them.') }));
 }
 
@@ -327,15 +355,15 @@ SH.settingsSections.backups = {
     });
     el.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'bkName') { e.preventDefault(); createPoint(); } });
     el.addEventListener('click', async e => {
-      const del = e.target.closest('[data-del]'); if (del) { if (!busy) deletePoint(del.dataset.del); return; }
+      const del = e.target.closest('[data-del]'); if (del) { if (!busy) deletePoint(del.dataset.del, del); return; }
       const own = e.target.closest('[data-own]');
       if (own) {
         const b = findOwn(own.closest('[data-id]').dataset.id); if (!b || busy) return;
         if (own.dataset.own === 'open') {
           const ok = REAL ? await SH.engine('backups', 'open_path', b.path).catch(() => false) : undefined;
           if (ok === undefined) SH.toast(t('This only works inside the app.')); else if (!ok) SH.toast(t('That folder no longer exists.'));
-        } else if (own.dataset.own === 'del') deleteOwn([b], t('Delete this backup?'));
-        else if (own.dataset.own === 'undo') undoOptimizer(b);
+        } else if (own.dataset.own === 'del') deleteOwn([b], t('Delete this backup?'), own);
+        else if (own.dataset.own === 'undo') undoOptimizer(b, own);
         return;
       }
       const a = e.target.closest('[data-bk]'); if (!a || busy) return;
@@ -345,10 +373,10 @@ SH.settingsSections.backups = {
       else if (k === 'create-x') { createOpen = false; paintHero(); }
       else if (k === 'create-go') createPoint();
       else if (k === 'space') { protectOpen = true; createOpen = false; paintHero(true); }
-      else if (k === 'resize') protect(true);
-      else if (k === 'protect') protect(false);
+      else if (k === 'resize') protect(true, a);
+      else if (k === 'protect') protect(false, a);
       else if (k === 'more') { showAll[a.dataset.g] = true; paintOwn(); }
-      else if (k === 'old') deleteOwn(((cache.own || {})[a.dataset.g] || []).filter(isOld), t('Delete old backups?'));
+      else if (k === 'old') deleteOwn(((cache.own || {})[a.dataset.g] || []).filter(isOld), t('Delete old backups?'), a);
       else if (k === 'remover') { const x = $('#sheet [data-close]'); if (x) x.click(); SH.go('remover', { tab: 'quarantine' }); }
     });
   },

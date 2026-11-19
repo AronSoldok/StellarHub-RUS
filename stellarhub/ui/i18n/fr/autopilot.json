@@ -715,5 +715,19 @@
   "“{name}” was cancelled.": "« {name} » a été annulée.",
   "“{name}” was skipped.": "« {name} » a été ignorée.",
   "“{name}”: Spotify couldn’t be updated because it was open.": "« {name} » : Spotify n’a pas pu être mis à jour car il était ouvert.",
-  "“{path}” doesn’t exist": "« {path} » n’existe pas"
+  "“{path}” doesn’t exist": "« {path} » n’existe pas",
+  "Running for {time}": "En cours depuis {time}",
+  "Starting…": "Démarrage…",
+  "Running. This can take several minutes.": "En cours. Cela peut prendre plusieurs minutes.",
+  "Elapsed {time}": "Écoulé : {time}",
+  "{drive} (not found on this PC)": "{drive} (introuvable sur ce PC)",
+  "This drive isn't connected now. Choose another one, or connect it again.": "Ce lecteur n'est pas connecté pour le moment. Choisissez-en un autre ou reconnectez-le.",
+  "skipped: this action wasn’t approved in administrator mode. Open StellarHub and save this routine again to allow it": "ignorée : cette action n'a pas été approuvée en mode administrateur. Ouvrez StellarHub et enregistrez de nouveau cette routine pour l'autoriser",
+  "would be skipped: not approved in administrator mode. Save the routine again to allow it": "serait ignorée : non approuvée en mode administrateur. Enregistrez de nouveau la routine pour l'autoriser",
+  "the downloads folder ({path}) isn’t a safe place to clean, so nothing was touched": "le dossier de téléchargements ({path}) n'est pas un endroit sûr à nettoyer, rien n'a donc été touché",
+  "{n} old downloads sent to the Recycle Bin, {k} left alone (they can’t go to the Recycle Bin)": "{n} anciens téléchargements envoyés à la Corbeille, {k} laissés en place (ils ne peuvent pas aller dans la Corbeille)",
+  "Full network reset (no longer runs on its own)": "Réinitialisation complète du réseau (ne s'exécute plus seule)",
+  "flush the DNS cache (a full network reset is never run by a routine)": "vider le cache DNS (une routine ne réinitialise jamais complètement le réseau)",
+  "A full network reset is never run by a routine. Run it from Super Optimizer.": "Une routine ne réinitialise jamais complètement le réseau. Faites-le depuis Super optimiseur.",
+  "The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.": "Le cache DNS a été vidé, mais une routine ne réinitialise jamais complètement le réseau. Faites-le depuis Super optimiseur."
 }

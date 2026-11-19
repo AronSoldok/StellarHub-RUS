@@ -8,6 +8,7 @@ Every removal creates a session in <data>\\quarantine\\<id> with:
 Safety is checked again item by item right before touching anything.
 """
 import base64
+import ctypes
 import datetime
 import json
 import os
@@ -66,12 +67,46 @@ def _rmtree(path):
     shutil.rmtree(path, onexc=_make_writable)
 
 
+def _move_on_reboot(src, dst):
+    """Schedule a MOVE of src to dst at the next restart (needs admin, same volume): the file stays recoverable."""
+    try:
+        # MOVEFILE_DELAY_UNTIL_REBOOT | MOVEFILE_REPLACE_EXISTING
+        return bool(ctypes.windll.kernel32.MoveFileExW(str(src), str(dst), 0x4 | 0x1))
+    except Exception:
+        return False
+
+
+def _same_volume(a, b):
+    da, db = os.path.splitdrive(os.path.abspath(a))[0].lower(), os.path.splitdrive(os.path.abspath(b))[0].lower()
+    return bool(da) and da == db
+
+
+def _locked_file(src, dst, result):
+    """A file that can be neither moved nor copied now (in use). Returns True if something was scheduled.
+
+    Same volume as the quarantine: a delayed MOVE into it, so the file is still restorable after the restart.
+    Another volume: a delayed DELETE; that file cannot be restored, and the item says so. Either way the
+    operation acts on the PATH at the next restart, so the program must not be reinstalled before restarting.
+    """
+    if _same_volume(src, dst) and _move_on_reboot(src, dst):
+        result["reboot"] += 1
+        result["_pending"].append([src, dst])
+        return True
+    if system.delete_on_reboot(src):
+        result["reboot"] += 1
+        result["reboot_unrestorable"] += 1
+        return True
+    return False
+
+
 def _move_tree(src, dst, result):
     """Move src to dst. If something is locked, move what it can and schedule the rest for reboot."""
     os.makedirs(os.path.dirname(dst), exist_ok=True)
     try:
-        os.replace(src, dst) if os.path.splitdrive(src)[0].lower() == os.path.splitdrive(dst)[0].lower() \
-            else shutil.move(src, dst)
+        if _same_volume(src, dst):
+            os.replace(src, dst)
+        else:
+            shutil.move(src, dst)
         return
     except OSError:
         pass
@@ -80,33 +115,43 @@ def _move_tree(src, dst, result):
             shutil.copy2(src, dst)
             os.remove(src)
         except OSError:
-            if system.delete_on_reboot(src):
-                result["reboot"] += 1
-            else:
+            try:
+                if os.path.lexists(dst):
+                    os.remove(dst)       # half-copied
+            except OSError:
+                pass
+            if not _locked_file(src, dst, result):
                 raise
         return
-    # folder with files in use: file by file
-    for dp, dn, fn in os.walk(src, topdown=True):
-        dn[:] = [d for d in dn if not paths.is_reparse_point(os.path.join(dp, d))]
+    # folder with files in use: file by file. Links/junctions are moved (or removed) as links, never entered.
+    for dp, files, dirs, links in paths.walk_nolinks(src):
         rel = os.path.relpath(dp, src)
         tdir = os.path.join(dst, rel) if rel != "." else dst
         os.makedirs(tdir, exist_ok=True)
-        for f in fn:
-            s, t = os.path.join(dp, f), os.path.join(tdir, f)
+        for f in files:
+            t = os.path.join(tdir, os.path.basename(f))
             try:
-                os.replace(s, t)
+                os.replace(f, t)
             except OSError:
                 try:
-                    shutil.copy2(s, t)
-                    os.remove(s)
+                    shutil.copy2(f, t)
+                    os.remove(f)
                 except OSError:
-                    if system.delete_on_reboot(s):
-                        result["reboot"] += 1
+                    _locked_file(f, t, result)
+        for lk in links:
+            try:
+                os.replace(lk, os.path.join(tdir, os.path.basename(lk)))
+            except OSError:
+                try:
+                    paths.remove_link(lk)
+                except OSError:
+                    pass
     _remove_empty_dirs(src, result)
 
 
 def _remove_empty_dirs(root, result):
-    for dp, dn, fn in os.walk(root, topdown=False):
+    """rmdir every folder under root (deepest first, never entering links); what stays goes at reboot."""
+    for dp, files, dirs, links in paths.walk_nolinks(root):
         try:
             os.rmdir(dp)
         except OSError:
@@ -121,9 +166,13 @@ def _delete_tree(path, result):
             return
         except OSError:
             pass
-        for dp, dn, fn in os.walk(path, topdown=False):
-            for f in fn:
-                fp = os.path.join(dp, f)
+        for dp, files, dirs, links in paths.walk_nolinks(path):
+            for lk in links:            # the link itself; what it points to is never touched
+                try:
+                    paths.remove_link(lk)
+                except OSError:
+                    pass
+            for fp in files:
                 try:
                     os.chmod(fp, stat.S_IWRITE)
                     os.remove(fp)
@@ -189,7 +238,9 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
     manifest = {"id": sid, "program": program.get("name"), "publisher": program.get("publisher", ""),
                 "created": time.time(), "mode": mode, "items": []}
     ctx = safety.Context(target=program, programs=programs)
-    result = {"ok": 0, "failed": 0, "skipped": 0, "reboot": 0, "freed": 0, "errors": [], "session": sid}
+    # reboot: files/folders left for the next restart. reboot_unrestorable: those deleted (not moved) at restart.
+    result = {"ok": 0, "failed": 0, "skipped": 0, "reboot": 0, "reboot_unrestorable": 0, "freed": 0, "errors": [],
+              "session": sid, "_pending": []}
     items = sorted(items, key=lambda i: ORDER.get(i["kind"], 9))
     fw_batch = []
     for n, it in enumerate(items):
@@ -274,6 +325,8 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
             rec["status"] = "done"
             result["ok"] += 1
         _save(manifest)
+    result.pop("_pending", None)
+    result["restart_required"] = result["reboot"] > 0
     manifest["result"] = {k: v for k, v in result.items() if k != "errors"}
     _save(manifest)
     index.invalidate()
@@ -307,15 +360,24 @@ def _do_path(it, rec, sdir, n, mode, result):
         rec["status"] = "done"
         return
     size = paths.path_size(src)
-    before = result["reboot"]
+    before, lost0, pend0 = result["reboot"], result["reboot_unrestorable"], len(result["_pending"])
     if mode == "delete":
         _delete_tree(src, result)
     else:
         dst = os.path.join(sdir, "files", f"{n}_{_slug(os.path.basename(src))}")
         _move_tree(src, dst, result)
-        rec["stored"] = dst
+        pend = result["_pending"][pend0:]
+        if os.path.lexists(dst) or pend:
+            rec["stored"] = dst
+        else:
+            rec["restorable"] = False     # nothing reached the quarantine: it will only be deleted at restart
+        if pend:
+            rec["pending_moves"] = pend   # [source, destination in the quarantine], done at the next restart
     if result["reboot"] > before:
         rec["reboot"] = result["reboot"] - before
+        rec["restart_required"] = True
+    if result["reboot_unrestorable"] > lost0:
+        rec["unrestorable"] = result["reboot_unrestorable"] - lost0   # files deleted at restart, no copy kept
     result["freed"] += size
     rec["size"] = size
 
@@ -354,10 +416,16 @@ def sessions():
                     "restored": m.get("restored", False),
                     "count": sum(1 for i in items if i["status"] == "done"),
                     "size": sum(i.get("size", 0) for i in items if i["status"] == "done"),
-                    "restorable": m.get("mode") == "quarantine" and not m.get("restored"),
+                    "restorable": m.get("mode") == "quarantine" and not m.get("restored") and
+                                  any(i["status"] == "done" and i.get("restorable", True) for i in items),
+                    "pendingRestart": sum(1 for i in items if i["status"] == "done" and i.get("restart_required")),
+                    "unrestorableFiles": sum(i.get("unrestorable", 0) for i in items if i["status"] == "done"),
                     "items": [{"idx": n, "kind": i["kind"], "display": i["display"], "status": i["status"],
                                "target": i.get("target", ""), "size": i.get("size", 0),
-                               "error": i.get("error", "")} for n, i in enumerate(items)]})
+                               "error": i.get("error", ""),
+                               "restorable": i.get("restorable", True) and i["status"] == "done",
+                               "pendingRestart": bool(i.get("restart_required")),
+                               "unrestorable": i.get("unrestorable", 0)} for n, i in enumerate(items)]})
     return out
 
 
@@ -377,8 +445,11 @@ def restore(sid, progress=None, only=None):
         try:
             k = it["kind"]
             if k in ("file", "folder"):
-                if not it.get("stored"):
+                if not it.get("stored") or it.get("restorable") is False:
                     raise OSError(tr("It was deleted permanently or was a link"))
+                pend = it.get("pending_moves") or []
+                if (pend and not os.path.lexists(it["stored"])) or any(os.path.lexists(a) for a, _ in pend):
+                    raise OSError(tr("Restart the PC first: some files are still waiting to be moved to the quarantine"))
                 if os.path.lexists(it["target"]):
                     raise OSError(tr("Something already exists at the original path"))
                 _real_move(it["stored"], it["target"])

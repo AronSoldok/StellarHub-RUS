@@ -61,7 +61,7 @@ def _open(volume):
 
 
 def _boot(f):
-    b = bytearray(512)
+    b = bytearray(4096)     # a raw volume only reads whole sectors: 4K-native disks fail with 512 bytes
     f.seek(0)
     f.readinto(b)
     if b[3:11] != b"NTFS    ":

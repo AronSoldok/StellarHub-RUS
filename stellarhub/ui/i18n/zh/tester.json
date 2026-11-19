@@ -169,5 +169,6 @@
   "{n} keys marked as missing": "已将 {n} 个按键标记为缺少",
   "The key sent a second press a few milliseconds after a very short one, more than once, without you pressing it again. Usually a worn or dirty switch.": "该键在一次极短的按下后几毫秒内又发送了一次按下，且不止一次，而你并没有再次按它。通常是开关磨损或脏污。",
   "{key}: possible chatter": "{key}：可能存在连击",
-  "Possible chatter: {keys}": "可能存在连击：{keys}"
+  "Possible chatter: {keys}": "可能存在连击：{keys}",
+  "Windows uses {layout}, not this one": "Windows 使用的是 {layout}，与此不同"
 }

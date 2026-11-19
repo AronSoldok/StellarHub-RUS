@@ -354,6 +354,10 @@ html[data-int=min] #v-privacy .pv-livetag i{animation:none}
 #v-privacy .pv-psload{flex:1;display:flex;align-items:center;gap:12px;font-size:12.5px;color:var(--mute);padding-left:18px}
 #v-privacy .pv-spin{width:22px;height:22px;border-radius:50%;border:2.5px solid var(--raise3);border-top-color:var(--accent2);flex:none;animation:pvSpin calc(900ms*var(--f) + 300ms) linear infinite}
 html[data-int=min] #v-privacy .pv-spin{animation-duration:2.4s}
+#v-privacy .pv-bspin{display:inline-block;width:12px;height:12px;flex:none;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;opacity:.85;animation:pvSpin calc(800ms + 400ms*(1 - var(--f))) linear infinite}
+html[data-int=min] #v-privacy .pv-bspin{animation-duration:2.4s}
+#v-privacy .btn.pv-busy{cursor:progress}
+#v-privacy .btn.pv-busy:disabled{opacity:.9}
 #v-privacy .pv-psl{flex:1;min-height:0;display:flex;flex-direction:column;padding:12px 10px 8px}
 #v-privacy .pv-kseg{flex:none;max-width:100%;overflow:hidden}
 #v-privacy .pv-kseg button{display:flex;align-items:center;justify-content:center;gap:6px;padding:0 12px}

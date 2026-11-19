@@ -50,10 +50,14 @@
   "Stick PC": "PC clé",
   "Virtual machine": "Machine virtuelle",
   "Processor": "Processeur",
-  "Graphics": "Graphiques",
+  "Graphics": "Carte graphique",
   "Storage": "Stockage",
   "Displays": "Écrans",
   "Battery": "Batterie",
   "Audio": "Audio",
-  "System": "Système"
+  "System": "Système",
+  "Disk {size}": "Disque de {size}",
+  "Updating to {v}…": "Mise à jour vers {v}…",
+  "Updating to {v}… {p}%": "Mise à jour vers {v}… {p} %",
+  "{v} GHz": "{v} GHz"
 }

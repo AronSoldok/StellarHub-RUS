@@ -136,7 +136,9 @@ const cache = {};   /* slow engine results: requested once per tab visit */
 async function load(k, fn_, ...a) { if (cache[k] && Date.now() - cache[k].t < 30000) return cache[k].d; const d = await eng(fn_, ...a); if (d !== undefined) cache[k] = { t: Date.now(), d }; return d; }
 /* cores: the first 2×P threads belong to the performance cores (with HT), the rest to the efficient ones (no HT) */
 function coreSplit() {
-  const cores = parseInt(row('cpu', LBL.cores)) || 16, threads = parseInt(row('cpu', LBL.threads)) || (V().threads || []).length || 24;
+  const threads = parseInt(row('cpu', LBL.threads)) || (V().threads || []).length || 24;
+  const cores = parseInt(row('cpu', LBL.cores)) || (REAL() ? null : 16);
+  if (!cores) return { cores: null, threads, p: 0, e: threads };      // unknown: one bar per thread, the count shows "–"
   const p = Math.max(0, Math.min(cores, threads - cores)), e = cores - p; return { cores, threads, p, e };
 }
 
@@ -192,15 +194,15 @@ function simTick(v) {
 
 /* ---------- real processes: the engine groups them per program like Task Manager ---------- */
 const RP = new Map();   // key (lowercase exe) -> stable process object
-let procTimer = 0, procBusy = false, procInfo = { total: 0, gpuPerProcess: true };
+let procTimer = 0, procBusy = false, procInfo = { total: 0, gpuPerProcess: true }, procSeen = false, procErr = false;
 const PROC_TABS = new Set(['overview', 'cpu', 'gpu', 'memory', 'network', 'processes']);
 async function pollProcs() {
   if (procBusy || !REAL() || !visible() || !PROC_TABS.has(curTab) || paused) return;
   procBusy = true;
   try {
     const known = [...RP.values()].filter(p => p.iconDone).map(p => p.id);
-    const r = await eng('processes', known); if (!r || !r.list) return;
-    procInfo = r; const seen = new Set();
+    const r = await eng('processes', known); if (!r || !r.list) { procErr = true; if (curTab === 'processes') renderProcs(true, true); return; }
+    procInfo = r; procSeen = true; procErr = false; const seen = new Set();
     r.list.forEach(g => {
       let p = RP.get(g.key);
       if (!p) { p = { id: g.key, alive: true }; RP.set(g.key, p); }
@@ -238,8 +240,10 @@ function topList(t, el, key, n, fmt, max) {
   });
 }
 const mb = v => v >= 1024 ? fmt1(v / 1024) + ' GB' : fmtInt(v) + ' MB';
-const pct = v => (v < 10 ? fmt1(v) : fmtInt(v)) + ' %';
-function upt(s) { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h ${m} min` : `${m} min`; }
+/* the percent sign follows the language: "9,3 %" (es, fr: non-breaking space) but "9.3%" (en, pt, it, zh) */
+const PCT_SP = { es: '\u00a0', fr: '\u202f' }[SH.i18n && SH.i18n.lang] || '';
+const pct = v => (v < 10 ? fmt1(v) : fmtInt(v)) + PCT_SP + '%';
+function upt(s) { if (SH.fmtUptime) return SH.fmtUptime(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h >= 48 ? _t('{d} days {h} h', { d: Math.floor(h / 24), h: h % 24 }) : h ? `${h} h ${m} min` : `${m} min`; }
 
 /* ---------- HTML pieces ---------- */
 const head = (title, em, go) => `<h4>${go ? `<button class="goto" data-goto="${go}">${title}${chev}</button>` : title}${em ? `<em>${em}</em>` : ''}</h4>`;
@@ -260,10 +264,10 @@ const gpuTitle = () => comp('gpu').title || 'GPU';
 const NA = (why) => `<span class="na" title="${esc(why)}">—</span>`;
 /* short explanation of a value that does not arrive */
 const why = {
-  cpuTemp: () => _t('Windows only exposes the ACPI thermal zone, and on this PC it is missing or a fixed placeholder. Reading the processor\'s own sensors needs a kernel driver (WinRing0) that Microsoft Defender blocks as vulnerable, so StellarHub does not install one.'),
+  cpuTemp: () => _t('Windows only exposes the ACPI thermal zone, and on this PC it is missing or a fixed placeholder. Reading the processor\'s own sensors needs a kernel driver, which antivirus software flags, so StellarHub does not install one. If LibreHardwareMonitor, HWiNFO (with shared memory on) or Core Temp is open, StellarHub reads the temperature from it.'),
   gpuState: { asleep: _t('The dedicated GPU is powered down to save energy. StellarHub does not wake it just to read its sensors: they come back as soon as a program uses it.'),
     idle: _t('On battery and idle: sensor reading is paused so the dedicated GPU can power down. Usage and video memory are still live.') },
-  fan: _t('Windows does not report fan speed; the manufacturer\'s firmware controls it (on this PC, Armoury Crate).'),
+  fan: _t('Windows does not report fan speed; the manufacturer\'s firmware or its own app controls it.'),
 };
 
 R.overview = (el, t) => {
@@ -292,7 +296,7 @@ R.overview = (el, t) => {
   $$('#oThr b', el).forEach((b, i) => bar(t, b, v => (v.threads || [])[i], 'y'));
   arc(t, S(el, 'oGA'), v => v.gpu / 100, 235.6, 314.2); num(t, S(el, 'oGV'), v => v.gpu);
   num(t, S(el, 'oGt'), v => v.gpuTemp); num(t, S(el, 'oGp'), v => v.gpuPower); num(t, S(el, 'oVr'), v => v.vram, fmt1); num(t, S(el, 'oVrT'), v => v.vramTotal);
-  bar(t, S(el, 'oVrB'), v => v.vram / (v.vramTotal || 8));
+  bar(t, S(el, 'oVrB'), v => v.vramTotal ? v.vram / v.vramTotal : 0);
   num(t, S(el, 'oRam'), v => v.ram, fmt1); num(t, S(el, 'oRamT'), v => v.ramTotal); bar(t, S(el, 'oRamB'), v => v.ram / v.ramTotal);
   topList(t, S(el, 'oRamTop'), 'ram', 3, mb);
   num(t, S(el, 'oDn'), v => v.down, fmt1); num(t, S(el, 'oUp'), v => v.up, fmt1);
@@ -311,8 +315,8 @@ R.cpu = (el, t) => {
     <div class="pan" data-asm>${head(_t('Status'), _t('live'))}<div class="stats">
       ${stat(_t('Frequency'), 'cF', 'GHz', _t('base {v}', { v: esc(row('cpu', LBL.base) || '–') }))}${stat(_t('Temperature'), 'cT', '°C', '<span id="cTw"></span>')}
       <div class="st"><span class="sl">${_t('Fan')}</span><b>${fanIc('cFan')}<span id="cFn">–</span><small>rpm</small></b><span class="ss" id="cFnW"></span></div>
-      ${stat(_t('Processes'), 'cP', '', '<span id="cPh"></span>')}${stat(_t('Busy threads'), 'cHo', _t('of {n}', { n: sp.threads }), _t('above 50 %'))}${stat(_t('Uptime'), 'cUp', '', _t('since the last startup'))}</div></div>
-    <div class="pan wide" data-asm>${head(_t('Cores'), sp.p && sp.e ? _t('{p} performance and {e} efficient', { p: sp.p, e: sp.e }) : _t('{n} cores', { n: sp.cores }))}
+      ${stat(_t('Processes'), 'cP', '', '<span id="cPh"></span>')}${stat(_t('Busy threads'), 'cHo', _t('of {n}', { n: sp.threads }), _t('above 50%'))}${stat(_t('Uptime'), 'cUp', '', _t('since the last startup'))}</div></div>
+    <div class="pan wide" data-asm>${head(_t('Cores'), sp.p && sp.e ? _t('{p} performance and {e} efficient', { p: sp.p, e: sp.e }) : sp.cores ? _t('{n} cores', { n: sp.cores }) : _t('{n} cores', { n: '–' }))}
       <div class="cores">${sp.p ? `<div class="cg"><span class="cgl">${_tc('Performance')}</span><div class="pc" id="cPc"></div></div>` : ''}${sp.e ? `<div class="cg"><span class="cgl">${sp.p ? _tc('Efficient') : _t('Cores')}</span><div class="ec" id="cEc"></div></div>` : ''}</div></div>
     <div class="pan" data-asm>${head(_t('Using the most CPU'))}<div class="tops" id="cTop"></div></div>
     <div class="pan" data-asm>${head(_t('Specifications'))}<dl class="spec">
@@ -322,7 +326,7 @@ R.cpu = (el, t) => {
   chart(t, S(el, 'cCh'), { series: [{ key: 'cpu', col: 'accent', fill: true, label: _t('Usage') }, { key: 'cpuTemp', col: 'accent2', dash: [5, 4], w: 1.5, label: _tc('Temp.'), unit: ' °C', opt: true }] });
   num(t, S(el, 'cF'), v => v.cpuFreq, fmt1); num(t, S(el, 'cT'), v => v.cpuTemp); num(t, S(el, 'cFn'), v => v.fanCpu); fan(t, S(el, 'cFan'), v => v.fanCpu);
   fn(t, v => {
-    S(el, 'cTw').textContent = nil(v.cpuTemp) ? _t('Windows does not report it') : _t('ACPI thermal zone');
+    S(el, 'cTw').textContent = nil(v.cpuTemp) ? _t('Windows does not report it') : !v.cpuTempSrc || v.cpuTempSrc === 'acpi' ? _t('ACPI thermal zone') : _t('from {app}', { app: v.cpuTempSrc });
     S(el, 'cTw').title = nil(v.cpuTemp) ? why.cpuTemp() : '';
     S(el, 'cFnW').textContent = nil(v.fanCpu) ? _t('Windows does not report it') : _t('automatic');
     S(el, 'cFnW').title = why.fan; $('.ltemp', el).hidden = REAL() && nil(v.cpuTemp);
@@ -365,7 +369,7 @@ R.gpu = (el, t) => {
     if (st.textContent !== msg) { st.textContent = msg; st.hidden = !msg; }
   });
   if (S(el, 'gI')) { num(t, S(el, 'gI'), v => v.igpu); chart(t, S(el, 'gICh'), { series: [{ key: 'igpu', col: 'accent2', fill: true, label: _t('Usage') }] }); }
-  num(t, S(el, 'gV'), v => v.vram, fmt1); num(t, S(el, 'gVT'), v => v.vramTotal); bar(t, S(el, 'gVB'), v => v.vram / (v.vramTotal || 8));
+  num(t, S(el, 'gV'), v => v.vram, fmt1); num(t, S(el, 'gVT'), v => v.vramTotal); bar(t, S(el, 'gVB'), v => v.vramTotal ? v.vram / v.vramTotal : 0);
   chart(t, S(el, 'gCh'), { series: [{ key: 'gpu', col: 'accent', fill: true, label: _t('Usage') }, { key: 'gpuTemp', col: 'accent2', dash: [5, 4], w: 1.5, label: _tc('Temp.'), unit: ' °C', opt: true }] });
   topList(t, S(el, 'gTop'), 'gpu', 6, pct, 0);
   load('gpu', 'gpu_info').then(gi => {
@@ -427,23 +431,34 @@ R.disks = (el, t) => {
   chart(t, S(el, 'dCh'), { max: 'auto', min: 100, unit: ' MB/s', series: [{ key: 'diskRead', col: 'accent2', fill: true, label: _tc('Read') }, { key: 'diskWrite', col: 'accent', label: _tc('Write') }] });
   load('disks', 'disks').then(d => {
     d = d === undefined ? MOCK_DISKS : d; if (!d) { S(el, 'dHealth').innerHTML = `<p class="mnote">${_t('Could not read the disk.')}</p>`; return; }
-    const p = (d.physical || [])[0] || {};
-    const ok = (p.health || '').toLowerCase() === 'healthy';
-    const hd = S(el, 'dHealth');
-    if (!p.smart) hd.innerHTML = `<div class="health-big">${ring('dRing', ok ? 'var(--ok)' : 'var(--warn)')}<div><b>${ok ? _t('Good') : esc(_t(p.health || 'Unknown'))}</b><span>${_t('According to Windows. SMART details need administrator mode.')}</span></div></div>
-      <button class="btn sec sm" data-act="admin">${ic('shield')}${_t('See SMART details')}</button>`;
-    else {
-      const life = nil(p.wear) ? null : 100 - p.wear;
-      hd.innerHTML = `<div class="health-big">${ring('dRing', ok ? 'var(--ok)' : 'var(--warn)')}<div><b>${ok ? _t('Good') : esc(_t(p.health || 'Unknown'))}</b><span>${life == null ? _t('The disk reports no errors.') : _t('{n} % of its lifespan left.', { n: life })}</span></div></div>
-      <dl class="spec">${[[_t('Life used'), nil(p.wear) ? null : p.wear + ' %'], [_t('Power-on hours'), nil(p.hours) ? null : fmtInt(p.hours) + ' h'], [_t('Power cycles'), nil(p.starts) ? null : fmtInt(p.starts)],
-        [_t('Temperature'), nil(p.temp) ? null : p.tempMax ? _t('{t} °C, max {max} °C', { t: p.temp, max: p.tempMax }) : `${p.temp} °C`], [_t('Read errors'), nil(p.readErr) ? null : fmtInt(p.readErr)], [_t('Write errors'), nil(p.writeErr) ? null : fmtInt(p.writeErr)]]
-        .filter(x => x[1] != null).map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('') || `<dt>SMART</dt><dd>${_t('no manufacturer data')}</dd>`}</dl>`;
-    }
-    arc(t, S(el, 'dRing'), () => ok ? (nil(p.wear) ? .96 : 1 - p.wear / 100) : .5, 100.5, 100.5); refresh(t);
-    const vols = (d.volumes || []).filter(v => v.size > 50e6);
+    /* one health card per physical disk, the system disk (the one holding C:) first; volumes grouped by disk */
+    const vAll = d.volumes || [];
+    const sysNo = (vAll.find(v => String(v.letter || '').toUpperCase() === 'C') || {}).disk;
+    const phys = (d.physical || []).slice().sort((a, b) => (String(b.id) === String(sysNo)) - (String(a.id) === String(sysNo)));
+    const p = phys[0] || {};
+    const hd = S(el, 'dHealth'); const many = phys.length > 1;
+    const okOf = x => (x.health || '').toLowerCase() === 'healthy';
+    const card = (x, i) => {
+      const ok = okOf(x), title = many ? `<p class="dname">${esc(short(x.name) || _t('Disk {n}', { n: x.id ?? i }))}${String(x.id) === String(sysNo) ? ` <em>${_t('system')}</em>` : ''}</p>` : '';
+      if (!x.smart) return `<div class="dcard">${title}<div class="health-big">${ring('dRing' + i, ok ? 'var(--ok)' : 'var(--warn)')}<div><b>${ok ? _t('Good') : esc(_t(x.health || 'Unknown'))}</b><span>${_t('According to Windows. SMART details need administrator mode.')}</span></div></div></div>`;
+      const life = nil(x.wear) ? null : 100 - x.wear;
+      return `<div class="dcard">${title}<div class="health-big">${ring('dRing' + i, ok ? 'var(--ok)' : 'var(--warn)')}<div><b>${ok ? _t('Good') : esc(_t(x.health || 'Unknown'))}</b><span>${life == null ? _t('The disk reports no errors.') : _t('{n}% of its lifespan left.', { n: life })}</span></div></div>
+      <dl class="spec">${[[_t('Life used'), nil(x.wear) ? null : x.wear + PCT_SP + '%'], [_t('Power-on hours'), nil(x.hours) ? null : fmtInt(x.hours) + ' h'], [_t('Power cycles'), nil(x.starts) ? null : fmtInt(x.starts)],
+        [_t('Temperature'), nil(x.temp) ? null : x.tempMax ? _t('{t} °C, max {max} °C', { t: x.temp, max: x.tempMax }) : `${x.temp} °C`], [_t('Read errors'), nil(x.readErr) ? null : fmtInt(x.readErr)], [_t('Write errors'), nil(x.writeErr) ? null : fmtInt(x.writeErr)]]
+        .filter(y => y[1] != null).map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('') || `<dt>SMART</dt><dd>${_t('no manufacturer data')}</dd>`}</dl></div>`;
+    };
+    hd.innerHTML = (phys.length ? phys.map(card).join('') : `<p class="mnote">${_t('Could not read the disk.')}</p>`)
+      + (phys.some(x => !x.smart) ? `<button class="btn sec sm" data-act="admin">${ic('shield')}${_t('See SMART details')}</button>` : '');
+    phys.forEach((x, i) => { const ok = okOf(x); arc(t, S(el, 'dRing' + i), () => ok ? (nil(x.wear) ? .96 : 1 - x.wear / 100) : .5, 100.5, 100.5); });
+    refresh(t);
+    const vols = vAll.filter(v => v.size > 50e6);
     const vName = v => v.letter && v.letter.trim() && v.letter !== '\u0000' ? v.letter + ':' : ({ Recovery: _tc('Recovery'), System: _t('EFI boot'), Reserved: _tc('Reserved') }[v.type] || v.type || _t('Partition'));
-    S(el, 'dVols').innerHTML = vols.map((v, i) => `<div class="part"><div class="pl"><b>${esc(vName(v))}</b><span>${v.hidden ? _t('hidden') : esc([v.label, v.fs].filter(Boolean).join(', ') || '—')}</span><em>${v.free != null ? _t('{free} free of {total}', { free: gb(v.free), total: gb(v.size) }) : gb(v.size)}</em></div>
-      <div class="bar ${v.hidden ? '' : 'acc'}"><span id="dV${i}"></span></div></div>`).join('');
+    const volH = (v, i) => `<div class="part"><div class="pl"><b>${esc(vName(v))}</b><span>${v.hidden ? _t('hidden') : esc([v.label, v.fs].filter(Boolean).join(', ') || '—')}</span><em>${v.free != null ? _t('{free} free of {total}', { free: gb(v.free), total: gb(v.size) }) : gb(v.size)}</em></div>
+      <div class="bar ${v.hidden ? '' : 'acc'}"><span id="dV${i}"></span></div></div>`;
+    const ix = new Map(vols.map((v, i) => [v, i]));
+    S(el, 'dVols').innerHTML = !many ? vols.map(volH).join('')
+      : phys.map((x, k) => { const mine = vols.filter(v => String(v.disk) === String(x.id)); return mine.length ? `<p class="dname">${esc(short(x.name) || _t('Disk {n}', { n: x.id ?? k }))}</p>${mine.map(v => volH(v, ix.get(v))).join('')}` : ''; }).join('')
+        + vols.filter(v => !phys.some(x => String(v.disk) === String(x.id))).map(v => volH(v, ix.get(v))).join('');
     vols.forEach((v, i) => bar(t, S(el, 'dV' + i), () => v.free != null ? 1 - v.free / v.size : 1));
     S(el, 'dSpec').insertAdjacentHTML('beforeend', [[_t('Capacity'), p.size ? gb(p.size) : null], [_t('Type'), [p.media, p.bus].filter(x => x && x !== 'Unspecified').join(', ') || null], [_t('Firmware'), p.fw || null],
       ['TRIM', d.trim == null ? null : d.trim ? _t('On') : _t('Off')], [_t('Disks in this PC'), (d.physical || []).length]].filter(x => x[1] != null).map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join(''));
@@ -492,7 +507,7 @@ R.network = (el, t) => {
     S(el, 'nAd').textContent = adapter ? short(adapter.desc) : _t('offline');
     const sig = w.signal != null ? w.signal : V().wifiSignal;
     const mask = ip => ip ? ip.replace(/^(\d+)\.\d+\.\d+\.(\d+)$/, '$1.•••.•••.$2') : '—';
-    S(el, 'nConn').innerHTML = `${w.connected ? `<div class="wifi"><div class="sig" id="nSig">${'<i></i>'.repeat(4)}</div><div><b>${esc(w.ssid)}</b><span>${sig != null ? _t('{n} % signal', { n: sig }) : 'Wi-Fi'}${w.band ? `, ${esc(w.band)}` : ''}${w.channel ? `, ${_t('channel {n}', { n: esc(w.channel) })}` : ''}</span></div></div>`
+    S(el, 'nConn').innerHTML = `${w.connected ? `<div class="wifi"><div class="sig" id="nSig">${'<i></i>'.repeat(4)}</div><div><b>${esc(w.ssid)}</b><span>${sig != null ? _t('{n}% signal', { n: sig }) : 'Wi-Fi'}${w.band ? `, ${esc(w.band)}` : ''}${w.channel ? `, ${_t('channel {n}', { n: esc(w.channel) })}` : ''}</span></div></div>`
       : adapter ? `<div class="wifi"><div class="ri">${ic('globe')}</div><div><b>${esc(adapter.alias)}</b><span>${_t('Wired connection')}</span></div></div>` : `<p class="mnote">${_t('No network connection.')}</p>`}
       ${adapter ? `<dl class="spec"><dt>${_t('Adapter')}</dt><dd>${esc(adapter.desc)}</dd><dt>${_t('Link speed')}</dt><dd>${esc(adapter.speed || '—')}</dd>${w.radio ? `<dt>${_tc('Standard')}</dt><dd>${esc(w.radio)}</dd>` : ''}
         <dt>${_t('Local IP')}</dt><dd>${esc((adapter.ipv4 || [])[0] || '—')}</dd><dt>${_t('Gateway')}</dt><dd>${esc((adapter.gw || [])[0] || '—')}</dd>
@@ -522,9 +537,31 @@ R.network = (el, t) => {
     if (!SH.requireAdmin(_t('to change the DNS server.'))) return;
     if (!adapter) { SH.toast(_t('There is no active network adapter.')); return; }
     const name = DNSN[b.dataset.v];
+    if (seg.classList.contains('pending')) return;
     confirmDlg({ title: _t('Change the DNS to {name}', { name }), text: _t('It applies to the "{adapter}" adapter. You can switch back to {auto} at any time.', { adapter: adapter.alias, auto: DNSN.auto }), yes: _t('Change DNS'), danger: false }, async () => {
-      const r = REAL() ? await eng('set_dns', adapter.alias, b.dataset.v) : { ok: true };
-      if (r && r.ok) { setSeg(b.dataset.v); SH.toast(_t('DNS changed to {name}.', { name })); SH.logActivity && SH.logActivity(_t('DNS changed to {name}', { name }), { sub: adapter.alias, ic: 'globe', go: 'monitor', tab: 'network' }); delete cache.net; }
+      const btns = $$('button', seg), prevOn = btns.find(x => x.classList.contains('on')), txt = S(el, 'nDnsTxt'), prevTxt = txt.textContent;
+      btns.forEach(x => { x.classList.toggle('on', x === b); x.disabled = true; }); SH.placeSeg(seg); seg.classList.add('pending');
+      txt.innerHTML = `<span class="m-spin"></span>${esc(_t('Changing DNS…'))}`;
+      let r = null;
+      try { r = REAL() ? await eng('set_dns', adapter.alias, b.dataset.v) : (await new Promise(res => setTimeout(res, 800)), { ok: true, backup: 'sample' }); }
+      finally { btns.forEach(x => { x.disabled = false; }); seg.classList.remove('pending'); }
+      if (!(r && r.ok)) { btns.forEach(x => x.classList.toggle('on', x === prevOn)); SH.placeSeg(seg); txt.textContent = prevTxt; }
+      if (r && r.ok) { setSeg(b.dataset.v);
+        const bid = r.backup, g = { group: 'dnsUndo', ms: 120000 };
+        SH.toast(_t('DNS changed to {name}.', { name }), bid ? { group: 'dnsUndo', ms: 10000, action: { label: _t('Undo'), run: async () => {
+          if (seg.classList.contains('pending')) { SH.toast(_t('Wait until the current change finishes.'), g); return; }
+          if (!SH.requireAdmin(_t('to change the DNS server.'))) return;
+          const bs = $$('button', seg), tx = S(el, 'nDnsTxt'), curTxt = tx ? tx.textContent : '';
+          bs.forEach(x => { x.disabled = true; }); seg.classList.add('pending');
+          if (tx) tx.innerHTML = `<span class="m-spin"></span>${esc(_t('Restoring the DNS…'))}`;
+          SH.toast(_t('Restoring the DNS…'), g);
+          let u = null;
+          try { u = REAL() ? await eng('dns_undo', bid) : (await new Promise(res => setTimeout(res, 800)), { ok: true }); }
+          finally { bs.forEach(x => { x.disabled = false; }); seg.classList.remove('pending'); }
+          if (u && u.ok) { delete cache.net; if (prevOn && prevOn.isConnected) { bs.forEach(x => x.classList.toggle('on', x === prevOn)); SH.placeSeg(seg); } if (tx) tx.textContent = prevTxt; SH.toast(_t('DNS restored.'), { group: 'dnsUndo' }); }
+          else { if (tx) tx.textContent = curTxt; if (u && u.needAdmin) SH.requireAdmin(_t('to change the DNS server.')); else SH.toast(u && u.error ? _t('Could not restore the DNS: {msg}', { msg: u.error }) : _t('Could not restore the DNS.'), { group: 'dnsUndo' }); }
+        } } } : {});
+        SH.logActivity && SH.logActivity(_t('DNS changed to {name}', { name }), { sub: adapter.alias, ic: 'globe', go: 'monitor', tab: 'network' }); delete cache.net; }
       else if (r && r.needAdmin) SH.requireAdmin(_t('to change the DNS server.'));
       else SH.toast(r && r.error ? _t('Could not change the DNS: {msg}', { msg: r.error }) : _t('Could not change the DNS.'));
     });
@@ -541,16 +578,16 @@ R.battery = (el, t) => {
         <div><div class="big"><span id="bP">–</span><small>%</small></div><p class="muted" id="bSt">–</p></div></div>
       <div class="stats s2">${stat(_t('Charge or discharge'), 'bW', 'W', '<span id="bWs"></span>')}${stat(_t('Time left'), 'bE', '', '<span id="bEs"></span>')}</div></div>
     <div class="pan" data-asm>${head(_t('Health'), '<span id="bName">–</span>')}
-      <div class="health-big">${ring('bRing', 'var(--ok)')}<div><b><span id="bH">–</span> %</b><span>${_t('of the original capacity')}</span></div></div>
+      <div class="health-big">${ring('bRing', 'var(--ok)')}<div><b><span id="bH">–</span>${PCT_SP}%</b><span>${_t('of the original capacity')}</span></div></div>
       <dl class="spec" id="bSpec"></dl>
-      <p class="mnote">${_t('If the laptop stays plugged in most of the day, limiting the charge to 80 % in the manufacturer\'s app extends battery life.')}</p></div>
+      <p class="mnote">${_t('If the laptop stays plugged in most of the day, limiting the charge to 80% in the manufacturer\'s app extends battery life.')}</p></div>
     <div class="pan wide" data-asm>${head(_t('Charge level'), `<span id="bRange">${_t('this session')}</span>`)}
       <div class="legend"><span><i style="background:var(--accent2)"></i>${_tc('charge')}</span><span><i style="background:var(--raise3)"></i>${_t('plugged in')}</span></div>
       <div class="chwrap tall"><canvas class="ch" id="bCh"></canvas></div><div class="axis"><span id="bA0">${_t('earlier')}</span><span>${_t('now')}</span></div></div>
   </div>`;
   num(t, S(el, 'bP'), v => v.battery); bar(t, S(el, 'bF'), v => v.battery / 100);
   num(t, S(el, 'bW'), v => nil(v.batteryPower) ? null : Math.abs(v.batteryPower), fmt1);
-  num(t, S(el, 'bE'), v => v.batterySecs, s => `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min`, 60, 16);
+  num(t, S(el, 'bE'), v => v.batterySecs, s => { const m = Math.round(s / 60), h = Math.floor(m / 60); return h ? _t('{h} h {m} min', { h, m: m % 60 }) : _t('{n} min', { n: m }); }, 60, 16);
   num(t, S(el, 'bH'), v => v.batteryHealth); arc(t, S(el, 'bRing'), v => (v.batteryHealth || 0) / 100, 100.5, 100.5);
   fn(t, v => {
     S(el, 'bSt').textContent = v.charging ? (v.battery >= 99 ? _t('Plugged in, fully charged.') : _t('Plugged in and charging.')) : _t('Running on battery.');
@@ -643,13 +680,25 @@ function fillRow(el, p) {
   const sub = $('.pn span', el); const st = procSub(p); if (sub.textContent !== st) sub.textContent = st;
   $$('.c', el).forEach(c => { const k = c.dataset.c; c.textContent = CELL[k](p[k]); c.style.setProperty('--h', clamp01(p[k] / HEAT[k]).toFixed(3)); });
 }
+/* the rows only change places every few seconds (or right away when the user asks: sort, search, end task), so they stay readable */
+let lastReorder = 0;
 function renderProcs(reorder, force) {
   if (!procBody || (paused && !force)) return;
+  if (reorder && !force && performance.now() - lastReorder < 4000) reorder = false;
+  if (REAL() && !procSeen) {          // first open: nothing read yet
+    const cnt = $('#pCount'); if (cnt) cnt.textContent = procErr ? _t('Could not read the processes. Trying again…') : _t('Reading processes…');
+    if (!$('.sk-rows', procBody)) procBody.innerHTML = `<div class="sk-rows p-sk">${Array.from({ length: 9 }, (_, i) => `<div class="sk-row"><span class="sk a"></span><span class="sk b" style="--w:${[38, 26, 44, 30, 34, 22, 40, 28, 32][i]}%"></span><span class="sk c"></span></div>`).join('')}</div>`;
+    return;
+  }
+  const skel = $('.sk-rows', procBody); if (skel) skel.remove();
   const list = sortedProcs();
   const cnt = $('#pCount'); if (cnt) cnt.textContent = _t('{n} programs, {m} processes', { n: list.length, m: list.reduce((s, p) => s + p.k, 0) });
   if (!list.length) { rowEls.forEach(el => el.remove()); if (!$('.empty', procBody)) procBody.insertAdjacentHTML('beforeend', `<div class="empty"><b>${_t('Nothing matches "{q}"', { q: esc(query) })}</b>${_t('Try the program name or its .exe file.')}</div>`); return; }
   const em = $('.empty', procBody); if (em) em.remove();
   if (!reorder) { list.forEach(p => { const el = rowEls.get(p.id); if (el && el.parentNode) fillRow(el, p); }); return; }
+  lastReorder = performance.now();
+  /* an unfinished move from the last reorder is dropped first: rows never slide over each other */
+  rowEls.forEach(el => el.getAnimations().forEach(a => { if (a.effect && a.effect.getKeyframes().some(k => k.transform)) a.cancel(); }));
   const first = new Map(); rowEls.forEach((el, id) => { if (el.parentNode) first.set(id, el.getBoundingClientRect().top); });
   const keep = new Set(list.map(p => p.id));
   rowEls.forEach((el, id) => { if (!keep.has(id) && el.parentNode) el.remove(); });
@@ -659,7 +708,7 @@ function renderProcs(reorder, force) {
     const el = rowEls.get(p.id), f = first.get(p.id);
     /* keep + fill without 'forwards': row animations do not cancel each other (cancelling midway left opacity stuck at 0) */
     if (f == null) anim(el, [{ opacity: 0 }, { opacity: 1 }], { d: 320, delay: Math.min(i, 12) * 18, keep: true, fill: 'backwards' });
-    else { const d = f - el.getBoundingClientRect().top; if (Math.abs(d) > 1) { el.getAnimations().forEach(a => { if (a.effect && a.effect.getKeyframes().some(k => k.transform)) a.cancel(); }); anim(el, [{ transform: `translate3d(0,${d}px,0)` }, { transform: 'none' }], { d: 460, e: EASE.spring, keep: true, fill: 'none' }); } }
+    else { const d = f - el.getBoundingClientRect().top; if (Math.abs(d) > 1) anim(el, [{ transform: `translate3d(0,${d}px,0)` }, { transform: 'none' }], { d: 300, e: EASE.out, keep: true, fill: 'none' }); }
   });
 }
 function askEnd(p) {

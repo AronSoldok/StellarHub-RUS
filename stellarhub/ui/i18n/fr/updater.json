@@ -37,7 +37,7 @@
   "to pause Windows Update.": "pour suspendre Windows Update.",
   "to change Store automatic updates.": "pour modifier les mises à jour automatiques du Store.",
   "No answer from the engine": "Le moteur ne répond pas",
-  "{name} updated": "{name} mis à jour",
+  "{name} updated": "Mis à jour : {name}",
   "to version {v}": "vers la version {v}",
   "{n} update installed.": "{n} mise à jour installée.",
   "{n} updates installed.": "{n} mises à jour installées.",
@@ -291,5 +291,16 @@
   "Failed": "Échec",
   "Windows Update returned code {code}.": "Windows Update a renvoyé le code {code}.",
   "Select all": "Tout sélectionner",
-  "Select all: {group}": "Tout sélectionner : {group}"
+  "Select all: {group}": "Tout sélectionner : {group}",
+  "Pinning…": "Épinglage…",
+  "Unpinning…": "Désépinglage…",
+  "Unpinning {name}…": "Désépinglage de {name}…",
+  "winget isn't available on this PC, so StellarHub can't check your apps for updates. Install or update App Installer from the Microsoft Store, then check again.": "winget n'est pas disponible sur ce PC, StellarHub ne peut donc pas rechercher les mises à jour de vos applications. Installez ou mettez à jour App Installer depuis le Microsoft Store, puis vérifiez à nouveau.",
+  "Open the Store": "Ouvrir le Store",
+  "No results": "Aucun résultat",
+  "Your apps couldn't be checked.": "Impossible de vérifier vos applications.",
+  "winget isn't available on this PC.": "winget n'est pas disponible sur ce PC.",
+  "Checking…": "Vérification…",
+  "{n} app, {m} optional": "{n} appli, {m} facultative",
+  "{n} apps, {m} optional": "{n} applis, {m} facultatives"
 }

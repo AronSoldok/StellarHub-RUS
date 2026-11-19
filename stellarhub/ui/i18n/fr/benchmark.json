@@ -1,6 +1,6 @@
 {
  "Processor": "Processeur",
- "Graphics": "Graphiques",
+ "Graphics": "Carte graphique",
  "Memory": "Mémoire",
  "Disk": "Disque",
  "Full benchmark": "Benchmark complet",
@@ -218,7 +218,7 @@
  "All runs": "Tous les tests",
  "Result deleted.": "Résultat supprimé.",
  "Undo": "Annuler",
- "Processor and graphics": "Processeur et graphiques",
+ "Processor and graphics": "Processeur et carte graphique",
  "stopped for safety": "arrêté par sécurité",
  "throttled": "bridé",
  "errors": "erreurs",
@@ -263,5 +263,6 @@
  "History": "Historique",
  "benchmark|Copy": "Copie",
  "benchmark|Both": "Les deux",
- "Benchmark Testing": "Benchmark Testing"
+ "Benchmark Testing": "Benchmark Testing",
+ "This is your only result so far. Run the test again to see how it changes over time.": "C'est votre seul résultat pour l'instant. Refaites le test pour voir comment il évolue dans le temps."
 }

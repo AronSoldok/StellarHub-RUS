@@ -70,3 +70,17 @@ class StreamEnds(unittest.TestCase):
         t = time.monotonic()
         u._stream([sys.executable, "-c", "import time;time.sleep(30)"], timeout=2)
         self.assertLess(time.monotonic() - t, 8)
+
+
+class WingetLanguages(unittest.TestCase):
+    """winget prints its table headers in the Windows display language."""
+
+    def test_headers_in_other_languages(self):
+        fr = ("Nom                      ID                 Version Disponible Source\n" + "-" * 70 + "\n"
+              "Git                      Git.Git            2.50.0  2.51.0     winget\n2 mises à niveau disponibles.\n")
+        de = fr.replace("Nom ", "Name").replace("Disponible", "Verfügbar ").replace("Source", "Quelle")
+        zh = "名称  ID       版本    可用    源\n" + "-" * 40 + "\nGit   Git.Git  2.50.0  2.51.0  winget\n1 升级可用。\n"
+        for text in (fr, de, zh):
+            rows = u.parse_table(text)
+            self.assertEqual(len(rows), 1, text)
+            self.assertEqual((rows[0]["name"], rows[0]["id"], rows[0]["available"], rows[0]["source"]), ("Git", "Git.Git", "2.51.0", "winget"))

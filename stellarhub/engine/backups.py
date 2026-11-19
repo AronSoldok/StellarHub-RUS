@@ -30,6 +30,7 @@ import time
 import winreg
 
 from ..i18n import tr
+from .optimizer import USER_DATA
 from .ps import NO_WINDOW, run
 
 EXPORTS = {"is_admin", "open_path", "reason_text"}
@@ -37,6 +38,10 @@ JOBS = {"status", "own_backups", "create_point", "protect", "delete_point", "del
 
 DATA = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub")
 OPT_DIR = os.path.join(DATA, "optimizer")
+# Per-user Super Optimizer copies (HKCU registry fixes, network settings) are in the user's profile.
+USER_OPT_DIR = USER_DATA
+# Folders of OPT_DIR that are not backups: Debloat's state (its undo records, removed apps), managed by Debloat.
+OPT_STATE = ("debloat",)
 MARKER = os.path.join(DATA, "backups", "rp_frequency.json")
 
 SR_KEY = r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore"
@@ -671,10 +676,29 @@ def _bid_time(bid, fallback):
 
 
 def optimizer_backups(base=None):
-    """Super Optimizer copies in ProgramData\\StellarHub\\optimizer: registry (.reg + manifest) and services (.json).
-    Any other folder there (added later) is listed as a generic backup. Startup changes keep no copy: they are
-    switched off the way Task Manager does it and turned back on from the Startup tab."""
-    base = base or OPT_DIR
+    """Super Optimizer copies: those in ProgramData\\StellarHub\\optimizer (services, HKLM registry keys) and the
+    user's own in %LOCALAPPDATA%\\StellarHub\\optimizer (HKCU registry keys, network settings). One registry fix
+    that touched both is a single entry (same id). `base` (tests) lists just that folder."""
+    merged = {}
+    for root in ([base] if base else [OPT_DIR, USER_OPT_DIR]):
+        for b in _optimizer_backups_in(root):
+            m = merged.get(b["id"])
+            if m is None:
+                b["paths"] = [b["path"]]
+                merged[b["id"]] = b
+            else:
+                m["paths"].append(b["path"])
+                m["size"] += b["size"]
+                m["count"] = (m["count"] or 0) + (b["count"] or 0)
+                m["sample"] = (m["sample"] + b["sample"])[:3]
+    return sorted(merged.values(), key=lambda b: b["ts"] or 0, reverse=True)
+
+
+def _optimizer_backups_in(base):
+    """Super Optimizer copies in one folder: registry (.reg + manifest) and services (.json). Any other folder
+    there (added later) is listed as a generic backup, except Debloat's state (its undo records are not a backup:
+    deleting them would stop its changes from being undone). Startup changes keep no copy: they are switched off
+    the way Task Manager does it and turned back on from the Startup tab."""
     out = []
     reg = os.path.join(base, "registry")
     for bid in sorted(os.listdir(reg)) if os.path.isdir(reg) else []:
@@ -707,13 +731,13 @@ def optimizer_backups(base=None):
                     "sample": sorted(prev)[:3]})
     for name in sorted(os.listdir(base)) if os.path.isdir(base) else []:
         p = os.path.join(base, name)
-        if name in ("registry", "services") or not os.path.isdir(p):
+        if name in ("registry", "services") or name in OPT_STATE or not os.path.isdir(p):
             continue
         for sub in sorted(os.listdir(p)):
             sp = os.path.join(p, sub)
             out.append({"id": "opt-other|" + name + "|" + sub, "kind": "opt-other", "group": name, "bid": sub, "path": sp,
                         "folder": sp, "ts": os.path.getmtime(sp), "size": _size(sp), "count": None, "sample": []})
-    return sorted(out, key=lambda b: b["ts"] or 0, reverse=True)
+    return out
 
 
 def driver_backups():
@@ -751,7 +775,7 @@ def own_backups(job):
         quar, qroot = [], None
     job.progress(1, tr("Done"))
     return {"optimizer": opt, "drivers": drv, "quarantine": quar,
-            "roots": {"optimizer": OPT_DIR, "drivers": drivers.default_backup_dir(), "quarantine": qroot}}
+            "roots": {"optimizer": OPT_DIR, "optimizerUser": USER_OPT_DIR, "drivers": drivers.default_backup_dir(), "quarantine": qroot}}
 
 
 def _recycle(path):
@@ -783,12 +807,13 @@ def delete_own(job, ids):
         if not b:
             failed.append(i)
             continue
-        job.progress(n / max(1, len(ids)), os.path.basename(b["path"]))
+        job.progress(n / max(1, len(ids)), tr("Moving {name} to the Recycle Bin ({n} of {total})",
+                                              name=os.path.basename(b["path"]), n=n + 1, total=len(ids)), force=True)
         if b["kind"] == "driver":
             from . import drivers
             ok = bool(drivers.delete_backup(job, b["path"]).get("ok"))
         else:
-            ok = _recycle(b["path"])
+            ok = all([_recycle(p) for p in (b.get("paths") or [b["path"]])])
         (done if ok else failed).append(i)
     job.progress(1, tr("Done"), force=True)
     return {"ok": not failed, "deleted": done, "failed": failed}
@@ -799,7 +824,7 @@ def open_path(path):
     from . import drivers
     from .removal import paths
     p = os.path.normcase(os.path.normpath(str(path or "")))
-    roots = [OPT_DIR, os.path.join(paths.DATA_DIR, "quarantine"), os.path.dirname(drivers.default_backup_dir())]
+    roots = [OPT_DIR, USER_OPT_DIR, os.path.join(paths.DATA_DIR, "quarantine"), os.path.dirname(drivers.default_backup_dir())]
     try:
         roots += [b["path"] for b in drivers.backups()]
     except Exception:

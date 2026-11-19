@@ -11,7 +11,7 @@
   --accent:#FF7A66; --accent2:#9ED6FF; --on-accent:#1C0A06;
   --ok:#7FE0B4; --warn:#F4C26B; --bad:#FF6B7A;
   --f:1;
-  --display:'Unbounded','Microsoft YaHei UI','Microsoft YaHei',system-ui,sans-serif; --text:'Onest','Microsoft YaHei UI','Microsoft YaHei',system-ui,sans-serif;
+  --display:'UnbZero','Unbounded','Microsoft YaHei UI','Microsoft YaHei',system-ui,sans-serif; --text:'Onest','Microsoft YaHei UI','Microsoft YaHei',system-ui,sans-serif;
   --r-l:22px; --r-m:14px; --r-s:9px;
   --top:62px; --dockspace:118px;
 }
@@ -48,6 +48,8 @@ svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stro
 /* ---------- top bar ---------- */
 .top{position:fixed;top:0;left:0;right:0;height:var(--top);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;padding:0 22px;z-index:40}
 body.frameless .top{padding-right:10px}
+/* the zero of the display font looks like a capital O ("O apps", "O %"): a copy of the same glyph with a slash, for that digit only */
+@font-face{font-family:'UnbZero';src:url(../fonts/unbounded-zero.woff2) format('woff2');font-weight:200 900;font-display:block;unicode-range:U+0030}
 .brand{display:flex;align-items:center;gap:10px;font:500 15px var(--display);letter-spacing:-.01em;justify-self:start;cursor:pointer}
 .brand svg{width:26px;height:26px;transition:transform calc(700ms*var(--f)) cubic-bezier(.2,.9,.25,1)}
 .brand:hover svg{transform:rotate(-30deg)}
@@ -78,11 +80,12 @@ body.frameless:not(.win-max) .rz{display:block}
 .rz[data-edge=ne]{right:0;top:0;width:10px;height:10px;cursor:ne-resize}
 .rz[data-edge=sw]{left:0;bottom:0;width:10px;height:10px;cursor:sw-resize}
 .rz[data-edge=se]{right:0;bottom:0;width:10px;height:10px;cursor:se-resize}
-.mode{height:34px;display:flex;align-items:center;gap:8px;padding:0 13px;border-radius:999px;border:1px solid var(--line);color:var(--mute);font-size:12.5px;
+.mode{height:34px;display:flex;align-items:center;gap:8px;padding:0 13px;border-radius:999px;border:1px solid var(--line);color:var(--mute);font-size:12.5px;white-space:nowrap;flex:0 1 auto;min-width:0;
   transition:background-color calc(200ms*var(--f)),color calc(200ms*var(--f)),border-color calc(200ms*var(--f)),transform calc(160ms*var(--f))}
 .mode:hover{background:var(--raise2);color:var(--ink)}
 .mode:active{transform:scale(.96)}
-.mode .d{width:7px;height:7px;border-radius:50%;background:var(--faint);transition:background-color calc(300ms*var(--f)),box-shadow calc(300ms*var(--f))}
+.mode #modeTxt{overflow:hidden;text-overflow:ellipsis;max-width:190px}
+.mode .d{flex:none;width:7px;height:7px;border-radius:50%;background:var(--faint);transition:background-color calc(300ms*var(--f)),box-shadow calc(300ms*var(--f))}
 .mode.admin{color:var(--ink);border-color:color-mix(in oklab,var(--accent) 45%,transparent)}
 .mode.admin .d{background:var(--accent);box-shadow:0 0 10px var(--accent)}
 .iconbtn{width:36px;height:36px;display:grid;place-items:center;border-radius:50%;color:var(--mute);transition:color calc(160ms*var(--f)),background-color calc(160ms*var(--f)),transform calc(160ms*var(--f))}
@@ -91,7 +94,7 @@ body.frameless:not(.win-max) .rz{display:block}
 .iconbtn svg{width:19px;height:19px}
 #gearBtn svg{transition:transform calc(600ms*var(--f)) cubic-bezier(.2,.9,.25,1)}
 #gearBtn:hover svg{transform:rotate(60deg)}
-.note{position:absolute;top:46px;right:44px;width:300px;padding:15px 15px 13px;border-radius:var(--r-m);background:var(--deep);border:1px solid var(--line2);
+.note{position:absolute;top:46px;right:44px;width:min(300px,calc(100vw - 40px));padding:15px 15px 13px;border-radius:var(--r-m);background:var(--deep);border:1px solid var(--line2);
   box-shadow:0 18px 50px -18px rgba(0,0,0,.7);opacity:0;pointer-events:none;transform-origin:85% 0;z-index:5}
 .note.on{pointer-events:auto}
 .note p{color:var(--mute);font-size:12.5px;margin-bottom:12px}
@@ -291,11 +294,13 @@ html[data-int=min] .sk::after{animation:none}
 
 .sheet{position:absolute;top:12px;right:12px;bottom:12px;width:min(720px,calc(100vw - 24px));border-radius:22px;background:var(--deep);border:1px solid var(--line2);
   box-shadow:0 40px 100px -30px rgba(0,0,0,.9);opacity:0;display:grid;grid-template-columns:200px 1fr;overflow:hidden}
-.sheet nav{border-right:1px solid var(--line);padding:22px 12px;display:flex;flex-direction:column;gap:2px;position:relative}
+.sheet nav{border-right:1px solid var(--line);padding:22px 12px;display:flex;flex-direction:column;gap:2px;position:relative;overflow-y:auto;overflow-x:hidden;min-height:0;scrollbar-width:thin}
+.sheet nav>*{flex:none}
 .sheet nav h2{font:500 20px var(--display);letter-spacing:-.02em;padding:0 10px 16px}
 .sheet nav button{position:relative;z-index:1;height:36px;border-radius:10px;padding:0 10px;display:flex;align-items:center;gap:10px;color:var(--mute);font-size:13px;text-align:left;transition:color calc(160ms*var(--f))}
 .sheet nav button:hover,.sheet nav button.on{color:var(--ink)}
-.sheet nav button svg{width:17px;height:17px}
+.sheet nav button svg{width:17px;height:17px;flex:none}
+.sheet nav button span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sheet nav .ind{position:absolute;left:12px;right:12px;top:0;height:36px;border-radius:10px;background:var(--raise2);will-change:transform}
 .sheet nav .ver{margin-top:auto;padding:0 10px;font-size:11.5px;color:var(--faint)}
 .sheet .body{position:relative;overflow:auto;padding:24px 26px 30px}
@@ -308,6 +313,8 @@ html[data-int=min] .sk::after{animation:none}
 .set:first-of-type{border-top:0}
 .set .lbl{font-size:13px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:16px}
 .set .lbl span{display:block;font-size:12px;color:var(--faint);margin-top:2px}
+.set .lbl span.zn{color:var(--accent2)}
+.set .lbl span.zn:empty{display:none}
 .set.inline{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .set-note{font-size:12px;color:var(--faint);padding:12px 0 2px;border-top:1px solid var(--line);margin:0}
 .set.inline .lbl{margin:0}
@@ -369,9 +376,10 @@ html[data-quick=off] .h-quick{display:none}
 .about-h svg{width:48px;height:48px}
 .about-h h3{font:500 20px var(--display);margin:0}
 .about-h p{color:var(--mute);font-size:12.5px;margin:2px 0 0}
+#langs.langs{display:block}
 .langs .lbar{display:flex;gap:2px;height:9px;border-radius:9px;overflow:hidden}
 .langs .lbar span{display:block;transform-origin:0 50%}
-.langs .llist{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:12px;color:var(--mute)}
+.langs .llist{display:flex;flex-wrap:wrap;gap:6px 20px;margin-top:12px;font-size:12px;color:var(--mute)}
 .langs .llist span{display:flex;align-items:center;gap:6px}
 .langs .llist i{width:9px;height:9px;border-radius:50%}
 .langs .llist b{color:var(--ink);font-weight:500}
@@ -406,3 +414,22 @@ html[data-corners=soft] :is(.seg button,.seg .ind,.subnav button,.subnav .ind){b
 html[data-corners=soft] :is(.row,.vit,.pend,.nx,.tool,.dk,.pal .it,.pal .hl,.cs-stats div,.cs-list>div,.m3-row){border-radius:18px!important}
 .toast{pointer-events:auto;display:flex;align-items:center;gap:12px;padding:10px 12px 10px 16px;border-radius:14px;background:var(--ink);color:var(--void);font-weight:500;font-size:13px;box-shadow:0 20px 50px -18px rgba(0,0,0,.8)}
 .toast .btn{height:28px;background:color-mix(in oklab,var(--void) 12%,transparent);color:var(--void)}
+
+
+/* ---------- small windows (the minimum is 1100 x 700): nothing wraps, nothing overlaps ---------- */
+@media (max-width:1280px){
+  .top{gap:10px;padding:0 16px}
+  .search{width:min(480px,30vw)}
+  .search .kbd{display:none}
+  .mode #modeTxt{max-width:104px}
+  .mode{padding:0 11px;gap:7px}
+}
+@media (max-width:1160px){
+  .search{width:min(480px,27vw)}
+  .mode #modeTxt{max-width:92px}
+}
+@media (max-height:760px){
+  .sheet nav h2{padding-bottom:10px}
+  .sheet nav button{height:34px}
+  .sheet nav .ind{height:34px}
+}

@@ -55,5 +55,9 @@
   "Displays": "Schermi",
   "Battery": "Batteria",
   "Audio": "Audio",
-  "System": "Sistema"
+  "System": "Sistema",
+  "Disk {size}": "Disco da {size}",
+  "Updating to {v}…": "Aggiornamento a {v}…",
+  "Updating to {v}… {p}%": "Aggiornamento a {v}… {p}%",
+  "{v} GHz": "{v} GHz"
 }

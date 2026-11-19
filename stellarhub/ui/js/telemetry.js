@@ -44,11 +44,18 @@ let timer = setInterval(tick, 700);
 function goReal() {
   if (!SH.tele.simulated) return;
   SH.tele.simulated = false; clearInterval(timer); timer = null;
-  ['cpuTemp', 'fanCpu', 'fanGpu', 'wifiSignal', 'diskTemp', 'igpu'].forEach(k => { v[k] = null; });
+  /* nothing the simulation made up survives in the real app: until Python sends the first sample every value is
+     "—" (null), never a sample number such as an uptime of 3 h 20 min */
+  Object.keys(v).forEach(k => { v[k] = Array.isArray(v[k]) ? [] : typeof v[k] === 'boolean' ? false : null; });
+  KEYS.forEach(k => hist[k].fill(0));
 }
+let firstReal = true;
 function push(d) {
   goReal();
   for (const k in d) v[k] = d[k];
+  /* the history started with sample values: the first real sample replaces all of it, so no chart begins with
+     made-up numbers (a battery at 100 % on a laptop at 40 %, a sample GPU temperature) */
+  if (firstReal) { firstReal = false; KEYS.forEach(k => hist[k].fill(v[k] ?? 0)); }
   record(); emit();
 }
 const has = k => v[k] !== null && v[k] !== undefined;

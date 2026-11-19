@@ -169,5 +169,6 @@
   "{n} keys marked as missing": "{n} touches marquées comme absentes",
   "The key sent a second press a few milliseconds after a very short one, more than once, without you pressing it again. Usually a worn or dirty switch.": "La touche a envoyé un second appui quelques millisecondes après un appui très court, plus d'une fois, sans que vous l'ayez pressée à nouveau. C'est souvent un interrupteur usé ou encrassé.",
   "{key}: possible chatter": "{key} : rebond possible",
-  "Possible chatter: {keys}": "Rebond possible : {keys}"
+  "Possible chatter: {keys}": "Rebond possible : {keys}",
+  "Windows uses {layout}, not this one": "Windows utilise {layout}, pas celle-ci"
 }

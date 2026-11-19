@@ -8,7 +8,7 @@
   html,body{background:var(--void)}
   body{font-size:12.5px;cursor:default;overflow:hidden}
   /* no border of its own: Windows draws the edge and corners (avoids a double frame) */
-  .w{position:fixed;inset:0;padding:10px 12px 12px;display:flex;flex-direction:column;
+  .w{position:fixed;inset:0;padding:10px 12px 14px;display:flex;box-shadow:inset 0 0 0 1px var(--line);flex-direction:column;
      background:radial-gradient(300px 140px at 100% 0%, color-mix(in oklab,var(--accent2) 10%,transparent), transparent 70%),
                 radial-gradient(240px 120px at 0% 100%, color-mix(in oklab,var(--accent) 8%,transparent), transparent 70%),var(--void)}
   .hd{display:flex;align-items:center;gap:7px;height:24px;margin-bottom:8px;color:var(--mute);font-size:11.5px;flex:none}
@@ -21,8 +21,8 @@
   .hd button svg{width:14px;height:14px}
   #rows{flex:1;min-height:0;display:grid;gap:6px}
   /* grid and row: cells with a name, a big value and a mini chart */
-  .L-grid #rows{grid-template-columns:repeat(2,1fr);grid-auto-rows:1fr}
-  .L-row #rows{grid-auto-flow:column;grid-auto-columns:1fr}
+  .L-grid #rows{grid-template-columns:repeat(2,1fr);grid-auto-rows:minmax(0,1fr)}
+  .L-row #rows{grid-auto-flow:column;grid-auto-columns:minmax(0,1fr)}
   .c{position:relative;border-radius:10px;background:var(--raise);padding:7px 10px 0;display:grid;grid-template-columns:1fr auto;grid-template-rows:auto 1fr;column-gap:8px;overflow:hidden;
      transition:background-color calc(160ms*var(--f))}
   .c:hover{background:var(--raise2)}
@@ -32,7 +32,8 @@
   .c .n span{min-width:0;overflow:hidden;text-overflow:ellipsis}
   .c .v{font:500 17px/1 var(--display);letter-spacing:-.02em;white-space:nowrap;align-self:center;text-align:right}
   .c .v small{font:400 11px var(--text);color:var(--faint);margin-left:2px;letter-spacing:0}
-  .c canvas{grid-column:1 / -1;width:100%;height:100%;min-height:16px;display:block;align-self:end}
+  .c canvas{grid-column:1 / -1;width:100%;height:100%;min-height:16px;display:block;align-self:end;contain:size}
+  .c{min-height:0}
   .L-row .c{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}
   .L-row .c .v{text-align:left;margin-top:5px}
   /* when the user makes it small: the charts go first, then whole stats (never half a number) */

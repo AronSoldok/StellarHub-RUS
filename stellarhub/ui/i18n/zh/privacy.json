@@ -1,6 +1,7 @@
 {
   "Ads and promotions": "广告和推广",
   "Diagnostics and activity": "诊断和活动",
+  "Not changed: the backup of the previous state couldn't be saved ({error}).": "未更改:无法保存先前状态的备份({error})。",
   "Start, search and Settings": "“开始”、搜索和“设置”",
   "Speech, inking and typing": "语音、墨迹书写和键入",
   "Find my device": "查找我的设备",
@@ -425,5 +426,9 @@
   "Windows Firewall is off: {list}": "Windows 防火墙已关闭：{list}",
   "1 setting shares data that Windows works fine without": "1 项设置会共享 Windows 并不需要的数据",
   "{n} settings share data that Windows works fine without": "{n} 项设置会共享 Windows 并不需要的数据",
-  "Protection level, out of 100": "防护等级（满分 100）"
+  "Protection level, out of 100": "防护等级（满分 100）",
+  "{n} s": "{n} 秒",
+  "{n} min": "{n} 分钟",
+  "{n} h": "{n} 小时",
+  "Applying…": "正在应用…"
 }

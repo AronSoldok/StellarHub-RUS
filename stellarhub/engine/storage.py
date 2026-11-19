@@ -102,7 +102,8 @@ class Scan:
 
 
 _cur = {"scan": None}
-_lock = threading.Lock()
+_lock = threading.Lock()         # guards the published scan (_cur)
+_scan_lock = threading.Lock()    # one scan at a time: the folder ids and the memory use are shared
 
 
 def _path(d):
@@ -169,7 +170,21 @@ LINK_TAGS = (0xA0000003, 0xA000000C)   # junction / mount point, symbolic link
 
 
 def scan(job, target="C:\\", threads=8):
-    """Scan a whole drive or a folder.
+    """Scan a whole drive or a folder and publish it: the Storage Checker views show it from now on.
+
+    The previous scan stays published until this one is complete (then they are swapped), so a scan that is still
+    running, fails or is cancelled never leaves the views without data."""
+    s = scan_private(job, target, threads)
+    with _lock:
+        _cur["scan"] = s
+    return {"root": view(s.root.id, 3), "info": info()}
+
+
+def scan_private(job, target="C:\\", threads=8):
+    """The same scan, returned instead of published (Autopilot uses it: it must not replace the scan the UI shows).
+    Scans run one at a time.
+
+    Details of the scan:
 
     Whole NTFS drives with administrator rights: the MFT is read directly (ntfs.py), like WizTree; anything
     else (folders, no admin, FAT/exFAT, network) uses the parallel folder walker. Sizes are logical file sizes
@@ -179,8 +194,16 @@ def scan(job, target="C:\\", threads=8):
         target += "\\"
     if not os.path.isdir(target):
         raise ValueError(tr("The folder {target} doesn't exist", target=target))
-    with _lock:
-        _cur["scan"] = None   # free the previous scan's memory before starting another
+    while not _scan_lock.acquire(timeout=.5):     # another scan is running: wait (a cancel still works)
+        if getattr(job, "cancelled", False):
+            job.stop()
+    try:
+        return _scan_locked(job, target, threads)
+    finally:
+        _scan_lock.release()
+
+
+def _scan_locked(job, target, threads):
     s = Scan(target)
     s.disk = _disk_of(target)
     whole_drive = os.path.normcase(target) == os.path.normcase(s.disk["root"])
@@ -207,10 +230,8 @@ def scan(job, target="C:\\", threads=8):
     _finish(s)
     s.secs = round(time.monotonic() - t0, 1)
     s.when = time.time()
-    with _lock:
-        _cur["scan"] = s
     _save_snapshot(s)
-    return {"root": view(root.id, 3), "info": info()}
+    return s
 
 
 def _scan_mft(job, s, t0):
@@ -585,11 +606,31 @@ def largest(n=200):
 
 # ---------------- duplicates ----------------
 SKIP_DUP = ("\\windows\\", "\\$recycle.bin\\", "\\system volume information\\", "\\windowsapps\\", "\\winsxs\\")
+# Programs and games: identical DLLs/assets live in several of these on purpose; deleting "copies" breaks them.
+SKIP_PROGRAMS = ("\\program files\\", "\\program files (x86)\\", "\\programdata\\", "\\appdata\\",
+                 "\\steamapps\\", "\\steamlibrary\\", "\\steam\\", "\\epic games\\", "\\gog games\\", "\\gog galaxy\\",
+                 "\\xboxgames\\", "\\riot games\\", "\\ea games\\", "\\origin games\\", "\\ubisoft game launcher\\",
+                 "\\battle.net\\", "\\games\\", "\\node_modules\\", "\\site-packages\\")
+
+
+def _dup_skipped(path):
+    """True for files in Windows folders and in program or game trees: they never show up as duplicates."""
+    low = path.lower() + "\\"
+    if any(k in low for k in SKIP_DUP) or any(k in low for k in SKIP_PROGRAMS):
+        return True
+    for env in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData", "APPDATA", "LOCALAPPDATA"):
+        root = os.environ.get(env)
+        if root and low.startswith(os.path.normcase(root).lower().rstrip("\\") + "\\"):
+            return True
+    return False
 
 
 def duplicates(job, min_mb=1):
     """Groups by size, then by a partial hash (start + end) and finally by a full hash."""
-    s = _get()
+    return _duplicates(job, min_mb, _get())
+
+
+def _duplicates(job, min_mb, s):
     min_b = int(float(min_mb) * 1024 * 1024)
     by_size = {}
     for fid, (d, ent) in s.fidx.items():
@@ -598,11 +639,14 @@ def duplicates(job, min_mb=1):
         by_size.setdefault(ent[2], []).append((d, ent))
     cands = [(sz, lst) for sz, lst in by_size.items() if len(lst) > 1]
     paths = []
+    skipped = 0          # candidate files left out because they belong to programs or games
     for sz, lst in cands:
         group = []
         for d, ent in lst:
             p = os.path.join(_path(d), ent[1])
-            if not any(k in p.lower() + "\\" for k in SKIP_DUP):
+            if _dup_skipped(p):
+                skipped += 1
+            else:
                 group.append((p, ent))
         if len(group) > 1:
             paths.append((sz, group))
@@ -658,7 +702,8 @@ def duplicates(job, min_mb=1):
         if len(groups) >= 300:
             break
     groups.sort(key=lambda g: g["size"] * (len(g["copies"]) - 1), reverse=True)
-    return {"groups": groups[:200], "wasted": sum(g["size"] * (len(g["copies"]) - 1) for g in groups)}
+    return {"groups": groups[:200], "wasted": sum(g["size"] * (len(g["copies"]) - 1) for g in groups),
+            "skippedPrograms": skipped}
 
 
 # ---------------- compare with the previous scan ----------------
@@ -702,7 +747,10 @@ def _save_snapshot(s):
 
 
 def compare():
-    s = _get()
+    return _compare(_get())
+
+
+def _compare(s):
     f = os.path.join(DATA, _key(s.target) + ".json")
     if not os.path.exists(f):
         return {"prev": None}
@@ -740,6 +788,48 @@ def compare():
 
 
 # ---------------- file actions ----------------
+def _drive_roots():
+    try:
+        mask = ctypes.windll.kernel32.GetLogicalDrives()
+    except Exception:
+        return []
+    return [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
+
+
+def _protected_extra(path):
+    """The shared safety rules of the Program Remover (removal/safety.py) plus what only matters here: other users'
+    profiles, program folders on every drive, and the recycle bin / restore data of every drive."""
+    from .removal import paths as rp, safety
+    n = rp.norm_path(path)
+    if not n:
+        return tr("It's inside a folder StellarHub never touches.")
+    parts = n.split("\\")
+    if len(parts) >= 2 and parts[1] in ("$recycle.bin", "system volume information"):
+        return tr("It's inside a folder StellarHub never touches.")
+    for pe in safety.protected_exact() | rp.self_paths():        # the folder itself or one that contains it
+        if rp.is_within(pe, n):
+            return tr("It's one of the main folders of your profile.")
+    allowed = safety.forbidden_exceptions()
+    if not any(rp.is_within(n, ex) for ex in allowed):
+        for ft in safety.forbidden_trees():
+            if rp.is_within(n, ft):
+                return tr("It's inside a folder StellarHub never touches.")
+    k = rp.known_folders()
+    prog = {k.get("ProgramFiles"), k.get("ProgramFilesX86"), os.environ.get("ProgramW6432"),
+            os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")}
+    for root in _drive_roots():
+        prog.update((os.path.join(root, "Program Files"), os.path.join(root, "Program Files (x86)")))
+    if any(x and rp.is_within(n, x) for x in prog):
+        return tr("It's a program folder: uninstall it from Program Remover.")
+    if k.get("Windows") and rp.is_within(n, k["Windows"]):
+        return tr("It's inside a folder StellarHub never touches.")
+    prof = k.get("Profile") or os.path.expanduser("~")
+    users = os.path.dirname(rp.norm_path(prof))
+    if users and rp.is_within(n, users) and not rp.is_within(n, prof):
+        return tr("It belongs to another user.")
+    return None
+
+
 def _protected(path):
     p = os.path.normcase(os.path.abspath(path))
     win = os.path.normcase(os.environ.get("SystemRoot", r"C:\Windows"))
@@ -762,14 +852,10 @@ def _protected(path):
     if rest in ("", "\\"):
         return tr("It's the root of a drive.")
     try:
-        from .removal import paths as rp
-        home = os.path.normcase(os.path.expanduser("~"))
-        if p in (home, os.path.normcase(rp.kf("Documents") or ""), os.path.normcase(rp.kf("Desktop") or ""),
-                 os.path.normcase(rp.kf("Downloads") or "")):
-            return tr("It's one of the main folders of your profile.")
-    except Exception:
-        pass
-    return None
+        return _protected_extra(path)
+    except Exception as e:      # when the shared rules can't be read, block: a leftover is better than a lost file
+        print("[storage] safety rules unavailable:", e)
+        return tr("It's inside a folder StellarHub never touches.")
 
 
 def can_delete(path):
@@ -794,8 +880,106 @@ class _SHFILEOPSTRUCTW(ctypes.Structure):
                 ("lpszProgressTitle", wintypes.LPCWSTR)]
 
 
-def trash(path):
-    """Sends to the Windows Recycle Bin (can be restored). Never inside protected areas."""
+def _size_up_to(path, limit):
+    """Size in bytes of a file or folder, stopping as soon as it is above `limit` (links are not followed)."""
+    try:
+        if os.path.isfile(path) or os.path.islink(path):
+            return os.lstat(path).st_size
+    except OSError:
+        return 0
+    total = 0
+    stack = [path]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for e in it:
+                    try:
+                        if e.is_symlink():
+                            continue
+                        if e.is_dir(follow_symlinks=False):
+                            stack.append(e.path)
+                        else:
+                            total += e.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        continue
+                    if total > limit:
+                        return total
+        except OSError:
+            continue
+    return total
+
+
+BIN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Explorer\BitBucket"
+
+
+def _bin_settings(root):
+    """(Recycle Bin disabled for this drive?, size limit in bytes or None = Windows default). Reads what the
+    "Recycle Bin Properties" dialog saves: per volume first, then the "same settings for all drives" ones."""
+    import winreg
+    guid = None
+    buf = ctypes.create_unicode_buffer(80)
+    if ctypes.windll.kernel32.GetVolumeNameForVolumeMountPointW(root, buf, 80):
+        a, b = buf.value.find("{"), buf.value.find("}")
+        if 0 <= a < b:
+            guid = buf.value[a:b + 1].upper()
+
+    def val(sub, name):
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, BIN_KEY + sub) as k:
+                return winreg.QueryValueEx(k, name)[0]
+        except OSError:
+            return None
+    per = "\\Volume\\" + guid if guid else None
+    nuke = (val(per, "NukeOnDelete") if per else None)
+    if nuke is None:
+        nuke = val("", "NukeOnDelete")
+    cap = (val(per, "MaxCapacity") if per else None)
+    if cap is None:
+        cap = val("", "MaxCapacity")
+    return bool(nuke), (int(cap) * 1024 * 1024 if cap else None)
+
+
+def _drive_type(root):
+    return ctypes.windll.kernel32.GetDriveTypeW(root)
+
+
+def can_recycle(path):
+    """Would Windows really keep this in the Recycle Bin? (ok, reason). SHFileOperation deletes for good, without a
+    word, on removable and network drives, when the bin is set to "don't move files to the Recycle Bin", and for
+    items bigger than the bin's limit, so none of that can be left to chance."""
+    path = os.path.abspath(path)
+    root = os.path.splitdrive(path)[0] + "\\"
+    if path.startswith("\\\\") or len(root) < 3 or _drive_type(root) != 3:   # not a fixed local disk
+        return False, "drive"
+    try:
+        off, cap = _bin_settings(root)
+    except Exception:
+        off, cap = False, None
+    if off:
+        return False, "off"
+    if cap is None:                         # default limit: 10% of the volume
+        cap = int(_disk_of(path)["total"] * .10)
+    if cap <= 0 or _size_up_to(path, cap) > cap:
+        return False, "size"
+    return True, ""
+
+
+def _shell_delete(path, undo):
+    """SHFileOperation FO_DELETE: to the Recycle Bin (undo=True) or for good. True when it is gone."""
+    op = _SHFILEOPSTRUCTW()
+    op.wFunc = 3  # FO_DELETE
+    op.pFrom = path + "\0"
+    flags = 0x0010 | 0x0004 | 0x0400  # NOCONFIRMATION | SILENT | NOERRORUI
+    op.fFlags = flags | (0x0040 if undo else 0)  # ALLOWUNDO
+    r = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+    return not (r != 0 or op.fAnyOperationsAborted or os.path.exists(path))
+
+
+def trash(path, permanent=False):
+    """Sends to the Windows Recycle Bin (can be restored). Never inside protected areas.
+
+    If it can't really be recycled (removable or network drive, bin turned off, too big for it) nothing is deleted:
+    the result has noBin=True so the UI can ask, and only permanent=True (after that question) deletes for good."""
     path = os.path.abspath(path)
     why = _protected(path)
     if why:
@@ -807,17 +991,18 @@ def trash(path):
         size = os.path.getsize(path) if os.path.isfile(path) else 0
     except OSError:
         pass
-    op = _SHFILEOPSTRUCTW()
-    op.wFunc = 3  # FO_DELETE
-    op.pFrom = path + "\0"
-    op.fFlags = 0x0040 | 0x0010 | 0x0004 | 0x0400  # ALLOWUNDO | NOCONFIRMATION | SILENT | NOERRORUI
-    r = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
-    if r != 0 or op.fAnyOperationsAborted or os.path.exists(path):
+    permanent = permanent is True
+    if not permanent:
+        ok, _why = can_recycle(path)
+        if not ok:
+            return {"ok": False, "noBin": True,
+                    "error": tr("It can't go to the Recycle Bin (the drive has none, or it's too big for it), so it was not deleted.")}
+    if not _shell_delete(path, undo=not permanent):
         return {"ok": False, "error": tr("Windows couldn't move it to the Recycle Bin (is it open, or does it need admin permissions?).")}
     s = _cur["scan"]
     if s is not None:
         _forget(s, path)
-    return {"ok": True, "size": size}
+    return {"ok": True, "size": size, "permanent": permanent}
 
 
 def _forget(s, path):

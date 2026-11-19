@@ -137,7 +137,7 @@ function liveHTML(area) {
   }
   return '';
 }
-function uptime(s) { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h ${m} min` : `${m} min`; }
+const uptime = s => SH.fmtUptime(s);  /* the same "8 days 11 h" as Home and Live Monitor, in the interface language */
 
 let root = null, tick = null, offs = [], tiles = [];
 const gfan = { a: 0, sp: new Spring(0, 30, 10), boost: new Spring(0, 60, 14) };
@@ -200,7 +200,7 @@ function read() {
   set('gpu', v.gpu); set('gtemp', v.gpuTemp); set('gpow', v.gpuPower);
   const ve = $('[data-l="vram"]', root); if (ve) ve.textContent = nil(v.vram) ? '—' : SH.t('{used} of {total} GB', { used: fmt1(v.vram), total: v.vramTotal || '–' });
   set('cpu', v.cpu); set('freq', v.cpuFreq, fmt1); set('ctemp', v.cpuTemp);
-  const ct = $('[data-l="ctemp"]', root); if (ct) ct.parentElement.title = nil(v.cpuTemp) ? (SH.state.admin ? SH.t('Windows does not report this processor\'s temperature') : SH.t('The CPU temperature is only visible in administrator mode')) : '';
+  const ct = $('[data-l="ctemp"]', root); if (ct) ct.parentElement.title = nil(v.cpuTemp) ? SH.t('Windows does not report the processor temperature on this PC. Open LibreHardwareMonitor, HWiNFO (with shared memory on) or Core Temp and StellarHub will read it from there.') : v.cpuTempSrc && v.cpuTempSrc !== 'acpi' ? SH.t('from {app}', { app: v.cpuTempSrc }) : '';
   set('ram', v.ram, fmt1); set('ramt', v.ramTotal, x => Math.round(x)); set('free', nil(v.diskTotal) ? null : v.diskTotal - v.diskUsed);
   set('down', v.down, fmt1); set('up', v.uptime, uptime); set('bat', v.battery); set('bath', nil(v.batteryHealth) ? null : v.batteryHealth, x => x + ' %');
   bars.vram.t = (v.vram || 0) / (v.vramTotal || 8); bars.ram.t = (v.ram || 0) / (v.ramTotal || 1); bars.disk.t = (v.diskUsed || 0) / (v.diskTotal || 1);

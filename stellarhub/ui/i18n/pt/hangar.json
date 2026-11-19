@@ -255,7 +255,7 @@
  "1 app is on its way.": "1 app está a caminho.",
  "{n} apps are on their way.": "{n} apps estão a caminho.",
  "No answer from the engine": "O mecanismo não respondeu",
- "{name} installed": "{name} instalado",
+ "{name} installed": "Instalado: {name}",
  "{n} apps installed": "{n} apps instalados",
  "1 app installed.": "1 app instalado.",
  "{n} apps installed.": "{n} apps instalados.",

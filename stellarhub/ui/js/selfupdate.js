@@ -57,11 +57,12 @@ function open(inf) {
   const go = $('[data-su="go"]', box); if (go) setTimeout(() => go.focus(), 60);
 }
 function footMain(inf) {
-  const src = inf.mode === 'source';
+  const src = inf.mode === 'source', page = inf.mode === 'page';
   return `<div class="su-meta">${ic('shield')}<span>${src ? t('This copy runs from the source code, so it updates with git or a new download.')
+    : page ? `${inf.size ? `${mb(inf.size)} · ` : ''}${t('This release has no automatic update for this copy; download it from its page.')}`
     : `${inf.size ? `${mb(inf.size)} · ` : ''}${t('Downloaded from GitHub and checked before installing.')}<br>${t('Your settings stay as they are. StellarHub closes and opens again by itself.')}`}</span></div>
     <div class="su-acts"><button class="btn ghost" data-su="skip">${t('Skip this version')}</button><button class="btn sec" data-su="later">${t('Later')}</button>
-    ${src ? `<button class="btn pri" data-su="page">${ic('external')}${t('Open the download page')}</button>` : `<button class="btn pri" data-su="go">${ic('download')}${t('Update now')}</button>`}</div>`;
+    ${src || page ? `<button class="btn pri" data-su="page">${ic('external')}${t('Open the download page')}</button>` : `<button class="btn pri" data-su="go">${ic('download')}${t('Update now')}</button>`}</div>`;
 }
 function close(now) {
   removeEventListener('keydown', onKey, true);
@@ -148,15 +149,49 @@ function kindOf(cur, next) {
   const a = String(cur || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0), b = String(next || '').replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
   return b[0] !== a[0] ? 'major' : b[1] !== a[1] ? 'minor' : 'patch';
 }
-let last = null;
+let last = null, asking = null;
+/* the automatic check and a click share the same request instead of asking GitHub twice */
+function ask() {
+  if (!asking) { asking = SH.engine('selfupdate', 'check').finally(() => { asking = null; paintSettings(); }); paintSettings(); }
+  return asking;
+}
+/* new features (x.Y.0): downloaded in the background and installed the next time StellarHub opens (app.py), when
+   this copy can update without a Windows prompt and "Install new features automatically" is on */
+const QUIET = ['direct', 'portable', 'task'];
+let staging = null, stagedVer = null;
+const quiet = r => !!r && r.ok && r.newer && kindOf(r.current, r.latest) === 'minor' && state.settings.autoUpdateFeatures !== false && QUIET.includes(r.mode);
+async function stage(r) {
+  if (staging || stagedVer === r.latest) return;
+  let s = null; try { s = await SH.engine('selfupdate', 'state'); } catch {}
+  const now = Date.now() / 1000;
+  if (s && s.st === 'staged' && s.ver === r.latest) { stagedVer = r.latest; paintSettings(); return; }
+  let at = now;
+  staging = r.latest; paintSettings();
+  if (!(s && s.ver === r.latest && ['checking', 'download', 'verify'].includes(s.st) && now - (s.ts || 0) < 600)) {  /* not already on its way */
+    let p = null; try { p = await SH.engine('selfupdate', 'prefetch'); } catch {}
+    if (!p || !p.ok) { staging = null; paintSettings(); if (!box && state.settings.skipVersion !== r.latest) open(r); return; }
+    at = p.at || now;
+  }
+  const end = Date.now() + 30 * 60000;
+  while (Date.now() < end) {
+    await new Promise(res => setTimeout(res, 3000));
+    try { s = await SH.engine('selfupdate', 'state'); } catch { s = null; }
+    if (!s || !s.ts || s.ts < at - 1) continue;
+    if (s.st === 'staged') { stagedVer = s.ver || r.latest; break; }
+    if (['failed', 'cancelled', 'uptodate', 'ready', 'installing', 'done'].includes(s.st)) break;
+  }
+  staging = null; paintSettings();
+}
 async function check(manual) {
   let r;
-  try { r = await SH.engine('selfupdate', 'check'); } catch (e) { if (manual) SH.toast(e.message); return null; }
+  try { r = await ask(); } catch (e) { if (manual) SH.toast(e.message); return null; }
   if (r === undefined) { if (manual) SH.toast(t('This only works inside the app.')); return null; }  /* sample mode */
   last = r; paintSettings();
   if (!r.ok) { if (manual) SH.toast(t("Couldn't reach GitHub. Check your connection and try again.")); return r; }
   if (!r.newer) { if (manual) SH.toast(t('You are on the latest version.')); return r; }
-  /* on its own, StellarHub only interrupts for new features; a small fix waits in Settings > Updates */
+  /* on its own, StellarHub only interrupts for a big version (X.0.0); new features install at the next start, and a
+     small fix waits in Settings > Updates */
+  if (!manual && quiet(r)) { stage(r); return r; }
   if (manual || (kindOf(r.current, r.latest) !== 'patch' && state.settings.skipVersion !== r.latest)) { if (!box) open(r); }
   return r;
 }
@@ -164,7 +199,7 @@ async function afterUpdate() {
   let n; try { n = await SH.engine('selfupdate', 'after_update'); } catch { return; }
   if (!n) return;
   if (n.ok) {
-    SH.toast(t('StellarHub was updated to {v}', { v: n.to }), { action: { label: t("What's new"), run: () => SH.call('open_url', `${REL}/tag/v${n.to}`) } });
+    SH.toast(t('StellarHub was updated to {v}', { v: n.to }), { ms: 10000, action: { label: t("What's new"), run: () => SH.call('open_url', `${REL}/tag/v${n.to}`) } });
     if (n.route && n.route !== 'home' && SH.MODS.some(m => m.id === n.route)) setTimeout(() => SH.go(n.route), 500);
   } else SH.toast(t("The update to {v} couldn't be installed. You are still on {now}.", { v: n.to, now: n.now }));
 }
@@ -172,10 +207,19 @@ async function afterUpdate() {
 let setEl = null;
 function paintSettings(el) {
   if (el) setEl = el; const box2 = setEl; if (!box2 || !box2.isConnected) return;
-  if (el && !last) { check(false); }
+  if (el && !last && !asking) { check(false); }
+  if (el && staging) SH.engine('selfupdate', 'state').then(s => { if (s && s.st === 'staged' && s.ver === staging) { stagedVer = s.ver; paintSettings(); } }).catch(() => {});
   const r = last;
+  if (asking && (!r || !r.ok || !r.newer)) { box2.innerHTML = `<div class="upd-ok upd-ask" role="status"><span class="su-spin"></span><span>${t('Checking GitHub…')}</span></div>`; return; }
+  if (r && !r.ok) { box2.innerHTML = `<div class="upd-ok upd-bad">${ic('alert')}<span>${t("Couldn't reach GitHub. Check your connection and try again.")}</span></div>`; return; }
   if (!r || !r.ok || !r.newer) { box2.innerHTML = r && r.ok ? `<div class="upd-ok">${ic('check')}<span>${t('You are on the latest version.')}</span></div>` : ''; return; }
   const k = kindOf(r.current, r.latest);
+  if (k === 'minor' && (stagedVer === r.latest || staging === r.latest)) {  /* (stagedVer wins over a poll that is still running) */
+    const ready = stagedVer === r.latest;
+    box2.innerHTML = `<div class="upd-new ${k}">${ready ? ic('sparkle') : '<span class="su-spin"></span>'}<div><b>${ready ? t('StellarHub {v} is ready', { v: esc(r.latest) }) : t('Downloading {v} in the background…', { v: esc(r.latest) })}</b><span>${ready ? t('It installs by itself the next time you open StellarHub.') : t('New features and fixes. It installs the next time you open StellarHub.')}</span></div><button class="btn ${ready ? 'pri' : 'sec'} sm" data-upd-open>${ready ? t('Update now') : t('See and update')}</button></div>`;
+    $('[data-upd-open]', box2).addEventListener('click', () => open(r));
+    return;
+  }
   box2.innerHTML = `<div class="upd-new ${k}">${ic(k === 'patch' ? 'info' : 'sparkle')}<div><b>${k === 'patch' ? t('Minor update {v} available', { v: esc(r.latest) }) : t('New version {v} available', { v: esc(r.latest) })}</b><span>${k === 'patch' ? t('Small fixes. StellarHub does not interrupt you for these.') : t('New features and fixes.')}</span></div><button class="btn pri sm" data-upd-open>${t('See and update')}</button></div>`;
   $('[data-upd-open]', box2).addEventListener('click', () => open(r));
 }

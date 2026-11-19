@@ -276,7 +276,10 @@ def install(job, ids, restore_point=True):
         for m in _json_lines(line):
             st, uid = m.get("step"), m.get("id")
             k = list(results).index(uid) if uid in results else len(results)
-            if st == "download":
+            if st == "search":
+                # Windows Update is asked again for the selected ids (30 s to 3 min): say so instead of sitting still
+                job.progress(.09, tr("Asking Windows Update for the selected drivers"), step="search", phase="search", force=True)
+            elif st == "download":
                 results.setdefault(uid, {"id": uid, "ok": False})
                 job.progress(.1 + .9 * (k / n), tr("Downloading"), step=uid, phase="download", force=True)
             elif st == "install":
@@ -289,7 +292,7 @@ def install(job, ids, restore_point=True):
                 job.progress(.1 + .9 * ((k + 1) / n), tr("Done") if r["ok"] else tr("Failed"), step=uid, phase="done" if r["ok"] else "error",
                              result=r, force=True)
             elif st == "none":
-                job.progress(1, tr("Those drivers are no longer available"), force=True)
+                job.progress(1, tr("Those drivers are no longer available"), step="search", phase="none", force=True)
     script = _INSTALL.replace("__IDS__", json.dumps(ids))
     code, _ = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
                    "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; " + script],
@@ -565,8 +568,9 @@ def driver_versions(instance_id):
         if v:
             cur["date"] = f"{v.group(3)}-{int(v.group(1)):02d}-{int(v.group(2)):02d}"
             cur["version"] = v.group(4)
-        # pnputil output is localized: match Spanish and English ("instalado"/"installed", "estado"/"status")
-        if re.search(r"instalad|installed", line, re.I) and re.search(r"estado|status", line, re.I):
+        # pnputil output is localized: the "status: installed" line in the languages StellarHub ships and German
+        if re.search(r"instalad|installed|installé|installato|installiert|已安装|已安裝|インストール済み", line, re.I) and \
+                re.search(r"estado|status|état|stato|statut|状态|狀態|状態", line, re.I):
             cur["installed"] = True
     # the one to use when rolling back: the newest non-installed package that is older than the installed one
     inst = next((r for r in res if r["installed"]), None)

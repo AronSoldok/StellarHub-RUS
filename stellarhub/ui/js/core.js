@@ -5,6 +5,14 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const ROOT = document.documentElement;
+/* SH.t remembers its last results (text -> English key + vars) so SH.logActivity can store what a line says
+   in English and translate it when it is shown, whatever language it was written in. Cheap: 64 entries. */
+const _recent = new Map();
+if (window.SH && SH.t && !SH.t._rec) {
+  const _t0 = SH.t;
+  SH.t = (s, v) => { const r = _t0(s, v); if (typeof s === 'string' && r) { _recent.delete(r); _recent.set(r, [s, v && typeof v === 'object' ? { ...v } : v]); if (_recent.size > 64) _recent.delete(_recent.keys().next().value); } return r; };
+  SH.t._rec = true;
+}
 const t = (window.SH && SH.t) || (s => s); // i18n.js ran first
 const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -12,10 +20,10 @@ const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
 const DEFAULTS = {
   theme: 'deep', accent: '#FF7A66', accent2: '#9ED6FF', zoom: 'auto', intensity: reduceMQ.matches ? 'min' : 'max',
   stars: true, camera: true, parallax: true, homeVariant: 'bento', adminHints: true, trayOnClose: true,
-  startWithWindows: false, autoUpdate: true, skipVersion: '', language: 'auto', density: 'comfortable', sounds: false,
+  startWithWindows: false, autoUpdate: true, autoUpdateFeatures: true, skipVersion: '', language: 'auto', density: 'comfortable', sounds: false,
   widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetLayout: 'grid',
   starCount: 400, starSpeed: 1.5, starBright: 1.2, widgetMode: 'full', widgetWasOpen: false, alwaysAdmin: false, twinkle: true, shooting: true, nebula: 1, animSpeed: 1, panelAlpha: 1.75, corners: 'mid',
-  countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', lastView: 'home',
+  countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', measurePing: true, lastView: 'home',
 };
 const state = { view: 'home', admin: false, palOpen: false, setOpen: false, version: '0.2.0', settings: { ...DEFAULTS } };
 const FACT = { max: 1, normal: .72, min: .3 };
@@ -301,10 +309,25 @@ const actions = { add(list) { registry.actions.push(...list); }, all: () => regi
 /* ---------- activity and pending items (modules feed them; Home shows them) ----------
    SH.logActivity('Brave updated', { sub: 'to version 1.85', ic: 'updater', go: 'updater', tab: 'apps' })
    SH.setPending('drivers', 4)   // keys: drivers, apps, junk (in GB) */
-function logActivity(t, o = {}) {
+function logActivity(text, o = {}) {
   const list = (state.settings.activity || []).slice(0, 39);
-  list.unshift({ t, sub: o.sub || '', ic: o.ic || 'check', go: o.go || '', tab: o.tab || '', at: Date.now() });
+  const src = x => { const r = x && _recent.get(x); return r ? (r[1] ? [r[0], r[1]] : [r[0]]) : undefined; };
+  /* t / sub: the text as it was written (kept for old readers); k / sk: English key + vars, translated when shown */
+  const e = { t: text, sub: o.sub || '', ic: o.ic || 'check', go: o.go || '', tab: o.tab || '', at: Date.now() };
+  const k = src(text), sk = src(o.sub); if (k) e.k = k; if (sk) e.sk = sk;
+  list.unshift(e);
   state.settings.activity = undefined; setSetting('activity', list);
+}
+/* an activity entry as {t, sub} in the interface language. Old entries (plain strings) show as they are. */
+function activityText(e) {
+  const tr = (p, plain) => p ? t(p[0], p[1]) : (plain ? t(plain) : '');
+  return { t: tr(e.k, e.t), sub: tr(e.sk, e.sub) };
+}
+/* "8 days 11 h" / "5 h 20 min" / "12 min", the same everywhere (Home, Live Monitor) and in the interface language */
+function fmtUptime(s) {
+  s = +s; if (!isFinite(s) || s < 0) return '—';
+  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  return h >= 48 ? t('{d} days {h} h', { d: Math.floor(h / 24), h: h % 24 }) : h ? t('{h} h {m} min', { h, m }) : t('{n} min', { n: m });
 }
 function setPending(key, n) {
   const p = { ...(state.settings.pending || {}) }; p[key] = { n, at: Date.now() };
@@ -338,8 +361,20 @@ setInterval(() => { const v = document.querySelector('.view.is-on'); if (v) sfSc
 /* i18n.js ran first and already put SH.t and SH.i18n here: keep them */
 window.SH = Object.assign(window.SH || {}, {
   $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, on, emit, call, apiReady, loadSettings, setSetting,
-  engine, job, logActivity, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, fitText, esc,
+  engine, job, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, fitText, esc,
   ic, icons, PC, MODS, modById, registry, module, homeVariant, actions,
   go: () => {}, toast: () => {}, openComponent: () => {}, sfScan,
+  /* the window coming in after the start screen, and going away when StellarHub closes, updates or reopens as
+     administrator (app.py calls these): a short fade instead of a cut */
+  enter() {
+    if (state.settings.intensity === 'min') return;
+    document.documentElement.animate([{ opacity: 0, transform: 'scale(1.012)' }, { opacity: 1, transform: 'none' }],
+      { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  },
+  leave() {
+    const a = document.documentElement.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.985)' }],
+      { duration: state.settings.intensity === 'min' ? 80 : 240, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' });
+    return a.finished;
+  },
 });
 })();

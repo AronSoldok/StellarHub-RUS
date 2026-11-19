@@ -29,8 +29,10 @@ English, and as a message {"t": English text, "v": {values}} that the interface 
 _m/_render), so the log follows the language even for entries written before it changed.
 """
 import ctypes
+import hashlib
 import json
 import os
+import stat
 import subprocess
 import threading
 import time
@@ -44,7 +46,7 @@ import psutil
 from . import jobs
 from ..i18n import language, tc
 
-EXPORTS = {"start", "status", "dry_run", "capabilities", "log", "clear_log"}
+EXPORTS = {"start", "status", "dry_run", "capabilities", "log", "clear_log", "approve"}
 JOBS = {"run"}
 
 NO_WINDOW = 0x08000000
@@ -366,6 +368,141 @@ def _downloads_dir(name):
     except Exception:
         pass
     return os.path.join(os.path.expanduser("~"), name)
+
+
+def _downloads_ok(d):
+    """False when `d` is not a place where old files can be cleaned safely: the user profile, a drive root, a folder
+    that contains the profile or another known folder (Documents, Desktop, OneDrive...), or a Windows/program folder."""
+    try:
+        from .removal import paths as rp
+        n = rp.norm_path(os.path.realpath(d))
+        if not n or not os.path.isabs(n) or len(n) <= 3 or not os.path.isdir(n):
+            return False
+        k = rp.known_folders()
+        for name, v in k.items():
+            if name != "Downloads" and v and rp.is_within(v, n):       # n is that folder or holds it
+                return False
+        for name in ("Windows", "ProgramFiles", "ProgramFilesX86", "ProgramData"):
+            if k.get(name) and rp.is_within(n, k[name]):
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _stamp(st):
+    """When a file was last really touched: the latest of its modified, changed and creation times. A copied or
+    extracted file keeps its old modified time but gets a new creation time."""
+    return max(st.st_mtime, st.st_ctime, getattr(st, "st_birthtime", 0) or 0)
+
+
+def _newest_activity(path, st, cap=5000):
+    """The newest time of a file, or of a folder and everything inside it. A folder too big to judge (more than `cap`
+    items) counts as recent, so it is left alone."""
+    t = _stamp(st)
+    if not stat.S_ISDIR(st.st_mode):
+        return t
+    seen, stack = 0, [path]
+    while stack:
+        try:
+            it = os.scandir(stack.pop())
+        except OSError:
+            continue
+        with it:
+            for e in it:
+                seen += 1
+                if seen > cap:
+                    return time.time()
+                try:
+                    est = e.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                t = max(t, _stamp(est))
+                if e.is_dir(follow_symlinks=False) and not e.is_symlink():
+                    stack.append(e.path)
+    return t
+
+
+def _grew_bytes(cmp_):
+    """Bytes that grew according to storage.compare(): changes are [path, delta, dfiles] (older code expected
+    dicts, both are read); with no changes listed, the total growth."""
+    total = 0
+    for c in cmp_.get("changes") or []:
+        d = c[1] if isinstance(c, (list, tuple)) and len(c) > 1 else (c.get("delta", 0) if isinstance(c, dict) else 0)
+        if isinstance(d, (int, float)) and d > 0:
+            total += d
+    if not total and isinstance(cmp_.get("delta"), (int, float)):
+        total = max(0, cmp_["delta"])
+    return total
+
+
+def _storage():
+    from . import storage
+    return storage
+
+
+# =============================================================== approved commands (administrator mode)
+# Routines live in settings.json, which any program running as the user can edit. When StellarHub runs elevated, a
+# "run a command" / "open a program" action would hand that program administrator rights, so in that mode only the
+# actions the user saved from the UI (while elevated) run. Their SHA-256 hashes are kept in HKLM, where only
+# administrators can write (Users can only read).
+APPROVED_KEY = r"SOFTWARE\StellarHub\AutopilotApproved"
+NEEDS_APPROVAL = ("cmd", "openApp")
+
+
+def _action_hash(a):
+    """SHA-256 of what an action would run (None for actions that need no approval)."""
+    k, p = a.get("k"), a.get("p") or {}
+    if k == "cmd":
+        data = {"k": "cmd", "cmd": str(p.get("cmd") or "").strip(), "as": "admin" if p.get("as") == "admin" else "user"}
+    elif k == "openApp":
+        data = {"k": "openApp", "path": str(p.get("path") or "").strip().strip('"')}
+    else:
+        return None
+    return hashlib.sha256(json.dumps(data, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _approved_load():
+    out = set()
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, APPROVED_KEY, 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as k:
+            for i in range(winreg.QueryInfoKey(k)[1]):
+                out.add(winreg.EnumValue(k, i)[0].lower())
+    except OSError:
+        pass
+    return out
+
+
+def _approved_add(hashes):
+    """Writes the hashes (needs administrator rights). True if it worked."""
+    try:
+        with winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, APPROVED_KEY, 0, winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY) as k:
+            for h in hashes:
+                winreg.SetValueEx(k, h, 0, winreg.REG_SZ, "1")
+        return True
+    except OSError:
+        return False
+
+
+def is_approved(a):
+    """True when the action may run now: it needs no approval, StellarHub is not elevated, or the user approved it."""
+    h = _action_hash(a)
+    return h is None or not _admin() or h in _approved_load()
+
+
+def approve(routines):
+    """The UI calls this when the user saves a routine: its command / open-app actions are approved, but only while
+    StellarHub is elevated (otherwise a program running as the user could approve its own actions)."""
+    if not _admin():
+        return {"ok": False, "admin": False, "n": 0}
+    rs = routines if isinstance(routines, list) else [routines]
+    hs = {h for r in rs if isinstance(r, dict) for a in (r.get("acts") or []) if isinstance(a, dict)
+          for h in [_action_hash(a)] if h}
+    ok = _approved_add(hs) if hs else True
+    return {"ok": ok, "admin": True, "n": len(hs)}
+
+
+_NOT_APPROVED = _m("skipped: this action wasn’t approved in administrator mode. Open StellarHub and save this routine again to allow it")
 
 
 # =============================================================== capabilities
@@ -822,8 +959,11 @@ def _act(job, a, r):
         if p.get("to") == "quar":
             return "skip", _m("moving downloads to quarantine isn’t available yet: choose the Recycle Bin"), 0, 0
         d = _downloads_dir("Downloads")
+        if not _downloads_ok(d):
+            return "skip", _m("the downloads folder ({path}) isn’t a safe place to clean, so nothing was touched", path=d), 0, 0
+        from .removal import paths as rp
         limit = time.time() - float(p.get("days") or 30) * 86400
-        n = size = 0
+        n = size = nobin = 0
         try:
             for e in os.scandir(d):
                 job.check()
@@ -831,14 +971,18 @@ def _act(job, a, r):
                     stt = e.stat(follow_symlinks=False)
                 except OSError:
                     continue
-                if e.is_symlink() or stt.st_mtime > limit:
+                if e.is_symlink() or rp.is_reparse_point(e.path) or _newest_activity(e.path, stt) > limit:
                     continue
-                res = _call("storage", "trash", e.path) or {}
+                res = _call("storage", "trash", e.path) or {}   # never permanent: no Recycle Bin means it stays
                 if res.get("ok"):
                     n += 1
                     size += stt.st_size if e.is_file(follow_symlinks=False) else 0
+                elif res.get("noBin"):
+                    nobin += 1
         except OSError as ex:
             return "bad", _m("couldn’t read the downloads folder ({error})", error=str(ex)), 0, 0
+        if nobin:
+            return "skip", _m("{n} old downloads sent to the Recycle Bin, {k} left alone (they can’t go to the Recycle Bin)", n=n, k=nobin), size / 1024 ** 3, 0
         return "ok", _m("{n} old downloads sent to the Recycle Bin", n=n), size / 1024 ** 3, 0
     if k == "quar":
         age = float(p.get("age") or 14) * 86400
@@ -854,8 +998,9 @@ def _act(job, a, r):
                 n += 1
         return "ok", _m("{n} quarantine entry removed", n=n) if n == 1 else _m("{n} quarantine entries removed", n=n), 0, 0
     if k == "dupes":
-        _job(job, "Disk scan", "storage", "scan", "C:\\")
-        res = _job(job, "Duplicates", "storage", "duplicates", max(1, int(float(p.get("min") or 50)))) or {}
+        st = _storage()          # a private scan: the one the Storage Checker shows is left alone
+        sc = st.scan_private(_Sub(job, "Disk scan"), os.environ.get("SystemDrive", "C:") + "\\")
+        res = st._duplicates(_Sub(job, "Duplicates"), max(1, int(float(p.get("min") or 50))), sc) or {}
         groups = res.get("groups") or []
         waste = res.get("wasted") or 0
         if waste:
@@ -942,20 +1087,25 @@ def _act(job, a, r):
             _job(job, t.upper(), "optimizer", "repair", t)
         return "ok", _m("SFC and DISM finished") if len(kinds) > 1 else _m("{tool} finished", tool=kinds[0].upper()), 0, 0
     if k == "net":
-        if p.get("kind") == "full":
-            _job(job, "Network", "optimizer", "repair", "net")
-            return "ok", _m("network reset (a restart finishes it)"), 0, 0
+        # A full network reset erases static IP and DNS settings: it is never run by a routine (optimizer.repair("net")
+        # refuses unattended calls too). Routines saved with it keep working: the safe part (the DNS flush) still runs.
+        full = p.get("kind") == "full"
+        if full:
+            job.log(_en(_m("A full network reset is never run by a routine. Run it from Super Optimizer.")))
         code = subprocess.run(["ipconfig", "/flushdns"], capture_output=True, creationflags=NO_WINDOW).returncode
+        if full:
+            return "skip", (_m("The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.")
+                            if code == 0 else _m("A full network reset is never run by a routine. Run it from Super Optimizer.")), 0, 0
         return ("ok" if code == 0 else "bad"), _m("DNS cache flushed") if code == 0 else _m("ipconfig couldn’t flush the DNS cache"), 0, 0
     if k == "explorer":
         _job(job, "File Explorer", "optimizer", "repair", "explorer")
         return "ok", _m("File Explorer restarted"), 0, 0
     if k == "scanDisk":
         drive = (p.get("drive") or "C:").rstrip("\\") + "\\"
-        _job(job, "Disk", "storage", "scan", drive)
-        cmp_ = _call("storage", "compare") or {}
-        grew = sum(c.get("delta", 0) for c in (cmp_.get("changes") or []) if isinstance(c, dict) and c.get("delta", 0) > 0)
-        gb = grew / 1024 ** 3 if grew > 1024 ** 2 else grew
+        st = _storage()
+        sc = st.scan_private(_Sub(job, "Disk"), drive)     # private: never replaces the scan the UI shows
+        cmp_ = st._compare(sc) or {}
+        gb = _grew_bytes(cmp_) / 1024 ** 3
         if cmp_.get("prev") is None:
             return "ok", _m("{drive} analyzed (next time it can compare)", drive=drive[:2]), 0, 0
         warn = gb > float(p.get("gb") or 10)
@@ -987,6 +1137,9 @@ def _act(job, a, r):
         psutil.wait_procs(procs, timeout=5)
         app = _m(p.get("app") or "")
         return "ok", _m("{app} closed", app=app) if procs else _m("{app} wasn’t open", app=app), 0, 0
+    if k in NEEDS_APPROVAL and not is_approved(a):
+        job.log(_en(_NOT_APPROVED))
+        return "skip", _NOT_APPROVED, 0, 0
     if k == "openApp":
         path = (p.get("path") or "").strip().strip('"')
         if not path or not os.path.exists(path):
@@ -1044,27 +1197,82 @@ _OVERLAY_DONE = {"efficiency": _m("power mode set to best power efficiency"), "b
                  "best": _m("power mode set to best performance")}
 
 
-def _mute(minutes):
-    """Turns Windows notifications off and back on after `minutes` (PushNotifications\\ToastEnabled)."""
-    global _mute_timer
-    key = r"Software\Microsoft\Windows\CurrentVersion\PushNotifications"
-    try:
-        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, key, 0, winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE) as k:
-            winreg.SetValueEx(k, "ToastEnabled", 0, winreg.REG_DWORD, 0)
-    except OSError as e:
-        return "bad", _m("couldn’t mute notifications ({error})", error=str(e)), 0, 0
+TOAST_KEY = r"Software\Microsoft\Windows\CurrentVersion\PushNotifications"
 
-    def back():
+
+def _mute_file():
+    """What to put back and when. Kept on disk (next to state.json, in its own file so the scheduler's state saves can't
+    overwrite it) so that closing or crashing StellarHub can't leave the notifications off for good."""
+    return os.path.join(_data_dir(), "mute.json")
+
+
+def _toast_get():
+    """ToastEnabled as it is now: 0, 1 or None (no value: Windows default, on)."""
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, TOAST_KEY) as k:
+            return int(winreg.QueryValueEx(k, "ToastEnabled")[0])
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _toast_set(v):
+    """Sets ToastEnabled (None removes the value). Raises OSError if it can't."""
+    with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, TOAST_KEY, 0, winreg.KEY_SET_VALUE) as k:
+        if v is None:
+            try:
+                winreg.DeleteValue(k, "ToastEnabled")
+            except FileNotFoundError:
+                pass
+        else:
+            winreg.SetValueEx(k, "ToastEnabled", 0, winreg.REG_DWORD, int(v))
+
+
+def restore_mute(force=False):
+    """Puts ToastEnabled back as it was before the mute, once its time is up (or now, with force). Runs when the timer
+    fires, when the app starts and on every check. True if something was restored."""
+    f = _mute_file()
+    if not os.path.exists(f):
+        return False
+    with _lock:
+        m = _load(f, None)
+        if not isinstance(m, dict) or "prev" not in m:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+            return False
+        if not force and time.time() < float(m.get("until") or 0) - 1:
+            return False
+        prev = m.get("prev")
         try:
-            with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, key, 0, winreg.KEY_SET_VALUE) as k:
-                winreg.SetValueEx(k, "ToastEnabled", 0, winreg.REG_DWORD, 1)
+            _toast_set(prev if prev in (0, 1) else None)
+        except OSError:
+            return False          # try again at the next check
+        try:
+            os.remove(f)
         except OSError:
             pass
-    if _mute_timer:
-        _mute_timer.cancel()
-    _mute_timer = threading.Timer(minutes * 60, back)
-    _mute_timer.daemon = True
-    _mute_timer.start()
+    return True
+
+
+def _mute(minutes):
+    """Turns Windows notifications off and back on after `minutes` (PushNotifications\\ToastEnabled), to the value they
+    had before (if you already had them off they stay off). The deadline and the old value are saved, so they come back
+    even if StellarHub is closed meanwhile."""
+    global _mute_timer
+    with _lock:
+        old = _load(_mute_file(), None)
+        prev = old["prev"] if isinstance(old, dict) and "prev" in old else _toast_get()   # a mute already running: keep its value
+        try:
+            _save(_mute_file(), {"prev": prev, "until": time.time() + minutes * 60})
+            _toast_set(0)
+        except OSError as e:
+            return "bad", _m("couldn’t mute notifications ({error})", error=str(e)), 0, 0
+        if _mute_timer:
+            _mute_timer.cancel()
+        _mute_timer = threading.Timer(minutes * 60 + 1, restore_mute)
+        _mute_timer.daemon = True
+        _mute_timer.start()
     return "ok", _m("notifications muted for {min} min", min=int(minutes)), 0, 0
 
 
@@ -1245,6 +1453,8 @@ def dry_run(routine):
             note, need_admin = _m("would be skipped: needs administrator"), True
         elif k == "drvInstall" and p.get("mode", "ask") == "ask":
             note = _m("would ask you first")
+        elif k in NEEDS_APPROVAL and not is_approved(a):
+            note = _m("would be skipped: not approved in administrator mode. Save the routine again to allow it")
         elif k == "clean" and not any(CLEAN_MAP.get(c) for c in (p.get("cats") or [])):
             note = _m("none of the chosen categories can be cleaned yet")
         acts.append({"k": k, "note": _txt(note) if note else "", "noteM": note, "needAdmin": need_admin})
@@ -1294,6 +1504,7 @@ def _worker():
 
 
 def _tick():
+    restore_mute()
     s = _settings()
     routines = [r for r in (s.get("autopilotRoutines") or []) if isinstance(r, dict)]
     if s.get("autopilotSchema") not in (None, 2):
@@ -1406,6 +1617,10 @@ def start():
         if _thread and _thread.is_alive():
             return status()
         _stop.clear()
+        try:
+            restore_mute()      # a mute left over from a previous run (the app closed before it ended)
+        except Exception as e:
+            print("[autopilot]", e)
         _thread = threading.Thread(target=_loop, daemon=True, name="autopilot")
         _thread.start()
         threading.Thread(target=_worker, daemon=True, name="autopilot-worker").start()

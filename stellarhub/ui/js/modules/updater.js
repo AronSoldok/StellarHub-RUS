@@ -66,6 +66,13 @@ const S = { items: [], byId: {}, sel: new Set(), ignored: new Set(), pinned: new
   scanned: false, winScanned: false, devScanned: false, paused: null, reboot: false, errs: {}, prog: {} };
 const pending = () => S.items.filter(i => !i.done && !S.ignored.has(i.id) && !S.pinned.has(i.id));
 const pendingIn = cat => pending().filter(i => i.cat === cat && !i.optional);
+/* display name: no version tacked on the end (it is shown next to it anyway), and a readable name for package ids */
+function dn(name) {
+  const n = String(name == null ? '' : name).trim(); let m;
+  if ((m = n.match(/^([A-Z][A-Za-z]+)\.(\d+(?:\.\d+)*)$/)) && /[a-z][A-Z]/.test(m[1])) return m[1].replace(/([a-z])([A-Z])/g, '$1 $2') + ' ' + m[2];
+  return n.replace(/\s+[-–]\s+v?\d+(?:\.\d+){1,}\S*(?=\s*(?:\(|$))/, '').trim() || n;
+}
+const cv = v => String(v == null ? '' : v).replace(/^\s*[<>~=]+\s*/, '');   /* winget writes "> 1.8.10" when it cannot be sure */
 const mb = v => v == null || isNaN(v) ? '—' : v >= 1024 ? fmt1(v / 1024) + ' GB' : (v < 10 ? fmt1(v) : Math.round(v)) + ' MB';
 const CAT_COL = { security: 'var(--warn)', windows: 'var(--accent2)', store: 'var(--accent2)', runtimes: 'var(--accent)', dev: 'var(--ok)', apps: 'var(--accent2)' };
 const PAL = ['#6FA8FF', '#8EA2FF', '#7FE0B4', '#FFB27A', '#F4C26B', '#A8D672', '#FF8FB1', '#5FD3C6', '#C9D4E8'];
@@ -79,8 +86,8 @@ function tile(it) {
 const smallTile = (o, fallbackIc = 'package', col = 'var(--mute)') => o.icon ? `<span class="u-tile img sm"><img src="${o.icon}" alt="" decoding="async"></span>` : `<span class="u-tile sm" style="--c:${o.name ? colorFor(o.name) : col}">${o.name ? esc(initial(o.name)) : ic(fallbackIc)}</span>`;
 /* "Unknown": winget can't read the installed version, so updating reinstalls the latest one (not in Update all) */
 const vers = it => it.unknownVersion
-  ? `<span class="u-ver" title="${esc(t("winget can't read the installed version: updating reinstalls the latest one"))}"><span class="u-unk">${t('Unknown')}</span>${ic('arrow')}<b>${esc(it.to)}</b></span>`
-  : it.from ? `<span class="u-ver"><span>${esc(it.from)}</span>${ic('arrow')}<b>${esc(it.to)}</b></span>` : `<span class="u-ver"><b>${esc(it.to || '')}</b></span>`;
+  ? `<span class="u-ver" title="${esc(t("winget can't read the installed version: updating reinstalls the latest one"))}"><span class="u-unk">${t('Unknown')}</span>${ic('arrow')}<b>${esc(cv(it.to))}</b></span>`
+  : it.from ? `<span class="u-ver"><span>${esc(cv(it.from))}</span>${ic('arrow')}<b>${esc(cv(it.to))}</b></span>` : `<span class="u-ver"><b>${esc(cv(it.to))}</b></span>`;
 const ago = ts => { if (!ts) return t('not yet'); const s = (Date.now() - ts) / 1000; if (s < 60) return t('a moment ago'); if (s < 3600) return t('{n} min ago', { n: Math.round(s / 60) }); if (s < 86400) return t('{n} h ago', { n: Math.round(s / 3600) }); const d = Math.round(s / 86400); return d === 1 ? t('1 day ago') : t('{n} days ago', { n: d }); };
 const fdate = d => { const ms = Date.parse(d); return isNaN(ms) ? esc(d) : new Date(ms).toLocaleDateString(SH.i18n.locale, { day: 'numeric', month: 'short', year: 'numeric' }); };
 let ctxRef = null;
@@ -90,7 +97,8 @@ function setItems() {
   /* Defender signatures: only if Defender is the active antivirus */
   const d = S.win && S.win.defender;
   if (REAL && d && d.on) items.unshift({ id: 'defender', kind: 'defender', cat: 'security', name: t('Microsoft Defender signatures'), pub: 'Microsoft', from: d.sig || '', to: 'latest', mb: null, admin: false, reboot: false, notes: d.sigDate ? [t('Last updated on {date}.', { date: fdate(d.sigDate) })] : [] });
-  const old = S.byId; S.items = items.map(i => (old[i.id] && old[i.id].done) ? { ...i, done: true } : i);
+  const old = S.byId; const vroot = document.getElementById('v-updater'); if (vroot) vroot.classList.toggle('u-nosz', !items.some(i => i.mb != null));
+  S.items = items.map(i => (old[i.id] && old[i.id].done) ? { ...i, done: true } : i);
   S.byId = Object.fromEntries(S.items.map(i => [i.id, i]));
   const ig = ignoredMap(); S.ignored = new Set(S.items.filter(i => ig[i.id] && ig[i.id] === i.to).map(i => i.id));
   S.pinned = new Set(REAL ? Object.keys((S.apps && S.apps.pins) || {}) : [...S.pinned]);
@@ -98,22 +106,28 @@ function setItems() {
 function publishPending() {
   const n = pending().filter(i => !i.optional).length;
   if (ctxRef) ctxRef.setBadge('overview', n);
-  if (S.scanned) SH.setPending('apps', n);
+  if (S.scanned && !S.appsScanning && !S.errs.apps && !S.noWinget) SH.setPending('apps', n);
 }
 function refreshBadge() { publishPending(); }
 
 /* ---------------- searches (real inside the app) ---------------- */
 let pA = null, pW = null, pD = null;
-function scanProgress(kind, m) { S.prog[kind] = m; const el = $(`#v-${ID} .u-sub`); if (el && !S.scanned) el.textContent = m.text || t('Searching…'); updateWinWait(); }
+function scanProgress(kind, m) { S.prog[kind] = m; const el = $(`#v-${ID} .u-sub`); if (el && (kind === 'apps' ? S.appsScanning : !S.scanned)) el.textContent = m.text || t('Searching…'); updateWinWait(); }
+/* while the apps search runs again, the lists keep the previous results but look dimmed */
+function setAppsScanning(on) {
+  S.appsScanning = on; const v = $(`#v-${ID}`); if (v) v.classList.toggle('u-rescan', on && S.scanned);
+  if (on && S.scanned) { const el = $(`#v-${ID} .u-sub`); if (el) el.textContent = t('Looking for updates…'); }
+}
 function scanApps(force) {
-  if (pA && !force) return pA;
+  if (pA && (!force || S.appsScanning)) return pA;      // a search already running is reused, never doubled
+  setAppsScanning(true);
   pA = (REAL ? SH.job(ID, 'scan_apps', [], { onProgress: m => scanProgress('apps', m) }) : wait(900).then(MOCK.apps))
-    .then(r => { S.errs.apps = null; S.apps = r || { items: [] }; S.scanned = true; setItems(); onData('apps'); return r; })
-    .catch(e => { S.errs.apps = e.message; S.scanned = true; S.apps = S.apps || { items: [] }; setItems(); onData('apps'); });
+    .then(r => { r = r || { items: [] }; S.noWinget = r.winget === false; S.errs.apps = null; S.apps = S.noWinget ? { items: [] } : r; S.scanned = true; setAppsScanning(false); setItems(); onData('apps'); return r; })
+    .catch(e => { S.errs.apps = e.message; S.scanned = true; setAppsScanning(false); S.apps = S.apps || { items: [] }; setItems(); onData('apps'); });
   return pA;
 }
 function scanWindows(force) {
-  if (pW && !force) return pW;
+  if (pW && (!force || S.winScanning)) return pW;
   S.winScanning = true; updateWinWait();
   pW = (REAL ? SH.job(ID, 'scan_windows', [], { onProgress: m => scanProgress('win', m) }) : wait(1600).then(MOCK.win))
     .then(r => { S.errs.win = null; S.win = r; S.winScanned = true; S.winScanning = false; S.reboot = !!r.reboot; S.paused = r.pause ? Date.parse(r.pause) : null; setItems(); onData('win'); return r; })
@@ -143,6 +157,13 @@ function updateWinWait() {
     const bar = g.querySelector('.bar>span'); if (bar) bar.style.transform = `scaleX(${(p && p.pct) || .05})`;
     g.classList.toggle('on', !!S.winScanning);
   });
+  $$(`#v-${ID} [data-wcheck]`).forEach(b => { b.disabled = !!S.winScanning; b.classList.toggle('u-busy', !!S.winScanning); });
+}
+/* a row's action area while winget pins or unpins it: spinner + text, nothing clickable; returns the undo */
+function rowBusy(id, label) {
+  const saved = [];
+  $$(`#v-${ID} .u-row[data-item="${CSS.escape(id)}"] .u-act`).forEach(a => { saved.push([a, a.innerHTML]); a.innerHTML = `<button class="btn sm sec" disabled><span class="u-spin"></span>${esc(label)}</button>`; });
+  return () => saved.forEach(([a, h]) => { if (a.isConnected) a.innerHTML = h; });
 }
 
 /* ---------------- install queue ---------------- */
@@ -184,7 +205,7 @@ async function runQueueReal() {
       cur.st = s.st === 'queued' ? 'fail' : s.st; cur.msg = s.msg; if (res && res.reboot) S.reboot = true;
     } catch (e) { cur.st = e.cancelled ? 'cancel' : 'fail'; cur.msg = e.message; }
     if (cur.cancelAfter && cur.st !== 'done') cur.st = 'cancel';
-    if (cur.st === 'done') { it.done = true; onItemDone(it); SH.logActivity(t('{name} updated', { name: it.name }), { sub: it.to && it.kind !== 'wu' ? t('to version {v}', { v: it.to }) : (it.kb || ''), ic: 'updater', go: ID, tab: 'apps' }); }
+    if (cur.st === 'done') { it.done = true; onItemDone(it); SH.logActivity(t('{name} updated', { name: dn(it.name) }), { sub: it.to && it.kind !== 'wu' ? t('to version {v}', { v: it.to }) : (it.kb || ''), ic: 'updater', go: ID, tab: 'apps' }); }
     updQRow(cur);
     if (cur.cancelAfter) { Q.list.forEach(q => { if (q.st === 'queued') { q.st = 'cancel'; updQRow(q); } }); break; }
   }
@@ -225,7 +246,7 @@ function markDone(row) {
 }
 const QST = { queued: t('Queued'), down: t('Downloading'), inst: t('Installing'), done: t('Installed'), fail: t('Error'), cancel: t('Cancelled'), admin: t('Needs admin mode') };
 function qRowHTML(q, i) {
-  return `<div class="u-qrow st-${q.st}" data-q="${i}">${tile(q.it)}<div class="u-qt"><b>${esc(q.it.name)}</b><span class="u-qs">${qStateText(q)}</span>
+  return `<div class="u-qrow st-${q.st}" data-q="${i}">${tile(q.it)}<div class="u-qt"><b>${esc(dn(q.it.name))}</b><span class="u-qs">${qStateText(q)}</span>
     <div class="u-qbar"><span></span></div></div><span class="u-qi">${qIcon(q)}</span></div>`;
 }
 function qStateText(q) {
@@ -276,7 +297,7 @@ function renderQueueHead() {
 function recentHTML() {
   let rows = [];
   if (REAL) {
-    rows = (state.settings.activity || []).filter(a => a.go === ID).slice(0, 4).map(a => [a.t, a.sub, ago(a.at)]);
+    rows = (state.settings.activity || []).filter(a => a.go === ID).slice(0, 4).map(a => { const x = SH.activityText ? SH.activityText(a) : a; return [x.t, x.sub, ago(a.at)]; });
     if (rows.length < 4 && S.win) rows = rows.concat(S.win.history.filter(h => h.ok).slice(0, 4 - rows.length).map(h => [h.t, 'Windows Update', fdate(h.d)]));
   } else rows = [['Brave', t('version {v}', { v: '1.84.132' }), t('yesterday')], ['NVIDIA App', t('version {v}', { v: '11.0.5.420' }), t('{n} days ago', { n: 4 })]];
   if (!rows.length) return '';
@@ -349,9 +370,9 @@ function itemRow(it, o = {}) {
   const done = it.done; const queued = Q.list.some(q => q.it === it && ['queued', 'down', 'inst'].includes(q.st));
   const notes = it.notes && it.notes.length ? it.notes : null;
   return `<div class="u-row${done ? ' is-done' : ''}" data-item="${esc(it.id)}">
-    ${o.check !== false ? `<button class="check${S.sel.has(it.id) ? ' on' : ''}" data-sel="${esc(it.id)}" aria-label="${t('Select {name}', { name: esc(it.name) })}">${ic('check')}</button>` : ''}
+    ${o.check !== false ? `<button class="check${S.sel.has(it.id) ? ' on' : ''}" data-sel="${esc(it.id)}" aria-label="${t('Select {name}', { name: esc(dn(it.name)) })}">${ic('check')}</button>` : ''}
     ${tile(it)}
-    <button class="u-name" data-notes="${esc(it.id)}" title="${esc(t('See the release notes'))}"><b>${esc(it.name)}</b><span>${[esc(it.pub || ''), it.kb ? esc(it.kb) : '', it.reboot ? t('needs a restart') : ''].filter(Boolean).join(', ')}</span></button>
+    <button class="u-name" data-notes="${esc(it.id)}" title="${esc(t('See the release notes'))}"><b>${esc(dn(it.name))}</b><span>${[esc(it.pub || ''), it.kb ? esc(it.kb) : '', it.reboot ? t('needs a restart') : ''].filter(Boolean).join(', ')}</span></button>
     ${vers(it)}<span class="u-size">${mb(it.mb)}</span>
     <span class="u-act">${done ? `<span class="chip ok">${ic('check')}${t('Updated')}</span>` : queued ? `<button class="btn sm sec" disabled><span class="u-spin"></span>${t('Queued')}</button>` : `<button class="btn sm sec" data-one="${esc(it.id)}">${t('Update')}</button>`}${!done && o.menu !== false && it.kind !== 'wu' ? `<button class="iconbtn u-more" data-menu="${esc(it.id)}" aria-label="${esc(t('More options'))}">${ic('dots')}</button>` : ''}</span>
     <div class="u-notes"><div>${notes ? `<ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : `<ul class="u-nload"><li>${REAL && it.kind === 'winget' ? t('Looking for the release notes…') : t('No release notes from the publisher.')}</li></ul>`}</div></div>
@@ -435,7 +456,8 @@ document.addEventListener('scroll', e => { if (menuEl && e.target.nodeType === 1
 async function hideItem(id, how) {
   const it = S.byId[id];
   if (how === 'pin' && REAL) {
-    let r; try { r = await SH.engine(ID, 'pin', it.wid); } catch (e) { SH.toast(t("winget couldn't pin the version: {error}", { error: e.message })); return; }
+    const back = rowBusy(id, t('Pinning…'));
+    let r; try { r = await SH.engine(ID, 'pin', it.wid); } catch (e) { back(); SH.toast(t("winget couldn't pin the version: {error}", { error: e.message })); return; }
     if (S.apps) S.apps.pins = { ...(S.apps.pins || {}), [it.id]: it.from };
   }
   if (how === 'ignore') { const ig = ignoredMap(); ig[id] = it.to; SH.setSetting('updIgnored', ig); }
@@ -447,17 +469,24 @@ async function hideItem(id, how) {
 }
 async function unhide(id) {
   const it = S.byId[id];
-  if (S.pinned.has(id) && REAL && it && it.wid) { try { await SH.engine(ID, 'unpin', it.wid); } catch { /* carry on */ } if (S.apps && S.apps.pins) delete S.apps.pins[id]; }
+  if (S.pinned.has(id) && REAL && it && it.wid) {
+    if (unpinning.has(id)) return; unpinning.add(id);
+    const back = rowBusy(id, t('Unpinning…'));
+    if (!$(`#v-${ID} .u-row[data-item="${CSS.escape(id)}"]`)) SH.toast(t('Unpinning {name}…', { name: it.name }), { group: 'upd-unpin' });
+    try { await SH.engine(ID, 'unpin', it.wid); } catch { /* carry on */ } finally { unpinning.delete(id); back(); }
+    if (S.apps && S.apps.pins) delete S.apps.pins[id];
+  }
   const ig = ignoredMap(); if (ig[id]) { delete ig[id]; SH.setSetting('updIgnored', ig); }
   S.ignored.delete(id); S.pinned.delete(id); rerenderAll();
 }
+const unpinning = new Set();
 function collapseRow(row) {
   const h = row.offsetHeight;
   anim(row, [{ opacity: 1, transform: 'none', height: h + 'px' }, { opacity: 0, transform: 'translate3d(24px,0,0)', height: h + 'px', offset: .55 }, { opacity: 0, transform: 'translate3d(24px,0,0)', height: '0px', paddingTop: '0px', paddingBottom: '0px' }], { d: 420, e: EASE.out })
     .finished.then(() => row.remove()).catch(() => row.remove());
 }
 const ERR_MSG = { apps: error => t("Couldn't ask winget: {error}", { error }), win: error => t("Couldn't search Windows Update: {error}", { error }) };
-const errBox = k => S.errs[k] ? `<div class="u-err">${ic('alert')}<span>${ERR_MSG[k](esc(S.errs[k]))}</span><button class="btn sm sec" data-rescan="${k}">${ic('refresh')}${t('Retry')}</button></div>` : '';
+const errBox = k => k === 'apps' && S.noWinget && !S.errs.apps ? `<div class="u-err">${ic('alert')}<span>${t("winget isn't available on this PC, so StellarHub can't check your apps for updates. Install or update App Installer from the Microsoft Store, then check again.")}</span><button class="btn sm sec" data-url="https://apps.microsoft.com/detail/9nblggh4nns1">${ic('external')}${t('Open the Store')}</button><button class="btn sm sec" data-rescan="apps">${ic('refresh')}${t('Retry')}</button></div>` : S.errs[k] ? `<div class="u-err">${ic('alert')}<span>${ERR_MSG[k](esc(S.errs[k]))}</span><button class="btn sm sec" data-rescan="${k}">${ic('refresh')}${t('Retry')}</button></div>` : '';
 
 /* ---------------- Overview ---------------- */
 function renderOverview(el) {
@@ -489,7 +518,7 @@ function renderOverview(el) {
 function fillGroups(el, animate) {
   const groups = $('.u-groups', el); if (!groups) return;
   const cats = CAT_ORDER.filter(c => S.items.some(i => i.cat === c && !i.optional));
-  groups.innerHTML = cats.length ? cats.map(c => groupHTML(c)).join('') : (S.scanned && !S.winScanning ? `<div class="pan u-allok"><span class="u-qei">${ic('check')}</span><b>${t('Everything is up to date')}</b><span class="muted">${t('winget, the Store and Windows Update have nothing new for this PC.')}</span></div>` : '');
+  groups.innerHTML = cats.length ? cats.map(c => groupHTML(c)).join('') : (S.scanned && !S.winScanning && !S.errs.apps && !S.noWinget && !S.errs.win ? `<div class="pan u-allok"><span class="u-qei">${ic('check')}</span><b>${t('Everything is up to date')}</b><span class="muted">${t('winget, the Store and Windows Update have nothing new for this PC.')}</span></div>` : '');
   const errs = $('.u-errs', el); if (errs) errs.innerHTML = errBox('apps') + errBox('win');
   if (animate) SH.assemble(groups, 0, 45, '.u-group, .u-allok');
   syncGroupChecks();
@@ -510,7 +539,7 @@ function updateOverviewCounts(first) {
   const p = pending().filter(i => !i.optional); const known = p.filter(i => i.mb != null); const tot = known.reduce((a, i) => a + i.mb, 0);
   const cnt = $('.u-cnt', el); if (cnt && +(cnt.dataset.v || 0) !== p.length) SH.countUp(cnt, p.length, first ? 900 : 400);
   const when = S.apps && S.apps.ts ? ago(S.apps.ts * 1000) : t('just now');
-  const sub = $('.u-sub', el); if (sub) sub.textContent = [p.length ? (known.length && tot ? t('{size} known to download.', { size: mb(tot) }) : '') : t('Everything is up to date.'), t('Last checked {when}.', { when }), S.winScanning ? t('Windows Update is still searching.') : ''].filter(Boolean).join(' ');
+  const sub = $('.u-sub', el); if (sub && !S.appsScanning) sub.textContent = [p.length ? (known.length && tot ? t('{size} known to download.', { size: mb(tot) }) : '') : S.errs.apps || S.noWinget ? t("Your apps couldn't be checked.") : t('Everything is up to date.'), t('Last checked {when}.', { when }), S.winScanning ? t('Windows Update is still searching.') : ''].filter(Boolean).join(' ');
   $$('.u-group', el).forEach(g => { const c = g.dataset.cat; const n = pendingIn(c).length; const chip = $('.u-gc', g); if (!chip) return; const txt = n ? t('{n} pending', { n }) : t('Up to date');
     if (chip.textContent !== txt) { chip.textContent = txt; chip.classList.toggle('warn', c === 'security' && !!n); chip.classList.toggle('ok', !n); anim(chip, [{ transform: 'scale(.8)', opacity: .4 }, { transform: 'scale(1)', opacity: 1 }], { d: 360, e: EASE.spring }); } });
 }
@@ -544,7 +573,7 @@ function fillUnknown(el) {
   const box = $('.u-unk', el); if (!box || !S.apps) return;
   const u = S.apps.unknown || [];
   const h4 = $('.u-unknown>h4 em', el); if (h4) h4.textContent = t('{n} apps, updated from their website', { n: u.length });
-  box.innerHTML = u.length ? u.map(x => `<div class="row">${smallTile(x)}<div class="rt"><b>${esc(x.name)}</b><span>${esc(x.pub ? x.pub + ', ' : '')}${t('version {v}', { v: esc(x.ver || '—') })}</span></div>${x.url ? `<button class="iconbtn" data-url="${esc(x.url)}" title="${esc(t('Open their website'))}">${ic('external')}</button>` : ''}</div>`).join('')
+  box.innerHTML = u.length ? u.map(x => `<div class="row">${smallTile(x)}<div class="rt"><b>${esc(dn(x.name))}</b><span>${esc(x.pub ? x.pub + ', ' : '')}${t('version {v}', { v: esc(cv(x.ver) || '—') })}</span></div>${x.url ? `<button class="iconbtn" data-url="${esc(x.url)}" title="${esc(t('Open their website'))}">${ic('external')}</button>` : ''}</div>`).join('')
     : `<div class="faint u-none">${t('winget recognizes everything you have installed.')}</div>`;
 }
 function refreshAppsFilter(animate) {
@@ -556,14 +585,14 @@ function refreshAppsFilter(animate) {
   if (appsFilter === 'hidden') apps = apps.filter(i => S.ignored.has(i.id) || S.pinned.has(i.id));
   if (appsQuery) apps = apps.filter(i => (i.name + ' ' + (i.pub || '')).toLowerCase().includes(appsQuery));
   const html = apps.map(it => appsFilter === 'hidden'
-    ? `<div class="u-row" data-item="${esc(it.id)}">${tile(it)}<span class="u-name"><b>${esc(it.name)}</b><span>${S.ignored.has(it.id) ? t('You ignore version {v}', { v: esc(it.to) }) : t('Pinned to {v}', { v: esc(it.from) })}</span></span>${vers(it)}<span class="u-size">${mb(it.mb)}</span><span class="u-act"><button class="btn sm ghost" data-unhide="${esc(it.id)}">${t('Show again')}</button></span></div>`
+    ? `<div class="u-row" data-item="${esc(it.id)}">${tile(it)}<span class="u-name"><b>${esc(dn(it.name))}</b><span>${S.ignored.has(it.id) ? t('You ignore version {v}', { v: esc(it.to) }) : t('Pinned to {v}', { v: esc(it.from) })}</span></span>${vers(it)}<span class="u-size">${mb(it.mb)}</span><span class="u-act"><button class="btn sm ghost" data-unhide="${esc(it.id)}">${t('Show again')}</button></span></div>`
     : itemRow(it)).join('');
-  list.innerHTML = html || `<div class="empty"><b>${appsFilter === 'hidden' ? t("You aren't ignoring any version") : appsFilter === 'sel' ? t('Nothing selected yet') : appsQuery ? t('No app with that name') : t('Your apps are up to date')}</b>${appsFilter === 'sel' ? t('Check the box next to the apps you want to update.') : ''}</div>${errBox('apps')}`;
+  list.innerHTML = html || `<div class="empty"><b>${appsFilter === 'hidden' ? t("You aren't ignoring any version") : appsFilter === 'sel' ? t('Nothing selected yet') : appsQuery ? t('No app with that name') : S.errs.apps || S.noWinget ? t('No results') : t('Your apps are up to date')}</b>${appsFilter === 'sel' ? t('Check the box next to the apps you want to update.') : ''}</div>${errBox('apps')}`;
   if (animate) $$('.u-row, .empty', list).slice(0, 14).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: i * 28, e: EASE.spring }));
   const pend = pendingIn('apps'); const cnt = $('.u-apend', el);
   if (cnt && +(cnt.dataset.v || 0) !== pend.length) SH.countUp(cnt, pend.length, 600);
   const sz = $('.u-asz', el); if (sz) sz.textContent = pend.length ? t('They install silently, one after another. Windows may ask for permission on some.') : t('Everything winget knows about is up to date.');
-  const ac = $('.u-acount', el); if (ac) ac.textContent = apps.length === 1 ? t('{n} app', { n: 1 }) : t('{n} apps', { n: apps.length });
+  const ac = $('.u-acount', el); if (ac) { const nOpt = apps.filter(i => i.optional).length; ac.textContent = nOpt && appsFilter === 'all' ? (apps.length === 1 ? t('{n} app, {m} optional', { n: 1, m: nOpt }) : t('{n} apps, {m} optional', { n: apps.length, m: nOpt })) : apps.length === 1 ? t('{n} app', { n: 1 }) : t('{n} apps', { n: apps.length }); }
   updateSelBars();
 }
 
@@ -665,7 +694,7 @@ function fillStore(el) {
   syncGroupChecks();
   const ok = (S.apps && S.apps.storeOk) || [];
   $('.u-sokn', el).textContent = t('{n} apps', { n: ok.length });
-  $('.u-sok', el).innerHTML = ok.map(x => `<div class="row">${x.icon ? smallTile(x) : `<span class="ri ok">${ic('check')}</span>`}<div class="rt"><b>${esc(x.name)}</b><span>${t('version {v}', { v: esc(x.ver || '—') })}</span></div></div>`).join('');
+  $('.u-sok', el).innerHTML = ok.map(x => `<div class="row">${x.icon ? smallTile(x) : `<span class="ri ok">${ic('check')}</span>`}<div class="rt"><b>${esc(dn(x.name))}</b><span>${t('version {v}', { v: esc(cv(x.ver) || '—') })}</span></div></div>`).join('');
 }
 
 /* ---------------- Components ---------------- */
@@ -683,7 +712,7 @@ function fillRuntimes(el) {
   const box = $('.u-cards', el); if (!box) return;
   if (!S.scanned) { box.innerHTML = [0, 1, 2].map(() => '<div class="pan u-card"><div class="sk" style="height:14px;width:60%"></div><div class="sk" style="height:10px;width:40%;margin-top:10px"></div></div>').join(''); return; }
   const card = (it, extra = '') => `<div class="pan u-card" data-item="${esc(it.id)}">
-      <div class="u-ch">${tile(it)}<div class="u-cht"><b>${esc(it.name)}</b><span class="muted">${esc(it.pub || '')}</span></div>${it.cat === 'security' ? `<span class="chip warn">${t('Security')}</span>` : ''}</div>
+      <div class="u-ch">${tile(it)}<div class="u-cht"><b>${esc(dn(it.name))}</b><span class="muted">${esc(it.pub || '')}</span></div>${it.cat === 'security' ? `<span class="chip warn">${t('Security')}</span>` : ''}</div>
       ${it.notes && it.notes[0] ? `<p class="u-cnote muted">${esc(it.notes[0])}</p>` : ''}${extra}
       <div class="u-cfoot">${vers(it)}<span class="u-act">${it.done ? `<span class="chip ok">${ic('check')}${t('Updated')}</span>` : `<button class="btn sm sec" data-one="${esc(it.id)}">${t('Update')}</button>`}</span></div></div>`;
   const cards = S.items.filter(i => i.cat === 'runtimes').map(it => card(it));
@@ -700,7 +729,7 @@ function fillRuntimes(el) {
   box.innerHTML = cards.join('') + errBox('apps'); SH.assemble(box, 0, 40, '.u-card');
   const ok = (S.apps && S.apps.runtimesOk) || [];
   $('.u-rtn', el).textContent = t('{n} components', { n: ok.length });
-  $('.u-rtok', el).innerHTML = ok.length ? ok.map(u => `<div class="row">${u.icon ? smallTile(u) : `<span class="u-tile sm" style="--c:var(--ok)">${ic('layers')}</span>`}<div class="rt"><b>${esc(u.name)}</b><span>${t('version {v}', { v: esc(u.ver || '—') })}</span></div></div>`).join('') : `<div class="faint u-none">${t('Nothing else to show.')}</div>`;
+  $('.u-rtok', el).innerHTML = ok.length ? ok.map(u => `<div class="row">${u.icon ? smallTile(u) : `<span class="u-tile sm" style="--c:var(--ok)">${ic('layers')}</span>`}<div class="rt"><b>${esc(dn(u.name))}</b><span>${t('version {v}', { v: esc(cv(u.ver) || '—') })}</span></div></div>`).join('') : `<div class="faint u-none">${t('Nothing else to show.')}</div>`;
 }
 
 /* ---------------- Development ---------------- */
@@ -738,11 +767,13 @@ function fillDev(el) {
        <div class="u-cmd faint">${kind === 'pip' ? 'python -m pip install -U ' : 'npm install -g '}<span class="u-cmdl">${list.map(x => x[0] + (kind === 'npm' ? '@latest' : '')).join(' ')}</span></div>
        <button class="btn sm pri" data-pkgo="${kind}">${ic('download')}${t('Update packages')}</button></div>`
     : `<p class="muted u-dnote">${ic('check')}${kind === 'pip' ? t('All your pip packages are up to date.') : t('No global npm package is out of date.')}</p>`;
-  const wrow = it => `<div class="u-row u-drow" data-item="${esc(it.id)}">${tile(it)}<span class="u-name"><b>${esc(it.name)}</b><span>${esc(it.pub || '')}</span></span>${vers(it)}<span class="u-act">${it.done ? `<span class="chip ok">${ic('check')}${t('Updated')}</span>` : `<button class="btn sm sec" data-one="${esc(it.id)}">${t('Update')}</button>`}</span></div>`;
+  const wrow = it => `<div class="u-row u-drow" data-item="${esc(it.id)}">${tile(it)}<span class="u-name"><b>${esc(dn(it.name))}</b><span>${esc(it.pub || '')}</span></span>${vers(it)}<span class="u-act">${it.done ? `<span class="chip ok">${ic('check')}${t('Updated')}</span>` : `<button class="btn sm sec" data-one="${esc(it.id)}">${t('Update')}</button>`}</span></div>`;
   const node = witems.filter(i => /node/i.test(i.wid || i.id || i.name)), other = witems.filter(i => !node.includes(i));
   const okTools = [...(d.git ? [['Git', d.git]] : []), ...((S.apps && S.apps.devOk) || []).filter(x => !/^git$/i.test(x.name)).map(x => [x.name, x.ver]), ...(d.tools || [])];
   const seen = new Set();
-  const tools = okTools.filter(([n]) => !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase()) && !other.some(o => o.name.toLowerCase() === n.toLowerCase()));
+  /* the same tool under two names (winget's "Windows Subsystem for Linux" and "WSL"): one row; Node.js has its own column */
+  const alias = n => /^(wsl|.*\b(subsystem|subsistema|sous-syst).*)$/i.test(n) ? 'wsl' : /^node(\.?js)?$/i.test(n) ? 'node' : n.toLowerCase();
+  const tools = okTools.filter(([n]) => !seen.has(alias(n)) && seen.add(alias(n)) && alias(n) !== 'node' && !other.some(o => alias(o.name) === alias(n)));
   el.innerHTML = `<div class="u-dev">
     <div class="pan u-dcol" data-asm><div class="u-dh"><span class="u-tile" style="--c:var(--ok)">${ic('code')}</span><div><b>Python</b><span class="muted">${d.python ? t('version {v}', { v: esc(d.python) }) : S.devScanned ? t('not found') : t('checking…')}</span></div></div>
       ${S.devScanned ? pkgBlock(d.pip || [], 'pip', t('Outdated pip packages'), d.pipError) : `<p class="muted u-dnote"><span class="u-spin"></span>${t('Asking pip (takes a few seconds)…')}</p>`}</div>
@@ -750,7 +781,7 @@ function fillDev(el) {
       ${node.map(wrow).join('')}${S.devScanned ? (d.node ? pkgBlock(d.npm || [], 'npm', t('Global npm packages'), d.npmError) : '') : `<p class="muted u-dnote"><span class="u-spin"></span>${t('Asking npm…')}</p>`}</div>
     <div class="pan u-dcol" data-asm><div class="u-dh"><span class="u-tile" style="--c:var(--ok)">${ic('code')}</span><div><b>${t('Git and other tools')}</b><span class="muted">${t('Updated with winget')}</span></div></div>
       ${other.map(wrow).join('')}
-      <div class="u-dsub"><h5>${t('Up to date')}</h5><div class="u-pk">${tools.length ? tools.map(([n, v]) => `<div class="u-pkr is-done"><span class="u-pkn">${esc(n)}</span><span class="u-ver"><b>${esc(v || '')}</b></span><span class="chip ok">${t('Up to date')}</span></div>`).join('') : `<span class="faint">${t('Nothing else installed.')}</span>`}</div></div>
+      <div class="u-dsub"><h5>${t('Up to date')}</h5><div class="u-pk">${tools.length ? tools.map(([n, v]) => `<div class="u-pkr is-done"><span class="u-pkn">${esc(dn(n))}</span><span class="u-ver"><b>${esc(cv(v))}</b></span><span class="chip ok">${t('Up to date')}</span></div>`).join('') : `<span class="faint">${t('Nothing else installed.')}</span>`}</div></div>
     </div></div>`;
   SH.assemble(el, 0, 60);
 }
@@ -793,7 +824,7 @@ function renderSchedule(el) {
     </div>
     <div class="u-scol2"><div class="pan u-next" data-asm><h4>${t('Next automatic update')}</h4><div class="u-nexttxt"></div><div class="u-week"></div>
       <p class="faint u-nfoot">${t('If the PC is off at that time, it runs the next time you turn it on within the window.')}</p></div>
-      <div class="pan u-fp" data-asm><h4>${t('Latest')} <em>${t('automatic runs')}</em></h4><div class="u-scroll"><div class="rows">${auto.length ? auto.map(a => `<div class="row"><span class="ri ok">${ic('check')}</span><div class="rt"><b>${esc(a.t)}</b><span>${esc(a.sub || '')}</span></div></div>`).join('') : `<div class="faint u-none">${t("None yet. They'll show up here when Autopilot runs them.")}</div>`}</div></div></div></div>
+      <div class="pan u-fp" data-asm><h4>${t('Latest')} <em>${t('automatic runs')}</em></h4><div class="u-scroll"><div class="rows">${auto.length ? auto.map(a => { const x = SH.activityText ? SH.activityText(a) : a; return `<div class="row"><span class="ri ok">${ic('check')}</span><div class="rt"><b>${esc(x.t)}</b><span>${esc(x.sub || '')}</span></div></div>`; }).join('') : `<div class="faint u-none">${t("None yet. They'll show up here when Autopilot runs them.")}</div>`}</div></div></div></div>
   </div>`;
   renderExcl(el); applyMaster(el, false); renderNext(el, false); bandSpring.from.set(s.from); bandSpring.to.set(s.to); bandDirty = true;
   requestAnimationFrame(() => $$('.seg', el).forEach(x => SH.placeSeg(x, true)));
@@ -889,14 +920,14 @@ function bindCommon(el) {
     const nt = e.target.closest('[data-notes]'); if (nt) { toggleNotes(nt.dataset.notes, el); return; }
     const mn = e.target.closest('[data-menu]'); if (mn) { if (menuEl && menuEl.dataset.id === mn.dataset.menu) closeMenu(); else openMenu(mn, mn.dataset.menu); return; }
     const gt = e.target.closest('[data-gotab]'); if (gt) { ctxRef.setTab(gt.dataset.gotab); return; }
-    const un = e.target.closest('[data-unhide]'); if (un) { collapseRow(un.closest('.u-row')); unhide(un.dataset.unhide); return; }
+    const un = e.target.closest('[data-unhide]'); if (un) { const row = un.closest('.u-row'); await unhide(un.dataset.unhide); if (row && row.isConnected) collapseRow(row); return; }
     const url = e.target.closest('[data-url]'); if (url) { const r = await SH.call('open_url', url.dataset.url); if (r === undefined) SH.toast(t("The publisher's website would open here.")); return; }
     const rs = e.target.closest('[data-rescan]'); if (rs) { const k = rs.dataset.rescan; if (k === 'apps') scanApps(true); else if (k === 'win') scanWindows(true); else scanDev(true); return; }
     const pw = e.target.closest('.u-pw button'); if (pw && !pw.classList.contains('on')) { $$('.u-pw button', el).forEach(x => x.classList.toggle('on', x === pw)); SH.placeSeg($('.u-pw', el)); pauseWeeks = +pw.dataset.w;
       const b = $('[data-pause]', el); b.innerHTML = `${ic('pause')}${pauseLabel()}`; return; }
     if (e.target.closest('[data-pause]')) { if (await doPause(pauseWeeks, el)) SH.toast(t('Windows updates paused.'), { action: { label: t('Undo'), run: () => doPause(0, el) } }); return; }
     if (e.target.closest('[data-resume]')) { if (await doPause(0, el)) SH.toast(t('Updates resumed.')); return; }
-    const wc = e.target.closest('[data-wcheck]'); if (wc) { anim($('svg', wc), [{ transform: 'rotate(0)' }, { transform: 'rotate(360deg)' }], { d: 900, e: EASE.io }); scanWindows(true).then(() => SH.toast(S.items.some(i => i.kind === 'wu' || i.id === 'kb-cu') ? t('There are pending Windows updates.') : t('Windows is up to date.'))); }
+    const wc = e.target.closest('[data-wcheck]'); if (wc) { if (wc.disabled || S.winScanning) return; scanWindows(true).then(() => SH.toast(S.errs.win ? ERR_MSG.win(S.errs.win) : S.items.some(i => i.kind === 'wu' || i.id === 'kb-cu') ? t('There are pending Windows updates.') : t('Windows is up to date.'))); }
   });
 }
 SH.module({
@@ -905,10 +936,25 @@ SH.module({
     ctxRef = ctx;
     el.innerHTML = `<button class="btn sec" data-check>${ic('refresh')}${t('Check for updates')}</button><button class="btn pri" data-allh>${ic('download')}${t('Update all')}</button>`;
     el.addEventListener('click', async e => {
-      if (e.target.closest('[data-allh]')) { await ensureScan(); updateAll(); return; }
-      const c = e.target.closest('[data-check]'); if (c) { const svg = $('svg', c); const a = anim(svg, [{ transform: 'rotate(0)' }, { transform: 'rotate(360deg)' }], { d: 900, e: EASE.io }); c.disabled = true;
-        await Promise.all([scanApps(true), scanWindows(true)]); c.disabled = false;
-        SH.toast(t('{n} pending updates.', { n: pending().filter(i => !i.optional).length }), { group: 'upd-check' }); }
+      const all = e.target.closest('[data-allh]');
+      if (all) {
+        if (all.disabled) return;
+        if (!S.scanned || S.appsScanning) {        // the first search is still running: wait for it, visibly
+          const html = all.innerHTML; all.disabled = true; all.innerHTML = `<span class="u-spin"></span>${t('Looking for updates…')}`;
+          try { await ensureScan(); } finally { all.disabled = false; all.innerHTML = html; }
+        }
+        if (S.noWinget || S.errs.apps) { SH.toast(S.noWinget ? t("winget isn't available on this PC.") : ERR_MSG.apps(S.errs.apps)); return; }
+        updateAll(); return;
+      }
+      const c = e.target.closest('[data-check]');
+      if (c) {
+        if (c.disabled) return;
+        const html = c.innerHTML; c.disabled = true; c.classList.add('u-busy'); c.innerHTML = `${ic('refresh')}${t('Checking…')}`;
+        try { await Promise.all([scanApps(true), scanWindows(true)]); } finally { c.disabled = false; c.classList.remove('u-busy'); c.innerHTML = html; }
+        if (S.noWinget) SH.toast(t("winget isn't available on this PC."), { group: 'upd-check' });
+        else if (S.errs.apps) SH.toast(ERR_MSG.apps(S.errs.apps), { group: 'upd-check' });
+        else SH.toast(t('{n} pending updates.', { n: pending().filter(i => !i.optional).length }), { group: 'upd-check' });
+      }
     });
   },
   renderTab(tab, el) {

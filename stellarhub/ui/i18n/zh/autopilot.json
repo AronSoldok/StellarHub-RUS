@@ -715,5 +715,19 @@
   "“{name}” was cancelled.": "“{name}”已取消。",
   "“{name}” was skipped.": "“{name}”已跳过。",
   "“{name}”: Spotify couldn’t be updated because it was open.": "“{name}”：Spotify 正在运行，无法更新。",
-  "“{path}” doesn’t exist": "“{path}”不存在"
+  "“{path}” doesn’t exist": "“{path}”不存在",
+  "Running for {time}": "已运行 {time}",
+  "Starting…": "正在开始…",
+  "Running. This can take several minutes.": "正在运行，可能需要几分钟。",
+  "Elapsed {time}": "已用时 {time}",
+  "{drive} (not found on this PC)": "{drive}（此电脑上未找到）",
+  "This drive isn't connected now. Choose another one, or connect it again.": "此驱动器当前未连接。请选择其他驱动器，或重新连接它。",
+  "skipped: this action wasn’t approved in administrator mode. Open StellarHub and save this routine again to allow it": "已跳过：此操作未在管理员模式下获得批准。请打开 StellarHub 并重新保存此例程以允许它",
+  "would be skipped: not approved in administrator mode. Save the routine again to allow it": "将被跳过：未在管理员模式下获得批准。请重新保存此例程以允许它",
+  "the downloads folder ({path}) isn’t a safe place to clean, so nothing was touched": "下载文件夹（{path}）不是可以安全清理的位置，因此未做任何改动",
+  "{n} old downloads sent to the Recycle Bin, {k} left alone (they can’t go to the Recycle Bin)": "{n} 个旧下载已移到回收站，{k} 个保持原样（无法放入回收站）",
+  "Full network reset (no longer runs on its own)": "完全重置网络（不再自动运行）",
+  "flush the DNS cache (a full network reset is never run by a routine)": "清除 DNS 缓存（例程永远不会完全重置网络）",
+  "A full network reset is never run by a routine. Run it from Super Optimizer.": "例程永远不会完全重置网络。请在“超级优化”中手动运行。",
+  "The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.": "DNS 缓存已清除，但例程永远不会完全重置网络。请在“超级优化”中手动运行。"
 }

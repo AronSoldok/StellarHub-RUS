@@ -134,3 +134,18 @@ class ProgramClassification(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OtherDrives(unittest.TestCase):
+    """Shared folders on every drive are as protected as on C: (an installer may record "D:\Program Files")."""
+
+    def test_shared_folders_on_every_drive(self):
+        from unittest import mock
+        from stellarhub.engine.removal import safety as sf
+        from stellarhub.engine.removal.paths import norm_path
+        with mock.patch.object(sf, "_drives", lambda: ["C:\\", "D:\\", "E:\\"]):
+            pe, ft = sf.protected_exact(), sf.forbidden_trees()
+        for p in (r"D:\Program Files", r"E:\Games", r"E:\SteamLibrary", r"D:\Program Files (x86)"):
+            self.assertIn(norm_path(p), pe, p)
+        for p in (r"D:\$Recycle.Bin", r"E:\System Volume Information", r"D:\WindowsApps"):
+            self.assertIn(norm_path(p), ft, p)

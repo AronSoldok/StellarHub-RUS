@@ -10,7 +10,8 @@ const upt = s => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60)
 const t = SH.t;
 const CFG = {
   cpu: { big: () => [f('cpu'), t('% usage')], chart: { key: 'cpu', max: 100, label: t('Usage over the last minute') },
-    stats: () => [[t('Frequency'), f('cpuFreq', fmt1, ' GHz')], [t('Temperature'), T.has('cpuTemp') ? f('cpuTemp', undefined, ' °C') : (state.admin ? t('not available') : t('admin mode only'))],
+    stats: () => [[t('Frequency'), f('cpuFreq', fmt1, ' GHz')], [t('Temperature'), T.has('cpuTemp') ? f('cpuTemp', undefined, ' °C') : t('not reported'),
+      T.has('cpuTemp') ? (T.v.cpuTempSrc && T.v.cpuTempSrc !== 'acpi' ? t('from {app}', { app: T.v.cpuTempSrc }) : '') : t('Windows does not report the processor temperature on this PC. Open LibreHardwareMonitor, HWiNFO (with shared memory on) or Core Temp and StellarHub will read it from there.')],
       [t('Processes'), f('procs', fmtInt)], [t('Busy threads'), t('{n} of {total}', { n: (v().threads || []).filter(x => x > .5).length, total: (v().threads || []).length })]],
     actions: [[t('View in Live Monitor'), 'monitor', 'cpu', 'monitor'], [t('What is using it'), 'monitor', 'processes', 'list']] },
   gpu: { big: () => [f('gpu'), t('% usage')], chart: { key: 'gpu', max: 100, label: t('Usage over the last minute') },
@@ -80,7 +81,7 @@ async function html(id) {
   const rows = c.rows || [];
   const left = k.wide ? await displaysHTML() : `
         <div class="cs-big"><b id="csBig">${bv}</b><span>${esc(bl)}</span></div>
-        ${k.stats ? `<div class="cs-stats">${k.stats().map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join('')}</div>` : ''}
+        ${k.stats ? `<div class="cs-stats">${k.stats().map(([a, b, hint]) => `<div><span>${a}</span><b${hint ? ` title="${esc(hint)}"` : ''}>${b}</b></div>`).join('')}</div>` : ''}
         ${k.chart ? `<div class="cs-chart"><span>${k.chart.label}</span><canvas></canvas></div>` : ''}
         ${k.meter ? `<div class="cs-meter"><div><span>${k.meter().label}</span><b>${T.has('batteryHealth') ? Math.round(k.meter().v * 100) + ' %' : dash}</b></div><div class="bar ok"><span style="transform:scaleX(0)"></span></div></div>` : ''}
         ${k.list ? `<div class="cs-list">${k.list().map(([i, a, b]) => `<div><span class="ri">${ic(i)}</span><span><b>${esc(a)}</b>${b ? `<small>${esc(b)}</small>` : ''}</span></div>`).join('')}</div>` : ''}`;
@@ -98,7 +99,7 @@ function update() {
   if (k.title) { const tt = k.title(), h = $('#csTitle'); if (tt && h && h.textContent !== tt) h.textContent = tt; }
   if (k.liveRows) { const dds = $$('.cs-r dl dd', sheet), dts = $$('.cs-r dl dt', sheet);
     k.liveRows().forEach(([lab, val]) => { const i = dts.findIndex(d => d.dataset.k === lab); if (i >= 0 && dds[i].textContent !== val) dds[i].textContent = val; }); }
-  if (k.stats) { const st = k.stats(); $$('.cs-stats b', sheet).forEach((b, i) => { const s = st[i]; if (s && b.textContent !== s[1]) b.textContent = s[1]; }); }
+  if (k.stats) { const st = k.stats(); $$('.cs-stats b', sheet).forEach((b, i) => { const s = st[i]; if (s && b.textContent !== s[1]) b.textContent = s[1]; if (s && (s[2] || '') !== b.title) b.title = s[2] || ''; }); }
   lastTick = performance.now();
 }
 SH.tele.on(update);

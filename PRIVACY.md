@@ -4,7 +4,10 @@ StellarHub runs on your PC and works with your PC's own data. It has **no accoun
 ads**, and it never sends anything about you, your PC or what you do in it to its author or to anyone else.
 
 Everything it knows (settings, logs, scan results, benchmark history, Autopilot routines) stays in
-`%APPDATA%\StellarHub` and `%LOCALAPPDATA%\StellarHub` on your PC. Uninstalling asks whether to remove it too.
+`%APPDATA%\StellarHub` and `%LOCALAPPDATA%\StellarHub` on your PC. Backups of changes that affect the whole PC
+(services, system registry keys, the uninstaller's quarantine) are kept in `%ProgramData%\StellarHub`; backups of
+your own settings stay in your user folder, where other accounts on the PC can't read them. Uninstalling asks
+whether to remove all of it too.
 
 ## When StellarHub goes online
 
@@ -14,7 +17,8 @@ internet, the server sees your IP address.
 | When | Where | What for | How to turn it off |
 |---|---|---|---|
 | When it opens, and every few hours while it runs | `api.github.com` (this repository's releases) | To see if there is a newer StellarHub. It asks GitHub for the latest release; nothing about you is sent. | *Settings > Updates > Check for updates automatically*, or the "Keep StellarHub up to date" option in the installer |
-| Only when you click "Update now" | `github.com` (this repository's releases) | Downloads the new installer and its SHA-256 | Don't click it |
+| When a version with new features is out (and *Install new features automatically* is on), or when you click "Update now" | `github.com` (this repository's releases) | Downloads the new installer (or the portable .zip) and its SHA-256 | *Settings > Updates* (turn off both options) |
+| Every 2 seconds while StellarHub's window or widget is showing (not while it is only in the tray) | `1.1.1.1` (Cloudflare), port 443 | Measures your connection's latency for the live stats: it opens a connection and closes it right away. Nothing is sent. | *Settings > General > Measure the connection latency* |
 | When you open App Hangar | `api.winstall.app`, `raw.githubusercontent.com` (UniGetUI's icon list), `github.com` and `www.google.com/s2/favicons` | Icons of the apps in the catalog. Only app names and IDs are in these requests. | Don't open App Hangar |
 | When you install apps with App Hangar or update them with Program Updater | `winget` (Microsoft's Windows Package Manager) and the app's own download servers | Downloading and installing what you chose | Don't start an install |
 | When you search for or install drivers, or check Windows Update | Windows Update (Microsoft) | Done by Windows itself, as when you use Settings | Don't start a search |

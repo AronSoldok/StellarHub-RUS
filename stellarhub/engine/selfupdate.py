@@ -38,7 +38,7 @@ import urllib.request
 from .. import VERSION
 from ..i18n import tr
 
-EXPORTS = {"check", "mode", "start", "state", "cancel", "after_update", "finish"}
+EXPORTS = {"check", "mode", "start", "state", "cancel", "after_update", "finish", "prefetch", "staged"}
 
 REPO = "estebanarosemena/StellarHub"
 API = f"https://api.github.com/repos/{REPO}/releases/latest"
@@ -70,6 +70,13 @@ def state_path():
     return os.path.join(update_dir(), "state.json")
 
 
+def _prefetch_flag():
+    """Present while an update is being downloaded in the background to be installed at the next start. Like the
+    cancel flag, the only thing the updater reads from the user's side, and all it can do is stop earlier."""
+    from .. import paths
+    return os.path.join(paths.local_dir(), "update.prefetch")
+
+
 def _cancel_flag():
     from .. import paths
     return os.path.join(paths.local_dir(), "update.cancel")
@@ -86,9 +93,43 @@ def _under(path, root):
     return path == root or path.startswith(root.rstrip("\\/") + os.sep)
 
 
+APP_ID = "{0F1795D8-7D52-45CC-8518-7A1E4E76E43E}_is1"  # the installer's AppId (packaging/StellarHub.iss)
+
+
+def _registered_scope():
+    """'machine' or 'user' if the installer registered this very folder (HKLM or HKCU uninstall entry), else None."""
+    import winreg
+    here = os.path.normcase(os.path.abspath(install_dir())).rstrip("\\")
+    for hive, scope in ((winreg.HKEY_LOCAL_MACHINE, "machine"), (winreg.HKEY_CURRENT_USER, "user")):
+        try:
+            with winreg.OpenKey(hive, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + APP_ID) as k:
+                loc = winreg.QueryValueEx(k, "InstallLocation")[0]
+            if os.path.normcase(os.path.abspath(loc)).rstrip("\\") == here:
+                return scope
+        except OSError:
+            continue
+    return None
+
+
 def per_machine():
-    """Installed for everyone (Program Files) rather than for one user."""
+    """Installed for everyone rather than for one user: as the installer registered it (a custom folder like
+    D:\\Apps\\StellarHub too), else by whether it lives in Program Files."""
+    scope = _registered_scope()
+    if scope:
+        return scope == "machine"
     return any(_under(install_dir(), os.environ.get(k)) for k in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"))
+
+
+def _writable(d):
+    """Can this process write in folder d? (C:\\StellarHub, for instance, is not writable without rights.)"""
+    probe = os.path.join(d, f".stellarhub-write-test-{os.getpid()}")
+    try:
+        with open(probe, "w") as fh:
+            fh.write("1")
+        os.remove(probe)
+        return True
+    except OSError:
+        return False
 
 
 def _admin():
@@ -167,7 +208,7 @@ def mode():
         return "source"
     if _portable():
         return "portable"  # replaces its own files where it is (a USB drive): no installer, no rights needed
-    if not per_machine() or _admin():
+    if _admin() or (not per_machine() and _writable(install_dir())):
         return "direct"
     return "task" if _task_exists() else "uac"
 
@@ -261,8 +302,11 @@ def finish(to, route=None):
     new = _new_copy() if _portable() else None
     if new:
         # the new copy waits for this one to close, copies itself over it and opens it
-        subprocess.Popen([os.path.join(new, "StellarHub.exe"), "--finish-update", install_dir(), str(os.getpid())],
-                         cwd=new, close_fds=True, creationflags=NEW_GROUP)
+        cmd = [os.path.join(new, "StellarHub.exe"), "--finish-update", install_dir(), str(os.getpid())]
+        try:
+            subprocess.Popen(cmd, cwd=new, close_fds=True, creationflags=NEW_GROUP | BREAKAWAY)
+        except OSError:
+            subprocess.Popen(cmd, cwd=new, close_fds=True, creationflags=NEW_GROUP)
         return True
     spawn_reopener()
     return True
@@ -318,7 +362,7 @@ def _task_exists():
     if r.returncode != 0:
         return False
     raw = r.stdout
-    xml = raw.decode("utf-16", "replace") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("mbcs", "replace")
+    xml = raw.decode("utf-16", "replace") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("oem", "replace")
     m = re.search(r"<Command>(.*?)</Command>", xml, re.S)
     return bool(m) and os.path.normcase(m.group(1).replace("&quot;", "").strip().strip('"')) == os.path.normcase(sys.executable)
 
@@ -327,7 +371,7 @@ def ensure_task():
     """--update-task on (the installer, as administrator): a task that runs this StellarHub.exe --self-update with
     administrator rights for the user who installs, started on demand only (never on a schedule)."""
     r = subprocess.run(["schtasks", "/create", "/tn", TASK, "/tr", f'"{sys.executable}" --self-update', "/sc", "once",
-                        "/st", "00:00", "/sd", "01/01/2000", "/rl", "highest", "/it", "/f"],
+                        "/st", "00:00", "/rl", "highest", "/it", "/f"],
                        capture_output=True, creationflags=NO_WINDOW)
     return r.returncode == 0
 
@@ -343,7 +387,14 @@ def _write_state(**kw):
     tmp = state_path() + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(kw, fh)
-    os.replace(tmp, state_path())
+    for i in range(20):
+        try:
+            os.replace(tmp, state_path())
+            return
+        except PermissionError:
+            if i == 19:
+                raise
+            time.sleep(.05)
 
 
 def _cancelled():
@@ -397,16 +448,17 @@ def _download(url, dest, size, on_progress):
 def run_updater():
     """--self-update. Exit code 0 when it handed over to the installer (or there was nothing to do)."""
     d = update_dir()
+    prefetch = os.path.exists(_prefetch_flag())
+    _rm(_prefetch_flag())
     try:
         os.makedirs(d, exist_ok=True)
-        for f in os.listdir(d):  # what an earlier update left behind
-            if f.lower().endswith((".exe", ".part", ".log", ".zip")):
-                try:
-                    os.remove(os.path.join(d, f))
-                except OSError:
-                    pass
     except OSError:
         return 3
+    global _LOCK
+    if _LOCK is None:  # (already held when this process runs the updater again: the tests do)
+        _LOCK = _one_updater(d)
+    if _LOCK is None:
+        return 0  # another updater kept going for too long, or the user cancelled while waiting
     if not FROZEN:
         _write_state(st="failed", why="source")
         return 2
@@ -420,22 +472,33 @@ def run_updater():
             _write_state(st="uptodate", ver=VERSION)
             return 0
         ver, setup = info["ver"], info["setup"]
-        part = os.path.join(d, setup["name"] + ".part")
-        _write_state(st="download", ver=ver, got=0, total=setup["size"])
-        digest = _download(setup["url"], part, setup["size"],
-                           lambda got, total: _write_state(st="download", ver=ver, got=got, total=total))
-        if digest is None:
-            _write_state(st="cancelled", ver=ver)
-            _rm(part)
-            return 0
-        _write_state(st="verify", ver=ver)
+        exe = os.path.join(d, setup["name"])
+        for f in os.listdir(d):  # what an earlier update left behind (but not this version's file, if downloaded)
+            if f.lower().endswith((".exe", ".part", ".log", ".zip")) and f != setup["name"]:
+                _rm(os.path.join(d, f))
         want = re.search(r"\b([0-9a-fA-F]{64})\b", _get(info["sha_url"], 4096).decode("utf-8", "replace"))
-        if not want or want.group(1).lower() != digest.lower():
-            _rm(part)
+        if not want:
             _write_state(st="failed", ver=ver, why="hash")
             return 4
-        exe = os.path.join(d, setup["name"])
-        os.replace(part, exe)
+        if not (os.path.isfile(exe) and _sha256(exe) == want.group(1).lower()):
+            _rm(exe)
+            part = exe + ".part"
+            _write_state(st="download", ver=ver, got=0, total=setup["size"])
+            digest = _download(setup["url"], part, setup["size"],
+                               lambda got, total: _write_state(st="download", ver=ver, got=got, total=total))
+            if digest is None:
+                _write_state(st="cancelled", ver=ver)
+                _rm(part)
+                return 0
+            _write_state(st="verify", ver=ver)
+            if digest.lower() != want.group(1).lower():
+                _rm(part)
+                _write_state(st="failed", ver=ver, why="hash")
+                return 4
+            os.replace(part, exe)
+        if prefetch:  # downloaded and checked: it is installed the next time StellarHub opens (app.py)
+            _write_state(st="staged", ver=ver)
+            return 0
         portable = _portable()
         if portable:
             try:
@@ -456,13 +519,99 @@ def run_updater():
         _write_state(st="installing", ver=ver)
         args = [exe, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCANCEL",
                 "/LOG=" + os.path.join(d, "setup.log"), "/SELFUPDATE=" + state_path()]
-        if not per_machine():
-            args.append("/CURRENTUSER")
+        args.append("/ALLUSERS" if per_machine() else "/CURRENTUSER")
+        args.append("/DIR=" + install_dir())
         subprocess.Popen(args, creationflags=DETACHED, close_fds=True, cwd=d)
         return 0  # and exit right away: the installer replaces this very program
     except Exception as e:
         _write_state(st="failed", why="error", error=str(e)[:200])
         return 5
+
+
+_LOCK = None
+
+
+def _one_updater(d, wait=900):
+    """Only one updater works at a time (two would write the same file): waits for the other one to end, then the
+    file it downloaded is simply reused. The lock goes away with the process."""
+    import msvcrt
+    try:
+        fh = open(os.path.join(d, "updater.lock"), "a+b")
+    except OSError:
+        return True
+    end = time.monotonic() + wait
+    while True:
+        try:
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            return fh
+        except OSError:
+            if time.monotonic() > end or _cancelled():
+                fh.close()
+                return None
+            time.sleep(.5)
+
+
+def _sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def prefetch():
+    """Downloads a new version in the background, to be installed the next time StellarHub opens (new features:
+    x.Y.0). Only where no Windows prompt is needed: a copy that can update itself, or through the update task."""
+    m = mode()
+    if m not in ("direct", "portable", "task"):
+        return {"ok": False, "mode": m}
+    try:
+        os.makedirs(os.path.dirname(_prefetch_flag()), exist_ok=True)
+        open(_prefetch_flag(), "w").close()
+    except OSError:
+        return {"ok": False, "mode": m}
+    r = start()
+    if not r.get("ok") or r.get("mode") == "uac":
+        _rm(_prefetch_flag())
+        return {"ok": False, "mode": r.get("mode")}
+    return r
+
+
+def staged():
+    """The version downloaded and waiting for the next start, or None."""
+    st = state()
+    if st.get("st") != "staged" or not newer(st.get("ver"), VERSION):
+        return None
+    return st.get("ver")
+
+
+def apply_staged_at_start(say=None, timeout=120):
+    """At start, before the window: installs the staged version. Starts the updater (which checks the file against
+    GitHub again and reuses it), waits for "ready", hands over (finish) and returns True: the app must then exit
+    right away and comes back updated. False if anything is off; the app then simply starts as usual."""
+    ver = staged()
+    if not ver:
+        return False
+    if say:
+        say(tr("Updating to {v}…", v=ver))
+    r = start()
+    if not r.get("ok") or r.get("mode") == "uac":
+        return False
+    at, end = r.get("at") or time.time(), time.monotonic() + timeout
+    while time.monotonic() < end:
+        st = state()
+        if (st.get("ts") or 0) >= at - 1:
+            if say and st.get("st") == "download" and st.get("total"):
+                say(tr("Updating to {v}… {p}%", v=ver, p=int(100 * (st.get("got") or 0) / st["total"])))
+            if st.get("st") == "ready":
+                finish(st.get("ver") or ver, "home")
+                return True
+            if st.get("st") in ("failed", "uptodate", "cancelled"):
+                return False
+        time.sleep(.3)
+    cancel()
+    return False
 
 
 def unpack_portable(zip_path, dest):

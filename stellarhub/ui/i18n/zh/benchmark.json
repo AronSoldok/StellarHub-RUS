@@ -263,5 +263,6 @@
  "History": "历史记录",
  "benchmark|Copy": "复制",
  "benchmark|Both": "两者",
- "Benchmark Testing": "性能测试"
+ "Benchmark Testing": "性能测试",
+ "This is your only result so far. Run the test again to see how it changes over time.": "目前只有这一条结果。再测一次，就能看到它随时间的变化。"
 }
