@@ -121,12 +121,35 @@ def norm_path(p):
     return _norm_path(p if isinstance(p, str) else str(p))
 
 
+def _long_name(p):
+    """C:\\Users\\JOHNSM~1\\... -> C:\\Users\\John Smith\\... (Windows' 8.3 short names, which %TEMP% often uses for
+    long or spaced user names). Expands the longest part that exists; the rest is kept as it is."""
+    try:
+        import ctypes
+        get = ctypes.windll.kernel32.GetLongPathNameW
+    except (AttributeError, OSError):
+        return p
+    head, tail = p, ""
+    while head and "~" in head:
+        buf = ctypes.create_unicode_buffer(1024)
+        if 0 < get(head, buf, 1024) <= 1024:
+            return buf.value + tail
+        parent, name = os.path.split(head)
+        if not name or parent == head:
+            break
+        head, tail = parent, "\\" + name + tail
+    return p
+
+
 @lru_cache(maxsize=1 << 17)
 def _norm_path(p):
     p = os.path.expandvars(p.strip().strip('"'))
     if p.startswith("\\??\\"):
         p = p[4:]
-    p = os.path.normcase(os.path.normpath(p))
+    p = os.path.normpath(p)
+    if "~" in p and len(p) > 2 and p[1] == ":":
+        p = _long_name(p)
+    p = os.path.normcase(p)
     return p.rstrip("\\") if len(p) > 3 else p
 
 
