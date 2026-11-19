@@ -1,2 +1,2 @@
 """StellarHub: the control center for your PC."""
-VERSION = "1.1.0"
+VERSION = "1.1.1"

@@ -50,6 +50,8 @@ Step "assets" $py @("packaging\make_assets.py")
 # 4. StellarHub.exe (one folder, no UPX: see the notes in StellarHub.spec)
 Step "pyinstaller" $py @("-m", "PyInstaller", "packaging\StellarHub.spec", "--noconfirm", "--clean", "--log-level", "WARN",
                          "--distpath", "build\dist", "--workpath", "build\work")
+# next to StellarHub.exe: lets .NET load pythonnet from a portable copy extracted by Explorer (see the file)
+Copy-Item "packaging\StellarHub.exe.config" "build\dist\StellarHub\StellarHub.exe.config" -Force
 
 # 5. the installer (it downloads the WebView2 bootstrapper from Microsoft itself, only on PCs that lack WebView2)
 $iscc = @($env:STELLARHUB_ISCC, "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe", "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
