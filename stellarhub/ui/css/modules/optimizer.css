@@ -35,6 +35,9 @@ html[data-int=min] #v-optimizer .ring.scanning~.ring-sw{animation:none;opacity:.
 #v-optimizer #optRight>.rows>.ov-row{flex:1 1 auto;max-height:88px;align-items:center}
 #v-optimizer .ov-row{display:grid;grid-template-columns:34px minmax(220px,1.2fr) minmax(80px,1fr) 96px auto;gap:var(--sp-md);padding:13px 12px}
 #v-optimizer .ov-row.pending{opacity:.55}
+#v-optimizer .ov-row.pending.live{opacity:.9}
+#v-optimizer .ov-live{display:block;font-size:var(--fs-sm);margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#v-optimizer .ov-row.pending .ov-bar i{transition:transform .25s ease-out}
 #v-optimizer .ov-bar{height:5px;border-radius:var(--r-xs);background:var(--raise2);overflow:hidden}
 #v-optimizer .ov-bar i{display:block;height:100%;border-radius:var(--r-xs);background:var(--mute);transform-origin:0 50%}
 #v-optimizer .ov-bar.ok i{background:var(--ok)} #v-optimizer .ov-bar.warn i{background:var(--warn)} #v-optimizer .ov-bar.bad i{background:var(--accent)}

@@ -215,7 +215,16 @@ const loadMsg = {};
 /* loadWatch[area] = fn(m): someone else (a phase of a run) also follows that area's reading progress */
 const loadWatch = {};
 const onLoadMsg = area => m => { if (m && loadWatch[area]) { try { loadWatch[area](m); } catch (e) { console.error(e); } }
-  if (m && m.text) { loadMsg[area] = m.text; $$(`.opt-load[data-area~="${area}"] .opt-lm`).forEach(e => { e.textContent = m.text; }); } };
+  if (m && m.text) { loadMsg[area] = m.text; $$(`.opt-load[data-area~="${area}"] .opt-lm`).forEach(e => { e.textContent = m.text; }); }
+  if (m && (m.text || m.pct != null)) ovLive(area, m); };
+/* the Overview's row of an area still being read follows the engine live: what it is doing and how far along it is */
+function ovLive(area, m) {
+  $$(`.ov-row.pending[data-area="${area}"]`).forEach(row => {
+    const rt = $('.rt', row); if (!rt) return;
+    let l = $('.ov-live', rt);
+    if (!l) { const sk = $('.sk', rt); l = document.createElement('span'); l.className = 'ov-live muted'; if (sk) sk.replaceWith(l); else rt.appendChild(l); row.classList.add('live'); }
+    if (m.text && l.textContent !== m.text) l.textContent = m.text;
+    const bar = $('.ov-bar i', row); if (bar && m.pct != null && m.kind !== 'end') bar.style.transform = `scaleX(${Math.max(.03, Math.min(1, m.pct))})`; }); }
 const AREA = {
   clean: { fetch: () => engJob('clean_scan', [cleanOpts()], { onProgress: onLoadMsg('clean') }),
     put(r) { DB.clean = r.map(c => ({ ...c })); DB.clean.forEach(c => { applySkips(c); c.sel = c.def && !c.busy && c.size > 0 && (!c.admin || state.admin); }); publishJunk(); } },

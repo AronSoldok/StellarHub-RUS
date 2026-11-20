@@ -112,7 +112,33 @@ def clean_scan(job, opts=None):
     days, exclude = _clean_opts(opts)
     cats = cleaner.categories()
     out = []
-    job.progress(0, tr("Checking which folders running programs are using…"))
+    job.progress(0, tr("Checking which folders running programs are using…"), force=True)
+    # live progress: the query "which program uses what" (weight W_IU), the first-level folders of the temp
+    # categories, and one unit per finished category, so the bar always moves and the text says what is happening
+    W_IU, n_cats = 3.0, max(1, len(cats))
+    total_w = W_IU + n_cats + 6.0 * sum(1 for c in cats.values() if c.get("temp"))   # temp categories also read their folders
+    st = {"iu": 0.0, "iu_txt": "", "walk": {}, "walk_txt": "", "pct": 0.0}
+    lock = threading.RLock()
+
+    def report(force=False):
+        with lock:
+            frac = (W_IU * st["iu"] + len(out) + 6.0 * sum(st["walk"].values())) / total_w
+            st["pct"] = 1.0 if len(out) >= n_cats else max(st["pct"], min(.99, frac))
+            txt = st["walk_txt"] if any(v < 1 for v in st["walk"].values()) else st["iu_txt"] or st["walk_txt"]
+            job.progress(st["pct"], txt or tr("Checking which folders running programs are using…"), force=force,
+                         done=len(out), total=n_cats)
+
+    def on_inuse(i, n):
+        with lock:
+            st["iu"] = i / max(1, n)
+            st["iu_txt"] = tr("Checking which programs have files open… {i} of {n}", i=f"{i:,}", n=f"{n:,}")
+            report()
+
+    def on_tick(cid, i, n):
+        with lock:
+            st["walk"][cid] = .9 * i / max(1, n)       # the last tenth is the wait for the programs query
+            st["walk_txt"] = tr("Reading {name}… {i} of {n} folders", name=tr(cats[cid]["label"]).lower(), i=f"{i:,}", n=f"{n:,}")
+            report()
 
     def on_item(it):
         c = cats[it["id"]]
@@ -127,10 +153,16 @@ def clean_scan(job, opts=None):
         if "rows" in it:
             row["rows"] = [{**r, "short": _short(r["path"], 70)} for r in it["rows"]]
             row["keptSize"], row["keptCount"] = it.get("keptSize", 0), it.get("keptCount", 0)
-        out.append(row)
-        job.progress(len(out) / len(cats), it["label"], done=len(out))
+        with lock:
+            out.append(row)
+            if it["id"] in st["walk"]:
+                st["walk"][it["id"]] = 1.0
+            st["walk_txt"] = ""
+            if st["iu"] >= 1 or not st["iu_txt"]:
+                st["iu_txt"] = tr("Measured {done} of {total} categories", done=len(out), total=n_cats)
+            report(force=len(out) == n_cats)
 
-    cleaner.scan(on_item=on_item, days=days, exclude=exclude)
+    cleaner.scan(on_item=on_item, days=days, exclude=exclude, on_inuse=on_inuse, on_tick=on_tick)
     order = list(cats)
     out.sort(key=lambda x: order.index(x["id"]))
     return out

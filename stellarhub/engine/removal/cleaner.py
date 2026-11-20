@@ -32,6 +32,8 @@ GRACE_CHOICES = (1, 7, 30)
 WALK_WORKERS = 4           # threads per category when walking folders
 CAT_WORKERS = 3            # categories measured at the same time
 DELETE_WORKERS = 6         # threads when deleting
+IN_USE_HELPERS = 8       # helper processes asking the programs for their open files
+IN_USE_FAST_BUDGET = 3.0   # the same with helper processes: covers more programs (~880 paths vs ~520) in half the time
 IN_USE_BUDGET = 6.0        # seconds spent at most asking processes for their open files
 LOOSE = "(files directly in this folder)"   # English key; the row shows tr(LOOSE)
 LOOSE_TOKEN = "loose:"      # exclude entry "loose:<temp folder>" skips the loose files of that folder only
@@ -267,9 +269,10 @@ def _remove_empty_dirs(root, remove_root=False):
 _PATH_RE = re.compile(r"[A-Za-z]:\\[^\"'<>|*?\r\n]*")
 
 
-def in_use_paths(budget=IN_USE_BUDGET):
+def in_use_paths(budget=IN_USE_BUDGET, on_step=None):
     """{normalized path: process name} for everything running processes are using: their working folder, their
-    executable, every absolute path in their command line and (time-boxed, best effort) their open files."""
+    executable, every absolute path in their command line and (time-boxed, best effort) their open files.
+    on_step(done, total) is called after each process so a screen can show real progress."""
     try:
         import psutil
     except ImportError:
@@ -277,7 +280,13 @@ def in_use_paths(budget=IN_USE_BUDGET):
     out = {}
     t0 = time.monotonic()
     me = os.getpid()
-    for p in psutil.process_iter(["name", "exe", "cwd", "cmdline"]):
+    procs = list(psutil.process_iter(["name", "exe", "cwd", "cmdline"]))
+    for i, p in enumerate(procs, 1):
+        if on_step:
+            try:
+                on_step(i, len(procs))
+            except Exception:
+                pass
         try:
             info = p.info
         except Exception:
@@ -296,6 +305,100 @@ def in_use_paths(budget=IN_USE_BUDGET):
             except Exception:
                 pass
     return out
+
+
+def _in_use_child(pq, rq, deadline):
+    """A helper process (see in_use_isolated): takes (pid, name) from pq and answers with its open files."""
+    try:
+        import psutil
+    except ImportError:
+        rq.put(("x",))
+        return
+    while True:
+        try:
+            item = pq.get(timeout=20)
+        except Exception:  # noqa: BLE001
+            break
+        if item is None:
+            break
+        pid, name = item
+        paths = []
+        if time.time() < deadline:
+            try:
+                paths = [f.path for f in psutil.Process(pid).open_files()]
+            except Exception:  # noqa: BLE001
+                pass
+        rq.put(("f", pid, name, paths))
+    rq.put(("x",))
+
+
+def in_use_isolated(budget=IN_USE_FAST_BUDGET, on_step=None, helpers=IN_USE_HELPERS):
+    """The same answer as in_use_paths(), found faster. psutil's open-files query costs ~0.1 s per process and keeps
+    the interpreter lock while it runs, so on one thread it both took the whole time budget and froze every other
+    thread (the folder walks included). Here several helper processes ask it for different programs at once, the
+    programs a person uses (outside the Windows folder) first, so the same time budget covers more of them. If the
+    helpers cannot start, it is done in this process."""
+    try:
+        import psutil
+        import multiprocessing as mp
+        import queue as _q
+        ctx = mp.get_context("spawn")
+        pq, rq = ctx.Queue(), ctx.Queue()
+        deadline = time.time() + budget
+        procs = [ctx.Process(target=_in_use_child, args=(pq, rq, deadline), daemon=True) for _ in range(helpers)]
+        for pr in procs:
+            pr.start()
+    except Exception:  # noqa: BLE001
+        return in_use_paths(budget, on_step)
+    try:
+        out = {}
+        win = (paths.kf("Windows") or r"C:\Windows").lower()
+        me = os.getpid()
+        todo = []
+        for p in psutil.process_iter(["name", "exe", "cwd", "cmdline"]):
+            try:
+                info = p.info
+            except Exception:  # noqa: BLE001
+                continue
+            name = info.get("name") or tr("a program")
+            cands = [info.get("exe"), info.get("cwd")]
+            cmd = info.get("cmdline") or []
+            cands += _PATH_RE.findall(" ".join(cmd) if isinstance(cmd, list) else str(cmd))
+            for x in cands:
+                if x:
+                    out.setdefault(_norm(x.strip().rstrip("\\")), name)
+            if p.pid != me:
+                todo.append((0 if not (info.get("exe") or "").lower().startswith(win) else 1, p.pid, name))
+        todo.sort()
+        for _, pid, name in todo:
+            pq.put((pid, name))
+        for _ in procs:
+            pq.put(None)
+        got = ended = 0
+        limit = deadline + 0.6      # a helper stuck on one slow program does not hold everything up
+        while got < len(todo) and ended < len(procs) and time.time() < limit:
+            try:
+                msg = rq.get(timeout=0.25)
+            except _q.Empty:
+                if not any(pr.is_alive() for pr in procs):
+                    break
+                continue
+            if msg[0] == "x":
+                ended += 1
+                continue
+            _, pid, name, files = msg
+            got += 1
+            for f in files:
+                out.setdefault(_norm(f), name)
+            if on_step:
+                on_step(got, len(todo))
+        if on_step:
+            on_step(len(todo), len(todo))
+        return out
+    finally:
+        for pr in procs:
+            if pr.is_alive():
+                pr.terminate()
 
 
 def _user_for(path, in_use):
@@ -328,15 +431,15 @@ def _excluded(path, exclude):
     return False
 
 
-def temp_entries(root, days=TEMP_GRACE_DAYS, exclude=(), in_use=None, cancel=None):
+def temp_entries(root, days=TEMP_GRACE_DAYS, exclude=(), in_use=None, cancel=None, tick=None):
     """First-level view of a temp folder. Every row says whether it will be cleaned and why not.
 
     status: "clean" (will be emptied), "recent" (changed within the grace period), "in_use" (a running program
     uses it), "excluded" (the user said no), "link" (a junction/symlink: never followed or deleted).
+    `in_use` is a dict, or a function returning it (waited for only after the disk was read); tick(i, n) reports progress.
     The loose files directly in `root` are summarized in one row named LOOSE.
     """
-    if in_use is None:
-        in_use = in_use_paths()
+    get_in_use = in_use if callable(in_use) else (lambda: in_use) if in_use is not None else in_use_paths
     skip_loose = any(_norm(str(x)[len(LOOSE_TOKEN):]) == _norm(root) for x in exclude or ()
                      if str(x).startswith(LOOSE_TOKEN))
     limit = max(0, float(days)) * 86400
@@ -348,9 +451,14 @@ def temp_entries(root, days=TEMP_GRACE_DAYS, exclude=(), in_use=None, cancel=Non
         it = list(os.scandir(root))
     except OSError:
         return rows
-    for e in it:
+    # phase 1 (disk only): walk every folder and look at every loose file. Which running program uses what is
+    # asked afterwards, so the slow "who has this open" query can run while the disk is being read.
+    dirs, files_ = [], []
+    for n_done, e in enumerate(it, 1):
         if cancel and cancel():
             break
+        if tick:
+            tick(n_done, len(it))
         try:
             st = e.stat(follow_symlinks=False)
         except OSError:
@@ -364,27 +472,30 @@ def temp_entries(root, days=TEMP_GRACE_DAYS, exclude=(), in_use=None, cancel=Non
             stats = {}
             files, size, _ = _walk([e.path], None, stats=stats, cancel=cancel)
             newest = max(stats.get("newest", 0.0), st.st_mtime)
-            row = {"name": e.name, "path": e.path, "kind": "dir", "size": size, "files": files, "newest": newest}
-            user = _user_for(e.path, in_use)
-            if _excluded(e.path, exclude):
-                row.update(status="excluded", reason=tr("You chose to always keep it"))
-            elif user:
-                row.update(status="in_use", reason=tr("In use by {name}", name=user), process=user)
-            elif now - newest < limit:
-                row.update(status="recent", reason=tr("Used recently"))
-            else:
-                row.update(status="clean", reason="")
-            rows.append(row)
-            continue
-        # a loose file
+            dirs.append({"name": e.name, "path": e.path, "kind": "dir", "size": size, "files": files, "newest": newest})
+        else:
+            files_.append((e.path, st))
+    in_use = get_in_use()
+    for row in dirs:
+        user = _user_for(row["path"], in_use)
+        if _excluded(row["path"], exclude):
+            row.update(status="excluded", reason=tr("You chose to always keep it"))
+        elif user:
+            row.update(status="in_use", reason=tr("In use by {name}", name=user), process=user)
+        elif now - row["newest"] < limit:
+            row.update(status="recent", reason=tr("Used recently"))
+        else:
+            row.update(status="clean", reason="")
+        rows.append(row)
+    for path, st in files_:
         loose["newest"] = max(loose["newest"], st.st_mtime)
-        if skip_loose or _excluded(e.path, exclude) or _user_for(e.path, in_use) or now - st.st_mtime < limit:
+        if skip_loose or _excluded(path, exclude) or _user_for(path, in_use) or now - st.st_mtime < limit:
             loose["kept"] += 1
             loose["keptSize"] += st.st_size
             continue
         loose["files"] += 1
         loose["size"] += st.st_size
-        loose["items"].append((e.path, st.st_size))
+        loose["items"].append((path, st.st_size))
     if loose["files"] or loose["kept"]:
         if skip_loose:
             loose.update(status="excluded", reason=tr("You chose to keep them"), files=loose["kept"],
@@ -425,7 +536,7 @@ def running(proc, names=None):
     return proc.lower() in names
 
 
-def _measure(c, days=TEMP_GRACE_DAYS, exclude=(), in_use=None):
+def _measure(c, days=TEMP_GRACE_DAYS, exclude=(), in_use=None, tick=None):
     """(bytes, files, rows). Temp categories only count what would really be deleted; rows explain the rest."""
     if c.get("recycle"):
         size, count = recycle_info()
@@ -435,7 +546,7 @@ def _measure(c, days=TEMP_GRACE_DAYS, exclude=(), in_use=None):
         size = count = 0
         rows = []
         for d in dirs:
-            rs = temp_entries(d, days, exclude, in_use)
+            rs = temp_entries(d, days, exclude, in_use, tick=tick)
             for r in rs:
                 r["root"] = d
             rows += rs
@@ -455,16 +566,24 @@ def _measure(c, days=TEMP_GRACE_DAYS, exclude=(), in_use=None):
     return size, count, None
 
 
-def scan(progress=None, on_item=None, days=TEMP_GRACE_DAYS, exclude=()):
-    """Measure every category at once; on_item(result) is called as soon as each one finishes."""
+def scan(progress=None, on_item=None, days=TEMP_GRACE_DAYS, exclude=(), on_inuse=None, on_tick=None):
+    """Measure every category at once; on_item(result) is called as soon as each one finishes.
+
+    The query "which running program uses which file" is the slowest part (several seconds), so it runs on its own
+    thread while the folders are read; a temp folder only waits for it after its disk reading is done.
+    on_inuse(done, total) follows that query; on_tick(category id, done, total) follows the first-level folders of
+    a temp category."""
     cats = categories()
     admin = system.is_admin()
     procs = {p["name"].lower() for p in system.list_processes()}
-    in_use = in_use_paths() if any(c.get("temp") for c in cats.values()) else {}
     order = {k: i for i, k in enumerate(cats)}
     out, done = [], 0
+    iu_ex = ThreadPoolExecutor(max_workers=1)
+    iu_fut = iu_ex.submit(in_use_isolated, IN_USE_FAST_BUDGET, on_inuse) if any(c.get("temp") for c in cats.values()) else None
+    in_use = iu_fut.result if iu_fut else {}
     with ThreadPoolExecutor(max_workers=CAT_WORKERS) as ex:
-        futs = {ex.submit(_measure, c, days, exclude, in_use): k for k, c in cats.items()}
+        futs = {ex.submit(_measure, c, days, exclude, in_use,
+                          (lambda i, n, _k=k: on_tick(_k, i, n)) if on_tick else None): k for k, c in cats.items()}
         for fut in as_completed(futs):
             k = futs[fut]
             c = cats[k]
@@ -491,6 +610,7 @@ def scan(progress=None, on_item=None, days=TEMP_GRACE_DAYS, exclude=()):
                 on_item(item)
             if progress:
                 progress(done / len(cats), tr(c["label"]))
+    iu_ex.shutdown(wait=False)
     out.sort(key=lambda i: order[i["id"]])
     if progress:
         progress(1, tr("Done"))
@@ -558,7 +678,7 @@ def clean(ids, progress=None, days=TEMP_GRACE_DAYS, exclude=(), cancel=None, on_
     total_files = total_bytes = 0
     need_in_use = any(cats.get(k, {}).get("temp") for k in ids)
     if need_in_use and in_use is None:
-        in_use = in_use_paths()
+        in_use = in_use_isolated()
     for k in ids:
         c = cats.get(k)
         if not c or c.get("recycle"):

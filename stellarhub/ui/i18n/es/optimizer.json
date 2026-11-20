@@ -917,5 +917,8 @@
   "Check what it is": "Comprueba qué es",
   "Administrator": "Administrador",
   "Open": "Abierto",
-  "to create the restore point and change services. Without it, those steps are skipped.": "para crear el punto de restauración y cambiar servicios. Sin él, esos pasos se omiten."
+  "to create the restore point and change services. Without it, those steps are skipped.": "para crear el punto de restauración y cambiar servicios. Sin él, esos pasos se omiten.",
+  "Checking which programs have files open… {i} of {n}": "Comprobando qué programas tienen archivos abiertos… {i} de {n}",
+  "Reading {name}… {i} of {n} folders": "Leyendo {name}… {i} de {n} carpetas",
+  "Measured {done} of {total} categories": "Medidas {done} de {total} categorías"
 }
