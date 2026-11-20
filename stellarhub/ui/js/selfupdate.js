@@ -59,7 +59,7 @@ function open(inf) {
 function footMain(inf) {
   const src = inf.mode === 'source', page = inf.mode === 'page';
   return `<div class="su-meta">${ic('shield')}<span>${src ? t('This copy runs from the source code, so it updates with git or a new download.')
-    : page ? `${inf.size ? `${mb(inf.size)} · ` : ''}${t('This release has no automatic update for this copy; download it from its page.')}`
+    : page ? `${inf.size ? `${mb(inf.size)} · ` : ''}${inf.unsigned ? t("This update isn't signed by StellarHub's author, so it wasn't installed.") : t('This release has no automatic update for this copy; download it from its page.')}`
     : `${inf.size ? `${mb(inf.size)} · ` : ''}${t('Downloaded from GitHub and checked before installing.')}<br>${t('Your settings stay as they are. StellarHub closes and opens again by itself.')}`}</span></div>
     <div class="su-acts"><button class="btn ghost" data-su="skip">${t('Skip this version')}</button><button class="btn sec" data-su="later">${t('Later')}</button>
     ${src || page ? `<button class="btn pri" data-su="page">${ic('external')}${t('Open the download page')}</button>` : `<button class="btn pri" data-su="go">${ic('download')}${t('Update now')}</button>`}</div>`;
@@ -105,6 +105,7 @@ function failView(text) {
   $('.su-foot', box).innerHTML = `<div class="su-meta"></div><div class="su-acts"><button class="btn sec" data-su="page">${ic('external')}${t('Open the download page')}</button><button class="btn pri" data-su="close">${t('Close')}</button></div>`;
 }
 const WHY = { hash: () => t("The download did not match the fingerprint published with the release, so it was not installed. Try again later."),
+  signature: () => t("This update isn't signed by StellarHub's author, so it wasn't installed."),
   admin: () => t('Installing for all users needs administrator rights.'), source: () => t('This copy runs from the source code.') };
 
 async function start() {

@@ -262,11 +262,12 @@ function publishJunk() { const gbv = DB.clean.filter(c => c.def).reduce((a, c) =
 const API = {
   async analyze(onArea) {
     if (await realP) {
-      const areas = { clean: ['clean'], startup: ['startup', 'boot'], services: ['services'], registry: ['registry'], performance: ['performance'] };
+      const areas = { clean: ['clean'], startup: ['startup', 'boot'], services: ['services'], performance: ['performance'] };
+      if (regOn()) areas.registry = ['registry'];
       await Promise.all(Object.entries(areas).map(([a, ls]) => Promise.all(ls.map(l => load(l, true).catch(() => {}))).then(() => onArea && onArea(a))));
       return;
     }
-    for (const a of ['clean', 'startup', 'services', 'registry', 'performance']) { await wait(520 + Math.random() * 380); onArea && onArea(a); }
+    for (const a of ['clean', 'startup', 'services', ...(regOn() ? ['registry'] : []), 'performance']) { await wait(520 + Math.random() * 380); onArea && onArea(a); }
   },
   /* cleans; onCat(c) gets each category once it is done, onStatus(d) the live numbers (deleted, total, freed,
      current, rate, eta) several times a second; ctl.cancel() is filled in so the caller can stop it */
@@ -362,6 +363,8 @@ const POWER = { efficiency: t('Best power efficiency'), balanced: t('Balanced'),
 /* the same modes inside a sentence (lowercase in English) */
 const POWER_L = { efficiency: t('best power efficiency'), balanced: t('balanced'), best: t('best performance') };
 const servicePending = p => DB.services.filter(s => s[p] && s[p] !== s.cur);
+/* the registry cleaner is opt-in (Settings > General > Registry cleaner): off, nothing about it shows or runs. It is never part of “Optimize everything”. */
+const regOn = () => !!SH.state.settings.registryCleaner;
 const regCount = () => regDone ? 0 : DB.registry.reduce((a, g) => a + g.items.length, 0);
 const rendered = {};
 const refresh = tab => { if (rendered[tab]) try { rendered[tab](); } catch (e) { console.error(e); } };
@@ -373,28 +376,33 @@ let score = 64;
 /* score from what's really there: junk, heavy startup, unneeded services and broken entries */
 function calcScore() {
   const junk = totalAll() / 1e9, heavy = DB.startup.filter(s => s.on && (s.impact === 'high' || s.rec)).length, rv = reviewStartup().length;
-  const s = 100 - Math.min(25, junk * .8) - Math.min(15, heavy * 4 + rv * 3) - Math.min(10, servicePending('bal').length * 2) - Math.min(10, regCount() * .5);
+  const s = 100 - Math.min(25, junk * .8) - Math.min(15, heavy * 4 + rv * 3) - Math.min(10, servicePending('bal').length * 2);
   return Math.max(25, Math.min(99, Math.round(s)));
 }
 function projected() {
   const sel = DB.clean.filter(c => c.sel).reduce((a, c) => a + c.size, 0) / 1e9;
-  return Math.min(99, score + Math.round(Math.min(25, sel * .8)) + Math.min(15, recStartup().length * 4) + Math.min(10, servicePending('bal').length * 2) + Math.min(10, Math.round(regCount() * .5)));
+  return Math.min(99, score + Math.round(Math.min(25, sel * .8)) + Math.min(15, recStartup().length * 4) + Math.min(10, servicePending('bal').length * 2));
 }
-const AREAS = [
+const AREAS_ALL = [
   { id: 'clean', n: t('Cleanup'), ic: 'broom', tab: 'clean', txt: () => totalAll() > 1e8 ? t('{size} in {n} categories', { size: gb(totalAll()), n: DB.clean.filter(c => c.size > 0).length }) : t('Nothing to clean'), val: () => totalAll() > 1e8 ? gb(totalAll()) : null, bad: () => totalAll() > 3e9 },
   { id: 'startup', n: t('Startup'), ic: 'bolt', tab: 'startup', txt: () => { const on = DB.startup.filter(s => s.on).length, rv = reviewStartup(); return rv.length ? t('{on} of {total} start with Windows; {n} high-impact scripts', { on, total: DB.startup.length, n: rv.reduce((a, s) => a + (s.count || 1), 0) }) : t('{on} of {total} start with Windows', { on, total: DB.startup.length }); }, val: () => reviewStartup().length ? t('Review') : null, bad: () => false },
   { id: 'services', n: t('Services'), ic: 'service', tab: 'services', txt: () => servicePending('bal').length ? t("{n} services you don't use", { n: servicePending('bal').length }) : t('No recommended changes'), val: () => servicePending('bal').length || null, bad: () => false },
   { id: 'registry', n: t('Registry'), ic: 'reg', tab: 'registry', txt: () => regCount() ? t('{n} broken entries', { n: regCount() }) : t('No broken entries'), val: () => regCount() || null, bad: () => false },
   { id: 'performance', n: tc('Performance'), ic: 'optimizer', tab: 'performance', txt: () => t('Power mode when plugged in: {mode}', { mode: POWER_L[DB.perf.ac] }), val: () => DB.perf.ac === 'best' ? null : t('Could be better'), bad: () => false },
 ];
+/* the areas shown now (the registry one only while the cleaner is on); refilled by syncAreas() */
+const AREAS = [];
+const syncAreas = () => { AREAS.length = 0; AREAS.push(...AREAS_ALL.filter(a => a.id !== 'registry' || regOn())); };
+syncAreas();
 /* val() is null when the area is fine: the label shown is then “Good” */
 const valTxt = a => { const v = a.val(); return v == null ? tc('Good') : v; };
 const tone = a => a.bad() ? 'bad' : a.val() == null ? 'ok' : 'warn';
 const areaFill = a => a.bad() ? .45 : ((a.id === 'registry' && regCount()) || (a.id === 'startup' && reviewStartup().length) || (a.id === 'services' && servicePending('bal').length) || (a.id === 'performance' && DB.perf.ac !== 'best')) ? .7 : 1;
 function ringSVG() {
   const R = 92, p = ang => [(110 + R * Math.cos(ang)).toFixed(2), (110 + R * Math.sin(ang)).toFixed(2)];
-  const segs = AREAS.map((a, i) => { const [x0, y0] = p((-90 + i * 72 + 3) * Math.PI / 180), [x1, y1] = p((-90 + i * 72 + 69) * Math.PI / 180); return `M${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1}`; });
-  const L = (R * 66 * Math.PI / 180).toFixed(1);
+  const W = 360 / AREAS.length;
+  const segs = AREAS.map((a, i) => { const [x0, y0] = p((-90 + i * W + 3) * Math.PI / 180), [x1, y1] = p((-90 + (i + 1) * W - 3) * Math.PI / 180); return `M${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1}`; });
+  const L = (R * (W - 6) * Math.PI / 180).toFixed(1);
   return `<svg viewBox="0 0 220 220" class="ring">
     <defs><linearGradient id="optSweep" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--accent2)" stop-opacity="0"/><stop offset="1" style="stop-color:var(--accent2)" stop-opacity=".32"/></linearGradient></defs>
     <circle cx="110" cy="110" r="104" class="tick"/>
@@ -405,9 +413,12 @@ function ringSVG() {
 }
 const ovFoot = () => `<div class="ov-foot"><div class="ov-fi"><span class="faint">${t('Last optimization')}</span><b>${lastRun ? t('Today, just now') : t('Never from StellarHub')}</b></div><div class="ov-fi"><span class="faint">${t('Free space on C:')}</span><b>${SH.fmtInt(freeC() + (lastRun && !REAL ? lastRun.freed / 1e9 : 0))} GB</b></div><div class="ov-fi"><span class="faint">${DB.boots.length ? t('Average boot') : t('BIOS time')}</span><b>${DB.boots.length ? fmt1(bootAvg() - bootSaved()) + ' s' : DB.bios ? fmt1(DB.bios) + ' s' : '—'}</b></div><button class="ov-auto" data-go-auto>${ic('autopilot')}<span><b>${t('Do it automatically every week')}</b>${t('Create an Autopilot routine')}</span>${ic('chev')}</button></div>`;
 const findingsHTML = () => `<h4 class="pan-h">${t('What we found')} <em>${t('just now')}</em></h4><div class="rows">${AREAS.map(a => `<div class="row ov-row" data-area="${a.id}"><span class="ri">${ic(a.ic)}</span><span class="rt"><b>${a.n}</b><span>${esc(a.txt())}</span></span><span class="ov-bar ${tone(a)}"><i style="transform:scaleX(${areaFill(a)})"></i></span><span class="ov-v ${tone(a)}">${valTxt(a)}</span><button class="btn sm ghost" data-tab="${a.tab}">${t('Review')}</button></div>`).join('')}</div>${ovFoot()}`;
-let ovEl = null, ovMode = 'findings', running = false;
+let ovEl = null, ovMode = 'findings', running = false, ovStale = false;
+/* turning the registry cleaner on or off changes the areas of the overview (and its ring): drawn again, now or the next time it is shown */
+SH.on('setting', d => { if (d.key === 'registryCleaner') { ovStale = true; if (SH.state.view === 'optimizer') redrawOverview(); } });
+function redrawOverview() { if (!ovStale || !ovEl || !modCtx || running || undoing) return; ovStale = false; ovEl.innerHTML = ''; ovMode = 'findings'; renderOverview(ovEl, modCtx); }
 function renderOverview(el, ctx) {
-  ovEl = el; el.classList.add('fill');
+  ovEl = el; syncAreas(); el.classList.add('fill');
   el.innerHTML = `<div class="ov">
     <div class="pan ov-l" data-asm>
       <div class="ring-wrap">${ringSVG()}<div class="ring-c"><b id="optScore">0</b><span id="optScoreLbl">${t('analyzing…')}</span></div></div>
@@ -419,7 +430,9 @@ function renderOverview(el, ctx) {
     <div class="pan ov-r" data-asm><div id="optRight"><h4 class="pan-h">${t('What we found')} <em>${t('in progress')}</em></h4><div class="rows">${AREAS.map(a => `<div class="row ov-row pending" data-area="${a.id}"><span class="ri">${ic(a.ic)}</span><span class="rt"><b>${a.n}</b><span class="sk" style="display:block;height:9px;width:${40 + Math.round(Math.random() * 30)}%;margin-top:7px"></span></span><span class="ov-bar"><i style="transform:scaleX(0)"></i></span><span class="ov-v"></span><button class="btn sm ghost" data-tab="${a.tab}" disabled>${t('Review')}</button></div>`).join('')}</div>${ovFoot()}</div></div></div>`;
   $('#optAll', el).addEventListener('click', () => showPlan(el));
   $('#optRescan', el).addEventListener('click', () => analyze(el, true));
-  el.addEventListener('click', e => { if (e.target.closest('[data-go-auto]')) { SH.go('autopilot', { tab: 'routines' }); return; } const b = e.target.closest('[data-tab]'); if (b && !b.disabled) ctx.setTab(b.dataset.tab); });
+  if (el._ovClick) el.removeEventListener('click', el._ovClick);
+  el._ovClick = e => { if (e.target.closest('[data-go-auto]')) { SH.go('autopilot', { tab: 'routines' }); return; } const b = e.target.closest('[data-tab]'); if (b && !b.disabled) ctx.setTab(b.dataset.tab); };
+  el.addEventListener('click', el._ovClick);
   analyze(el);
   rendered.overview = () => { if (ovMode === 'findings' && !running) { const r = $('#optRight', el); if (r && !$('.ov-row.pending', r)) r.innerHTML = findingsHTML(); } paintRing(el); };
 }
@@ -449,8 +462,8 @@ async function analyze(el, again) {
   const em = $('#optRight .pan-h em', el); if (em) em.textContent = t('just now');
   $('#optState', el).textContent = score >= 85 ? t('Your PC is in good shape') : t('There is room to improve');
   $('#optSub', el).textContent = score >= 85 ? t('Nothing urgent. Analyze again whenever you like.') : t('“Optimize everything” would get you to about {n} points.', { n: REAL ? projected() : 91 });
-  if (modCtx) { modCtx.setBadge('clean', DB.clean.filter(c => c.size > 1e7).length); modCtx.setBadge('registry', regCount()); }
-  ['clean', 'startup', 'services', 'registry', 'performance'].forEach(refresh);
+  if (modCtx) { modCtx.setBadge('clean', DB.clean.filter(c => c.size > 1e7).length); if (regOn()) modCtx.setBadge('registry', regCount()); }
+  AREAS.forEach(a => refresh(a.id));
   $('#optAll', el).disabled = false; $('#optRescan', el).hidden = false;
   anim($('#optAll', el), [{ transform: 'scale(.94)' }, { transform: 'scale(1.04)', offset: .5 }, { transform: 'scale(1)' }], { d: 520 });
 }
@@ -461,7 +474,6 @@ function planSteps() {
     { id: 'clean', t: t('Clean {size} of unneeded files', { size: gb(sel.reduce((a, c) => a + c.size, 0)) }), d: t('{n} categories: temporary files, caches, dumps and the Recycle Bin.', { n: sel.length }), on: sel.length > 0, dis: !sel.length },
     { id: 'startup', t: t('Remove {n} apps from startup', { n: rec.length }), d: rec.map(r => r.name).join(', ') || t('Nothing recommended'), on: rec.length > 0, dis: !rec.length },
     { id: 'services', t: t('Services: balanced profile'), d: t("{n} services you don't use are set to manual or disabled.", { n: svc.length }), admin: true, on: svc.length > 0, dis: !svc.length },
-    { id: 'registry', t: t('Fix {n} broken registry entries', { n: regCount() }), d: t('A .reg backup is saved first.'), admin: true, on: regCount() > 0, dis: !regCount() },
     { id: 'power', t: t('Power mode when plugged in: best performance'), d: t('The same setting as Settings > System > Power. Battery mode stays as it is.'), on: DB.perf.ac !== 'best', dis: DB.perf.ac === 'best' },
   ];
 }
@@ -477,7 +489,7 @@ function showPlan(el) {
     $('#optCancel', right).addEventListener('click', () => { ovMode = 'findings'; swap(right, findingsHTML()); });
     $('#optGo', right).addEventListener('click', () => {
       const chosen = $$('.pstep', right).filter(r => $('.check', r).classList.contains('on')).map(r => r.dataset.step);
-      if (!state.admin && steps.some(s => s.admin && chosen.includes(s.id))) SH.requireAdmin(t('to create the restore point, change services and fix the registry. Without it, those steps are skipped.'));
+      if (!state.admin && steps.some(s => s.admin && chosen.includes(s.id))) SH.requireAdmin(t('to create the restore point and change services. Without it, those steps are skipped.'));
       runPlan(el, steps.filter(s => chosen.includes(s.id)));
     });
   });
@@ -485,7 +497,7 @@ function showPlan(el) {
 let lastRun = null;
 async function runPlan(el, steps) {
   running = true; ovMode = 'run'; const right = $('#optRight', el); $('#optAll', el).disabled = true; $('#optRescan', el).hidden = true;
-  const before = { boot: bootSaved(), reg: regCount() };
+  const before = { boot: bootSaved() };
   swap(right, `<h4 class="pan-h">${t('Optimizing')} <em id="optFreed">${t('{size} freed', { size: '0 MB' })}</em></h4><div class="phases">${steps.map(s => `<div class="phase" data-ph="${s.id}"><span class="ph-dot"></span><div class="pt"><b>${esc(s.t)}</b><span class="ph-msg">${t('Waiting')}</span><div class="bar acc"><span style="transform:scaleX(0)"></span></div></div></div>`).join('')}</div>`);
   await wait(520);
   $('#optState', el).textContent = t('Working…'); $('#optSub', el).textContent = t('You can keep using your PC in the meantime.'); $('.ring', el).classList.add('scanning');
@@ -510,30 +522,29 @@ async function runPlan(el, steps) {
     }
     if (s.id === 'startup') { const rec = recStartup(); for (let i = 0; i < rec.length; i++) { rec[i].on = false; msg.textContent = t('Removing {name} from startup', { name: rec[i].name }); setP((i + 1) / rec.length); await wait(380); } msg.textContent = t('{n} apps removed from startup', { n: rec.length }); log.push(['ok', t('Startup: {n} apps removed', { n: rec.length })]); }
     if (s.id === 'services') { const sv = servicePending('bal'); for (let i = 0; i < sv.length; i++) { sv[i].cur = sv[i].bal; if (sv[i].cur === 'disabled') sv[i].run = false; msg.textContent = sv[i].bal === 'disabled' ? t('{name}: disabled', { name: sv[i].name }) : t('{name}: manual', { name: sv[i].name }); setP((i + 1) / sv.length); await wait(300); } msg.textContent = t('{n} services adjusted', { n: sv.length }); log.push(['ok', t('Services: {n} adjusted', { n: sv.length })]); }
-    if (s.id === 'registry') { msg.textContent = t('Saving the .reg backup…'); await tween(0, .3, 700, setP); msg.textContent = t('Fixing entries…'); await tween(.3, 1, 1200, setP); const n = regCount(); regDone = true; msg.textContent = t('{n} entries fixed; backup in {path}', { n, path: 'Documents\\StellarHub\\registry' }); log.push(['ok', t('Registry: {n} entries fixed', { n })]); }
     if (s.id === 'power') { msg.textContent = t('Changing the power mode…'); await tween(0, 1, 700, setP); DB.perf.ac = 'best'; msg.textContent = t('Best performance when plugged in'); log.push(['ok', t('Power mode: best performance when plugged in')]); }
     setP(1); ph.classList.remove('run'); ph.classList.add('done');
     anim($('.ph-dot', ph), [{ transform: 'scale(.4)' }, { transform: 'scale(1.35)', offset: .5 }, { transform: 'scale(1)' }], { d: 420 });
   }
   $('.ring', el).classList.remove('scanning');
-  const gained = bootSaved() - before.boot, fixed = before.reg - regCount();
-  score = REAL ? calcScore() : Math.min(96, 64 + Math.round(freed / 1e9 * 1.2) + Math.round(gained * 1.1) + (fixed ? 3 : 0) + (DB.perf.ac === 'best' ? 3 : 0) + (servicePending('bal').length ? 0 : 3));
+  const gained = bootSaved() - before.boot;
+  score = REAL ? calcScore() : Math.min(96, 64 + Math.round(freed / 1e9 * 1.2) + Math.round(gained * 1.1) + (DB.perf.ac === 'best' ? 3 : 0) + (servicePending('bal').length ? 0 : 3));
   if (REAL) SH.logActivity(t('Optimization complete'), { sub: t('{size} freed', { size: gb(freed) }), ic: 'sparkle', go: 'optimizer', tab: 'overview' });
-  lastRun = { freed, gained, fixed, log };
+  lastRun = { freed, gained, log };
   SH.countUp($('#optScore', el), score, 1200); paintRing(el);
   await wait(450);
   ovMode = 'done';
   swap(right, `<h4 class="pan-h">${t('Done')} <em>${t('just now')}</em></h4>
-    <div class="result"><div><b class="big" id="rFreed">0</b><span>${t('GB freed')}</span></div><div><b class="big" id="rBoot">0</b><span>${t('seconds faster boot')}</span></div><div><b class="big" id="rFix">0</b><span>${t('entries fixed')}</span></div></div>
+    <div class="result"><div><b class="big" id="rFreed">0</b><span>${t('GB freed')}</span></div><div><b class="big" id="rBoot">0</b><span>${t('seconds faster boot')}</span></div></div>
     <div class="rows res-log">${log.map(([k, line]) => `<div class="row"><span class="ri ${k}">${ic(k === 'ok' ? 'check' : 'shield')}</span><span class="rt"><b>${esc(line)}</b><span>${k === 'ok' ? t('Done') : t('Skipped: turn on administrator mode to do it')}</span></span></div>`).join('')}</div>
     <div class="plan-acts"><button class="btn sec" id="optUndo">${ic('undo')}${t('Undo changes')}</button><button class="btn ghost" id="optBack">${t('Back to overview')}</button></div>`, () => {
-    SH.countUp($('#rFreed', right), freed / 1e9, 1100, 1); SH.countUp($('#rBoot', right), gained, 1100, 1); SH.countUp($('#rFix', right), fixed, 900);
+    SH.countUp($('#rFreed', right), freed / 1e9, 1100, 1); SH.countUp($('#rBoot', right), gained, 1100, 1);
     $$('.res-log .row', right).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: 200 + i * 60, e: EASE.spring }));
     $('#optUndo', right).addEventListener('click', e => undo(el, e.currentTarget)); $('#optBack', right).addEventListener('click', () => { ovMode = 'findings'; swap(right, findingsHTML()); });
   });
   $('#optState', el).textContent = t('Your PC is in good shape'); $('#optSub', el).textContent = t('Changes can be undone from here or with the restore point.');
   $('#optAll', el).disabled = false; $('#optRescan', el).hidden = false; running = false;
-  ['clean', 'startup', 'services', 'registry', 'performance'].forEach(refresh);
+  ['clean', 'startup', 'services', 'performance'].forEach(refresh);
   SH.toast(t('Optimization finished: {size} freed.', { size: gb(freed) }));
 }
 /* one real step of “Optimize everything” */
@@ -565,16 +576,6 @@ async function realStep(s, msg, setP) {
     const r = await eng('services_apply', changes); last.svcBackup = r.backup; await load('services', true);
     msg.textContent = r.ok ? t('{n} services adjusted', { n: sv.length }) : t("{n} services adjusted (one didn't accept the change)", { n: sv.length }); return { log: t('Services: {n} adjusted', { n: sv.length }) };
   }
-  if (s.id === 'registry') {
-    const ids = DB.registry.flatMap(g => g.items.map(i => i[2]));
-    msg.textContent = t('Saving the .reg backup and fixing…');
-    const r = await engJob('registry_fix', [ids], { onProgress: m => setP(m.pct) }); last.regBackup = r.backup;
-    msg.textContent = t('Checking again…');
-    loadWatch.registry = m => { if (m.text) msg.textContent = t('Checking again: {step}', { step: m.text }); };
-    try { await load('registry', true); } catch (e) { /* the fix is done; the list is read again next time */ } finally { delete loadWatch.registry; }
-    regDone = !regCount();
-    msg.textContent = t('{n} entries fixed; backup in {path}', { n: r.fixed, path: r.folder }); return { log: t('Registry: {n} entries fixed', { n: r.fixed }) };
-  }
   if (s.id === 'power') {
     last.prevAc = DB.perf.ac; const r = await eng('perf_set', 'ac', 'best'); Object.assign(DB.perf, r);
     msg.textContent = t('Best performance when plugged in'); return { log: t('Power mode: best performance when plugged in') };
@@ -596,28 +597,22 @@ async function undo(el, btn) {
       if (last.startupChanged.length) phase(t('Putting startup apps back…'));
       for (const s of last.startupChanged) { try { await eng('startup_set', s.ids, true); s.on = true; } catch (e) { errs.push(s.name); } }
       last.startupChanged = [];
-      let svc = false, reg = false;
+      let svc = false;
       if (last.svcBackup) { phase(t('Restoring services…'));
         try { await engJob('services_undo_job', [last.svcBackup], { onProgress: m => { if (m.text && m.kind === 'progress') sub.textContent = m.text; } }); last.svcBackup = null; svc = true; } catch (e) { errs.push(t('services')); } }
-      if (last.regBackup) { phase(t('Restoring registry entries…')); regBusy = true;
-        try { await engJob('registry_undo_job', [last.regBackup], { onProgress: m => { if (m.text && m.kind === 'progress') sub.textContent = m.text; } }); last.regBackup = null; reg = true; } catch (e) { errs.push(t('registry')); } finally { regBusy = false; } }
       if (last.prevAc && last.prevAc !== DB.perf.ac) { try { Object.assign(DB.perf, await eng('perf_set', 'ac', last.prevAc)); } catch (e) { errs.push(t('power mode')); } }
-      if (svc || reg) {
-        phase(t('Checking again…'));
-        loadWatch.registry = m => { if (m.text) sub.textContent = m.text; };
-        try { if (svc) await load('services', true).catch(() => {}); if (reg) await load('registry', true).catch(() => {}); } finally { delete loadWatch.registry; }
-      }
+      if (svc) { phase(t('Checking again…')); await load('services', true).catch(() => {}); }
       score = calcScore(); SH.countUp($('#optScore', el), score, 900);
-      ['startup', 'services', 'registry', 'performance'].forEach(refresh); ovMode = 'findings'; swap(right, findingsHTML()); paintRing(el); ok = true;
+      ['startup', 'services', 'performance'].forEach(refresh); ovMode = 'findings'; swap(right, findingsHTML()); paintRing(el); ok = true;
       SH.toast(errs.length ? t('Undone, except: {list}.', { list: errs.join(', ') }) : t("Changes undone. Deleted files can't be recovered."));
       SH.logActivity(t('Optimization undone'), { ic: 'restore', go: 'optimizer', tab: 'overview' });
       return;
     }
     /* sample mode: the same phases, slowed down so they can be seen */
-    for (const p of [t('Putting startup apps back…'), t('Restoring services…'), t('Restoring registry entries…'), t('Checking again…')]) { phase(p); await wait(650); }
-    DB.startup.forEach(s => s.on = s.orig); DB.services.forEach(s => s.cur = s.orig); regDone = false; DB.perf.ac = 'balanced';
+    for (const p of [t('Putting startup apps back…'), t('Restoring services…'), t('Checking again…')]) { phase(p); await wait(650); }
+    DB.startup.forEach(s => s.on = s.orig); DB.services.forEach(s => s.cur = s.orig); DB.perf.ac = 'balanced';
     score = 64 + Math.round((lastRun ? lastRun.freed : 0) / 1e9 * 1.2); SH.countUp($('#optScore', el), score, 900);
-    ['startup', 'services', 'registry', 'performance'].forEach(refresh); ovMode = 'findings'; swap(right, findingsHTML()); paintRing(el); ok = true;
+    ['startup', 'services', 'performance'].forEach(refresh); ovMode = 'findings'; swap(right, findingsHTML()); paintRing(el); ok = true;
     SH.toast(t("Changes undone. Deleted files can't be recovered."));
   } catch (e) { console.error(e); SH.toast(e.message); }
   finally {
@@ -809,7 +804,7 @@ const IMP_O = { high: 0, medium: 1, low: 2, none: 3, unmeasured: 4 };
 const bootAdded = () => DB.startup.filter(s => !s.orig && s.on).reduce((a, s) => a + (IMPACT_S[s.impact] || .8) * (s.count || 1), 0);
 /* the program's real icon (from its .exe, or the Store app's logo); scripts run by wscript, PowerShell and the like
    get a script icon (the host's icon says nothing about what runs); the first letter only when there is no icon */
-const avatar = s => s.icon ? `<span class="st-av img"><img src="${s.icon}" alt="" decoding="async"></span>`
+const avatar = s => s.icon ? `<span class="st-av img"><img src="${s.icon}" alt="" loading="lazy" decoding="async"></span>`
   : s.isrc === 'script' ? `<span class="st-av scr" title="${esc(t('Script'))}">${ic('code')}</span>`
   : `<span class="st-av">${esc((s.name.replace(/[^\p{L}\p{N}]/gu, '')[0] || '?').toUpperCase())}</span>`;
 /* icons not cached on disk yet: asked for once, in parallel, after the list is drawn */
@@ -1332,7 +1327,7 @@ function renderDebloat(el, ctx) {
   const root = $('.db', el), ov = $('#dbOv', el);
   const appRow = a => { const keep = a.g === 'keep', how = backHow(a);
     return `<div class="db-it${keep ? ' keep' : ''}" data-a="${esc(a.id)}">${keep ? '<span class="db-sp"></span>' : `<button class="check" aria-label="${esc(a.label)}">${ic('check')}</button>`}
-      <span class="db-ic">${a.icon ? `<img src="${a.icon}" alt="" decoding="async">` : ic('package')}</span>
+      <span class="db-ic">${a.icon ? `<img src="${a.icon}" alt="" loading="lazy" decoding="async">` : ic('package')}</span>
       <span class="rt"><b>${esc(a.label)}${a.count > 1 ? ` <em>(${a.count})</em>` : ''}${!keep && how === 'none' ? ` <span class="chip warn">${t("can't be reinstalled")}</span>` : ''}</b><span>${esc(a.desc)}</span></span>
       <span class="db-sz">${szTxt(a.size)}</span></div>`; };
   const appsHTML = () => {
@@ -1589,14 +1584,14 @@ SH.module({
     /* fresh data differs from the cached one: drawn again, without the entrance animation */
     if (changed && !el.querySelector('.db.prev, .cl-busy')) { el.innerHTML = ''; fn(el, ctx); anim(el, [{ opacity: .55 }, { opacity: 1 }], { d: 250 }); }
   },
-  enter() { if (!modCtx) return; modCtx.setBadge('clean', DB.clean.filter(c => c.size > 0).length); modCtx.setBadge('registry', regCount()); },
+  enter() { if (!modCtx) return; redrawOverview(); modCtx.setBadge('clean', DB.clean.filter(c => c.size > 0).length); regOn() && modCtx.setBadge('registry', regCount()); },
   enterTab(tab, el) { if (tab !== 'overview' || !el) return; const r = $('.ring', el); if (r) anim(r, [{ transform: 'rotate(-24deg) scale(.94)', opacity: .5 }, { transform: 'none', opacity: 1 }], { d: 620, e: EASE.spring }); },
 });
 SH.actions.add([
   { t: t('Optimize everything'), go: 'optimizer', tab: 'overview', ic: 'sparkle' },
   { t: t('Empty the Recycle Bin and temporary files'), go: 'optimizer', tab: 'clean', ic: 'broom' },
   { t: t("Turn off services I don't use"), go: 'optimizer', tab: 'services', ic: 'service' },
-  { t: t('Fix broken registry entries'), go: 'optimizer', tab: 'registry', ic: 'reg' },
+  { t: t('Fix broken registry entries'), go: 'optimizer', tab: 'registry', ic: 'reg', when: regOn },
   { t: t('Check Windows files (SFC)'), go: 'optimizer', tab: 'repair', ic: 'shield' },
   { t: t('Reset the network and DNS'), go: 'optimizer', tab: 'repair', ic: 'wifi' },
   { t: t('Change the power plan'), go: 'optimizer', tab: 'performance', ic: 'bolt' },

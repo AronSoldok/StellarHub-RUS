@@ -25,7 +25,13 @@ a = Analysis(  # noqa: F821
     hiddenimports=collect_submodules("stellarhub.engine") + ["pystray._win32"],
     excludes=["tkinter", "_tkinter", "test", "idlelib", "lib2to3", "pydoc_data", "ensurepip", "venv",
               "turtledemo", "PIL.ImageTk", "PIL.ImageQt", "webview.platforms.qt", "webview.platforms.gtk",
-              "webview.platforms.cocoa", "webview.platforms.android", "webview.platforms.cef"],
+              "webview.platforms.cocoa", "webview.platforms.android", "webview.platforms.cef",
+              # nothing at runtime imports these (setuptools/distutils only get in through cffi's build helpers);
+              # less to ship, less for Defender to scan on the first run
+              "setuptools", "pkg_resources", "pydoc", "doctest", "unittest",
+              "xmlrpc", "ftplib", "curses", "_pyrepl", "asyncio", "pdb",
+              # Pillow's AVIF codec (7.9 MB): the app icons come as PNG/ICO/WebP, never AVIF (WebP is kept)
+              "PIL._avif", "PIL.AvifImagePlugin"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)  # noqa: F821

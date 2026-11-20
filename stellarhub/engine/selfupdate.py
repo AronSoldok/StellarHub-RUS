@@ -8,7 +8,7 @@ How an update runs (the same steps for every kind of install):
          created, which runs it with administrator rights without the Windows prompt; if the task is not there,
          Windows asks once.
   3. The updater downloads the installer into <install folder>\\update (in Program Files only administrators can
-     write there), checks it against the SHA-256 published with the release, and says "ready" in
+     write there), checks its signature (see below) and says "ready" in
      <install folder>\\update\\state.json, which the app reads to show the progress.
   4. The app leaves a note for after the update (update-pending.json), starts a small helper that will reopen it,
      and closes. The updater waits for it to be gone, starts the installer silently (/VERYSILENT) and exits so no
@@ -23,8 +23,19 @@ which waits for the old one to be gone, copies its own files over it (never the 
 replaces the program behind the user's back: an earlier version did that with a hidden PowerShell, and Kaspersky
 flagged it as malware (PDM:Trojan.Win32.Generic), which is why it works this way.
 
+Signed releases. A SHA-256 published next to the file proves nothing against a stolen GitHub account (the thief
+uploads both), so the trust anchor is an Ed25519 signature made on the owner's PC (tools/release_sign.py) with a
+key that never leaves it. Each file has a detached StellarHub-Setup-X.exe.sig (or StellarHub-Portable-X.zip.sig)
+that signs a small text, the manifest (see manifest()):
+    StellarHub release / file: <name> / version: <X> / sha256: <hex of the file>
+so a signature is tied to that file name, that version and those exact bytes: an old signed file cannot be passed
+off as a newer version. The updater hashes what it downloaded itself, rebuilds the manifest and checks it against
+TRUSTED_KEYS (stellarhub/ed25519.py, pure Python). A release without a valid signature is never installed. The
+published .sha256 files are only for people. TRUSTED_KEYS is a list so the key can be rotated: ship a release
+signed with the old key whose TRUSTED_KEYS also holds the new one.
+
 The elevated updater never takes instructions from the user's side: it asks GitHub itself, only for this
-repository, only for a newer version, and only runs a file whose hash matches. The one thing it reads from the
+repository, only for a newer version, and only runs a file whose signature is valid. The one thing it reads from the
 user's profile is a "cancel" flag.
 """
 import ctypes
@@ -37,7 +48,7 @@ import sys
 import time
 import urllib.request
 
-from .. import VERSION
+from .. import VERSION, ed25519
 from ..i18n import tr
 
 EXPORTS = {"check", "mode", "start", "state", "cancel", "after_update", "finish", "prefetch", "staged"}
@@ -45,6 +56,12 @@ EXPORTS = {"check", "mode", "start", "state", "cancel", "after_update", "finish"
 REPO = "estebanarosemena/StellarHub"
 API = f"https://api.github.com/repos/{REPO}/releases/latest"
 TASK = r"StellarHub\Update"
+# Public keys (hex, 32 bytes) whose signature makes a release acceptable. The owner's key comes from
+# `python tools/release_sign.py keygen`. To rotate: add the new key HERE, release it signed with the old one, and
+# only later drop the old key.
+TRUSTED_KEYS = [
+    "cd88f316f9852616bee4a48ee1863dd821f0b9f686ea15b4758798b518fe88d7",  # Esteban Arosemena, release key 1 (2026-11-20)
+]
 ASSET_RE = re.compile(r"^StellarHub-Setup-(\d+(?:\.\d+){1,3})\.exe$", re.I)
 PORTABLE_RE = re.compile(r"^StellarHub-Portable-(\d+(?:\.\d+){1,3})\.zip$", re.I)
 NO_WINDOW = 0x08000000
@@ -242,10 +259,25 @@ def _portable():
     return paths.PORTABLE
 
 
-def pick(rel, portable=None):
-    """From a GitHub release: {ver, setup: {name, url, size}, sha_url, notes, url, date}, or None when the release
-    has no file for this copy for its own version (or is a draft or a pre-release). "setup" is the file this copy
-    updates with: the installer, or the .zip in the portable version."""
+def manifest(name, ver, sha256_hex):
+    """The exact text that is signed for a release file: it binds the file name, the version and the content."""
+    return f"StellarHub release\nfile: {name}\nversion: {ver}\nsha256: {sha256_hex.lower()}\n".encode("utf-8")
+
+
+def signature_ok(name, ver, sha256_hex, sig, keys=None):
+    """True if sig (64 raw bytes) is a valid signature of this file's manifest by any trusted key."""
+    msg = manifest(name, ver, sha256_hex)
+    for k in TRUSTED_KEYS if keys is None else keys:
+        try:
+            if ed25519.verify(bytes.fromhex(k), msg, sig):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _pick(rel, portable=None):
+    """Like pick(), but a release whose file has no .sig comes back with sig_url "" (check() offers its page)."""
     if not isinstance(rel, dict) or rel.get("draft") or rel.get("prerelease"):
         return None
     ver = str(rel.get("tag_name") or "").lstrip("vV")
@@ -260,15 +292,25 @@ def pick(rel, portable=None):
         if m and parse_version(m.group(1)) == parse_version(ver):
             setup = a
             break
-    if not setup or setup["name"] + ".sha256" not in assets:
+    if not setup:
         return None
-    url, sha = str(setup.get("browser_download_url") or ""), str(assets[setup["name"] + ".sha256"].get("browser_download_url") or "")
-    if not url.startswith("https://") or not sha.startswith("https://"):
+    url = str(setup.get("browser_download_url") or "")
+    sig = str((assets.get(setup["name"] + ".sig") or {}).get("browser_download_url") or "")
+    if not url.startswith("https://") or (sig and not sig.startswith("https://")):
         if not os.environ.get("STELLARHUB_UPDATE_URL"):  # tests serve plain http from this PC
             return None
     return {"ver": ver, "setup": {"name": setup["name"], "url": url, "size": int(setup.get("size") or 0)},
-            "sha_url": sha, "notes": str(rel.get("body") or "")[:20000], "url": str(rel.get("html_url") or ""),
+            "sig_url": sig, "notes": str(rel.get("body") or "")[:20000], "url": str(rel.get("html_url") or ""),
             "date": str(rel.get("published_at") or "")}
+
+
+def pick(rel, portable=None):
+    """From a GitHub release: {ver, setup: {name, url, size}, sig_url, notes, url, date}, or None when the release
+    has no file for this copy for its own version (or is a draft or a pre-release), or that file has no signature
+    (.sig asset): such a release is never installed automatically. "setup" is the file this copy updates with: the
+    installer, or the .zip in the portable version."""
+    info = _pick(rel, portable)
+    return info if info and info["sig_url"] else None
 
 
 # ---------------------------------------------------------------- for the app
@@ -288,9 +330,16 @@ def check(force=False):
     """Read-only: is there a newer StellarHub on GitHub?"""
     out = {"current": VERSION, "mode": mode()}
     try:
-        info = pick(_latest())
+        info = _pick(_latest())
     except Exception as e:  # offline, GitHub down or rate-limited: say so, nothing else
         out.update(ok=False, error=str(e)[:200])
+        return out
+    if info and not info["sig_url"]:  # a newer release whose file is not signed: only its page, never an install
+        if newer(info["ver"], VERSION):
+            out.update(ok=True, newer=True, latest=info["ver"], notes=info["notes"], url=info["url"], date=info["date"],
+                       size=info["setup"]["size"], mode="page", unsigned=True)
+        else:
+            out.update(ok=True, newer=False)
         return out
     if not info:
         # a newer release without a file for this kind of copy (e.g. no portable .zip): offer its page instead
@@ -565,12 +614,9 @@ def run_updater():
         for f in os.listdir(d):  # what an earlier update left behind (but not this version's file, if downloaded)
             if f.lower().endswith((".exe", ".part", ".log", ".zip")) and f != setup["name"]:
                 _rm(os.path.join(d, f))
-        want = re.search(r"\b([0-9a-fA-F]{64})\b", _get(info["sha_url"], 4096).decode("utf-8", "replace"))
-        if not want:
-            _write_state(st="failed", ver=ver, why="hash")
-            return 4
-        if not (os.path.isfile(exe) and _sha256(exe) == want.group(1).lower()):
-            _rm(exe)
+        sig = _get(info["sig_url"], 4096)
+        if not (os.path.isfile(exe) and signature_ok(setup["name"], ver, _sha256(exe), sig)):
+            _rm(exe)  # (a file left from before is checked again every time: it may have been swapped meanwhile)
             part = exe + ".part"
             _write_state(st="download", ver=ver, got=0, total=setup["size"])
             digest = _download(setup["url"], part, setup["size"],
@@ -580,9 +626,9 @@ def run_updater():
                 _rm(part)
                 return 0
             _write_state(st="verify", ver=ver)
-            if digest.lower() != want.group(1).lower():
+            if not signature_ok(setup["name"], ver, digest, sig):
                 _rm(part)
-                _write_state(st="failed", ver=ver, why="hash")
+                _write_state(st="failed", ver=ver, why="signature")
                 return 4
             os.replace(part, exe)
         if prefetch:  # downloaded and checked: it is installed the next time StellarHub opens (app.py)
@@ -607,6 +653,10 @@ def run_updater():
                 _write_state(st="cancelled", ver=ver)
                 return 0
             time.sleep(.3)
+        if not signature_ok(setup["name"], ver, _sha256(exe), sig):  # once more, right before it runs
+            _rm(exe)
+            _write_state(st="failed", ver=ver, why="signature")
+            return 4
         _write_state(st="installing", ver=ver)
         # /SILENT, not /VERYSILENT: Setup shows its small progress window (no pages, no questions) for the 20-60 s
         # it takes, instead of nothing at all

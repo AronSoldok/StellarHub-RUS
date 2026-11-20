@@ -19,7 +19,7 @@ import winreg
 from concurrent.futures import ThreadPoolExecutor
 
 from ..i18n import tr
-from .ps import ps_json, NO_WINDOW, kill_tree, run as _run, ToolError
+from .ps import ps_json, gather, NO_WINDOW, kill_tree, run as _run, ToolError
 
 EXPORTS = {"status", "notes", "pin", "unpin", "set_pause", "store_auto", "set_store_auto", "icon_for"}
 JOBS = {"scan_apps", "scan_windows", "scan_dev", "install"}
@@ -626,45 +626,61 @@ def scan_dev(job):
     out = {"python": None, "pip": [], "node": None, "npm": [], "git": None, "tools": []}
     py = _python()
     job.progress(.1, tr("Asking pip…"))
-    try:
-        r = subprocess.run([py, "--version"], capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW)
-        out["python"] = (r.stdout or r.stderr).strip().replace("Python ", "")
-        r = subprocess.run([py, "-m", "pip", "list", "--outdated", "--format=json", "--disable-pip-version-check"],
-                           capture_output=True, timeout=180, creationflags=NO_WINDOW)
-        out["pip"] = [[p["name"], p["version"], p["latest_version"]] for p in json.loads(r.stdout.decode("utf-8", "replace") or "[]")]
-    except Exception as e:
-        out["pipError"] = str(e)[:200]
-    job.check()
-    job.progress(.6, tr("Asking npm…"))
-    node = _exe("node")
-    if node:
+
+    # pip and npm ask the network for the latest versions (seconds each): they and the tool versions run together
+    def pip():
+        res = {}
         try:
-            out["node"] = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=15, creationflags=NO_WINDOW).stdout.strip().lstrip("v")
-            npm = _exe("npm")
-            r = subprocess.run([npm, "outdated", "-g", "--json"], capture_output=True, timeout=90, creationflags=NO_WINDOW)
-            data = json.loads(r.stdout.decode("utf-8", "replace") or "{}")
-            out["npm"] = [[n, d.get("current", ""), d.get("latest", "")] for n, d in data.items()]
+            r = subprocess.run([py, "--version"], capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW)
+            res["python"] = (r.stdout or r.stderr).strip().replace("Python ", "")
+            r = subprocess.run([py, "-m", "pip", "list", "--outdated", "--format=json", "--disable-pip-version-check"],
+                               capture_output=True, timeout=180, creationflags=NO_WINDOW)
+            res["pip"] = [[p["name"], p["version"], p["latest_version"]] for p in json.loads(r.stdout.decode("utf-8", "replace") or "[]")]
         except Exception as e:
-            out["npmError"] = str(e)[:200]
-    job.progress(.85, tr("Checking the other tools…"))
-    for name, cmd, rx in (("Git", ["git", "--version"], r"(\d+\.\d+\.\d+(?:\.windows\.\d+)?)"),
-                          ("PowerShell 7", ["pwsh", "--version"], r"(\d+\.\d+\.\d+)"),
-                          ("WSL", ["wsl", "--version"], r"(\d+\.\d+\.\d+(?:\.\d+)?)"),
-                          ("uv", ["uv", "--version"], r"(\d+\.\d+\.\d+)")):
+            res["pipError"] = str(e)[:200]
+        return res
+
+    def npm_scan():
+        res = {}
+        node = _exe("node")
+        if node:
+            try:
+                res["node"] = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=15, creationflags=NO_WINDOW).stdout.strip().lstrip("v")
+                npm = _exe("npm")
+                r = subprocess.run([npm, "outdated", "-g", "--json"], capture_output=True, timeout=90, creationflags=NO_WINDOW)
+                data = json.loads(r.stdout.decode("utf-8", "replace") or "{}")
+                res["npm"] = [[n, d.get("current", ""), d.get("latest", "")] for n, d in data.items()]
+            except Exception as e:
+                res["npmError"] = str(e)[:200]
+        return res
+
+    def tool(name, cmd, rx):
         exe = _exe(cmd[0])
         if not exe:
-            continue
+            return None
         try:
             r = subprocess.run([exe, *cmd[1:]], capture_output=True, timeout=15, creationflags=NO_WINDOW)
             txt = r.stdout.decode("utf-16-le" if b"\x00" in r.stdout else "utf-8", "replace")
             m = re.search(rx, txt)
-            if m:
-                if name == "Git":
-                    out["git"] = m.group(1)
-                else:
-                    out["tools"].append([name, m.group(1)])
+            return (name, m.group(1)) if m else None
         except Exception:
-            pass
+            return None
+    specs = (("Git", ["git", "--version"], r"(\d+\.\d+\.\d+(?:\.windows\.\d+)?)"),
+             ("PowerShell 7", ["pwsh", "--version"], r"(\d+\.\d+\.\d+)"),
+             ("WSL", ["wsl", "--version"], r"(\d+\.\d+\.\d+(?:\.\d+)?)"),
+             ("uv", ["uv", "--version"], r"(\d+\.\d+\.\d+)"))
+    job.progress(.4, tr("Asking npm…"))
+    res = gather(pip, npm_scan, *[(lambda sp=sp: tool(*sp)) for sp in specs])
+    job.check()
+    out.update(res[0])
+    out.update(res[1])
+    job.progress(.85, tr("Checking the other tools…"))
+    for found in res[2:]:
+        if found:
+            if found[0] == "Git":
+                out["git"] = found[1]
+            else:
+                out["tools"].append(list(found))
     return out
 
 

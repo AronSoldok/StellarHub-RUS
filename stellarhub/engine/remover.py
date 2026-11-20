@@ -272,9 +272,10 @@ def remove(job, scan_key, item_ids):
     items = [i for i in sc["items"] if i["id"] in wanted and not i.get("blocked")]
     s = settings.load()
     p = sc["program"]
-    excl = [paths.norm_path(x) for x in s.get("exclusions", [])]
+    # the user's exclusions match by real path too (an exclusion typed through a junction or a short name)
+    excl = [f for x in s.get("exclusions", []) for f in paths.forms_cached(x)]
     items = [i for i in items if not (i["kind"] in ("file", "folder") and
-                                      any(paths.is_within(i["target"], e) for e in excl))]
+                                      any(paths.within_norm(t, e) for t in paths.forms(i["target"]) for e in excl))]
     res = quarantine.remove(p, items, _all(), mode=s["delete_mode"],
                             progress=lambda f, l="": job.progress(f, l))
     settings.log("remove", p.get("name", "?"), {"ok": res["ok"], "failed": res["failed"], "freed": res["freed"],

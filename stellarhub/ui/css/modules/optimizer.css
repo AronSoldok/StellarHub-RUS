@@ -71,7 +71,7 @@ html[data-int=min] #v-optimizer .phase .bar.indet>span{animation:none;width:100%
 #v-optimizer .sv-busy .sv-list,#v-optimizer .sv-busy .sv-profs{cursor:progress}
 #v-optimizer .sv-busy .sv-list .toggle,#v-optimizer .sv-busy .sv-pr{pointer-events:none;opacity:.6}
 @keyframes optPulse{0%{box-shadow:0 0 0 0 color-mix(in oklab,var(--accent) 60%,transparent)}100%{box-shadow:0 0 0 10px transparent}}
-#v-optimizer .result{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:6px 0 18px}
+#v-optimizer .result{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;margin:6px 0 18px}
 #v-optimizer .result>div{padding:16px;border-radius:var(--r-m);background:var(--raise2)}
 #v-optimizer .result span{display:block;font-size:12px;color:var(--mute);margin-top:8px}
 #v-optimizer .res-log .row{padding:8px 10px}

@@ -284,18 +284,25 @@ function iconSrc(a) { return S.icons[a.id] || (!REAL && BY[a.id] ? remoteIcon(a)
 function letter(a) { return a.cat === 'runtimes' ? `<i class="hg-lt" style="--c:var(--accent2)">${ic('layers')}</i>` : `<i class="hg-lt" style="--c:${colorFor(a.name)}">${esc(initial(a.name))}</i>`; }
 function icon(a, cls = '') {
   const src = iconSrc(a);
-  return `<span class="hg-ic ${cls}" data-ic="${esc(a.id)}">${src ? `<img src="${esc(src)}" alt="" decoding="async">` : letter(a)}</span>`;
+  return `<span class="hg-ic ${cls}" data-ic="${esc(a.id)}">${src ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">` : letter(a)}</span>`;
 }
 /* broken remote images (sample mode) fall back to the letter */
 document.addEventListener('error', e => { const im = e.target; if (im.tagName !== 'IMG') return; const box = im.closest && im.closest(`#v-${ID} .hg-ic`); if (!box) return;
   const a = BY[box.dataset.ic] || { name: box.dataset.ic }; box.innerHTML = letter(a); }, true);
 function applyIcons(map) {
   const fresh = Object.entries(map || {}).filter(([id, u]) => u && S.icons[id] !== u);
+  if (!fresh.length) return;
   fresh.forEach(([id, u]) => { S.icons[id] = u; });
-  fresh.forEach(([id, u]) => $$(`#v-${ID} .hg-ic[data-ic="${CSS.escape(id)}"]`).forEach(box => {
-    box.innerHTML = `<img src="${esc(u)}" alt="" decoding="async">`;
-    if (box.offsetParent) anim(box.firstChild, [{ opacity: 0, transform: 'scale(.6)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
-  }));
+  /* one pass over the page (not one query per icon) and all the writes before the visibility reads: no layout thrash */
+  const boxes = new Map();
+  $$(`#v-${ID} .hg-ic[data-ic]`).forEach(b => { const k = b.dataset.ic; (boxes.get(k) || boxes.set(k, []).get(k)).push(b); });
+  const done = [];
+  fresh.forEach(([id, u]) => (boxes.get(id) || []).forEach(box => { box.innerHTML = `<img src="${esc(u)}" alt="" loading="lazy" decoding="async">`; done.push(box); }));
+  let n = 0;
+  for (const box of done) {
+    if (n >= 24) break;  /* only the first screenful pops in, the rest simply appear */
+    if (box.offsetParent) { n++; anim(box.firstChild, [{ opacity: 0, transform: 'scale(.6)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring }); }
+  }
 }
 const iconReq = new Set();
 async function loadIcons(list) {

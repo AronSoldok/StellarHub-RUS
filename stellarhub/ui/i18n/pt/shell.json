@@ -396,9 +396,15 @@
   "Select": "Selecionar",
   "Back": "Voltar",
   "Done": "Concluído",
-  "Lighter effects on battery": "Efeitos mais leves na bateria",
-  "On battery, StellarHub uses simpler effects, a calmer starfield and slower live data, so it stays smooth and saves power.": "Na bateria, o StellarHub usa efeitos mais simples, um fundo de estrelas mais calmo e dados ao vivo mais lentos, para ficar fluido e gastar menos energia.",
+  "Lighter effects": "Efeitos mais leves",
+  "Simpler effects and a calmer starfield, so it stays smooth and uses less of the graphics chip. On battery, live data is also slower. Automatic turns it on when the PC runs on battery or has only integrated graphics.": "Efeitos mais simples e um fundo de estrelas mais calmo, para ficar fluido e usar menos o chip gráfico. Na bateria, os dados ao vivo também ficam mais lentos. Automático ativa quando o PC está na bateria ou só tem gráficos integrados.",
+  "Always": "Sempre",
+  "Never": "Nunca",
   "A task is still running: {name}.": "Há uma tarefa em andamento: {name}.",
   "{name} finished.": "{name} concluída.",
-  "{name} did not finish.": "{name} não foi concluída."
+  "{name} did not finish.": "{name} não foi concluída.",
+  "This update isn't signed by StellarHub's author, so it wasn't installed.": "Esta atualização não está assinada pelo autor do StellarHub, então não foi instalada.",
+  "Registry cleaner": "Limpador de registro",
+  "Microsoft doesn't usually recommend registry cleaners: Windows doesn't need one to stay fast. You can turn it on if you'd like to use it; everything it changes is backed up and can be undone.": "A Microsoft normalmente não recomenda limpadores de registro: o Windows não precisa de um para continuar rápido. Você pode ativá-lo se quiser usá-lo; tudo o que ele altera tem backup e pode ser desfeito.",
+  "The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.": "A guia Registro agora está no Super Otimizador. Cada correção tem backup; você pode restaurá-lo em Configurações > Backup e restauração."
 }

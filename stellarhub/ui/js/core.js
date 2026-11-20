@@ -23,12 +23,12 @@ const DEFAULTS = {
   startWithWindows: false, autoUpdate: true, autoUpdateFeatures: true, skipVersion: '', language: 'auto', density: 'comfortable', sounds: false,
   widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetLayout: 'grid',
   starCount: 400, starSpeed: 1.5, starBright: 1.2, widgetMode: 'full', widgetWasOpen: false, alwaysAdmin: false, twinkle: true, shooting: true, nebula: 1, animSpeed: 1, panelAlpha: 1.75, corners: 'mid',
-  countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', measurePing: true, lastView: 'home', batterySaver: true,
+  countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', measurePing: true, lastView: 'home', batterySaver: true, lightMode: 'auto', registryCleaner: false,
 };
 const state = { view: 'home', admin: false, palOpen: false, setOpen: false, version: '0.2.0', settings: { ...DEFAULTS }, lite: false };
 const FACT = { max: 1, normal: .72, min: .3 };
 const ORBIT = { max: 1, normal: .55, min: 0 };
-/* state.lite: running on battery with "Lighter effects on battery" on (telemetry.js sets it). The intensity the
+/* state.lite: lighter effects are on (setting lightMode: automatic = on battery or integrated graphics only, always, never; telemetry.js sets it). The intensity the
    user chose stays as it is in the settings; effInt() is the one the animations use: one step lower while lite. */
 const effInt = () => { const i = state.settings.intensity; return state.lite && i === 'max' ? 'normal' : i; };
 const motion = () => FACT[effInt()] ?? 1;
@@ -104,7 +104,7 @@ function job(mod, fn, args = [], o = {}) {
    default must have the same type (numbers also inside their range); keys without one (the lists and maps the
    modules keep) must have the shape below. Anything else falls back to the default, or is dropped, key by key. */
 const RANGE = { starCount: [0, 3000], starSpeed: [0, 5], starBright: [0, 3], nebula: [0, 3], animSpeed: [.25, 3], panelAlpha: [0, 3] };
-const ENUM = { intensity: ['max', 'normal', 'min'], widgetLayout: ['grid', 'list', 'row'] };
+const ENUM = { intensity: ['max', 'normal', 'min'], lightMode: ['auto', 'always', 'never'], widgetLayout: ['grid', 'list', 'row'] };
 const SHAPE = { activity: 'a', hangarKits: 'a', cleanExclusions: 'a', autopilotRoutines: 'a', autopilotLog: 'a',
   pending: 'o', updIgnored: 'o', updSchedule: 'o', testerKbMissing: 'o', autopilotNotify: 'o', cpsBest: 'n', autopilotSchema: 'n' };
 const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -129,8 +129,17 @@ function sanitizeSettings(saved) {
 }
 async function loadSettings() {
   let saved = await call('settings_get');
+  const inApp = saved !== undefined;
   if (saved === undefined) { try { saved = JSON.parse(localStorage.getItem('sh.settings') || '{}'); } catch { saved = {}; } }
   Object.assign(state.settings, sanitizeSettings(saved));
+  /* before the three-way "Lighter effects" choice there was a yes/no (batterySaver): no becomes Never, yes is Automatic */
+  if (saved && typeof saved === 'object' && saved.lightMode === undefined && saved.batterySaver === false) state.settings.lightMode = 'never';
+  /* the registry cleaner is opt-in (setting registryCleaner, default off). Someone upgrading, with no such key saved yet,
+     keeps it on only if they already have registry-fix backups; the answer is saved so this runs once. */
+  if (inApp && isObj(saved) && typeof saved.registryCleaner !== 'boolean') {
+    let had = false; try { had = (await engine('optimizer', 'registry_backups_exist')) === true; } catch {}
+    state.settings.registryCleaner = had; call('settings_set', { registryCleaner: had });
+  }
   /* the language lives in the settings; i18n.js read a local copy to translate before this point. If they differ
      (first start after installing in another language, or changed elsewhere), switch once. */
   const L = window.SH && SH.i18n;
@@ -322,7 +331,7 @@ const MODS0 = [
   { id: 'storage', name: 'Storage Checker', icon: 'storage', desc: 'What every folder on your drives takes up, on a map you can explore.',
     tabs: [['map', 'Map'], ['tree', 'Folders'], ['types', 'File types'], ['largest', 'Largest'], ['duplicates', 'Duplicates'], ['compare', 'Compare']] },
   { id: 'optimizer', name: 'Super Optimizer', icon: 'optimizer', desc: 'Clean, repair and speed up Windows. Always with a restore point and undo.',
-    tabs: [['overview', 'Overview'], ['clean', 'Cleanup'], ['startup', 'Startup'], ['services', 'Services'], ['registry', 'Registry'], ['repair', 'Repair'], ['performance', 'Performance'], ['debloat', 'Debloat']] },
+    tabs: [['overview', 'Overview'], ['clean', 'Cleanup'], ['startup', 'Startup'], ['services', 'Services'], ['registry', 'Registry', () => !!state.settings.registryCleaner], ['repair', 'Repair'], ['performance', 'Performance'], ['debloat', 'Debloat']] },
   { id: 'privacy', name: 'Privacy & Security', icon: 'privacy', real: true, desc: 'What can see you, what is open and how well Windows protects you.',
     tabs: [['overview', 'Overview'], ['permissions', 'App permissions'], ['protection', 'Protection'], ['network', 'Network'], ['tracking', 'Tracking'], ['persistence', 'Auto-starts']] },
   { id: 'benchmark', name: 'Benchmark Testing', icon: 'benchmark', real: true, desc: 'Measure every component, stress-test it and get a score for your PC.',
@@ -333,7 +342,7 @@ const MODS0 = [
     tabs: [['routines', 'Routines'], ['calendar', 'Calendar'], ['notify', 'Notifications'], ['log', 'Log']] },
 ];
 /* names, descriptions and tab names in the interface language (ids stay as they are) */
-const MODS = MODS0.map(m => ({ ...m, name: t(m.name), desc: m.desc && t(m.desc), tabs: m.tabs && m.tabs.map(([id, n]) => [id, t(n)]) }));
+const MODS = MODS0.map(m => ({ ...m, name: t(m.name), desc: m.desc && t(m.desc), tabs: m.tabs && m.tabs.map(([id, n, when]) => when ? [id, t(n), when] : [id, t(n)]) }));
 const modById = id => MODS.find(m => m.id === id);
 
 /* registry of modules and Home views (filled in by the files in js/modules and js/home) */
@@ -372,26 +381,38 @@ function setPending(key, n) {
 
 /* ---------- automatic fade on scrollable areas ---------- */
 const sfSet = new Set();
-function sfUpdate(el) {
-  const max = el.scrollHeight - el.clientHeight;
-  if (max <= 2) { el.classList.remove('sf-t', 'sf-b'); return; }
-  el.classList.toggle('sf-t', el.scrollTop > 2); el.classList.toggle('sf-b', el.scrollTop < max - 2);
-}
+function sfUpdate(el) { sfApply(el, el.scrollHeight - el.clientHeight, el.scrollTop); }
+/* All the reads first, then all the writes: a class written inside the loop made the next read force a new layout
+   (hundreds of layouts per scan on a big list). */
 function sfScan(root) {
   if (!root) return;
-  const els = [root, ...root.querySelectorAll('*')];
-  for (const el of els) {
-    if (sfSet.has(el) || !el.clientHeight || el.closest('[data-nofade]')) continue;
+  const found = [], stack = [root];
+  /* The walk prunes whole subtrees that are not rendered (display:none tabs, rows skipped by content-visibility:auto):
+     reading a size inside a skipped row forces that row to lay out, one by one. */
+  const vis = Element.prototype.checkVisibility ? el => el.checkVisibility({ contentVisibilityAuto: true }) : () => true;
+  for (let el; (el = stack.pop());) {
+    if (!vis(el)) continue;
+    for (let c = el.lastElementChild; c; c = c.previousElementSibling) stack.push(c);
+    /* cheapest tests first: only an element that really overflows gets its style read */
+    if (sfSet.has(el) || !el.clientHeight || el.scrollHeight - el.clientHeight <= 2 || el.closest('[data-nofade]')) continue;
     const cs = getComputedStyle(el);
     if (!/(auto|scroll)/.test(cs.overflowY)) continue;
     const plain = cs.backgroundColor === 'rgba(0, 0, 0, 0)' && parseFloat(cs.borderBottomWidth) === 0;
     if (!plain || el.dataset.nofade !== undefined) continue;
-    el.classList.add('sf'); sfSet.add(el);
+    found.push(el);
   }
-  sfSet.forEach(el => { if (!el.isConnected) sfSet.delete(el); else sfUpdate(el); });
+  for (const el of found) { el.classList.add('sf'); sfSet.add(el); }
+  const live = [];
+  sfSet.forEach(el => { if (!el.isConnected) sfSet.delete(el); else live.push(el); });
+  const m = live.map(el => [el.scrollHeight - el.clientHeight, el.scrollTop]);
+  live.forEach((el, i) => sfApply(el, m[i][0], m[i][1]));
+}
+function sfApply(el, max, top) {
+  if (max <= 2) { el.classList.remove('sf-t', 'sf-b'); return; }
+  el.classList.toggle('sf-t', top > 2); el.classList.toggle('sf-b', top < max - 2);
 }
 addEventListener('scroll', e => { const el = e.target; if (el.nodeType === 1 && sfSet.has(el)) sfUpdate(el); }, true);
-addEventListener('resize', () => sfSet.forEach(sfUpdate));
+addEventListener('resize', () => { const l = [...sfSet], m = l.map(el => [el.scrollHeight - el.clientHeight, el.scrollTop]); l.forEach((el, i) => sfApply(el, m[i][0], m[i][1])); });
 /* the scan reads the style of every element: it only runs when something was added to the page (or the view or tab changed) */
 let sfDirty = 2;
 new MutationObserver(ms => { if (!sfDirty && ms.some(m => [...m.addedNodes].some(n => n.nodeType === 1))) sfDirty = 2; }).observe(document.documentElement, { childList: true, subtree: true });

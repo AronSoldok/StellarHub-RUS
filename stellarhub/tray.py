@@ -221,6 +221,17 @@ def _crisp_icon_class(base):
     return CrispIcon
 
 
+_ICON = None
+
+
+def icon_image():
+    """make_icon_image() at tray size, drawn once (the start prefetches it)."""
+    global _ICON
+    if _ICON is None:
+        _ICON = make_icon_image()
+    return _ICON
+
+
 class Tray:
     def __init__(self, api):
         self.api = api
@@ -260,7 +271,7 @@ class Tray:
             Menu.SEPARATOR,
             Item(L("Quit StellarHub"), lambda i, it: a.quit()),
         )
-        self.icon = _crisp_icon_class(pystray.Icon)("StellarHub", make_icon_image(), "StellarHub", menu)
+        self.icon = _crisp_icon_class(pystray.Icon)("StellarHub", icon_image(), "StellarHub", menu)
         threading.Thread(target=self.icon.run, daemon=True, name="tray").start()
 
     def notify(self, text, title="StellarHub"):

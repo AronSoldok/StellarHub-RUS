@@ -396,9 +396,15 @@
   "Select": "Sélectionner",
   "Back": "Retour",
   "Done": "Terminé",
-  "Lighter effects on battery": "Effets plus légers sur batterie",
-  "On battery, StellarHub uses simpler effects, a calmer starfield and slower live data, so it stays smooth and saves power.": "Sur batterie, StellarHub utilise des effets plus simples, un fond d’étoiles plus calme et des données en direct plus lentes, pour rester fluide et consommer moins.",
+  "Lighter effects": "Effets plus légers",
+  "Simpler effects and a calmer starfield, so it stays smooth and uses less of the graphics chip. On battery, live data is also slower. Automatic turns it on when the PC runs on battery or has only integrated graphics.": "Des effets plus simples et un fond d'étoiles plus calme, pour rester fluide et solliciter moins la puce graphique. Sur batterie, les données en direct sont aussi plus lentes. Automatique l'active quand le PC est sur batterie ou n'a qu'une carte graphique intégrée.",
+  "Always": "Toujours",
+  "Never": "Jamais",
   "A task is still running: {name}.": "Une tâche est toujours en cours : {name}.",
   "{name} finished.": "{name} terminé.",
-  "{name} did not finish.": "{name} n'a pas abouti."
+  "{name} did not finish.": "{name} n'a pas abouti.",
+  "This update isn't signed by StellarHub's author, so it wasn't installed.": "Cette mise à jour n'est pas signée par l'auteur de StellarHub : elle n'a donc pas été installée.",
+  "Registry cleaner": "Nettoyeur de registre",
+  "Microsoft doesn't usually recommend registry cleaners: Windows doesn't need one to stay fast. You can turn it on if you'd like to use it; everything it changes is backed up and can be undone.": "Microsoft ne recommande généralement pas les nettoyeurs de registre : Windows n'en a pas besoin pour rester rapide. Vous pouvez l'activer si vous souhaitez l'utiliser ; tout ce qu'il modifie est sauvegardé et peut être annulé.",
+  "The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.": "L'onglet Registre est maintenant dans le Super optimiseur. Chaque correction est sauvegardée ; vous pouvez la restaurer depuis Paramètres > Sauvegarde et restauration."
 }

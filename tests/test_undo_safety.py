@@ -422,6 +422,34 @@ class BackupsListing(unittest.TestCase):
         self.assertEqual(len(out[0]["paths"]), 2)
 
 
+class RegistryBackupsExist(unittest.TestCase):
+    """The registry cleaner is opt-in; a user who already has registry-fix backups keeps it on after upgrading."""
+
+    def _dirs(self):
+        a, b = tempfile.mkdtemp(), tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, a, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, b, ignore_errors=True)
+        return a, b
+
+    def test_false_without_registry_backups(self):
+        a, b = self._dirs()
+        os.makedirs(os.path.join(a, "services"))
+        os.makedirs(os.path.join(b, "registry"))  # empty folder: no backup
+        with mock.patch.object(O, "DATA", a), mock.patch.object(O, "USER_DATA", b):
+            self.assertFalse(O.registry_backups_exist())
+        with mock.patch.object(O, "DATA", os.path.join(a, "missing")), mock.patch.object(O, "USER_DATA", os.path.join(b, "nope")):
+            self.assertFalse(O.registry_backups_exist())
+
+    def test_true_with_a_backup_in_either_root(self):
+        a, b = self._dirs()
+        os.makedirs(os.path.join(b, "registry", "20261119-120000-abcdef"))
+        with mock.patch.object(O, "DATA", a), mock.patch.object(O, "USER_DATA", b):
+            self.assertTrue(O.registry_backups_exist())
+        with mock.patch.object(O, "DATA", b), mock.patch.object(O, "USER_DATA", a):
+            self.assertTrue(O.registry_backups_exist())
+        self.assertIn("registry_backups_exist", O.EXPORTS)
+
+
 class MonitorProcesses(unittest.TestCase):
     def setUp(self):
         M._pdh, M._pdh_next = None, 0.0

@@ -9,12 +9,22 @@ import winreg
 
 from ...i18n import tr
 from . import paths, registry
-from .paths import is_within, kf, norm_path
+from .paths import kf, norm_path, within_norm
 
 # ================================================================ paths
 
 def _j(base, *parts):
     return os.path.join(base, *parts) if base else None
+
+
+def _norm_set(items):
+    """Each path normalized, plus where it really is: a protected folder that is a junction, or that has a short
+    name, is protected under every name Windows gives it (see paths.forms)."""
+    out = set()
+    for p in items:
+        if p:
+            out.update(paths.forms_cached(p))
+    return out
 
 
 def protected_exact():
@@ -45,7 +55,7 @@ def protected_exact():
     # its install location must never get that whole folder offered as its leftovers
     for root in _drives():
         out += [os.path.join(root, n) for n in _SHARED_ON_EVERY_DRIVE]
-    return {norm_path(p) for p in out if p}
+    return _norm_set(out)
 
 
 _SHARED_ON_EVERY_DRIVE = ("Program Files", "Program Files (x86)", os.path.join("Program Files", "Common Files"),
@@ -89,7 +99,7 @@ def forbidden_trees():
     ]
     for root in _drives():  # the recycle bin, restore data and Store apps of every drive, not only C:
         out += [os.path.join(root, n) for n in _SYSTEM_ON_EVERY_DRIVE]
-    return {norm_path(p) for p in out if p}
+    return _norm_set(out)
 
 
 _PERSONAL = ("Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos", "SavedGames", "OneDrive", "Public",
@@ -113,18 +123,19 @@ def temp_root_problem(root, system_temp=False):
     if not os.path.isdir(root) or paths.is_reparse_point(root):
         return tr("Skipped for safety: the temporary folder ({path}) does not exist or is a link", path=root)
     k = paths.known_folders()
+    rforms = paths.forms(root)      # as written and where it really is (a junction, a short name...)
     for name in _PERSONAL:
-        f = k.get(name)
-        if f and is_within(root, f):
-            return tr("Skipped for safety: the temporary folder ({path}) is a personal folder or inside one", path=root)
+        for f in paths.forms_cached(k.get(name) or ""):
+            if any(within_norm(r, f) for r in rforms):
+                return tr("Skipped for safety: the temporary folder ({path}) is a personal folder or inside one", path=root)
     prot = list(protected_exact())
     if os.path.basename(n) in ("temp", "tmp"):   # the normal temp folders are protected against deletion; emptying them is the point
-        prot = [p for p in prot if p != n]
+        prot = [p for p in prot if p not in rforms]
     for p in prot:
-        if p and is_within(p, root):
+        if any(within_norm(p, r) for r in rforms):
             return tr("Skipped for safety: the temporary folder ({path}) is, or contains, a protected folder", path=root)
     for p in forbidden_trees():
-        if p and (is_within(p, root) or (not system_temp and is_within(root, p))):
+        if any(within_norm(p, r) or (not system_temp and within_norm(r, p)) for r in rforms):
             return tr("Skipped for safety: the temporary folder ({path}) is, or contains, a protected folder", path=root)
     return None
 
@@ -136,13 +147,13 @@ def forbidden_exceptions():
     out = [k.get("Programs"), k.get("CommonPrograms"), k.get("Startup"), k.get("CommonStartup"),
            _j(local, "Microsoft", "WinGet", "Packages"),
            _j(k.get("RoamingAppData"), "Microsoft", "Internet Explorer", "Quick Launch")]
-    return {norm_path(p) for p in out if p}
+    return _norm_set(out)
 
 
 def personal_roots():
     k = paths.known_folders()
-    return {norm_path(k.get(n)) for n in ("Documents", "Pictures", "Music", "Videos", "Downloads",
-                                          "OneDrive", "SavedGames") if k.get(n)}
+    return _norm_set(k.get(n) for n in ("Documents", "Pictures", "Music", "Videos", "Downloads",
+                                        "OneDrive", "SavedGames"))
 
 
 def read_shared_dlls():
@@ -161,7 +172,7 @@ class Context:
     """Everything needed to decide whether something can be deleted when cleaning up a program."""
 
     def __init__(self, target=None, programs=(), extra_protected=(), shared_dlls=None):
-        self.protected = protected_exact() | paths.self_paths() | {norm_path(p) for p in extra_protected}
+        self.protected = protected_exact() | paths.self_paths() | _norm_set(extra_protected)
         self.forbidden = forbidden_trees() | paths.self_paths()
         self.exceptions = forbidden_exceptions()
         self.personal = personal_roots()
@@ -179,34 +190,47 @@ class Context:
 
     # -------------------------------------------------------------- files
     def check_path(self, path):
-        """Return (block_reason | None, is_personal)."""
-        n = norm_path(path)
+        """Return (block_reason | None, is_personal). The path is checked under every name it has: as written and
+        where it really is (a junction into Windows, an 8.3 alias, other case, a trailing dot): blocked if ANY of
+        them is protected."""
+        forms = paths.forms(path)
+        if not forms:
+            return tr("Drive root or invalid path"), False
+        personal = False
+        for n in forms:
+            why, pers = self._check_norm(n, path)
+            if why:
+                return why, False
+            personal = personal or pers
+        return None, personal
+
+    def _check_norm(self, n, path):
         if not n or not os.path.isabs(n) or len(n) <= 3:
             return tr("Drive root or invalid path"), False
         for p in self.protected:
-            if is_within(p, n):
+            if within_norm(p, n):
                 return (tr("Protected system folder") if p == n else
                         tr("Contains a protected system folder")), False
         for f in self.forbidden:
-            if is_within(n, f) and not any(is_within(n, e) for e in self.exceptions):
+            if within_norm(n, f) and not any(within_norm(n, e) for e in self.exceptions):
                 return tr("Protected Windows area"), False
-            if is_within(f, n):
+            if within_norm(f, n):
                 return tr("Contains a protected Windows area"), False
         for loc, name in self.others:
             # A) deleting this would take another installed program with it: always blocked
-            if is_within(loc, n):
+            if within_norm(loc, n):
                 return tr("Contains “{name}”, which is still installed", name=name), False
             # B) it is inside another program
-            if is_within(n, loc):
+            if within_norm(n, loc):
                 # Inside another program: only allowed if it is the target program's nested folder (e.g. a game inside Steam)
-                if not (self.target_loc and is_within(self.target_loc, loc) and is_within(n, self.target_loc)):
+                if not (self.target_loc and within_norm(self.target_loc, loc) and within_norm(n, self.target_loc)):
                     return tr("Belongs to “{name}”, which is still installed", name=name), False
         for dll, count in self.shared_dlls.items():
-            if count > 1 and is_within(dll, n):
+            if count > 1 and within_norm(dll, n):
                 return tr("Contains files shared with other programs (SharedDLLs)"), False
-        personal = any(is_within(n, r) for r in self.personal)
-        desk = kf("Desktop")
-        if desk and is_within(n, desk) and os.path.isdir(path):
+        personal = any(within_norm(n, r) for r in self.personal)
+        desk = norm_path(kf("Desktop"))
+        if desk and within_norm(n, desk) and os.path.isdir(path):
             personal = True
         return None, personal
 
@@ -328,9 +352,9 @@ def service_rule(name, info=None):
         return tr("System driver: only its official uninstaller can remove it")
     if isinstance(start, int) and start <= 1:
         return tr("Loads when Windows starts: deleting it could stop Windows from booting")
-    img = norm_path(_image_path(info.get("image", "")))
-    win = norm_path(kf("Windows"))
-    if img and win and is_within(img, win):
+    img = _image_path(info.get("image", ""))
+    win = kf("Windows")
+    if img and win and paths.is_within_real(img, win):
         return tr("Service hosted in Windows")
     return None
 

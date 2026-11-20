@@ -17,6 +17,15 @@ function sizeStars() { DPR = Math.min(state.lite ? 1 : 1.5, devicePixelRatio || 
 let starDirty = true, starAcc = 0, starCleared = false;
 sizeStars(); addEventListener('resize', sizeStars); SH.on('power', sizeStars);
 addEventListener('pointermove', e => { mouse.x.t = (e.clientX / innerWidth - .5) * 2; mouse.y.t = (e.clientY / innerHeight - .5) * 2; });
+/* Nothing touched for a few seconds: decoration that only moves for show (the stars, the GPU fans) drops to a few frames a
+   second, and goes back to full the moment the mouse, keyboard, wheel or controller is used. Every redraw of a full-window canvas
+   is a composite for the GPU, so a calm screen should cost it almost nothing. */
+let lastInput = performance.now();
+const poke = () => { lastInput = performance.now(); };
+['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(ev => addEventListener(ev, poke, { passive: true, capture: true }));
+SH.poke = poke; SH.idleFor = () => performance.now() - lastInput; SH.isIdle = () => SH.idleFor() > 8000;
+/* html[data-idle] lets CSS drop its own decorative transitions too */
+setInterval(() => { const v = SH.isIdle() ? '1' : '0'; if (ROOT.dataset.idle !== v) ROOT.dataset.idle = v; }, 1000);
 const starAlpha = new Spring(0, 40, 12); starAlpha.t = 1;
 SH.on('look', () => { starDirty = true; }); SH.on('setting', () => { starDirty = true; });
 tickers.add((dt, t) => {
@@ -29,7 +38,7 @@ tickers.add((dt, t) => {
   const par = st.parallax && moving && !lite ? 1 : 0;
   const fast = Math.abs(warp.v) > .02 || (par && (!mouse.x.idle || !mouse.y.idle)) || shooters.length > 0 || starAlpha.v < .99;
   starAcc += dt; t > nextShot && st.shooting && moving && (starDirty = true);
-  if (!starDirty && starAcc < (fast ? (lite ? .033 : 0) : (lite ? .1 : .04))) return;
+  if (!starDirty && starAcc < (fast ? (lite ? .033 : 0) : SH.isIdle() ? (lite ? .25 : .125) : (lite ? .1 : .04))) return;
   const d = starAcc; starAcc = 0; starDirty = false; starCleared = false;
   cx.setTransform(DPR, 0, 0, DPR, 0, 0); cx.clearRect(0, 0, SW, SH_);
   const drift = moving ? d * .004 * SH.ORBIT[inten] * st.starSpeed : 0, bright = st.starBright || 1;
@@ -106,7 +115,23 @@ dock.addEventListener('click', e => { const b = e.target.closest('[data-go]'); i
 /* ================= modules: views and tabs ================= */
 const views = $('#views');
 const modState = {}; // id -> {tab, rendered:Set, ix, iw}
-function tabsOf(m) { const def = registry.modules[m.id] || {}; return (def.tabs || m.tabs || []).map(t => Array.isArray(t) ? { id: t[0], name: t[1] } : t); }
+/* a tab may carry a condition (a third item in SH.MODS, or `when` on a module's own tab object): while it is false the tab is
+   hidden (no button, no palette entry, not reachable by #mod/tab) but its panel stays built, so nothing else changes */
+function allTabsOf(m) { const def = registry.modules[m.id] || {}; return (def.tabs || m.tabs || []).map(t => Array.isArray(t) ? { id: t[0], name: t[1], when: t[2] } : t); }
+const tabShown = t => { try { return !t.when || !!t.when(); } catch { return true; } };
+function tabsOf(m) { return allTabsOf(m).filter(tabShown); }
+/* shows or hides the tab buttons of a module according to their conditions; moves off a tab that just went away */
+function syncTabs(mid) {
+  const m = modById(mid), ms = modState[mid], s = $('#v-' + mid); if (!m || !ms || !s) return;
+  const all = allTabsOf(m); if (!all.some(t => t.when)) return;
+  const shown = all.filter(tabShown);
+  all.forEach(t => { const b = $(`.subnav [data-tab="${t.id}"]`, s); if (b) b.hidden = !shown.includes(t); });
+  const nav = $('.subnav', s); if (nav) nav.hidden = shown.length < 2;
+  if (!shown.some(t => t.id === ms.tab) && shown[0]) setTab(mid, shown[0].id, true);
+  tabDirty = true;
+}
+const syncAllTabs = () => Object.keys(modState).forEach(syncTabs);
+SH.on('setting', () => syncAllTabs());
 function skeletonFor(i) {
   const r = k => `<div class="sk-row" data-asm><div class="sk a" style="--dl:${k * .08}s"></div><div class="sk b" style="--w:${[38, 52, 30, 46, 41, 27, 49][k % 7]}%;--dl:${k * .08 + .04}s"></div><div class="sk c" style="--dl:${k * .08 + .08}s"></div></div>`;
   return `<div class="sk-rows">${Array.from({ length: 6 + (i % 3) }, (_, k) => r(k)).join('')}</div>`;
@@ -114,12 +139,12 @@ function skeletonFor(i) {
 function buildModule(m) {
   let s = $('#v-' + m.id);
   if (!s) { s = document.createElement('section'); s.className = 'view'; s.id = 'v-' + m.id; s.dataset.view = m.id; views.appendChild(s); }
-  const def = registry.modules[m.id] || {}; const tabs = tabsOf(m);
+  const def = registry.modules[m.id] || {}; const tabs = allTabsOf(m);
   const sample = !(m.real || def.real) ? `<span class="chip warn" title="${SH.t('Not connected to the real engine yet: what you see is sample data and does not reflect your PC')}">${SH.t('Sample data')}</span>` : '';
   s.innerHTML = `<div class="mod"><header class="mhead" data-asm><div class="ttl"><h1>${esc(def.name || m.name)}${sample}</h1><p>${esc(def.desc || m.desc || '')}</p></div><div class="acts"></div></header>
-    ${tabs.length > 1 ? `<nav class="subnav" data-asm role="tablist"><span class="ind"></span>${tabs.map((t, i) => `<button role="tab" data-tab="${t.id}"${i === 0 ? ' class="on"' : ''}>${esc(t.name)}<span class="bd" hidden></span></button>`).join('')}</nav>` : ''}
+    ${tabs.length > 1 ? `<nav class="subnav" data-asm role="tablist"><span class="ind"></span>${tabs.map((t, i) => `<button role="tab" data-tab="${t.id}"${i === 0 ? ' class="on"' : ''}${tabShown(t) ? '' : ' hidden'}>${esc(t.name)}<span class="bd" hidden></span></button>`).join('')}</nav>` : ''}
     <div class="tabs">${tabs.map((t, i) => `<div class="tab${i === 0 ? ' on' : ''}" data-tab="${t.id}" role="tabpanel"></div>`).join('')}</div></div>`;
-  modState[m.id] = { tab: tabs[0] && tabs[0].id, rendered: new Set(), ix: new Spring(0, 300, 28), iw: new Spring(0, 300, 28), placed: false };
+  modState[m.id] = { tab: (tabs.find(tabShown) || tabs[0] || {}).id, rendered: new Set(), ix: new Spring(0, 300, 28), iw: new Spring(0, 300, 28), placed: false };
   const ctx = ctxFor(m);
   if (def.actions) { try { def.actions($('.acts', s), ctx); } catch (e) { console.error(e); } }
   const nav = $('.subnav', s);
@@ -288,7 +313,7 @@ function paletteItems() {
   const list = [];
   MODS.forEach(m => list.push({ t: m.name, go: m.id, ic: m.icon, g: 'Modules' }));
   MODS.forEach(m => tabsOf(m).forEach(t => list.push({ t: t.name, path: m.name, go: m.id, tab: t.id, ic: m.icon, g: 'Sections' })));
-  [...BUILTIN, ...registry.actions].forEach(a => list.push({ ...a, g: 'Actions' }));
+  [...BUILTIN, ...registry.actions].forEach(a => { if (!a.when || a.when()) list.push({ ...a, g: 'Actions' }); }); /* an action may carry `when`: hidden while it is false */
   return list;
 }
 const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -395,7 +420,7 @@ function sectionHTML(id) {
       ${tog('camera', t('Camera flights'), t('The zoom that flies through the scene when you switch modules.'))}
       ${tog('parallax', t('Mouse depth'), t('The layers shift slightly as you move the mouse.'))}
       ${tog('countUp', t('Counting numbers'), t('Figures count up to their value when they appear.'))}
-      ${tog('batterySaver', t('Lighter effects on battery'), t('On battery, StellarHub uses simpler effects, a calmer starfield and slower live data, so it stays smooth and saves power.'))}`;
+      <div class="set"><div class="lbl"><div>${t('Lighter effects')}<span>${t('Simpler effects and a calmer starfield, so it stays smooth and uses less of the graphics chip. On battery, live data is also slower. Automatic turns it on when the PC runs on battery or has only integrated graphics.')}</span></div></div>${seg('lightMode', [['auto', t('Automatic')], ['always', t('Always')], ['never', t('Never')]])}</div>`;
     case 'home': return `<h3>${t('Home')}</h3><p>${t('What you see when you open StellarHub.')}</p>
       <div class="set"><div class="lbl">${t('PC view')}</div><div class="vcards" id="vcards">${variantCards()}</div></div>
       <div class="set"><div class="lbl"><div>${t('When the app opens')}<span>${t('Where you start each time.')}</span></div></div>${seg('startView', [['home', t('Home')], ['monitor', t('Live Monitor')], ['last', t('Where I left off')]])}</div>
@@ -417,6 +442,7 @@ function sectionHTML(id) {
       ${tog('trayOnClose', t('Close to the tray'), t('The X hides the window; StellarHub keeps running in the tray. To quit: right-click the icon > Quit.'))}
       ${tog('sounds', t('Sounds'), t('A soft sound when long tasks finish.'))}
       <div class="set inline"><div class="lbl"><div>${t('Controller navigation')}<span>${t('Use a game controller to move around StellarHub. Turn it off if it gets in the way.')}</span></div></div><button class="toggle${S().gamepadNav !== false ? ' on' : ''}" data-key="gamepadNav" aria-label="${t('Controller navigation')}"><i></i></button></div>
+      ${tog('registryCleaner', t('Registry cleaner'), t("Microsoft doesn't usually recommend registry cleaners: Windows doesn't need one to stay fast. You can turn it on if you'd like to use it; everything it changes is backed up and can be undone."))}
       ${tog('confirmDanger', t('Confirm anything that cannot be undone'), t('Everything else always has an undo button.'))}
       <div class="set"><div class="lbl"><div>${t('Live data refresh rate')}<span>${t('Faster is smoother; slower uses less power.')}</span></div></div>${seg('teleRate', [['500', t('Fast')], ['1000', t('Normal')], ['2000', t('Saver')]])}</div>
       ${tog('measurePing', t('Measure the connection latency'), t('Every 2 seconds while StellarHub is open, it opens a connection to 1.1.1.1 (Cloudflare) and times it. Nothing is sent. Turn it off and latency shows as —.'))}`;
@@ -512,7 +538,7 @@ async function runAct(a) {
     const old = { ...state.settings }; await SH.call('reset_settings'); try { localStorage.removeItem('sh.settings'); } catch {}
     /* the engine keeps the user's data (and turns off the startup entry and the always-admin task itself): same here */
     const kept = {}; RESET_KEEP.forEach(k => { if (old[k] !== undefined) kept[k] = old[k]; });
-    Object.keys(state.settings).forEach(k => delete state.settings[k]); Object.assign(state.settings, SH.DEFAULTS, kept); applyAll(); showSection(secOn);
+    Object.keys(state.settings).forEach(k => delete state.settings[k]); Object.assign(state.settings, SH.DEFAULTS, kept); SH.call('settings_set', { registryCleaner: !!state.settings.registryCleaner }); applyAll(); showSection(secOn);
     toast(SH.t('Settings reset. Your routines, history and kits were kept.'), { action: { label: SH.t('Undo'), run: async () => {
       await SH.call('settings_set', old); Object.assign(state.settings, old); applyAll(); showSection(secOn);
       if (old.startWithWindows) SH.call('set_autostart', true).then(r => { if (r === false) toast(SH.t('Windows did not allow changing automatic startup.')); });
@@ -555,6 +581,8 @@ function applySetting(key, val) {
   if (key === 'zoom') applyZoom();
   if (key === 'startWithWindows') SH.call('set_autostart', !!val).then(r => { if (r === false) toast(SH.t('Windows did not allow changing automatic startup.')); });
   if (key === 'teleRate' && SH.tele.setRate) SH.tele.setRate(+val);
+  if (key === 'registryCleaner' && val) toast(SH.t('The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.'));
+  if (key === 'lightMode') SH.setSetting('batterySaver', val !== 'never');  /* the old yes/no stays in step */
   /* turning it on in normal mode asks Windows once, right now (the elevated copy then sets up the task, and
      from then on it opens as administrator without asking); turning it off removes the task */
   if (key === 'alwaysAdmin') { if (val) alwaysAdminOn(); else SH.call('set_always_admin', false).then(r => { if (r === false) toast(SH.t('Could not set up starting as administrator.')); }); }
@@ -608,7 +636,7 @@ function applyLook() {
   if (stars.length !== st.starCount) makeStars(st.starCount);
   SH.emit('look');
 }
-function applyAll() { applyLook(); applyZoom(); SH.power && SH.power.set(SH.power.forced); }
+function applyAll() { applyLook(); applyZoom(); syncAllTabs(); SH.power && SH.power.set(SH.power.forced); }
 SH.on('power', () => applyLook());
 function openSettings(section) {
   if (state.palOpen) closePal();

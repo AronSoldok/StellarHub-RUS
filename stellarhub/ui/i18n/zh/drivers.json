@@ -71,6 +71,7 @@
   "Driver extensions": "驱动程序扩展",
   "Driver rolled back": "驱动程序已回退",
   "Drivers": "驱动程序",
+  "Drivers come from Windows Update: signed by Microsoft, the same source as Windows Settings. StellarHub has no driver database of its own.": "驱动程序来自 Windows Update：由 Microsoft 签名，与 Windows 设置来源相同。StellarHub 没有自己的驱动程序数据库。",
   "Drivers reinstalled from a backup": "已从备份重新安装驱动程序",
   "Enable": "启用",
   "Enable the device": "启用设备",

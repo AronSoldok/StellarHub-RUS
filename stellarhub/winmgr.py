@@ -1,0 +1,217 @@
+"""Window mechanics that need no app state: DPI scale, where the tray panel goes, rounded corners, the dark title bar,
+camera and microphone permission, WebView2 visibility, tool-window styles and always-on-top. Everything here takes
+the window (or its handle) it works on; which window is which lives in the Api."""
+import ctypes
+import threading
+import time
+
+from . import config
+
+
+def work_area():
+    """The primary monitor's work area (device pixels), or None."""
+    try:
+        import ctypes.wintypes as wt
+        wa = wt.RECT()
+        ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(wa), 0)  # SPI_GETWORKAREA
+        return wa
+    except Exception:
+        return None
+
+
+def tool_window_style(hwnd):
+    """Tool window: no taskbar button, no Alt+Tab, shows on every virtual desktop. Raises on failure."""
+    u = ctypes.windll.user32
+    GWL_EXSTYLE, WS_EX_TOOLWINDOW, WS_EX_APPWINDOW = -20, 0x00000080, 0x00040000
+    u.GetWindowLongPtrW.restype = ctypes.c_ssize_t
+    u.SetWindowLongPtrW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_ssize_t]
+    ex = u.GetWindowLongPtrW(ctypes.c_void_p(hwnd), GWL_EXSTYLE)
+    u.SetWindowLongPtrW(ctypes.c_void_p(hwnd), GWL_EXSTYLE, (ex | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW)
+
+
+def keep_topmost(hwnd, alive, name="widget-top"):
+    """A thread puts the window back on top every so often (without activating or moving it) while alive() says so.
+    The taskbar is also "always on top" and, when touched, it jumps in front of everything."""
+    u = ctypes.windll.user32
+    HWND_TOPMOST = ctypes.c_void_p(-1)
+    FLAGS = 0x0001 | 0x0002 | 0x0010 | 0x0200  # NOSIZE | NOMOVE | NOACTIVATE | NOOWNERZORDER
+
+    def keep():
+        while alive():
+            try:
+                u.SetWindowPos(ctypes.c_void_p(hwnd), HWND_TOPMOST, 0, 0, 0, 0, FLAGS)
+            except Exception:
+                break
+            time.sleep(0.35)
+    threading.Thread(target=keep, daemon=True, name=name).start()
+
+
+def cursor_monitor_geometry(pw, ph):
+    """Where the tray panel goes right now: (x, y, w, h) in device pixels, from the cursor and its monitor."""
+    import ctypes.wintypes as wt
+    u = ctypes.windll.user32
+    pt = wt.POINT()
+    u.GetCursorPos(ctypes.byref(pt))
+    mon = u.MonitorFromPoint(pt, 2)
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wt.DWORD), ("rcMonitor", wt.RECT), ("rcWork", wt.RECT), ("dwFlags", wt.DWORD)]
+    mi = MONITORINFO()
+    mi.cbSize = ctypes.sizeof(mi)
+    u.GetMonitorInfoW(mon, ctypes.byref(mi))
+    return panel_geometry((pt.x, pt.y), rect(mi.rcWork), rect(mi.rcMonitor), sys_scale(), pw, ph)
+
+
+def show_topmost(form, x, y, w, h, hand_foreground_from=None):
+    """Shows a WinForms window topmost at that rectangle and gives it the foreground (window thread)."""
+    u = ctypes.windll.user32
+    hwnd = form.Handle.ToInt32()
+    if hand_foreground_from:  # the tray click lets this process take the foreground: hand it to the panel
+        u.SetForegroundWindow(ctypes.c_void_p(hand_foreground_from))
+    u.SetWindowPos(ctypes.c_void_p(hwnd), ctypes.c_void_p(-1), x, y, w, h, 0x0040)  # TOPMOST, SHOWWINDOW
+    form.Show()
+    form.Activate()
+    u.SetForegroundWindow(ctypes.c_void_p(hwnd))
+
+
+def wv_visible(window, on):
+    """Tells WebView2 whether the window can be seen. A WebView2 whose window is hidden in the tray keeps
+    painting and running requestAnimationFrame at full speed (measured: 11% GPU and over 100% CPU for a window
+    nobody sees) unless its controller gets IsVisible = False. The WinForms control keeps that controller in a
+    private field, and does not update it when the form is hidden."""
+    if window is None:
+        return
+    try:
+        from System import Action
+        from System.Reflection import BindingFlags
+        form = window.native
+
+        def apply():
+            try:
+                wv = form.webview
+                f = wv.GetType().GetField("_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance)
+                c = f.GetValue(wv) if f is not None else None
+                if c is not None and c.IsVisible != on:
+                    c.IsVisible = on
+            except Exception as e:
+                print("webview visibility:", e)
+        form.BeginInvoke(Action(apply))
+    except Exception:
+        pass
+
+
+def sys_scale():
+    """The scale this process renders at. pywebview makes it system-DPI aware: every window, on any monitor, is laid
+    out at the primary monitor's scale (Windows stretches it on the others), so that is the one to size with."""
+    try:
+        return ctypes.windll.user32.GetDpiForSystem() / 96
+    except Exception:
+        return 1.0
+
+
+def rect(r):
+    return (r.left, r.top, r.right, r.bottom)
+
+
+def panel_geometry(pt, work, mon, k, pw, ph):
+    """Where the tray panel goes, in device pixels: (x, y, w, h). pt = the click, work/mon = (l, t, r, b) of the work
+    area and of the monitor under it. This process is system-DPI aware: the page renders at the system scale k on
+    every monitor and the coordinates Windows gives (cursor, monitors) are in that same space, so the panel is sized
+    with k, not with the monitor's own scale. The taskbar is the edge where the work area is smaller than the monitor
+    (any edge, any monitor); with an auto-hidden taskbar the edge closest to the click is used."""
+    w, h, m = int(pw * k), int(ph * k), int(10 * k)
+    wl, wt_, wr, wb = work
+    ml, mt, mr, mb = mon
+    gaps = {"bottom": mb - wb, "top": wt_ - mt, "right": mr - wr, "left": wl - ml}
+    edge = max(gaps, key=gaps.get)
+    if gaps[edge] <= 0:
+        near = {"bottom": mb - pt[1], "top": pt[1] - mt, "right": mr - pt[0], "left": pt[0] - ml}
+        edge = min(near, key=near.get)
+    if edge == "bottom":
+        x, y = pt[0] - w // 2, wb - h - m
+    elif edge == "top":
+        x, y = pt[0] - w // 2, wt_ + m
+    elif edge == "right":
+        x, y = wr - w - m, pt[1] - h // 2
+    else:
+        x, y = wl + m, pt[1] - h // 2
+    x = max(wl + m, min(x, wr - w - m))
+    y = max(wt_ + m, min(y, wb - h - m))
+    return x, y, w, h
+
+
+def on_screen(x, y):
+    """Is this point (device pixels) on a connected monitor?"""
+    try:
+        import ctypes.wintypes as wt
+        return bool(ctypes.windll.user32.MonitorFromPoint(wt.POINT(int(x), int(y)), 0))
+    except Exception:
+        return True
+
+
+def round_corners(window):
+    """Windows 11 rounded corners for frameless windows, with a subtle edge drawn by Windows
+    (the widget UI draws no border of its own, so there is no double frame at the corners)."""
+    try:
+        hwnd = window.native.Handle.ToInt32()
+        dwm = ctypes.windll.dwmapi
+        pref = ctypes.c_int(2)  # DWMWCP_ROUND
+        dwm.DwmSetWindowAttribute(hwnd, 33, ctypes.byref(pref), 4)
+        border = ctypes.c_int(0x00473A2C)  # #2C3A47 in BGR
+        dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(border), 4)
+    except Exception:
+        pass
+
+
+def grant_media(window):
+    """Camera and microphone for StellarHub's own UI (Device Tester) without the browser prompt.
+    The only thing that can block them is Windows privacy, and the app links to those settings."""
+    state = {"done": False}
+
+    def hook():
+        """Runs on the window thread (WebView2 can only be touched from there). Returns True if it got hooked."""
+        if state["done"]:
+            return True
+        form = window.native
+        core = form.webview.CoreWebView2
+        if core is None:
+            return False
+        from Microsoft.Web.WebView2.Core import CoreWebView2PermissionKind as K, CoreWebView2PermissionState as St
+
+        def on_perm(sender, args):
+            local = str(args.Uri).startswith(("http://127.0.0.1", "http://localhost"))
+            if local and args.PermissionKind in (K.Camera, K.Microphone, K.ClipboardRead, K.Notifications):
+                args.State = St.Allow
+        core.PermissionRequested += on_perm
+        state["done"] = True
+        return True
+
+    def wait_and_hook():
+        import time
+        from System import Func, Boolean
+        form = window.native
+        for _ in range(100):
+            try:
+                if form.Invoke(Func[Boolean](hook)):
+                    return
+            except Exception as e:
+                print("permissions:", e)
+                return
+            time.sleep(0.15)
+    threading.Thread(target=wait_and_hook, daemon=True).start()
+
+
+def style_titlebar(window):
+    """Dark title bar in the same color as the background (Windows 11)."""
+    try:
+        hwnd = window.native.Handle.ToInt32()
+        dwm = ctypes.windll.dwmapi
+        on = ctypes.c_int(1)
+        dwm.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(on), 4)  # dark mode
+        r, g, b = int(config.BG[1:3], 16), int(config.BG[3:5], 16), int(config.BG[5:7], 16)
+        color = ctypes.c_int(r | (g << 8) | (b << 16))
+        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(color), 4)  # title background
+        text = ctypes.c_int(0x00F6EDE8)
+        dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(text), 4)  # title text
+    except Exception:
+        pass

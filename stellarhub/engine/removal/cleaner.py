@@ -317,9 +317,12 @@ def _excluded(path, exclude):
         if not x or x.startswith(LOOSE_TOKEN):
             continue
         if os.path.isabs(x):
-            xn = _norm(x)
-            if n == xn or n.startswith(xn + os.sep):
-                return True
+            # the exclusion as typed AND its real path (a junction, a short name, a redirected folder): the files
+            # found by the scan come from real folders, so an exclusion written another way must still match
+            from . import paths as _rp
+            for xn in {_norm(x), *_rp.forms_cached(x)}:
+                if xn and (n == xn or n.startswith(xn.rstrip(os.sep) + os.sep)):
+                    return True
         elif base == x.lower():
             return True
     return False

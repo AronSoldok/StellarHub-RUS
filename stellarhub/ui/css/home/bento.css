@@ -75,7 +75,9 @@
 .hv-bento .art-cpu .pad{fill:var(--warn);opacity:.5}
 .hv-bento .art-cpu .cap{fill:var(--raise3);stroke:var(--accent2);stroke-opacity:.3}
 .hv-bento .art-cpu .die{fill:var(--accent);fill-opacity:.07;stroke:var(--accent);stroke-opacity:.6}
-.hv-bento .art-cpu .th{fill:var(--accent);opacity:.2;transition:opacity calc(600ms*var(--f)),fill calc(300ms*var(--f))}
+.hv-bento .art-cpu .th{fill:var(--accent);opacity:.2;transition:opacity calc(160ms*var(--f)),fill calc(160ms*var(--f))}
+/* each frame of that fade repaints the whole SVG card: nobody is touching the app (or it is in lighter mode), so it just changes */
+html[data-idle="1"] .hv-bento .art-cpu .th,html[data-lite="1"] .hv-bento .art-cpu .th{transition:none}
 .hv-bento .art-cpu .th.busy{fill:color-mix(in oklab,var(--accent) 60%,#fff)}
 .hv-bento .art-cpu .pulse{fill:none;stroke:var(--accent);stroke-width:1.2;opacity:0;transform-box:fill-box;transform-origin:50% 50%}
 .hv-bento .bt.hot .art-cpu .pulse{animation:hvbPulse calc(1600ms*var(--f) + 400ms) cubic-bezier(.16,1,.3,1) infinite}

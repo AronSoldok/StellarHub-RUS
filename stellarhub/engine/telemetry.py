@@ -399,6 +399,9 @@ class Sampler:
         self.gpu_wanted = True      # NVML only while someone is looking at GPU data
         self.lite = False           # on battery with the UI in its lighter mode: fewer slow extras (ping, Wi-Fi)
         self._stop = threading.Event()
+        self._wake_slow = threading.Event()
+        self._wake = threading.Event()   # set when the sampler becomes active again: no polling while nobody looks
+        self._wifi_probe = (0.0, True)
         self._slow = {"wifiSignal": None, "ping": None}
         self._pdh = _Pdh({
             "perf": r"\Processor Information(_Total)\% Processor Performance",
@@ -433,6 +436,8 @@ class Sampler:
 
     def stop(self):
         self._stop.set()
+        self._wake.set()
+        self._wake_slow.set()
         self._nv.shutdown()
 
     def set_rate(self, seconds):
@@ -440,6 +445,9 @@ class Sampler:
 
     def set_active(self, active, gpu=True):
         self.active, self.gpu_wanted = bool(active), bool(gpu)
+        if self.active:
+            self._wake.set()
+            self._wake_slow.set()
         if not (active and gpu):
             self._nv.shutdown()  # release the GPU so it can power down
 
@@ -452,8 +460,11 @@ class Sampler:
                     self.push(self.sample())
                 except Exception as e:
                     print("telemetry:", e)
-            wait = self.rate if self.active else 2.0
-            self._stop.wait(max(0.05, wait - (time.monotonic() - t0)))
+            if self.active:
+                self._stop.wait(max(0.05, self.rate - (time.monotonic() - t0)))
+            else:  # hidden: sleep until set_active() wakes it instead of waking up every 2 s to do nothing
+                self._wake.wait(30.0)
+                self._wake.clear()
 
     def sample(self):
         now = time.monotonic()
@@ -649,7 +660,10 @@ class Sampler:
                     except Exception:
                         pass
                 n += 1
-            self._stop.wait(2.0)
+                self._stop.wait(2.0)
+            else:
+                self._wake_slow.wait(30.0)
+                self._wake_slow.clear()
 
     def _ping(self):
         t0 = time.perf_counter()
@@ -660,7 +674,24 @@ class Sampler:
         except OSError:
             self._slow["ping"] = None
 
+    def _has_wifi(self):
+        """False when Windows has no Wi-Fi adapter (the WLAN service keeps one key per adapter): then netsh is not
+        started every few seconds just to learn there is nothing. Checked again every minute."""
+        at, val = self._wifi_probe
+        if time.monotonic() - at > 60:
+            try:
+                import winreg
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\WlanSvc\Interfaces") as k:
+                    val = winreg.QueryInfoKey(k)[0] > 0
+            except OSError:
+                val = True  # unknown: ask netsh, as before
+            self._wifi_probe = (time.monotonic(), val)
+        return val
+
     def _wifi(self):
+        if not self._has_wifi():
+            self._slow["wifiSignal"] = None
+            return
         try:
             raw = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, timeout=4,
                                  creationflags=NO_WINDOW).stdout

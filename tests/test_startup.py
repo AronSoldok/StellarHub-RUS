@@ -11,16 +11,16 @@ from unittest import mock
 os.environ["STELLARHUB_NO_DIALOGS"] = "1"
 os.environ["STELLARHUB_NO_SPLASH"] = "1"
 
-from stellarhub import app, paths  # noqa: E402
+from stellarhub import instance, log, paths  # noqa: E402
 
 
 class LogOnce(unittest.TestCase):
     def test_repeated_lines_are_written_once_and_counted(self):
         fh = io.StringIO()
-        log = app._LogOnce(fh)
+        out_log = log.LogOnce(fh)
         for _ in range(50):
-            log.write("[telemetry] boom\n")
-        log.write("something else\n")
+            out_log.write("[telemetry] boom\n")
+        out_log.write("something else\n")
         out = fh.getvalue()
         self.assertEqual(out.count("[telemetry] boom"), 1)
         self.assertIn("49 more times", out)
@@ -31,20 +31,20 @@ class LogOnce(unittest.TestCase):
         p = os.path.join(d, "stellarhub.log")
         with open(p, "wb") as fh:
             fh.write(b"x" * 3000)
-        app._rotate_log(p, limit=2000)
+        log.rotate_log(p, limit=2000)
         self.assertFalse(os.path.exists(p))
         self.assertTrue(os.path.exists(p + ".1"))
         with open(p, "wb") as fh:
             fh.write(b"y")
-        app._rotate_log(p, limit=2000)  # small: left alone
+        log.rotate_log(p, limit=2000)  # small: left alone
         self.assertTrue(os.path.exists(p))
 
 
 class Dialogs(unittest.TestCase):
     def test_tests_never_get_a_modal_box(self):
         self.assertFalse(paths.dialogs_allowed())
-        with mock.patch.object(app.ctypes.windll.user32, "MessageBoxW") as box:
-            app._fatal("test message")
+        with mock.patch.object(log.ctypes.windll.user32, "MessageBoxW") as box:
+            log.fatal("test message")
         box.assert_not_called()
 
 
@@ -69,13 +69,13 @@ class SingleInstance(unittest.TestCase):
         return srv.getsockname()[1]
 
     def test_show_needs_an_answer(self):
-        with mock.patch.object(app, "SINGLE_PORT", self.serve(b"ok")):
-            self.assertTrue(app._ask_running_to_show(1.0))
+        with mock.patch.object(instance, "SINGLE_PORT", self.serve(b"ok")):
+            self.assertTrue(instance.ask_running_to_show(1.0))
 
     def test_a_deaf_copy_is_not_taken_for_an_answer(self):
-        with mock.patch.object(app, "SINGLE_PORT", self.serve(b"", hold=1.5)):
+        with mock.patch.object(instance, "SINGLE_PORT", self.serve(b"", hold=1.5)):
             t = time.time()
-            self.assertFalse(app._ask_running_to_show(0.4))
+            self.assertFalse(instance.ask_running_to_show(0.4))
             self.assertLess(time.time() - t, 1.2)
 
     def test_nobody_listening_is_quick_and_false(self):
@@ -83,8 +83,8 @@ class SingleInstance(unittest.TestCase):
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
         s.close()
-        with mock.patch.object(app, "SINGLE_PORT", port):
-            self.assertFalse(app._ask_running_to_show(0.4))
+        with mock.patch.object(instance, "SINGLE_PORT", port):
+            self.assertFalse(instance.ask_running_to_show(0.4))
 
     def test_the_listener_survives_a_silent_client(self):
         class FakeApi:
@@ -99,36 +99,26 @@ class SingleInstance(unittest.TestCase):
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
         s.close()
-        with mock.patch.object(app, "SINGLE_PORT", port):
-            app._listen_single(FakeApi())
+        with mock.patch.object(instance, "SINGLE_PORT", port):
+            instance.listen_single(FakeApi())
             silent = socket.create_connection(("127.0.0.1", port), timeout=1)  # connects and says nothing
             self.addCleanup(silent.close)
             t = time.time()
-            self.assertTrue(app._ask_running_to_show(5))  # a second client still gets served
+            self.assertTrue(instance.ask_running_to_show(5))  # a second client still gets served
             self.assertLess(time.time() - t, 4)
         self.assertEqual(FakeApi.shown, 1)
 
 
 class Jobs(unittest.TestCase):
-    def test_the_cleanup_timer_never_keeps_the_process_alive(self):
+    def test_finished_jobs_need_no_timer_thread(self):
         from stellarhub.engine import jobs
-        made = []
-        real = jobs.threading.Timer
-
-        class T(real):
-            def __init__(self, *a, **k):
-                super().__init__(*a, **k)
-                made.append(self)
-
-            def start(self):
-                pass
-        with mock.patch.object(jobs.threading, "Timer", T):
-            jobs.start("t", lambda job: None)
+        with mock.patch.object(jobs.threading, "Timer", side_effect=AssertionError("a Timer per job")):
+            jid = jobs.start("t", lambda job: None)
             for _ in range(50):
-                if made:
+                if jobs._jobs[jid].ended:
                     break
                 time.sleep(0.05)
-        self.assertTrue(made and all(t.daemon for t in made))
+        self.assertTrue(jobs._jobs[jid].ended)
 
 
 if __name__ == "__main__":

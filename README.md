@@ -54,8 +54,9 @@ VRAM), memory, disks with **SMART** health, network and Wi-Fi, battery wear, pro
 health (failing devices and critical events explained in plain language).
 
 ### ⇅ Driver Updater
-A full driver inventory, search and install from **Windows Update** with a restore point first, devices with
-problems or no longer connected, **driver backups**, stored versions to roll back to, and history.
+Drivers come from **Windows Update**: signed by Microsoft, the same source as Windows Settings. StellarHub has no driver
+database of its own. A full driver inventory, search and install with a restore point first, devices with problems or no
+longer connected, **driver backups**, stored versions to roll back to, and history.
 
 ### ⌫ Program Remover
 Standard, silent or forced uninstall; a **leftover scanner** with a confidence score and the reason for each item;
@@ -76,10 +77,13 @@ An interactive map of what each folder takes up, WinDirStat style, with zoom and
 largest files, **duplicates**, and comparisons with earlier scans to see what grew.
 
 ### ↯ Super Optimizer
-Cleanup of temp files and caches, **startup** apps, services, registry, Windows **repairs** (SFC, DISM, chkdsk,
+Cleanup of temp files and caches, **startup** apps, services, Windows **repairs** (SFC, DISM, chkdsk,
 network, Windows Update…) with live output, and performance settings (power plan, visual effects, game mode,
 hardware-accelerated GPU scheduling), and **Debloat**: remove preinstalled apps and turn off ads, suggestions,
 Widgets, Copilot and Bing in Start search. Everything backed up first and undoable.
+A **registry cleaner** exists too, but it is off by default (Microsoft doesn't usually recommend them, and Windows doesn't
+need one to stay fast): turn it on in Settings > General > Registry cleaner. It is never part of "Optimize everything".
+Its backups stay listed in Settings > Backups and restore either way.
 
 ### ⛨ Privacy & Security
 A privacy and security score with plain-language findings: which apps used your camera, microphone or location and
@@ -107,7 +111,8 @@ conditions and what to do.
   classic menu. Closing the window keeps StellarHub running in the background.
 - **Backups and restore** in Settings: restore points (create, turn on protection, delete) and every backup StellarHub
   made, in one place.
-- **Updates itself** from this repository's releases, always checking the file's SHA-256 first. Versions with new
+- **Updates itself** from this repository's releases, and installs only files signed by its author (see
+  [Updates and security](#-updates-and-security)). Versions with new
   features download in the background and install the next time you open StellarHub; big versions ask you first;
   small fixes wait in *Settings > Updates*. All of it can be turned off there.
 - **Command palette** (`Ctrl K`) to jump to any tool or action by typing.
@@ -160,8 +165,9 @@ The PC needs the WebView2 Runtime (Windows 11 and up-to-date Windows 10 already 
 before changing a PC stays on that PC, so those changes can be undone there.
 
 > The installer is not code-signed yet (see the [code signing policy](#-code-signing-policy)), so Windows
-> SmartScreen may say it is from an "unknown publisher". Each release lists the SHA-256 of the setup file so you
-> can check it is the original.
+> SmartScreen may say it is from an "unknown publisher". Each release lists the SHA-256 of the setup file and a
+> signature of the author, so you can check it is the original (see
+> [Verifying a download yourself](#verifying-a-download-yourself)).
 
 ### ◇ Run it from source
 
@@ -251,6 +257,33 @@ StellarHub has no account, no telemetry and no analytics: it never sends anythin
 The few times it goes online (to check for its own updates, to download app icons, or for a network test you
 start) are listed in [PRIVACY.md](PRIVACY.md), with how to turn each one off.
 
+## 🔐 Updates and security
+
+Every file of a release (`StellarHub-Setup-x.y.z.exe`, `StellarHub-Portable-x.y.z.zip`) comes with a detached
+signature (`.sig`) made by the author on his own PC with an Ed25519 key that never leaves it. StellarHub 2.0.0 and
+later carry the matching public key inside the program and install an update only if:
+
+1. the release has a `.sig` for that file,
+2. the signature covers the file's name, its version and the SHA-256 of the exact bytes StellarHub downloaded, and
+3. it was made by a key StellarHub trusts.
+
+So a stolen GitHub account is not enough to push a malicious update: whoever has it can upload files, but cannot
+sign them. A release without a valid signature is never installed by StellarHub; it only offers to open the release
+page. The published `.sha256` files are for people; the signature is what the app relies on. The key list lives in
+`stellarhub/engine/selfupdate.py` and can be rotated by a release signed with the old key. The verification code is
+plain Python (`stellarhub/ed25519.py`, tested against all the RFC 8032 test vectors), with no extra dependencies.
+
+### Verifying a download yourself
+
+Download the file and its `.sig` from the release, then, with Python 3.12+ and this repository:
+
+```powershell
+python tools/release_sign.py verify StellarHub-Setup-2.1.0.exe StellarHub-Setup-2.1.0.exe.sig --version 2.1.0
+```
+
+It prints `OK` only if the file is exactly what the author signed for that version. (`--pubkey <hex>` checks against
+a key you got elsewhere instead of the one in the code.)
+
 ## 🔏 Code signing policy
 
 StellarHub is applying to the [SignPath Foundation](https://signpath.org) for free code signing for open-source
@@ -275,7 +308,16 @@ certificate by [SignPath Foundation](https://signpath.org)*.
 ```
 run.py                     launcher
 stellarhub/
-├─ app.py                  window, API for the interface, widget and administrator mode
+├─ app.py                  entry point: main() wires the pieces below together
+├─ config.py               constants, folders and the mode this copy runs in (installed, portable, test)
+├─ settings.py             settings.json: read, write, reset, the installer's --setup, file migrations
+├─ startup.py              everything before the window: command-line modes, start screen, staged update
+├─ instance.py             single-instance lock, handoff to / takeover from another copy
+├─ elevation.py            administrator mode: the scheduled task and the elevated relaunch
+├─ autostart.py            "open with Windows" entry
+├─ log.py                  the [phase] start timeline, the log file, the last-resort error box
+├─ winmgr.py               window mechanics: DPI, tray-panel placement, corners, WebView2 visibility
+├─ api/                    what the interface can call (pywebview js_api), one mixin per area
 ├─ chrome.py               custom window frame (move, resize, maximize)
 ├─ tray.py                 tray icon
 ├─ engine/                 engine: one file per module, plus telemetry, system info and long-running jobs

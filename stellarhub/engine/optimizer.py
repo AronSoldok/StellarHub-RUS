@@ -19,14 +19,14 @@ import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 
 from ..i18n import tr
-from .ps import ps, ps_json, NO_WINDOW
+from .ps import ps, ps_json, gather, NO_WINDOW
 from .removal import cleaner, registry, startup
 from .removal.registry import RegRef, V32, V64
 from .removal import system as rsys
 
 EXPORTS = {"perf_read", "perf_set", "startup_set", "services_list", "services_apply", "services_undo",
            "registry_undo", "open_location", "open_startup_page", "boot_info", "bg_set", "power_plan_set",
-           "startup_icons"}
+           "startup_icons", "registry_backups_exist"}
 JOBS = {"clean_scan", "clean", "startup_list", "registry_scan", "registry_fix", "repair", "restore_point",
         "services_undo_job", "registry_undo_job"}
 
@@ -507,17 +507,67 @@ _START = {"Auto": "auto", "Automatic": "auto", "Manual": "manual", "Disabled": "
 _START_PS = {"auto": "Automatic", "manual": "Manual", "disabled": "Disabled"}
 
 
+def _printer_names():
+    """Installed printers (local and network connections) straight from the print spooler API, without PowerShell.
+    None if the API itself failed in an unexpected way (the caller then asks Windows through PowerShell)."""
+    from ctypes import wintypes
+    spool = ctypes.WinDLL("winspool.drv", use_last_error=True)
+    enum = spool.EnumPrintersW
+    enum.argtypes = [wintypes.DWORD, wintypes.LPWSTR, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                     ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD)]
+
+    class INFO4(ctypes.Structure):
+        _fields_ = [("name", wintypes.LPWSTR), ("server", wintypes.LPWSTR), ("attributes", wintypes.DWORD)]
+    need, count = wintypes.DWORD(), wintypes.DWORD()
+    flags = 0x2 | 0x4  # PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS
+    enum(flags, None, 4, None, 0, ctypes.byref(need), ctypes.byref(count))
+    err = ctypes.get_last_error()
+    if not need.value:
+        # 0 printers, or the spooler is not running (RPC server unavailable): Windows has none to list either way
+        return [] if err in (0, 1722, 1726, 1753) else None
+    buf = ctypes.create_string_buffer(need.value)
+    if not enum(flags, None, 4, buf, need.value, ctypes.byref(need), ctypes.byref(count)):
+        return None
+    arr = ctypes.cast(buf, ctypes.POINTER(INFO4))
+    return [arr[i].name for i in range(count.value) if arr[i].name]
+
+
 def _printers():
-    pr = ps_json("Get-CimInstance Win32_Printer | Select-Object Name", timeout=20, as_list=True)
+    try:
+        names = _printer_names()
+    except Exception:
+        names = None
+    if names is None:
+        pr = ps_json("Get-CimInstance Win32_Printer | Select-Object Name", timeout=20, as_list=True)
+        names = [p["Name"] for p in pr if p.get("Name")]
     virt = ("pdf", "xps", "onenote", "fax", "anydesk", "send to", "evernote", "snagit", "cutepdf", "writer")
-    return [p["Name"] for p in pr if p.get("Name") and not any(v in p["Name"].lower() for v in virt)]
+    return [n for n in names if not any(v in n.lower() for v in virt)]
+
+
+def _service_rows(names):
+    """{name: {"Name", "State", "StartMode"}} for the services that exist, read through the service manager (psutil)
+    instead of a PowerShell/CIM query. StartMode keeps the Win32_Service words ('Auto', 'Manual', 'Disabled')."""
+    import psutil
+    modes = {"automatic": "Auto", "manual": "Manual", "disabled": "Disabled"}
+    out = {}
+    for n in names:
+        try:
+            d = psutil.win_service_get(n).as_dict()
+        except psutil.NoSuchProcess:
+            continue
+        out[d["name"]] = {"Name": d["name"], "State": "Running" if d["status"] == "running" else "Stopped",
+                          "StartMode": modes.get(d["start_type"], "Manual")}
+    return out
 
 
 def services_list():
     names = [s for e in SERVICES for s in e["svc"]]
-    flt = " OR ".join(f"Name='{n}'" for n in names)
-    rows = ps_json(f"Get-CimInstance Win32_Service -Filter \"{flt}\" | Select-Object Name, State, StartMode", timeout=30, as_list=True)
-    st = {r["Name"]: r for r in rows}
+    try:
+        st = _service_rows(names)
+    except Exception:  # the service manager refused: ask Windows the old way
+        flt = " OR ".join(f"Name='{n}'" for n in names)
+        rows = ps_json(f"Get-CimInstance Win32_Service -Filter \"{flt}\" | Select-Object Name, State, StartMode", timeout=30, as_list=True)
+        st = {r["Name"]: r for r in rows}
     printers = _printers()
     out = []
     for e in SERVICES:
@@ -826,6 +876,18 @@ def _dec(d):
 def _reg_root(ref):
     """Where a registry backup goes: HKLM keys (elevated runs only) in ProgramData, the user's own in their profile."""
     return DATA if ref.hive == "HKLM" else USER_DATA
+
+
+def registry_backups_exist():
+    """True if this PC already has a registry-fix backup (machine-wide or the user's own). Read-only. The UI uses it
+    once, when the `registryCleaner` setting does not exist yet: someone who already used the cleaner keeps it on."""
+    for root in (DATA, USER_DATA):
+        try:
+            if any(os.path.isdir(os.path.join(root, "registry", n)) for n in os.listdir(os.path.join(root, "registry"))):
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def registry_fix(job, ids):
@@ -1348,11 +1410,10 @@ def _overlay(name):
 
 
 def _plans():
-    code, out = rsys.run(["powercfg", "/list"])
+    (code, out), (code2, a) = gather(lambda: rsys.run(["powercfg", "/list"]), lambda: rsys.run(["powercfg", "/a"]))
     plans = []
     for m in re.finditer(r"([0-9a-f]{8}-[0-9a-f-]{27})\s+\(([^)]+)\)\s*(\*)?", out, re.I):
         plans.append({"guid": m.group(1), "name": m.group(2), "on": bool(m.group(3))})
-    code, a = rsys.run(["powercfg", "/a"])
     standby = "S0" in a.split("\n\n")[0] if a else False
     return plans, standby
 
@@ -1377,7 +1438,8 @@ def _bg_apps():
 
 
 def perf_read():
-    plans, standby = _plans()
+    # powercfg (twice) and the Start menu apps (PowerShell) are independent: read them at the same time
+    (plans, standby), _apps = gather(_plans, _start_apps)
     gm = registry.get_value(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\GameBar", "AutoGameModeEnabled")
     hags = registry.get_value(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\GraphicsDrivers", "HwSchMode")
     vis = registry.get_value(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects", "VisualFXSetting")

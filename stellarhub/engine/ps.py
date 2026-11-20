@@ -84,6 +84,17 @@ def ps_json(script, timeout=90, as_list=False):
     return data
 
 
+def gather(*calls):
+    """Runs independent reads at the same time (each `call` is a zero-argument function) and returns their results in
+    order. Every call finishes before this returns; if some failed, the first exception is raised afterwards."""
+    if len(calls) < 2:
+        return [c() for c in calls]
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=len(calls)) as ex:
+        futs = [ex.submit(c) for c in calls]
+    return [f.result() for f in futs]
+
+
 def run(cmd, on_line=None, timeout=None, cwd=None, encoding=None, job=None, raise_on_timeout=False):
     """Runs a program. With on_line it gets each line as soon as it is printed (for live consoles).
     The output is read on its own thread, so a silent program cannot hold back Cancel or the timeout: if `job` is

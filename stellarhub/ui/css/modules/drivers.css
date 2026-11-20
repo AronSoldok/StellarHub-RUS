@@ -272,3 +272,6 @@ html[data-int=min] #v-drivers .du-step.indet .bar::after{animation:none;opacity:
 #v-drivers .db-row.busy{opacity:.75}
 #v-drivers .db-row.busy .p{display:flex;align-items:center;gap:8px;color:var(--accent2)}
 #v-drivers .db-row.busy .p span:last-child{color:var(--mute)}
+
+#v-drivers .du-src{display:flex;align-items:center;gap:9px;margin:0 4px;color:var(--mute);font-size:12.5px;line-height:1.45}
+#v-drivers .du-src svg{flex:none;width:15px;height:15px;color:var(--accent2)}

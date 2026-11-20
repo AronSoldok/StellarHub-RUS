@@ -396,9 +396,15 @@
   "Select": "选择",
   "Back": "返回",
   "Done": "完成",
-  "Lighter effects on battery": "使用电池时减轻特效",
-  "On battery, StellarHub uses simpler effects, a calmer starfield and slower live data, so it stays smooth and saves power.": "使用电池时，StellarHub 会改用更简单的特效、更平静的星空和更慢的实时数据，保持流畅并节省电量。",
+  "Lighter effects": "更轻的效果",
+  "Simpler effects and a calmer starfield, so it stays smooth and uses less of the graphics chip. On battery, live data is also slower. Automatic turns it on when the PC runs on battery or has only integrated graphics.": "更简单的效果和更平静的星空，让界面保持流畅并减少对显卡芯片的占用。使用电池时，实时数据也会更慢。自动模式会在电脑使用电池或只有集成显卡时开启。",
+  "Always": "始终",
+  "Never": "从不",
   "A task is still running: {name}.": "有任务仍在运行：{name}。",
   "{name} finished.": "{name} 已完成。",
-  "{name} did not finish.": "{name} 未完成。"
+  "{name} did not finish.": "{name} 未完成。",
+  "This update isn't signed by StellarHub's author, so it wasn't installed.": "此更新未由 StellarHub 作者签名，因此未安装。",
+  "Registry cleaner": "注册表清理",
+  "Microsoft doesn't usually recommend registry cleaners: Windows doesn't need one to stay fast. You can turn it on if you'd like to use it; everything it changes is backed up and can be undone.": "Microsoft 通常不建议使用注册表清理工具：Windows 不需要它也能保持流畅。如果你想使用，可以将其开启；它所做的每项更改都会备份，并且可以撤销。",
+  "The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.": "“注册表”选项卡现在位于超级优化中。每项修复都有备份；你可以在 设置 > 备份与还原 中恢复。"
 }

@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 from ctypes import wintypes
+from pathlib import Path
 
 from ..i18n import tr
 
@@ -798,60 +799,71 @@ def _drive_roots():
 
 def _protected_extra(path):
     """The shared safety rules of the Program Remover (removal/safety.py) plus what only matters here: other users'
-    profiles, program folders on every drive, and the recycle bin / restore data of every drive."""
+    profiles, program folders on every drive, and the recycle bin / restore data of every drive. The path is judged
+    under every name it has (as written and where it really is), so a junction, a short name, another case or a
+    trailing dot cannot hide a protected folder."""
     from .removal import paths as rp, safety
-    n = rp.norm_path(path)
-    if not n:
+    forms = rp.forms(path)
+    if not forms:
         return tr("It's inside a folder StellarHub never touches.")
-    parts = n.split("\\")
-    if len(parts) >= 2 and parts[1] in ("$recycle.bin", "system volume information"):
-        return tr("It's inside a folder StellarHub never touches.")
-    for pe in safety.protected_exact() | rp.self_paths():        # the folder itself or one that contains it
-        if rp.is_within(pe, n):
-            return tr("It's one of the main folders of your profile.")
+    protected = safety.protected_exact() | rp.self_paths()       # the folder itself or one that contains it
     allowed = safety.forbidden_exceptions()
-    if not any(rp.is_within(n, ex) for ex in allowed):
-        for ft in safety.forbidden_trees():
-            if rp.is_within(n, ft):
-                return tr("It's inside a folder StellarHub never touches.")
+    forbidden = safety.forbidden_trees()
     k = rp.known_folders()
-    prog = {k.get("ProgramFiles"), k.get("ProgramFilesX86"), os.environ.get("ProgramW6432"),
-            os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")}
+    prog = {f for x in (k.get("ProgramFiles"), k.get("ProgramFilesX86"), os.environ.get("ProgramW6432"),
+                        os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")) if x
+            for f in rp.forms_cached(x)}
     for root in _drive_roots():
-        prog.update((os.path.join(root, "Program Files"), os.path.join(root, "Program Files (x86)")))
-    if any(x and rp.is_within(n, x) for x in prog):
-        return tr("It's a program folder: uninstall it from Program Remover.")
-    if k.get("Windows") and rp.is_within(n, k["Windows"]):
-        return tr("It's inside a folder StellarHub never touches.")
-    prof = k.get("Profile") or os.path.expanduser("~")
-    users = os.path.dirname(rp.norm_path(prof))
-    if users and rp.is_within(n, users) and not rp.is_within(n, prof):
-        return tr("It belongs to another user.")
+        for x in (os.path.join(root, "Program Files"), os.path.join(root, "Program Files (x86)")):
+            prog.update(rp.forms_cached(x))
+    win = rp.forms_cached(k.get("Windows") or "")
+    prof = rp.forms_cached(k.get("Profile") or os.path.expanduser("~"))
+    users = {os.path.dirname(f) for f in prof}
+    for n in forms:
+        parts = n.split("\\")
+        if len(parts) >= 2 and parts[1] in ("$recycle.bin", "system volume information"):
+            return tr("It's inside a folder StellarHub never touches.")
+        for pe in protected:
+            if rp.within_norm(pe, n):
+                return tr("It's one of the main folders of your profile.")
+        if not any(rp.within_norm(n, ex) for ex in allowed):
+            for ft in forbidden:
+                if rp.within_norm(n, ft):
+                    return tr("It's inside a folder StellarHub never touches.")
+        if any(rp.within_norm(n, x) for x in prog):
+            return tr("It's a program folder: uninstall it from Program Remover.")
+        if any(rp.within_norm(n, w) for w in win):
+            return tr("It's inside a folder StellarHub never touches.")
+        if any(rp.within_norm(n, u) for u in users if u) and not any(rp.within_norm(n, pf) for pf in prof):
+            return tr("It belongs to another user.")
     return None
 
 
 def _protected(path):
-    p = os.path.normcase(os.path.abspath(path))
-    win = os.path.normcase(os.environ.get("SystemRoot", r"C:\Windows"))
-    roots = [win, os.path.normcase(r"C:\$Recycle.Bin"), os.path.normcase(r"C:\System Volume Information")]
-    pd = os.environ.get("ProgramData", r"C:\ProgramData")
-    roots += [os.path.normcase(os.path.join(pd, "Microsoft")), os.path.normcase(os.path.join(pd, "StellarHub"))]
-    app = os.path.normcase(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-    roots.append(app)
-    if getattr(sys, "frozen", False):  # installed: the folder that holds StellarHub.exe
-        roots.append(os.path.normcase(os.path.dirname(sys.executable)))
-    for r in roots:
-        if p == r or p.startswith(r + os.sep):
-            return tr("It's inside a folder StellarHub never touches.")
-    for pf in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramW6432")):
-        if pf and (p == os.path.normcase(pf) or os.path.dirname(p) == os.path.normcase(pf)):
-            return tr("It's a program folder: uninstall it from Program Remover.")
-    if os.path.basename(p) in SYS_NAMES:
-        return tr("It's a Windows file (virtual memory or hibernation).")
-    drive, rest = os.path.splitdrive(p)
-    if rest in ("", "\\"):
-        return tr("It's the root of a drive.")
+    """Why `path` must not be deleted, or None. Every comparison is on real paths (see _protected_extra)."""
     try:
+        from .removal import paths as rp
+        forms = rp.forms(os.path.abspath(path))
+        if not forms:
+            return tr("It's inside a folder StellarHub never touches.")
+        roots = [os.environ.get("SystemRoot", r"C:\Windows"), r"C:\$Recycle.Bin", r"C:\System Volume Information"]
+        pd = os.environ.get("ProgramData", r"C:\ProgramData")
+        roots += [os.path.join(pd, "Microsoft"), os.path.join(pd, "StellarHub"),
+                  str(Path(os.path.abspath(__file__)).parents[2])]
+        if getattr(sys, "frozen", False):  # installed: the folder that holds StellarHub.exe
+            roots.append(os.path.dirname(sys.executable))
+        roots = {f for r in roots for f in rp.forms_cached(r)}
+        pfs = {f for pf in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"),
+                            os.environ.get("ProgramW6432")) if pf for f in rp.forms_cached(pf)}
+        for p in forms:
+            if any(rp.within_norm(p, r) for r in roots):
+                return tr("It's inside a folder StellarHub never touches.")
+            if any(p == pf or os.path.dirname(p) == pf for pf in pfs):
+                return tr("It's a program folder: uninstall it from Program Remover.")
+            if os.path.basename(p) in SYS_NAMES:
+                return tr("It's a Windows file (virtual memory or hibernation).")
+            if os.path.splitdrive(p)[1] in ("", "\\"):
+                return tr("It's the root of a drive.")
         return _protected_extra(path)
     except Exception as e:      # when the shared rules can't be read, block: a leftover is better than a lost file
         print("[storage] safety rules unavailable:", e)

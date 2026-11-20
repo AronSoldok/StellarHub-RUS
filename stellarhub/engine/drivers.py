@@ -102,18 +102,18 @@ def _json_lines(text):
 
 # ================= inventory =================
 _INV = r"""
-$st=@{}; Get-CimInstance Win32_PnPEntity | ForEach-Object { $st[$_.DeviceID] = $_.ConfigManagerErrorCode }
-Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DeviceName -and $_.DriverVersion } | ForEach-Object {
+$st=@{}; Get-CimInstance Win32_PnPEntity -Property DeviceID,ConfigManagerErrorCode | ForEach-Object { $st[$_.DeviceID] = $_.ConfigManagerErrorCode }
+Get-CimInstance Win32_PnPSignedDriver -Property DeviceName,DeviceClass,DriverProviderName,DriverVersion,DriverDate,InfName,HardWareID,DeviceID,IsSigned,Manufacturer | Where-Object { $_.DeviceName -and $_.DriverVersion } | ForEach-Object {
   [pscustomobject]@{ n=$_.DeviceName; c="$($_.DeviceClass)"; p=$_.DriverProviderName; v=$_.DriverVersion
     d= if ($_.DriverDate) { $_.DriverDate.ToString('yyyy-MM-dd') } else { '' }
     inf=$_.InfName; hw=$_.HardWareID; id=$_.DeviceID; s=$_.IsSigned; m=$_.Manufacturer; e=$st[$_.DeviceID] } }
 """
 
 
-def list_drivers(fresh=False):
+def list_drivers(fresh=False, max_age=120):
     """Installed drivers. inbox=True for the ones that ship with Windows (dated 2006-06-21, provider Microsoft)."""
     with _lock:
-        if not fresh and _cache["drivers"] and time.time() - _cache["at"] < 120:
+        if not fresh and _cache["drivers"] and time.time() - _cache["at"] < max_age:
             return _cache["drivers"]
         rows = ps_json(_INV, timeout=120, as_list=True) or []
         out = []
@@ -342,7 +342,7 @@ CODES = {
     52: "Windows cannot verify the digital signature of its driver.",
 }
 _PROBLEMS = r"""
-$err = @(Get-CimInstance Win32_PnPEntity -Filter 'ConfigManagerErrorCode<>0' | ForEach-Object {
+$err = @(Get-CimInstance Win32_PnPEntity -Filter 'ConfigManagerErrorCode<>0' -Property Name,PNPClass,DeviceID,ConfigManagerErrorCode,Manufacturer | ForEach-Object {
   [pscustomobject]@{ name=$_.Name; cls=[string]$_.PNPClass; id=$_.DeviceID; code=$_.ConfigManagerErrorCode; maker=$_.Manufacturer } })
 $keep = @('DiskDrive','USB','HIDClass','Printer','Bluetooth','Media','Net','Image','Camera','WPD','Monitor','AudioEndpoint','Keyboard','Mouse','PrintQueue','SmartCardReader','Ports','Biometric','MEDIA','USBDevice','AndroidUsbDeviceClass')
 $g = @(Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { -not $_.Present -and $keep -contains $_.Class -and $_.FriendlyName } | Select-Object -First 120)

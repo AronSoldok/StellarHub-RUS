@@ -71,6 +71,7 @@
   "Driver extensions": "Estensioni driver",
   "Driver rolled back": "Driver ripristinato alla versione precedente",
   "Drivers": "Driver",
+  "Drivers come from Windows Update: signed by Microsoft, the same source as Windows Settings. StellarHub has no driver database of its own.": "I driver arrivano da Windows Update: firmati da Microsoft, la stessa fonte delle Impostazioni di Windows. StellarHub non ha un database di driver proprio.",
   "Drivers reinstalled from a backup": "Driver reinstallati da un backup",
   "Enable": "Attiva",
   "Enable the device": "Attiva il dispositivo",

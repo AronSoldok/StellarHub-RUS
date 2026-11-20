@@ -3,6 +3,7 @@ import ctypes
 import os
 import re
 import sys
+import time
 import uuid
 from ctypes import wintypes
 from functools import lru_cache
@@ -114,6 +115,12 @@ def kf(name):
 
 
 # ---------------------------------------------------------------- helpers
+# Two ways to compare a path, on purpose:
+#   * norm_path()/is_within(): text only (lowercase, no trailing separator or dots, variables and 8.3 names
+#     expanded). Fast and cached: for lists of names the program itself produced.
+#   * forms()/real_norm()/within_norm(): the path Windows really means. A junction, a symlink, a short name, a
+#     different case, a trailing dot or a ".." all end at the same final path. THIS is what the safety rules use:
+#     a protected folder must not look unprotected because of how it was spelled or reached.
 def norm_path(p):
     """Normalized path for comparisons (lowercase, no trailing slash, variables expanded)."""
     if not p:
@@ -122,7 +129,7 @@ def norm_path(p):
 
 
 def _long_name(p):
-    """C:\\Users\\JOHNSM~1\\... -> C:\\Users\\John Smith\\... (Windows' 8.3 short names, which %TEMP% often uses for
+    r"""C:\Users\JOHNSM~1\... -> C:\Users\John Smith\... (Windows' 8.3 short names, which %TEMP% often uses for
     long or spaced user names). Expands the longest part that exists; the rest is kept as it is."""
     try:
         import ctypes
@@ -141,24 +148,107 @@ def _long_name(p):
     return p
 
 
-@lru_cache(maxsize=1 << 17)
-def _norm_path(p):
+def _clean(p):
+    r"""Variables expanded, quotes and \\?\ or \??\ prefixes removed, ".." and "." resolved (text only)."""
     p = os.path.expandvars(p.strip().strip('"'))
-    if p.startswith("\\??\\"):
+    if p.startswith(r"\??" "\\"):
         p = p[4:]
-    p = os.path.normpath(p)
-    if "~" in p and len(p) > 2 and p[1] == ":":
-        p = _long_name(p)
-    p = os.path.normcase(p)
+    elif p.upper().startswith(r"\\?\UNC" "\\"):
+        p = "\\\\" + p[8:]
+    elif p.startswith(r"\\?" "\\"):
+        p = p[4:]
+    return os.path.normpath(p)
+
+
+def _no_trailing_dots(p):
+    r"""Windows ignores trailing dots and spaces in a name ("C:\Windows." is C:\Windows): drop them per component."""
+    drive, rest = os.path.splitdrive(p)
+    if not rest or (rest[-1] not in ". " and ". " not in rest and ".\\" not in rest and " \\" not in rest):
+        return p
+    parts = rest.split("\\")
+    return drive + "\\".join((c.rstrip(". ") or c) if c not in (".", "..") else c for c in parts)
+
+
+def _finish(p):
+    p = os.path.normcase(_no_trailing_dots(p))
     return p.rstrip("\\") if len(p) > 3 else p
 
 
-def is_within(child, parent):
-    """True if child is parent or is inside parent."""
-    c, p = norm_path(child), norm_path(parent)
-    if not c or not p:
+@lru_cache(maxsize=1 << 17)
+def _norm_path(p):
+    p = _no_trailing_dots(_clean(p))
+    if "~" in p and len(p) > 2 and p[1] == ":":
+        p = _long_name(p)
+    return _finish(p)
+
+
+def real_norm(p):
+    """The final path Windows resolves for `p` (junctions, symlinks, 8.3 names, case, trailing dots), normalized like
+    norm_path. For a path that does not exist yet, the part that exists is resolved and the rest is appended.
+    NOT cached: a link can be made at any moment, so every safety decision looks again."""
+    if not p:
+        return ""
+    t = _clean(p if isinstance(p, str) else str(p))
+    if not os.path.isabs(t) or len(t) <= 3:
+        return norm_path(t)
+    try:
+        t = os.path.realpath(t)   # Python 3.13: GetFinalPathNameByHandle, also expands 8.3 names
+    except (OSError, ValueError):
+        pass
+    return _finish(t)
+
+
+_real_cache = {}
+_REAL_TTL = 300.0
+
+
+def real_norm_cached(p):
+    """real_norm() for fixed lists (the protected folders): remembered for a few minutes."""
+    now = time.monotonic()
+    hit = _real_cache.get(p)
+    if hit is not None and now - hit[0] < _REAL_TTL:
+        return hit[1]
+    if len(_real_cache) > 4096:
+        _real_cache.clear()
+    r = real_norm(p)
+    _real_cache[p] = (now, r)
+    return r
+
+
+def forms(p):
+    """Every normalized spelling of `p` that must be checked: the text form and the real (final) path. One element
+    when they are the same, which is the normal case."""
+    n = norm_path(p)
+    if not n:
+        return ()
+    r = real_norm(p)
+    return (n,) if r == n or not r else (n, r)
+
+
+def forms_cached(p):
+    n = norm_path(p)
+    if not n:
+        return ()
+    r = real_norm_cached(n)
+    return (n,) if r == n or not r else (n, r)
+
+
+def within_norm(child, parent):
+    """child is parent or inside it. Both ALREADY normalized (norm_path / forms): no work, no resolution."""
+    if not child or not parent:
         return False
-    return c == p or c.startswith(p.rstrip("\\") + "\\")
+    return child == parent or child.startswith(parent.rstrip("\\") + "\\")
+
+
+def is_within(child, parent):
+    """True if child is parent or is inside parent (text comparison, cached; see the note above)."""
+    return within_norm(norm_path(child), norm_path(parent))
+
+
+def is_within_real(child, parent):
+    """Like is_within, but on the real paths: true if ANY spelling of child is inside ANY spelling of parent."""
+    pf = forms(parent)
+    return any(within_norm(c, p) for c in forms(child) for p in pf)
 
 
 def is_reparse_point(path):
@@ -278,4 +368,5 @@ def self_paths():
     base = getattr(sys, "_MEIPASS", None)
     if base:
         out.add(norm_path(base))
+    out |= {r for p in list(out) if p for r in forms_cached(p)}   # and where they really are (links, short names)
     return {p for p in out if p}

@@ -71,6 +71,7 @@
   "Driver extensions": "Extensiones de controlador",
   "Driver rolled back": "Controlador revertido",
   "Drivers": "Controladores",
+  "Drivers come from Windows Update: signed by Microsoft, the same source as Windows Settings. StellarHub has no driver database of its own.": "Los controladores vienen de Windows Update: firmados por Microsoft, la misma fuente que Configuración de Windows. StellarHub no tiene una base de datos de controladores propia.",
   "Drivers reinstalled from a backup": "Controladores reinstalados desde una copia de seguridad",
   "Enable": "Activar",
   "Enable the device": "Activar el dispositivo",

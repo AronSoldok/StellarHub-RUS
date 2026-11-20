@@ -396,9 +396,13 @@
   "Select": "Seleccionar",
   "Back": "Atrás",
   "Done": "Hecho",
-  "Lighter effects on battery": "Efectos más ligeros con batería",
-  "On battery, StellarHub uses simpler effects, a calmer starfield and slower live data, so it stays smooth and saves power.": "Con batería, StellarHub usa efectos más simples, un fondo de estrellas más tranquilo y datos en vivo más lentos, para ir fluido y gastar menos.",
+  "Lighter effects": "Efectos más ligeros",
+  "Simpler effects and a calmer starfield, so it stays smooth and uses less of the graphics chip. On battery, live data is also slower. Automatic turns it on when the PC runs on battery or has only integrated graphics.": "Efectos más simples y un fondo de estrellas más tranquilo, para ir fluido y usar menos el chip gráfico. Con batería, los datos en vivo también son más lentos. Automático lo activa cuando el PC va con batería o solo tiene gráficos integrados.",
   "A task is still running: {name}.": "Hay una tarea en curso: {name}.",
   "{name} finished.": "{name} terminó.",
-  "{name} did not finish.": "{name} no terminó."
+  "{name} did not finish.": "{name} no terminó.",
+  "This update isn't signed by StellarHub's author, so it wasn't installed.": "Esta actualización no está firmada por el autor de StellarHub, así que no se instaló.",
+  "Registry cleaner": "Limpiador del registro",
+  "Microsoft doesn't usually recommend registry cleaners: Windows doesn't need one to stay fast. You can turn it on if you'd like to use it; everything it changes is backed up and can be undone.": "Microsoft no suele recomendar los limpiadores del registro: Windows no necesita uno para ir rápido. Puedes activarlo si quieres usarlo; todo lo que cambia se guarda en una copia de seguridad y se puede deshacer.",
+  "The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.": "La pestaña Registro ya está en Super Optimizador. Cada corrección tiene su copia de seguridad; puedes restaurarla desde Ajustes > Copias y restauración."
 }

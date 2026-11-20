@@ -28,6 +28,7 @@ SH.module({
 
 `ctx`: `go(id, {tab})`, `setTab(id)`, `tabEl(id)`, `setBadge(tabId, n)` (number on the tab), `el()` (the section).
 
+- A tab can be hidden by a condition: a third item in its `SH.MODS` entry, `['registry', 'Registry', () => !!SH.state.settings.registryCleaner]`, or `when` on a tab object a module declares itself. While it returns false there is no tab button (`hidden`), no palette entry and `#mod/tab`, `setTab` and `go(id, { tab })` ignore it; its panel is still built but never shown, and `*` walks only the visible tabs. The shell re-checks every condition when any setting changes (`SH.on('setting')`) and after import or reset, and moves off a tab that just went away. Palette actions (`SH.actions.add`) take the same `when`. Modules must not show or run anything for a hidden tab (no badges, no scans, no palette actions).
 - `.tab` is `position:absolute; inset:0; overflow:auto`. For a full-screen layout with its own internal scrolling, add the `fill` class to the tab's `el`.
 - Anything marked `data-asm` inside a tab staggers in the first time (the shell does it).
 - Per-frame loops: `SH.tickers.add((dt, t) => { if (SH.state.view !== 'drivers') return; ... })`.
@@ -50,15 +51,16 @@ Tokens: `--void --deep --raise --raise2 --raise3 --line --line2 --ink --mute --f
 - Only `transform`, `opacity`, `filter`, `clip-path`, `stroke-dashoffset`. Quick ones: 83/167/250 ms; large ones ≤ 500 ms. Never `ease-in` on entry.
 - Respect the intensity (`max`, `normal`, `min`): at `min`, nothing loops. Read it with `SH.effInt()`, never `SH.state.settings.intensity` (see "Lighter effects on battery"); `SH.motion()` already applies it.
 
-## Lighter effects on battery
+## Lighter effects
 
-On battery, with "Lighter effects on battery" on (setting `batterySaver`, default on), the interface does less work. `js/telemetry.js` decides it (desktops, which report no charge state, are never on battery) and sets:
+The interface does less work when "Lighter effects" (setting `lightMode`) says so: `'auto'` (default: on battery, or when the page renders on an integrated GPU), `'always'` or `'never'`. The old boolean `batterySaver: false` maps to `'never'` (core.js does it when `lightMode` was never saved; `batterySaver` itself is kept in step for older readers). `js/telemetry.js` decides it (desktops, which report no charge state, are never on battery) and sets:
 
-- `SH.state.lite` (boolean) and `html[data-lite="1"]` (`"0"` otherwise) for CSS. `SH.power.onBattery` says whether the PC is on battery at all; `SH.power.set(true | false | null)` forces it in tests.
-- `SH.on('power', ({ lite, onBattery }) => {})`: fires only when `lite` changes. Rebuild or stop whatever depends on it (the shell, the starfield and the 3D view already do).
+- `SH.state.lite` (boolean) and `html[data-lite="1"]` (`"0"` otherwise) for CSS. `SH.power.onBattery` says whether the PC is on battery at all; `SH.power.igpuOnly` whether the only graphics adapter is integrated; `SH.power.set(true | false | null)` forces the battery state in tests.
+- `SH.on('power', ({ lite, onBattery, igpuOnly }) => {})`: fires only when `lite` changes. Rebuild or stop whatever depends on it (the shell, the starfield and the 3D view already do).
 - `SH.effInt()`: the intensity the animations must use. It is the user's choice (`SH.state.settings.intensity`, which stays untouched in the settings) one step lower while `lite` (`max` becomes `normal`). Use it for every question about animation strength (`SH.effInt() === 'min'`, `SH.motion()`, `--f`); read `state.settings.intensity` only to show or save the setting itself.
 - CSS: put the cheaper version under `html[data-lite="1"]`: no `backdrop-filter`, no big blurs or masks, no looping decoration (see the block in `base.css`). The telemetry rate drops to one sample every 2 s and the engine skips its slow extras.
 - Per-frame loops check `SH.state.lite` (or `SH.effInt() === 'min'`) and stop; a hidden window (tray) already pauses every loop and uses no GPU.
+- Idle tracking (shell.js): `SH.poke()` marks activity (mouse, keys, touch and the gamepad call it), `SH.idleFor()` is the ms since the last one and `SH.isIdle()` is true after 8 s without any. `html[data-idle="1"]` (`"0"` otherwise, checked once a second) lets CSS drop its own decorative transitions while nobody is using the app; the starfield already redraws less when idle. Do not start work in an idle callback that the user would notice when they come back.
 
 ## Controller navigation
 
@@ -84,6 +86,12 @@ On battery, with "Lighter effects on battery" on (setting `batterySaver`, defaul
 ## Settings safety
 
 `SH.loadSettings()` never trusts the saved file: every key with a default keeps the default's type (numbers inside their range, `intensity` one of the three values) and the lists and maps the modules store (`activity`, `autopilotRoutines`, `hangarKits`, `pending`, `updIgnored`...) must have their shape; anything else falls back to the default (or is dropped) key by key. A new setting that is a list, a map or a number with limits goes in `DEFAULTS` (or `SHAPE` / `RANGE` in core.js).
+
+### Registry cleaner (opt-in)
+
+Microsoft advises against registry cleaners, so the one in Super Optimizer is off by default: setting `registryCleaner` (boolean, default `false`), Settings > General > "Registry cleaner". Off: the Registry tab is hidden (see the hidden-tab condition above), the overview has no registry area or ring segment, the analysis does not scan it, and there is no badge or palette action. On: the tab and its area work as always, but the registry is never a step of "Optimize everything" (nor of its undo), and Autopilot has no registry action. Undo never depends on the setting: registry backups stay listed and restorable in Settings > Backups and restore (`engine/backups.py`) with the cleaner off.
+
+Migration: when `registryCleaner` is not in the saved file (an upgrade from before it existed), `loadSettings` asks the engine `optimizer.registry_backups_exist` (read-only: any folder under `registry/` in the ProgramData or user optimizer data); it becomes `true` only if the user already has registry-fix backups, `false` otherwise, and it is saved so this runs once. Reset settings saves `false` explicitly, so the migration never turns it back on.
 
 ## Home views
 
@@ -118,7 +126,7 @@ SH.logActivity('Drivers updated', { sub: '2 installed', ic: 'drivers', go: 'driv
 - Commands that run other programs (winget, installers) go through `updater._stream`, which ends when the command ends even if a process it started keeps the output pipe open (Foxit's update service did), and reports silence through `on_tick`.
 - Start and exit: `stellarhub/splash.py` is the start screen (a Win32 layered window on its own thread). The main window is created off screen (WebView2 does not load a hidden window) and `Api._reveal` moves, maximizes and shows it when the UI calls `ui_ready`; `SH.enter()` / `SH.leave()` (core.js) fade the page in and out, and `Api.quit` waits for the fade. `STELLARHUB_NO_SPLASH=1` turns the start screen off.
 
-- Start, handoffs and updates never leave the screen empty or silent (`app.py` main, `_take_over_running_copy`, `engine/selfupdate.py`, `packaging/StellarHub.iss`):
+- Start, handoffs and updates never leave the screen empty or silent (`app.py` main, `startup.py`, `instance.take_over_running_copy`, `engine/selfupdate.py`, `packaging/StellarHub.iss`):
   - The start screen is the first thing `main()` does (before waiting for a previous copy, elevating or claiming the lock). A copy started by the administrator relaunch or the task says "Opening as administrator…"; a second copy that finds the lock taken says "Opening StellarHub…".
   - A second copy asks the running one to show itself and needs its `ok` reply (1.5 s). No answer: it keeps trying for the lock for ~12 s, gives a copy that still has its start screen up its time (up to ~2 min: staged update), then ends the stuck copy and takes over; if it can't (an administrator copy), it says so in a message box. Never a silent exit.
   - `--wait-pid` waits at most 10 s for the previous copy and then ends it. The old copy keeps its own start screen up until the new copy's is visible (`splash.other_showing`).
@@ -126,6 +134,12 @@ SH.logActivity('Drivers updated', { sub: '2 installed', ic: 'drivers', go: 'driv
   - `[phase]` lines in `stellarhub.log` time each step of a start from the process creation; the log rotates above 2 MB and repeated lines are counted.
   - Tests and isolated copies set `STELLARHUB_NO_DIALOGS=1` (implied by `STELLARHUB_ISOLATED=1` and `STELLARHUB_UPDATE_DIR`): messages go to the log, never a modal box. `STELLARHUB_LOCK_ID` lets isolated copies share one lock (single-instance tests).
 - StellarHub's own updates: `engine/selfupdate.py` (how it works is in its docstring) and `ui/js/selfupdate.js` (the dialog). Tests serve a fake GitHub with `STELLARHUB_UPDATE_URL` and `STELLARHUB_UPDATE_DIR`; `STELLARHUB_ISOLATED=1` copies never elevate or touch the user's startup entries.
+  - Signed releases (2.0.0+): the trust anchor is an Ed25519 signature (`stellarhub/ed25519.py`, pure Python, RFC 8032 vectors in `tests/`) over the manifest `StellarHub release
+file: <name>
+version: <X>
+sha256: <hex>
+`, checked against `TRUSTED_KEYS` in `selfupdate.py`; the `.sha256` files are only for humans. No `.sig` or a bad one: `pick()` returns nothing (check offers the release page, `unsigned: true`) or the updater fails with `why="signature"` and deletes the file. Rotating the key: add the new public key to `TRUSTED_KEYS`, release signed with the old key, drop the old one in a later release. Tests use throwaway keys and patch `TRUSTED_KEYS`; never put a real secret in the repo (`.gitignore` has `.stellarhub-release/` and `*.key`).
+  - Release steps (owner's PC, once: `python tools/release_sign.py keygen --export`, keep the backup offline, paste the printed public key into `TRUSTED_KEYS`): 1. bump the version and push the tag so CI builds; 2. download the CI artifacts (`StellarHub-Setup-X.exe`, `StellarHub-Portable-X.zip`, and their `.sha256`); 3. sign locally: `python tools/release_sign.py sign StellarHub-Setup-X.exe StellarHub-Portable-X.zip --version X`; 4. optionally `verify` each; 5. publish the GitHub release with the four files plus the two `.sig` (six assets). A release without its `.sig` files is not installed by any copy.
 
 ## Testing
 

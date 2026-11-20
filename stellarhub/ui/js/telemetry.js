@@ -62,29 +62,64 @@ const has = k => v[k] !== null && v[k] !== undefined;
 /* formats the value, or returns "—" if Windows does not provide it */
 const fmt = (k, f = x => Math.round(x)) => has(k) ? f(v[k]) : '—';
 
-/* ---------- power: on battery (and "Lighter effects on battery" on) the UI switches to lighter effects ----------
+/* ---------- lighter effects: on battery, or when the page draws on integrated graphics ----------
+   Setting lightMode: 'auto' (default: on battery or integrated graphics only), 'always', 'never'. The older yes/no
+   batterySaver still counts when lightMode was never chosen (core.js turns its "no" into 'never').
    SH.state.lite is what the rest of the UI reads (html[data-lite] for CSS); SH.on('power', fn) fires when it changes.
-   Desktops report charging = null: they are never "on battery". SH.power.set(true|false|null) forces it (tests). */
+   Desktops report charging = null: they are never "on battery". SH.power.set(true|false|null) forces "on battery" (tests). */
 let userRate = 1000, owner = false; /* only the main window sets the sampler's rate (the widget and the tray panel load this file too) */
 const power = {
-  onBattery: false, forced: null,
+  onBattery: false, igpuOnly: false, forced: null,
   set(b) { power.forced = b === undefined ? null : b; apply(); },
 };
+/* the same rule as gpu_kind() in engine/telemetry.py: is this adapter a dedicated card? */
+function gpuIsDiscrete(name) {
+  const n = String(name || '').toLowerCase();
+  if (!n || /remote display|virtual|parsec|indirect|basic display|basic render|citrix|vmware|virtualbox|hyper-v|spacedesk|displaylink|idd /.test(n)) return null;
+  if (n.includes('nvidia')) return true;
+  if (n.includes('intel')) return /arc(\(tm\))?\s+(pro\s+)?[ab]\d{3}/.test(n);
+  if (n.includes('radeon') || n.includes('amd')) return /radeon(\(tm\))?\s*(rx|pro|vii|r[579]\b|hd\s*\d{4})|firepro|instinct/.test(n);
+  return true;
+}
+/* Which adapter does the page really draw on? Ask the browser (the unmasked WebGL renderer names it) instead of guessing from
+   the PC's parts: a laptop with a dedicated card can still render the window on the integrated chip. Software rendering counts
+   as heavy too. If the browser will not say, fall back to Home's "Graphics" component (the dedicated card, else the only one). */
+let renderIgpu;
+function drawsOnIntegrated() {
+  if (renderIgpu === undefined) {
+    renderIgpu = null;
+    try {
+      const gl = document.createElement('canvas').getContext('webgl', { powerPreference: 'default' });
+      const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
+      const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '') : '';
+      if (/swiftshader|software|llvmpipe|basic render/i.test(name)) renderIgpu = true;
+      else if (name) { const d = gpuIsDiscrete(name); renderIgpu = d === null ? null : !d; }
+      if (gl) { const x = gl.getExtension('WEBGL_lose_context'); x && x.loseContext(); }
+    } catch { renderIgpu = null; }
+  }
+  if (renderIgpu !== null) return renderIgpu;
+  const g = ((SH.PC && SH.PC.components) || []).find(c => c && c.id === 'gpu');
+  return !!g && gpuIsDiscrete(g.title) === false;
+}
 function apply() {
   if (!window.SH || !SH.state) return;
   const onB = power.forced !== null ? !!power.forced : v.charging === false;
-  const lite = onB && SH.state.settings.batterySaver !== false;
-  const changed = lite !== SH.state.lite;
-  power.onBattery = onB; SH.state.lite = lite;
+  const igpu = drawsOnIntegrated();
+  const S = SH.state.settings, mode = ['auto', 'always', 'never'].includes(S.lightMode) ? S.lightMode : (S.batterySaver === false ? 'never' : 'auto');
+  const lite = mode === 'always' || (mode === 'auto' && (onB || igpu));
+  const changed = lite !== SH.state.lite, rateChanged = onB !== power.onBattery;
+  power.onBattery = onB; power.igpuOnly = igpu; SH.state.lite = lite;
+  if (owner && (changed || rateChanged)) sendRate();
   if (!changed) return;
   document.documentElement.dataset.lite = lite ? '1' : '0';
-  if (owner) sendRate();
-  SH.emit('power', { lite, onBattery: onB });
+  SH.emit('power', { lite, onBattery: onB, igpuOnly: igpu });
 }
-/* on battery the data refreshes at most every 2 s (and the sampler does less work, see Sampler.lite) */
+/* on battery the data refreshes at most every 2 s (and the sampler does less work, see Sampler.lite); on integrated graphics
+   on AC only the drawing gets lighter, the data keeps its rate */
 function sendRate() {
-  const ms = SH.state.lite ? Math.max(2000, userRate) : userRate;
-  SH.call('tele_rate', ms, !!SH.state.lite);
+  const slow = SH.state.lite && power.onBattery;
+  const ms = slow ? Math.max(2000, userRate) : userRate;
+  SH.call('tele_rate', ms, !!slow);
   if (timer) { clearInterval(timer); timer = setInterval(tick, Math.max(250, ms * .7)); }
 }
 let lastCharging;
@@ -95,7 +130,7 @@ SH.tele = {
 };
 SH.power = power;
 SH.tele.on(() => { if (v.charging !== lastCharging) { lastCharging = v.charging; apply(); } });
-SH.on && SH.on('setting', d => { if (d.key === 'batterySaver') apply(); });
+SH.on && SH.on('setting', d => { if (d.key === 'lightMode' || d.key === 'batterySaver') apply(); });
 /* inside the app: real from the start (even if the first sample takes a moment) */
 SH.apiReady.then(a => { if (a) goReal(); });
 SH.on && SH.on('boot', () => { owner = true; apply(); SH.tele.setRate(+(SH.state.settings.teleRate || 1000)); });

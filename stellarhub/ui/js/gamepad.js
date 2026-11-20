@@ -363,6 +363,7 @@ function poll(gp, ts, dt) {
   if (!st.primed) { st.btn = bs; st.primed = true; detectLayout(gp); return; }
   const edges = []; for (let i = 0; i <= 16; i++) if (bs[i] && !st.btn[i]) edges.push(i);
   const dir = readDir(gp), rx = gp.axes[2] || 0, ry = gp.axes[3] || 0; st.btn = bs;
+  if (edges.length || dir || Math.hypot(rx, ry) > STICK) SH.poke && SH.poke();  /* using the pad counts as activity (the idle calm in shell.js) */
   if (listeners.size) for (const i of edges) for (const fn of listeners) { try { fn({ index: i, name: NAMES[i], pad: gp }); } catch (e) { console.error(e); } }
   if (capture) {
     /* the test owns the buttons; View + Menu held for a second gives them back */

@@ -303,6 +303,7 @@ function renderUpdates(el, ctx) {
       <div class="du-hero-t"><h3 id="duTitle">${t('Loading…')}</h3><p><span class="phase" id="duPhase">${t('Only drivers signed by Microsoft, from Windows Update. No telemetry.')}</span></p><div class="du-indet" id="duIndet"><span></span></div></div>
       <div class="du-hero-a"><span class="du-time" id="duTime"></span><button class="btn sec" id="duSearch">${ic('search')}${t('Search again')}</button></div>
     </div>
+    <p class="du-src" data-asm>${ic('shield')}<span>${t('Drivers come from Windows Update: signed by Microsoft, the same source as Windows Settings. StellarHub has no driver database of its own.')}</span></p>
     <div class="pan du-list" id="duList" data-asm></div>
     <div class="du-actbar" id="duBar" data-asm><span class="t" id="duSel"></span><button class="btn ghost" id="duNone">${t('Clear selection')}</button><button class="btn pri lg" id="duInstall">${ic('download')}${t('Install')}</button></div>
   </div>`;

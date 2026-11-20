@@ -16,7 +16,7 @@ from ctypes import wintypes
 import psutil
 
 from ..i18n import tc, tr
-from .ps import ps_json
+from .ps import ps_json, gather
 
 EXPORTS = {"pc_info", "pc_info_fresh", "displays", "screen_thumb", "counts", "health"}
 
@@ -24,7 +24,7 @@ EXPORTS = {"pc_info", "pc_info_fresh", "displays", "screen_thumb", "counts", "he
 def health():
     """Real summary for Home: antivirus, devices with errors and the latest restore point."""
     r = ps_json(r"""
-$mp = Get-MpComputerStatus -ErrorAction SilentlyContinue
+$mp = Get-CimInstance -Namespace root/Microsoft/Windows/Defender -ClassName MSFT_MpComputerStatus -ErrorAction SilentlyContinue
 $err = @(Get-CimInstance Win32_PnPEntity -Filter 'ConfigManagerErrorCode<>0' -ErrorAction SilentlyContinue | Where-Object { $_.ConfigManagerErrorCode -ne 22 })
 $rp = $null; try { $rp = Get-ComputerRestorePoint -ErrorAction Stop | Sort-Object SequenceNumber | Select-Object -Last 1 } catch {}
 $av = @(Get-CimInstance -Namespace root\SecurityCenter2 AntiVirusProduct -ErrorAction SilentlyContinue | ForEach-Object { $_.displayName })
@@ -144,13 +144,32 @@ $conn = @(Get-CimInstance -Namespace root\wmi WmiMonitorConnectionParams -ErrorA
   gpus=@(Get-CimInstance Win32_VideoController | ForEach-Object { [pscustomobject]@{ name=$_.Name; driver=$_.DriverVersion; driverDate=$_.DriverDate; ram=$_.AdapterRAM; w=$_.CurrentHorizontalResolution; h=$_.CurrentVerticalResolution; hz=$_.CurrentRefreshRate } })
   ram=@(Get-CimInstance Win32_PhysicalMemory | ForEach-Object { [pscustomobject]@{ cap=$_.Capacity; speed=$_.Speed; maker=$_.Manufacturer; part="$($_.PartNumber)".Trim(); slot=$_.DeviceLocator; type=$_.SMBIOSMemoryType } })
   slots=(Get-CimInstance Win32_PhysicalMemoryArray | Measure-Object -Property MemoryDevices -Sum).Sum
-  sysDisk=(Get-Partition -DriveLetter $env:SystemDrive[0] -ErrorAction SilentlyContinue | Select-Object -First 1).DiskNumber
   disks=@(Get-PhysicalDisk | ForEach-Object { [pscustomobject]@{ id="$($_.DeviceId)"; name=$_.FriendlyName; media="$($_.MediaType)"; bus="$($_.BusType)"; size=$_.Size; health="$($_.HealthStatus)" } })
-  nets=@(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up' | ForEach-Object { [pscustomobject]@{ name=$_.InterfaceDescription; speed=$_.LinkSpeed; media="$($_.PhysicalMediaType)" } })
   audio=@(Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' } | ForEach-Object { $_.Name })
   monitors=$mons; monSizes=$sizes; monConn=$conn
 }
 """
+
+
+# Loading the Storage and NetAdapter modules costs about a second each: they run in their own PowerShell at the same
+# time as the main script instead of one after the other.
+SCRIPT_SYSDISK = r"(Get-Partition -DriveLetter $env:SystemDrive[0] -ErrorAction SilentlyContinue | Select-Object -First 1).DiskNumber"
+SCRIPT_NETS = r"""@(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up' | ForEach-Object { [pscustomobject]@{ name=$_.InterfaceDescription; speed=$_.LinkSpeed; media="$($_.PhysicalMediaType)" } })"""
+
+
+def _query():
+    """The same data the old single script returned, from three PowerShell processes running at once."""
+    def safe(fn, default):
+        try:
+            return fn()
+        except Exception:
+            return default
+    r, disk, nets = gather(lambda: ps_json(SCRIPT, 90),
+                           lambda: safe(lambda: ps_json(SCRIPT_SYSDISK, 60), None),
+                           lambda: safe(lambda: ps_json(SCRIPT_NETS, 60, True), []))
+    r = r or {}
+    r["sysDisk"], r["nets"] = disk, nets
+    return r
 
 
 def _clean(s):
@@ -193,8 +212,9 @@ def _programs_count():
 
 
 def _drivers_count():
-    d = ps_json("(Get-CimInstance Win32_PnPSignedDriver | Where-Object { $_.DeviceName -and $_.DriverVersion }).Count", timeout=60)
-    return d if isinstance(d, int) else None
+    # the Drivers inventory is the same query: one shared (and cached) measurement for both
+    from . import drivers
+    return len(drivers.list_drivers(max_age=600))
 
 
 def counts():
@@ -255,7 +275,7 @@ def screen_thumb(index=0, width=480):
 
 
 def _build():
-    r = ps_json(SCRIPT, timeout=90) or {}
+    r = _query()
     maker, model = (r.get("maker") or "").strip(), (r.get("model") or "").strip()
     family = (r.get("family") or "").strip()
     ch = (r.get("chassis") or [0])[0] if r.get("chassis") else 0
@@ -379,11 +399,14 @@ def pc_info_fresh():
     with _lock:
         if _mem and _mem.get("ts", 0) >= t0:  # another caller measured while this one waited for the lock
             return _localize(_mem)
-        info = _build()
-        try:
-            info["facts"]["drivers"] = _drivers_count()
-        except Exception:
-            pass
+        def count():
+            try:
+                return _drivers_count()
+            except Exception:
+                return None
+        info, n_drivers = gather(_build, count)  # the slowest query runs while the rest is measured
+        if n_drivers is not None:
+            info["facts"]["drivers"] = n_drivers
         _mem = info
         _save(info)
         return _localize(info)

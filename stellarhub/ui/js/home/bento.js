@@ -180,10 +180,10 @@ function mount(el, ctx) {
     if (!root || (SH.state.view !== 'home' && !SH.homeAnimating)) return;
     const still = SH.effInt() === 'min' || SH.state.lite;
     const fv = SH.tele.v.fanGpu, gu = SH.tele.v.gpu; gfan.sp.t = still ? 0 : !nil(fv) ? fv / 100 * 1.1 : .15 + (gu || 0) / 100 * .9; gfan.sp.step(dt); gfan.boost.step(dt);
-    /* an SVG group cannot be composited: each turn repaints the card, so the fans turn at 30 fps (the angle uses the time that passed) */
+    /* an SVG group cannot be composited: each turn repaints the card, so the fans turn at 30 fps when quick, 15 when slow, 8 when nobody is using the app and stopped after 45 s of that (the angle uses the time that passed) */
     gfan.acc = (gfan.acc || 0) + dt;
-    if (!still && gfan.acc >= .032) { gfan.a = (gfan.a + (gfan.sp.v + gfan.boost.v * 1.6) * 360 * gfan.acc) % 360; gfan.acc = 0; fans.forEach(f => { f.style.transform = `rotate(${gfan.a.toFixed(2)}deg)`; }); }
-    for (const k in bars) { const b = bars[k]; if (b.idle && b.drawn) continue; b.step(dt); const e = barEl[k] || (barEl[k] = $(`[data-b="${k}"]`, root)); if (e) e.style.transform = `scaleX(${Math.max(0, b.v).toFixed(4)})`; b.drawn = true; }
+    if (!still && gfan.acc >= (SH.isIdle() ? .125 : gfan.sp.v + gfan.boost.v > .6 ? .032 : .066) && SH.idleFor() < 45000) { gfan.a = (gfan.a + (gfan.sp.v + gfan.boost.v * 1.6) * 360 * gfan.acc) % 360; gfan.acc = 0; fans.forEach(f => { f.style.transform = `rotate(${gfan.a.toFixed(2)}deg)`; }); }
+    for (const k in bars) { const b = bars[k]; if (b.idle && b.drawn) continue; b.step(dt); if (Math.abs(b.v - b.t) < .002 && Math.abs(b.vel) < .06) b.set(b.t); const e = barEl[k] || (barEl[k] = $(`[data-b="${k}"]`, root)); if (e) e.style.transform = `scaleX(${Math.max(0, b.v).toFixed(4)})`; b.drawn = true; }
     for (const t of tiles) {
       t.rx.step(dt); t.ry.step(dt); t.lift.step(dt);
       if (Math.abs(t.rx.v) + Math.abs(t.ry.v) + t.lift.v > .002 || !t.rest) {
@@ -205,8 +205,13 @@ function read() {
   const ct = $('[data-l="ctemp"]', root); if (ct) ct.parentElement.title = nil(v.cpuTemp) ? SH.t('Windows does not report the processor temperature on this PC. Open LibreHardwareMonitor, HWiNFO (with shared memory on) or Core Temp and StellarHub will read it from there.') : v.cpuTempSrc && v.cpuTempSrc !== 'acpi' ? SH.t('from {app}', { app: v.cpuTempSrc }) : '';
   set('ram', v.ram, fmt1); set('ramt', v.ramTotal, x => Math.round(x)); set('free', nil(v.diskTotal) ? null : v.diskTotal - v.diskUsed);
   set('down', v.down, fmt1); set('up', v.uptime, uptime); set('bat', v.battery); set('bath', nil(v.batteryHealth) ? null : v.batteryHealth, x => x + ' %');
-  bars.vram.t = (v.vram || 0) / (v.vramTotal || 8); bars.ram.t = (v.ram || 0) / (v.ramTotal || 1); bars.disk.t = (v.diskUsed || 0) / (v.diskTotal || 1);
-  const th = v.threads || []; $$('.th', root).forEach((e, i) => { const l = th[i] || 0; e.style.opacity = (.18 + .82 * l).toFixed(3); e.classList.toggle('busy', l > .75); });
+  /* a move under 1 % of the bar is invisible and would keep its spring (and a repaint every frame) running for a second */
+  const aim = (b, x) => { if (Math.abs(b.t - x) > .01) b.t = x; };
+  aim(bars.vram, (v.vram || 0) / (v.vramTotal || 8)); aim(bars.ram, (v.ram || 0) / (v.ramTotal || 1)); aim(bars.disk, (v.diskUsed || 0) / (v.diskTotal || 1));
+  /* The thread cells are SVG: every frame of their 600 ms fade repaints the whole card. The load is rounded to 8 steps and a cell
+     is only written when its step changes, so a calm CPU leaves Home with nothing to repaint between samples. */
+  const th = v.threads || [];
+  $$('.th', root).forEach((e, i) => { const q = Math.round(Math.min(1, th[i] || 0) * 8); if (e._q === q) return; e._q = q; e.style.opacity = (.18 + .82 * q / 8).toFixed(3); e.classList.toggle('busy', q >= 6); });
 }
 function intro(quick) {
   if (!root) return;

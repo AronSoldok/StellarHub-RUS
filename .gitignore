@@ -20,3 +20,7 @@ desktop.ini
 
 # datos locales
 *.log
+
+# release signing key (tools/release_sign.py keeps it outside the repo; this is a safety net)
+.stellarhub-release/
+*.key

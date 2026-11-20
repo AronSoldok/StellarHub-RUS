@@ -79,11 +79,11 @@ const PAL = ['#6FA8FF', '#8EA2FF', '#7FE0B4', '#FFB27A', '#F4C26B', '#A8D672', '
 const colorFor = s => PAL[[...String(s)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % PAL.length];
 const initial = s => (String(s).replace(/^[^A-Za-z0-9]+/, '')[0] || '?').toUpperCase();
 function tile(it) {
-  if (it.icon) return `<span class="u-tile img"><img src="${it.icon}" alt="" decoding="async"></span>`;
+  if (it.icon) return `<span class="u-tile img"><img src="${it.icon}" alt="" loading="lazy" decoding="async"></span>`;
   if (it.cat === 'apps' || it.cat === 'store' || it.color) { const c = it.color || colorFor(it.name); return `<span class="u-tile" style="--c:${c}">${esc(initial(it.name))}</span>`; }
   return `<span class="u-tile" style="--c:${CAT_COL[it.cat] || 'var(--accent2)'}">${ic((CATS[it.cat] || CATS.apps).ic)}</span>`;
 }
-const smallTile = (o, fallbackIc = 'package', col = 'var(--mute)') => o.icon ? `<span class="u-tile img sm"><img src="${o.icon}" alt="" decoding="async"></span>` : `<span class="u-tile sm" style="--c:${o.name ? colorFor(o.name) : col}">${o.name ? esc(initial(o.name)) : ic(fallbackIc)}</span>`;
+const smallTile = (o, fallbackIc = 'package', col = 'var(--mute)') => o.icon ? `<span class="u-tile img sm"><img src="${o.icon}" alt="" loading="lazy" decoding="async"></span>` : `<span class="u-tile sm" style="--c:${o.name ? colorFor(o.name) : col}">${o.name ? esc(initial(o.name)) : ic(fallbackIc)}</span>`;
 /* "Unknown": winget can't read the installed version, so updating reinstalls the latest one (not in Update all) */
 const vers = it => it.unknownVersion
   ? `<span class="u-ver" title="${esc(t("winget can't read the installed version: updating reinstalls the latest one"))}"><span class="u-unk">${t('Unknown')}</span>${ic('arrow')}<b>${esc(cv(it.to))}</b></span>`

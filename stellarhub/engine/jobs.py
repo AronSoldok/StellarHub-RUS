@@ -36,6 +36,7 @@ class Job:
         self.text = ""
         self.data = {}
         self.result = None
+        self.ended = 0.0
         self._last = 0.0
         self._logbuf = []
         self._lock = threading.Lock()
@@ -86,7 +87,17 @@ class Job:
         return {"id": self.id, "name": self.name, "state": self.state, "pct": self.pct, "text": self.text}
 
 
+KEEP_FINISHED = 600  # seconds a finished job stays cancellable/listed; older ones are dropped when the next starts
+
+
+def _prune():
+    now = time.monotonic()
+    for k in [k for k, j in list(_jobs.items()) if j.ended and now - j.ended > KEEP_FINISHED]:
+        _jobs.pop(k, None)
+
+
 def start(name, fn, *args, **kwargs):
+    _prune()
     job = Job(name)
     _jobs[job.id] = job
 
@@ -102,9 +113,8 @@ def start(name, fn, *args, **kwargs):
             print(f"[job {name}]", traceback.format_exc())
         job.pct = 1.0 if job.state == "done" else job.pct
         job._send("end")
-        t = threading.Timer(600, lambda: _jobs.pop(job.id, None))
-        t.daemon = True  # a pending Timer must never keep the process alive after the window is gone
-        t.start()
+        job.result = None   # it was delivered with the "end" message: a big scan result must not stay in memory
+        job.ended = time.monotonic()
 
     threading.Thread(target=run, daemon=True, name=f"job-{name}").start()
     return job.id

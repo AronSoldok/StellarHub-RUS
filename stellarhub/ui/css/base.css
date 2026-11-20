@@ -235,6 +235,7 @@ html[data-int=min] .sk::after{animation:none}
 .subnav{position:relative;align-self:flex-start;display:flex;gap:2px;padding:4px;border-radius:15px;background:var(--raise);border:1px solid var(--line);margin-bottom:16px;max-width:100%;overflow-x:auto;scrollbar-width:none}
 .subnav::-webkit-scrollbar{display:none}
 .subnav button{position:relative;z-index:1;height:34px;padding:0 15px;border-radius:11px;font-size:13px;color:var(--mute);white-space:nowrap;display:flex;align-items:center;gap:7px;transition:color calc(180ms*var(--f))}
+.subnav button[hidden],.subnav[hidden]{display:none}
 .subnav button:hover{color:var(--ink)}
 .subnav button.on{color:var(--ink)}
 .subnav button .bd{min-width:18px;height:18px;padding:0 5px;border-radius:9px;font-size:11px;display:grid;place-items:center;background:var(--accent);color:var(--on-accent);font-weight:600}

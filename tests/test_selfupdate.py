@@ -13,15 +13,27 @@ from unittest import mock
 os.environ["STELLARHUB_NO_DIALOGS"] = "1"  # (the updater also shows a message box on failure)
 os.environ["STELLARHUB_NO_SPLASH"] = "1"  # the updater shows the start screen; a test must not
 
+from stellarhub import ed25519
 from stellarhub.engine import selfupdate as su
 
+SEED = bytes(range(32))  # a throwaway key for these tests; the real one never leaves the owner's PC
+PUB = ed25519.public_key(SEED).hex()
+OTHER_SEED = bytes(range(1, 33))
 
-def release(ver, base, sha_ok=True, draft=False, name=None):
+
+def sign_file(name, ver, data, seed=SEED):
+    return ed25519.sign(seed, su.manifest(name, ver, hashlib.sha256(data).hexdigest()))
+
+
+def release(ver, base, draft=False, name=None, sig=True):
     name = name or f"StellarHub-Setup-{ver}.exe"
-    return {"tag_name": "v" + ver, "draft": draft, "prerelease": False, "body": "### New\n- thing",
+    r = {"tag_name": "v" + ver, "draft": draft, "prerelease": False, "body": "### New\n- thing",
             "html_url": f"{base}/tag/v{ver}", "published_at": "2026-11-18T00:00:00Z",
             "assets": [{"name": name, "size": 11, "browser_download_url": f"{base}/{name}"},
                        {"name": name + ".sha256", "size": 90, "browser_download_url": f"{base}/{name}.sha256"}]}
+    if sig:
+        r["assets"].append({"name": name + ".sig", "size": 64, "browser_download_url": f"{base}/{name}.sig"})
+    return r
 
 
 class Versions(unittest.TestCase):
@@ -33,14 +45,19 @@ class Versions(unittest.TestCase):
         self.assertFalse(su.newer("0.3.9", "0.4.0"))
         self.assertFalse(su.newer("garbage", "0.4.0"))
 
-    def test_pick_needs_the_installer_and_its_hash(self):
+    def test_pick_needs_the_installer_and_its_signature(self):
         base = "https://github.com/x/y/releases/download/v0.5.0"
         info = su.pick(release("0.5.0", base))
         self.assertEqual(info["ver"], "0.5.0")
         self.assertTrue(info["setup"]["url"].endswith("StellarHub-Setup-0.5.0.exe"))
         rel = release("0.5.0", base)
-        rel["assets"] = rel["assets"][:1]  # no .sha256
-        self.assertIsNone(su.pick(rel))
+        rel["assets"] = [a for a in rel["assets"] if not a["name"].endswith(".sha256")]  # the .sha256 is not needed
+        self.assertIsNotNone(su.pick(rel))
+        self.assertIsNone(su.pick(release("0.5.0", base, sig=False)))  # no .sig: never automatic
+        rel = release("0.5.0", base)
+        rel["assets"] = [a for a in rel["assets"] if a["name"] != "StellarHub-Setup-0.5.0.exe.sig"]
+        rel["assets"].append({"name": "StellarHub-Setup-0.4.0.exe.sig", "size": 64, "browser_download_url": base + "/x"})
+        self.assertIsNone(su.pick(rel))  # a .sig of another file does not count
         self.assertIsNone(su.pick(release("0.5.0", base, draft=True)))
         # an installer for another version than the tag is not taken
         self.assertIsNone(su.pick(release("0.5.0", base, name="StellarHub-Setup-0.4.0.exe")))
@@ -69,110 +86,197 @@ class Serve:
         shutil.rmtree(self.dir, ignore_errors=True)
 
 
+class Manifest(unittest.TestCase):
+    """A signature is tied to the file name, the version and the exact bytes, and to a key the app trusts."""
+
+    def setUp(self):
+        self.data = b"installer bytes"
+        self.name = "StellarHub-Setup-2.1.0.exe"
+        self.sig = sign_file(self.name, "2.1.0", self.data)
+        self.sha = hashlib.sha256(self.data).hexdigest()
+
+    def ok(self, name=None, ver="2.1.0", sha=None, sig=None, keys=None):
+        return su.signature_ok(name or self.name, ver, sha or self.sha, sig or self.sig, [PUB] if keys is None else keys)
+
+    def test_manifest_text(self):
+        self.assertEqual(su.manifest("a.exe", "2.1.0", "AB"), b"StellarHub release\nfile: a.exe\nversion: 2.1.0\nsha256: ab\n")
+
+    def test_valid(self):
+        self.assertTrue(self.ok())
+
+    def test_wrong_version_name_or_hash_is_refused(self):
+        self.assertFalse(self.ok(ver="2.1.1"))  # an old signed file passed off as a newer version
+        self.assertFalse(self.ok(name="StellarHub-Setup-2.1.1.exe"))
+        self.assertFalse(self.ok(sha=hashlib.sha256(b"tampered").hexdigest()))
+
+    def test_unknown_key_or_no_keys_is_refused(self):
+        self.assertFalse(self.ok(sig=sign_file(self.name, "2.1.0", self.data, OTHER_SEED)))
+        self.assertFalse(self.ok(keys=[]))
+        self.assertFalse(self.ok(keys=["not hex", "00" * 32]))
+
+    def test_any_trusted_key_counts_so_keys_can_rotate(self):
+        new_pub = ed25519.public_key(OTHER_SEED).hex()
+        self.assertTrue(self.ok(keys=[new_pub, PUB]))
+        self.assertTrue(self.ok(sig=sign_file(self.name, "2.1.0", self.data, OTHER_SEED), keys=[PUB, new_pub]))
+
+    def test_garbage_signature_is_refused(self):
+        self.assertFalse(self.ok(sig=b"x"))
+        self.assertFalse(self.ok(sig=b"x" * 64))
+        self.assertFalse(self.ok(sig=self.sig.hex().encode()))
+
+    def test_the_test_key_is_not_embedded_in_the_app(self):
+        self.assertNotIn(PUB, su.TRUSTED_KEYS)
+
+
 class CheckAndDownload(unittest.TestCase):
+    NAME = "StellarHub-Setup-9.9.9.exe"
+
     def setUp(self):
         self.payload = b"fake-setup!"
         self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
 
-    def tearDown(self):
-        shutil.rmtree(self.tmp, ignore_errors=True)
-
-    def serve(self, sha):
-        s = Serve({"StellarHub-Setup-9.9.9.exe": self.payload,
-                   "StellarHub-Setup-9.9.9.exe.sha256": f"{sha}  StellarHub-Setup-9.9.9.exe\n".encode()})
+    def serve(self, sig="good", payload=None):
+        """sig: "good" (signed by the trusted key), None (no .sig in the release), or the bytes served as .sig."""
+        payload = self.payload if payload is None else payload
+        files = {self.NAME: payload, self.NAME + ".sha256": f"{hashlib.sha256(payload).hexdigest()}  {self.NAME}\n".encode()}
+        if sig == "good":
+            sig = sign_file(self.NAME, "9.9.9", self.payload)
+        if sig is not None:
+            files[self.NAME + ".sig"] = sig
+        s = Serve(files)
         with open(os.path.join(s.dir, "latest.json"), "w", encoding="utf-8") as fh:
-            json.dump(release("9.9.9", s.base), fh)
+            json.dump(release("9.9.9", s.base, sig=sig is not None), fh)
         self.addCleanup(s.close)
+        for p in (mock.patch.dict(os.environ, {"STELLARHUB_UPDATE_URL": s.base + "/latest.json",
+                                               "STELLARHUB_UPDATE_DIR": self.tmp, "LOCALAPPDATA": self.tmp}),
+                  mock.patch.object(su, "TRUSTED_KEYS", [PUB]), mock.patch.object(su, "FROZEN", True),
+                  mock.patch.object(su, "per_machine", lambda: False), mock.patch.object(su, "_app_running", lambda: False)):
+            p.start()
+            self.addCleanup(p.stop)
         return s
 
-    def env(self, s):
-        return mock.patch.dict(os.environ, {"STELLARHUB_UPDATE_URL": s.base + "/latest.json",
-                                            "STELLARHUB_UPDATE_DIR": self.tmp, "LOCALAPPDATA": self.tmp})
-
     def test_check_reports_a_newer_version(self):
-        s = self.serve(hashlib.sha256(self.payload).hexdigest())
-        with self.env(s):
-            r = su.check()
+        self.serve()
+        r = su.check()
         self.assertTrue(r["ok"])
         self.assertTrue(r["newer"])
         self.assertEqual(r["latest"], "9.9.9")
         self.assertIn("thing", r["notes"])
+        self.assertNotEqual(r.get("mode"), "page")
+        self.assertFalse(r.get("unsigned"))
+
+    def test_check_offers_only_the_page_for_an_unsigned_release(self):
+        self.serve(sig=None)
+        r = su.check()
+        self.assertTrue(r["ok"] and r["newer"])
+        self.assertEqual(r["mode"], "page")
+        self.assertTrue(r["unsigned"])
+        self.assertEqual(r["latest"], "9.9.9")
 
     def test_check_offline_is_not_an_exception(self):
         with mock.patch.dict(os.environ, {"STELLARHUB_UPDATE_URL": "http://127.0.0.1:9/none.json"}):
             r = su.check()
         self.assertFalse(r["ok"])
 
-    def updater(self, sha):
-        s = self.serve(sha)
-        with self.env(s), mock.patch.object(su, "FROZEN", True), mock.patch.object(su, "per_machine", lambda: False), \
-                mock.patch.object(su, "_app_running", lambda: False), mock.patch.object(su.subprocess, "Popen") as popen:
+    def run_it(self):
+        with mock.patch.object(su.subprocess, "Popen") as popen:
             code = su.run_updater()
-            st = su.state()
-        return code, st, popen
+        return code, su.state(), popen
+
+    def assert_refused(self, code, st, popen):
+        self.assertNotEqual(code, 0)
+        self.assertEqual(st["st"], "failed")
+        self.assertEqual(st["why"], "signature")
+        popen.assert_not_called()
+        self.assertFalse(any(f.endswith((".exe", ".part")) for f in os.listdir(su.update_dir())))
 
     def test_updater_verifies_and_hands_over_to_the_installer(self):
-        code, st, popen = self.updater(hashlib.sha256(self.payload).hexdigest())
+        self.serve()
+        code, st, popen = self.run_it()
         self.assertEqual(code, 0)
         self.assertEqual(st["st"], "installing")
         args = popen.call_args[0][0]
-        self.assertTrue(args[0].endswith("StellarHub-Setup-9.9.9.exe"))
+        self.assertTrue(args[0].endswith(self.NAME))
         self.assertIn("/SILENT", args)  # Setup shows its own progress window
         self.assertNotIn("/VERYSILENT", args)
         self.assertIn("/CURRENTUSER", args)  # installed for one user: the update too
         self.assertTrue(any(a.startswith("/SELFUPDATE=") for a in args))
 
-    def test_updater_refuses_a_file_that_does_not_match_its_hash(self):
-        code, st, popen = self.updater("0" * 64)
-        self.assertEqual(st["st"], "failed")
-        self.assertEqual(st["why"], "hash")
+    def test_an_unsigned_release_is_never_downloaded_or_run(self):
+        self.serve(sig=None)  # no .sig asset: pick() gives nothing
+        code, st, popen = self.run_it()
+        self.assertEqual(st["st"], "uptodate")
         popen.assert_not_called()
-        self.assertFalse(any(f.endswith(".exe") for f in os.listdir(self.tmp)))
+        self.assertFalse(any(f.endswith(".exe") for f in os.listdir(su.update_dir())))
+
+    def test_forged_release_with_matching_sha256_is_refused(self):
+        """A stolen GitHub account: the thief uploads a new file, its .sha256 and a signature of his own key."""
+        evil = b"malware!!!!"
+        forged = ed25519.sign(OTHER_SEED, su.manifest(self.NAME, "9.9.9", hashlib.sha256(evil).hexdigest()))
+        self.serve(sig=forged, payload=evil)
+        self.assert_refused(*self.run_it())
+
+    def test_valid_signature_of_another_file_is_refused(self):
+        """The thief replays the author's signature (it is public) with a different file."""
+        self.serve(payload=b"malware!!!!")
+        self.assert_refused(*self.run_it())
+
+    def test_signature_for_another_version_is_refused(self):
+        self.serve(sig=sign_file(self.NAME, "9.9.8", self.payload))
+        self.assert_refused(*self.run_it())
+
+    def test_garbage_signature_is_refused(self):
+        self.serve(sig=b"nope")
+        self.assert_refused(*self.run_it())
 
     def test_background_download_stops_at_staged_and_is_reused(self):
         """New features download in the background and wait for the next start; the start reuses the file."""
-        sha = hashlib.sha256(self.payload).hexdigest()
-        s = self.serve(sha)
-        with self.env(s), mock.patch.object(su, "FROZEN", True), mock.patch.object(su, "per_machine", lambda: False), \
-                mock.patch.object(su, "_app_running", lambda: False), mock.patch.object(su.subprocess, "Popen") as popen:
-            os.makedirs(os.path.dirname(su._prefetch_flag()), exist_ok=True)
-            open(su._prefetch_flag(), "w").close()
-            self.assertEqual(su.run_updater(), 0)
-            self.assertEqual(su.state()["st"], "staged")
-            self.assertEqual(su.staged(), "9.9.9")
-            self.assertFalse(os.path.exists(su._prefetch_flag()))
-            popen.assert_not_called()
-            exe = os.path.join(su.update_dir(), "StellarHub-Setup-9.9.9.exe")
-            mtime = os.path.getmtime(exe)
-            # the next start: no flag, the same file (checked against the hash again) goes to the installer
-            os.remove(os.path.join(s.dir, "StellarHub-Setup-9.9.9.exe"))  # proves nothing is downloaded again
-            self.assertEqual(su.run_updater(), 0)
-            self.assertEqual(su.state()["st"], "installing")
-            self.assertEqual(os.path.getmtime(exe), mtime)
-            self.assertTrue(popen.call_args[0][0][0].endswith("StellarHub-Setup-9.9.9.exe"))
+        s = self.serve()
+        os.makedirs(os.path.dirname(su._prefetch_flag()), exist_ok=True)
+        open(su._prefetch_flag(), "w").close()
+        code, st, popen = self.run_it()
+        self.assertEqual((code, st["st"]), (0, "staged"))
+        self.assertEqual(su.staged(), "9.9.9")
+        self.assertFalse(os.path.exists(su._prefetch_flag()))
+        popen.assert_not_called()
+        exe = os.path.join(su.update_dir(), self.NAME)
+        mtime = os.path.getmtime(exe)
+        # the next start: no flag, the same file (its signature checked again) goes to the installer
+        os.remove(os.path.join(s.dir, self.NAME))  # proves nothing is downloaded again
+        code, st, popen = self.run_it()
+        self.assertEqual((code, st["st"]), (0, "installing"))
+        self.assertEqual(os.path.getmtime(exe), mtime)
+        self.assertTrue(popen.call_args[0][0][0].endswith(self.NAME))
 
     def test_a_tampered_staged_file_is_downloaded_again(self):
-        sha = hashlib.sha256(self.payload).hexdigest()
-        s = self.serve(sha)
-        with self.env(s), mock.patch.object(su, "FROZEN", True), mock.patch.object(su, "per_machine", lambda: False), \
-                mock.patch.object(su, "_app_running", lambda: False), mock.patch.object(su.subprocess, "Popen"):
-            os.makedirs(su.update_dir(), exist_ok=True)
-            exe = os.path.join(su.update_dir(), "StellarHub-Setup-9.9.9.exe")
-            with open(exe, "wb") as fh:
-                fh.write(b"something else")
-            self.assertEqual(su.run_updater(), 0)
-            with open(exe, "rb") as fh:
-                self.assertEqual(fh.read(), self.payload)
+        self.serve()
+        os.makedirs(su.update_dir(), exist_ok=True)
+        exe = os.path.join(su.update_dir(), self.NAME)
+        with open(exe, "wb") as fh:
+            fh.write(b"something else")
+        self.assertEqual(self.run_it()[0], 0)
+        with open(exe, "rb") as fh:
+            self.assertEqual(fh.read(), self.payload)
+
+    def test_a_staged_file_swapped_for_a_forged_one_is_never_run(self):
+        """Staged, then the file is replaced and the server serves the same forgery: refused at start."""
+        s = self.serve()
+        os.makedirs(os.path.dirname(su._prefetch_flag()), exist_ok=True)
+        open(su._prefetch_flag(), "w").close()
+        self.assertEqual(self.run_it()[0], 0)
+        exe = os.path.join(su.update_dir(), self.NAME)
+        for path in (exe, os.path.join(s.dir, self.NAME)):
+            with open(path, "wb") as fh:
+                fh.write(b"malware!!!!")
+        self.assert_refused(*self.run_it())
 
     def test_updater_does_nothing_when_up_to_date(self):
-        s = Serve({})
-        self.addCleanup(s.close)
+        s = self.serve()
         with open(os.path.join(s.dir, "latest.json"), "w", encoding="utf-8") as fh:
             json.dump(release(su.VERSION, s.base), fh)
-        with self.env(s), mock.patch.object(su, "FROZEN", True), mock.patch.object(su, "per_machine", lambda: False), \
-                mock.patch.object(su.subprocess, "Popen") as popen:
-            self.assertEqual(su.run_updater(), 0)
-            self.assertEqual(su.state()["st"], "uptodate")
+        code, st, popen = self.run_it()
+        self.assertEqual((code, st["st"]), (0, "uptodate"))
         popen.assert_not_called()
 
 
@@ -199,10 +303,14 @@ class Portable(unittest.TestCase):
         base = "https://github.com/x/y/releases/download/v0.6.0"
         rel = release("0.6.0", base)
         rel["assets"] += [{"name": "StellarHub-Portable-0.6.0.zip", "size": 9, "browser_download_url": base + "/StellarHub-Portable-0.6.0.zip"},
-                          {"name": "StellarHub-Portable-0.6.0.zip.sha256", "size": 90, "browser_download_url": base + "/StellarHub-Portable-0.6.0.zip.sha256"}]
+                          {"name": "StellarHub-Portable-0.6.0.zip.sha256", "size": 90, "browser_download_url": base + "/StellarHub-Portable-0.6.0.zip.sha256"},
+                          {"name": "StellarHub-Portable-0.6.0.zip.sig", "size": 64, "browser_download_url": base + "/StellarHub-Portable-0.6.0.zip.sig"}]
         self.assertTrue(su.pick(rel, portable=True)["setup"]["url"].endswith(".zip"))
         self.assertTrue(su.pick(rel, portable=False)["setup"]["url"].endswith(".exe"))
         self.assertIsNone(su.pick(release("0.6.0", base), portable=True))  # an old release without the .zip
+        rel["assets"] = [x for x in rel["assets"] if x["name"] != "StellarHub-Portable-0.6.0.zip.sig"]
+        self.assertIsNone(su.pick(rel, portable=True))  # the .zip has no signature
+        self.assertIsNotNone(su.pick(rel, portable=False))  # (the installer's is there)
 
     def test_unpack_refuses_paths_outside_and_needs_the_exe(self):
         import zipfile
@@ -226,6 +334,49 @@ class Portable(unittest.TestCase):
             z.writestr("readme.txt", b"x")
         with self.assertRaises(ValueError):
             su.unpack_portable(empty, os.path.join(tmp, "out3"))
+
+
+class PortableUpdater(unittest.TestCase):
+    """The whole updater for the portable copy: the signed .zip is unpacked, a forged one is not."""
+    NAME = "StellarHub-Portable-9.9.9.zip"
+
+    def zip_bytes(self, marker):
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("StellarHub/StellarHub.exe", marker)
+        return buf.getvalue()
+
+    def run_with(self, payload, sig):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        files = {self.NAME: payload, self.NAME + ".sig": sig}
+        s = Serve(files)
+        self.addCleanup(s.close)
+        rel = release("9.9.9", s.base, name=self.NAME)
+        with open(os.path.join(s.dir, "latest.json"), "w", encoding="utf-8") as fh:
+            json.dump(rel, fh)
+        with mock.patch.dict(os.environ, {"STELLARHUB_UPDATE_URL": s.base + "/latest.json", "STELLARHUB_UPDATE_DIR": tmp,
+                                          "LOCALAPPDATA": tmp}),                 mock.patch.object(su, "TRUSTED_KEYS", [PUB]), mock.patch.object(su, "FROZEN", True),                 mock.patch.object(su, "_portable", lambda: True), mock.patch.object(su, "per_machine", lambda: False):
+            code = su.run_updater()
+            return code, su.state(), tmp
+
+    def test_signed_zip_is_unpacked(self):
+        good = self.zip_bytes(b"new exe")
+        code, st, tmp = self.run_with(good, sign_file(self.NAME, "9.9.9", good))
+        self.assertEqual((code, st["st"]), (0, "ready"))
+        self.assertTrue(os.path.isfile(os.path.join(st["new"], "StellarHub.exe")))
+        self.assertFalse(os.path.exists(os.path.join(tmp, "update", self.NAME)) or os.path.exists(os.path.join(tmp, self.NAME)))
+
+    def test_forged_zip_is_refused_and_deleted(self):
+        good, evil = self.zip_bytes(b"new exe"), self.zip_bytes(b"malware")
+        code, st, tmp = self.run_with(evil, sign_file(self.NAME, "9.9.9", good))  # the real signature, another file
+        self.assertEqual((st["st"], st["why"]), ("failed", "signature"))
+        self.assertNotEqual(code, 0)
+        left = [f for r, _, fs in os.walk(tmp) for f in fs if f.endswith((".zip", ".part"))]
+        self.assertEqual(left, [])
+        self.assertFalse(any(os.path.isdir(os.path.join(r, "new")) for r, ds, _ in os.walk(tmp)))
 
 
 class PortablePaths(unittest.TestCase):

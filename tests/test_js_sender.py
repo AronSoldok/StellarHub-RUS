@@ -2,7 +2,7 @@ import threading
 import time
 import unittest
 
-from stellarhub.app import _Sender
+from stellarhub.jssender import Sender as _Sender
 
 
 class FakeWindow:
@@ -64,7 +64,7 @@ if __name__ == "__main__":
 
 class PanelGeometryTests(unittest.TestCase):
     def test_edges_and_scale(self):
-        from stellarhub.app import _panel_geometry as g
+        from stellarhub.winmgr import panel_geometry as g
         mon = (0, 0, 1920, 1080)
         # taskbar at the bottom, 150% system scale: sized with k, above the taskbar, centred on the click
         x, y, w, h = g((1800, 1060), (0, 0, 1920, 1040), mon, 1.5, 344, 452)

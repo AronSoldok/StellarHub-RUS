@@ -16,7 +16,7 @@ from ctypes import wintypes
 import psutil
 
 from ..i18n import tr
-from .ps import ps_json
+from .ps import ps_json, gather
 
 EXPORTS = {"processes", "end_process", "open_location", "disks", "network", "public_ip", "dns_test", "set_dns",
            "dns_undo", "battery_report", "health", "gpu_info", "memory_info", "icons"}
@@ -484,7 +484,25 @@ def gpu_info():
 # ======================================================================================= disks
 def disks():
     """Physical disks (with SMART when running as administrator) and partitions with their space."""
-    phys = ps_json(r"""
+    def get_phys():
+        return ps_json(_PHYS_PS, timeout=40, as_list=True)
+
+    def get_vols():
+        return ps_json(_VOLS_PS, timeout=30, as_list=True)
+
+    def get_trim():
+        try:
+            out = subprocess.run(["fsutil", "behavior", "query", "DisableDeleteNotify"], capture_output=True, timeout=5,
+                                 creationflags=NO_WINDOW).stdout.decode("cp850", "replace")
+            m = re.search(r"NTFS\s+DisableDeleteNotify\s*=\s*(\d)", out)
+            return (m.group(1) == "0") if m else None
+        except Exception:
+            return None
+    phys, vols, trim = gather(get_phys, get_vols, get_trim)  # three independent reads, at the same time
+    return {"physical": phys, "volumes": vols, "admin": _admin(), "trim": trim}
+
+
+_PHYS_PS = r"""
 Get-PhysicalDisk | ForEach-Object {
   $r = $null; try { $r = $_ | Get-StorageReliabilityCounter -ErrorAction Stop } catch {}
   [pscustomobject]@{ id=$_.DeviceId; name=$_.FriendlyName; media="$($_.MediaType)"; bus="$($_.BusType)"; size=$_.Size; health="$($_.HealthStatus)"
@@ -492,21 +510,11 @@ Get-PhysicalDisk | ForEach-Object {
     temp= if ($r) { $r.Temperature } else { $null }; tempMax= if ($r) { $r.TemperatureMax } else { $null }
     wear= if ($r) { $r.Wear } else { $null }; hours= if ($r) { $r.PowerOnHours } else { $null }; starts= if ($r) { $r.StartStopCycleCount } else { $null }
     readErr= if ($r) { $r.ReadErrorsTotal } else { $null }; writeErr= if ($r) { $r.WriteErrorsTotal } else { $null }; smart=[bool]$r }
-}""", timeout=40, as_list=True)
-    vols = ps_json(r"""
+}"""
+_VOLS_PS = r"""
 Get-Partition | Where-Object { $_.Type -ne 'Reserved' } | ForEach-Object { $v = $null; try { $v = $_ | Get-Volume -ErrorAction Stop } catch {}
   [pscustomobject]@{ disk=$_.DiskNumber; letter="$($_.DriveLetter)".Trim(); type="$($_.Type)"; size=$_.Size; hidden=[bool]$_.IsHidden -or -not $_.DriveLetter
-    label= if ($v) { $v.FileSystemLabel } else { '' }; fs= if ($v) { $v.FileSystem } else { '' }; free= if ($v) { $v.SizeRemaining } else { $null } } }""",
-                   timeout=30, as_list=True)
-    trim = None
-    try:
-        out = subprocess.run(["fsutil", "behavior", "query", "DisableDeleteNotify"], capture_output=True, timeout=5,
-                             creationflags=NO_WINDOW).stdout.decode("cp850", "replace")
-        m = re.search(r"NTFS\s+DisableDeleteNotify\s*=\s*(\d)", out)
-        trim = (m.group(1) == "0") if m else None
-    except Exception:
-        pass
-    return {"physical": phys, "volumes": vols, "admin": _admin(), "trim": trim}
+    label= if ($v) { $v.FileSystemLabel } else { '' }; fs= if ($v) { $v.FileSystem } else { '' }; free= if ($v) { $v.SizeRemaining } else { $null } } }"""
 
 
 # ======================================================================================= network
@@ -539,14 +547,16 @@ def _netsh_wifi():
             "auth": pick("authentication", "autenticaci\u00f3n", "autenticacion")}
 
 
-def network():
-    cfg = ps_json(r"""
+_NET_PS = r"""
 Get-NetIPConfiguration | Where-Object { $_.NetAdapter.Status -eq 'Up' } | ForEach-Object {
   [pscustomobject]@{ alias=$_.InterfaceAlias; index=$_.InterfaceIndex; desc=$_.InterfaceDescription
     ipv4=@($_.IPv4Address | ForEach-Object { $_.IPAddress }); gw=@($_.IPv4DefaultGateway | ForEach-Object { $_.NextHop })
     dns=@($_.DNSServer | Where-Object { $_.AddressFamily -eq 2 } | ForEach-Object { $_.ServerAddresses })
     dhcpDns=[bool]((Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\$($_.NetAdapter.InterfaceGuid)" -ErrorAction SilentlyContinue).NameServer -eq '')
-    mac=$_.NetAdapter.MacAddress; speed=$_.NetAdapter.LinkSpeed; media="$($_.NetAdapter.PhysicalMediaType)" } }""", timeout=30, as_list=True)
+    mac=$_.NetAdapter.MacAddress; speed=$_.NetAdapter.LinkSpeed; media="$($_.NetAdapter.PhysicalMediaType)" } }"""
+
+
+def _established_by_pid():
     apps = {}
     try:
         for c in psutil.net_connections("inet"):
@@ -554,6 +564,12 @@ Get-NetIPConfiguration | Where-Object { $_.NetAdapter.Status -eq 'Up' } | ForEac
                 apps[c.pid] = apps.get(c.pid, 0) + 1
     except (psutil.AccessDenied, OSError):
         pass
+    return apps
+
+
+def network():
+    # PowerShell (adapters), netsh (Wi-Fi) and the connection table do not depend on each other: all at once
+    cfg, wifi, apps = gather(lambda: ps_json(_NET_PS, timeout=30, as_list=True), _netsh_wifi, _established_by_pid)
     byname = {}
     for pid, n in apps.items():
         try:
@@ -575,7 +591,7 @@ Get-NetIPConfiguration | Where-Object { $_.NetAdapter.Status -eq 'Up' } | ForEac
         a["virtual"] = bool(re.search(r"hyper-v|virtualbox|vmware|wsl|tap-|wintun|loopback|virtual|vpn|zerotier|tailscale", (a.get("desc") or "") + " " + (a.get("alias") or ""), re.I))
         a["gw"] = [g for g in (a.get("gw") or []) if g]
     cfg.sort(key=lambda a: (a["virtual"], not a["gw"]))
-    return {"adapters": cfg, "wifi": _netsh_wifi(), "apps": top, "admin": _admin()}
+    return {"adapters": cfg, "wifi": wifi, "apps": top, "admin": _admin()}
 
 
 def public_ip():

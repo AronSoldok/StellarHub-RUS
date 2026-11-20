@@ -82,7 +82,13 @@ addEventListener('resize', fit);
 const fmtUp = SH.fmtUptime;
 function readVitals() {
   if (!built) return; const v = T.v;
-  rows.forEach(r => { r.s.t = Math.max(0, Math.min(1, r.x.frac(v) || 0)); const [a, b] = r.x.val(v); r.vv.innerHTML = a === dash ? dash : `${a}<small>${b}</small>`; r.el.classList.toggle('hot', !!r.x.hot(v)); });
+  /* a move under 1 % of the bar is invisible but would keep its spring, and a repaint every frame, running for a second;
+     the number is only rewritten when it changed */
+  rows.forEach(r => {
+    const f = Math.max(0, Math.min(1, r.x.frac(v) || 0)); if (Math.abs(f - r.s.t) > .01) r.s.t = f;
+    const [a, b] = r.x.val(v), h = a === dash ? dash : `${a}<small>${b}</small>`; if (h !== r.h) { r.h = h; r.vv.innerHTML = h; }
+    r.el.classList.toggle('hot', !!r.x.hot(v));
+  });
   if (T.has('uptime')) $('#hUp').textContent = fmtUp(v.uptime);
   const temps = [T.has('cpuTemp') ? `CPU ${Math.round(v.cpuTemp)} °C` : null, T.has('gpuTemp') ? `GPU ${Math.round(v.gpuTemp)} °C` : null].filter(Boolean);
   const hot = (v.cpuTemp ?? 0) > 90 || (v.gpuTemp ?? 0) > 85;
@@ -91,7 +97,7 @@ function readVitals() {
 SH.tele.on(() => { if (state.view === 'home') readVitals(); });
 tickers.add(dt => {
   if (!built || (state.view !== 'home' && !SH.homeAnimating)) return;
-  rows.forEach(r => { if (r.s.idle && r.drawn) return; r.s.step(dt); const tf = `scaleX(${r.s.v.toFixed(3)})`; if (tf !== r.tf) { r.tf = tf; r.bar.style.transform = tf; } r.drawn = true; });
+  rows.forEach(r => { if (r.s.idle && r.drawn) return; r.s.step(dt); if (Math.abs(r.s.v - r.s.t) < .002 && Math.abs(r.s.vel) < .06) r.s.set(r.s.t); /* the last half pixel of the tail is not worth a repaint per frame */ const tf = `scaleX(${r.s.v.toFixed(3)})`; if (tf !== r.tf) { r.tf = tf; r.bar.style.transform = tf; } r.drawn = true; });
 });
 home.addEventListener('click', e => {
   const v = e.target.closest('.vit[data-comp]'); if (v) { SH.openComponent(v.dataset.comp, v); return; }
