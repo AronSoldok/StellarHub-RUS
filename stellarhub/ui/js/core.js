@@ -161,6 +161,13 @@ async function loadSettings() {
   Object.assign(state.settings, sanitizeSettings(saved));
   /* before the three-way "Lighter effects" choice there was a yes/no (batterySaver): no becomes Never, yes is Automatic */
   if (saved && typeof saved === 'object' && saved.lightMode === undefined && saved.batterySaver === false) state.settings.lightMode = 'never';
+  /* before 2.0.0 "sounds" was one off-by-default chime for finished tasks, and its false was saved in nearly every
+     settings file. The 2.0.0 interface sounds are on by default: settings from before them (no soundVolume yet) start
+     with sounds on once; the volume is saved with it so this runs a single time and a later "off" is kept. */
+  if (inApp && isObj(saved) && saved.soundVolume === undefined) {
+    state.settings.sounds = true; state.settings.soundVolume = DEFAULTS.soundVolume;
+    call('settings_set', { sounds: true, soundVolume: DEFAULTS.soundVolume });
+  }
   /* the registry cleaner is opt-in (setting registryCleaner, default off). Someone upgrading, with no such key saved yet,
      keeps it on only if they already have registry-fix backups; the answer is saved so this runs once. */
   if (inApp && isObj(saved) && typeof saved.registryCleaner !== 'boolean') {
