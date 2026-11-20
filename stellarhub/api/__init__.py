@@ -5,7 +5,7 @@ holds the state they share (the windows, the tray, the sampler) and the way to t
 import threading
 import time
 
-from .. import VERSION, config, winmgr
+from .. import CODENAME, VERSION, config, winmgr
 from ..jssender import Sender
 from ..log import phase
 from .engine_api import EngineApi
@@ -41,7 +41,7 @@ class Api(SettingsApi, MainWindowApi, WidgetApi, TrayPanelApi, EngineApi):
 
     # ---------- information ----------
     def info(self):
-        return {"version": VERSION, "admin": config.is_admin(), "portable": config.PORTABLE}
+        return {"version": VERSION, "codename": CODENAME, "admin": config.is_admin(), "portable": config.PORTABLE}
 
     _reveal_pending = False
 

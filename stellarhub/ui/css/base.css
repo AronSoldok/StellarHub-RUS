@@ -457,7 +457,7 @@ html[data-density=compact] .mhead p{margin-top:4px}
 html[data-density=compact] .home-grid{row-gap:var(--sp-md);column-gap:var(--sp-md)}
 html[data-density=compact] .vit{padding:5px 10px;row-gap:5px}
 html[data-density=compact] .pend,html[data-density=compact] .nx{padding:6px 10px}
-html[data-density=compact] .h-id .model{font-size:28px}
+html[data-density=compact] .h-id .model{font-size:var(--fs-h1)}
 html[data-density=compact] .set{padding:10px 0}
 html[data-density=compact] .dk{border-radius:var(--r-m)}
 html[data-density=compact] .tab{padding-bottom:8px}
@@ -484,7 +484,7 @@ html[data-corners=soft] :is(.row,.vit,.pend,.nx,.tool,.dk,.pal .it,.pal .hl,.cs-
   .search{width:min(480px,30vw)}
   .search .kbd{display:none}
   .mode #modeTxt{max-width:104px}
-  .mode{padding:0 11px;gap:7px}
+  .mode{padding:0 11px;gap:var(--sp-sm)}
 }
 @media (max-width:1160px){
   .search{width:min(480px,27vw)}
@@ -512,3 +512,7 @@ html[data-lite="1"] .pan .pan{box-shadow:none}
 html[data-lite="1"] .subnav,html[data-lite="1"] .search,html[data-lite="1"] .mode,html[data-lite="1"] .btn.pri,html[data-lite="1"] .btn.sec{box-shadow:0 4px 10px -6px rgba(0,0,0,.6)}
 html[data-lite="1"] .dock{box-shadow:0 8px 20px -10px rgba(0,0,0,.7)}
 html[data-lite="1"] .sheet,html[data-lite="1"] .pal{box-shadow:0 16px 40px -18px rgba(0,0,0,.85)}
+
+/* the version, bottom left of every view (support screenshots): small and quiet, never in the way */
+.ver-tag{position:fixed;left:18px;bottom:14px;z-index:30;pointer-events:none;font:500 10.5px/1 var(--text);letter-spacing:.06em;color:var(--faint);opacity:.75;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.ver-tag:empty{display:none}

@@ -88,7 +88,7 @@ function drawStars(dt, t) {
   }
   if (bk) for (const k in bk) { cx.globalAlpha = (k & 15) / 15; cx.fillStyle = k >= 16 ? '#e6f2ff' : '#a9bddc'; cx.fill(bk[k]); }
   cx.globalAlpha = 1;
-});
+}
 SH.mouse = mouse; SH.warp = warp;
 
 /* ================= dock ================= */
@@ -787,7 +787,9 @@ SH.boot = async () => {
   const [info, pc] = await Promise.all([SH.call('info'), SH.call('pc_info')]);
   SH.call('phase', 'info + pc_info loaded');
   if (pc && pc.components) { Object.assign(SH.PC, pc); SH.PC.real = true; }
-  if (info) { state.version = info.version; state.portable = !!info.portable; const ver = $('#sheet nav .ver'); if (ver) ver.textContent = `StellarHub ${info.version}`; if (info.admin) { state.admin = true; paintMode(); $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
+  if (info) { state.version = info.version; state.codename = info.codename || ''; state.portable = !!info.portable; const ver = $('#sheet nav .ver'); if (ver) ver.textContent = `StellarHub ${info.version}${state.codename ? ' · ' + state.codename : ''}`;
+    /* the version in a corner of every view, small: support screenshots always say which one it is */
+    const vt = $('#verTag'); if (vt) vt.textContent = `v${info.version}${state.codename ? ' · ' + state.codename : ''}${state.portable ? ' · ' + SH.t('portable') : ''}`; if (info.admin) { state.admin = true; paintMode(); $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
   applyLook(); applyZoom();
   MODS.filter(m => m.id !== 'home').forEach(buildModule);
   SH.on('module:registered', def => { if (def.id !== 'home' && modById(def.id)) buildModule(modById(def.id)); });
