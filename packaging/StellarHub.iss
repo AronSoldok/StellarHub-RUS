@@ -17,11 +17,11 @@
 ; file when it ends, and opens StellarHub itself the moment the files are in place (or, if the installation failed,
 ; the previous version again), so nothing is left waiting on a helper.
 ;
-; The wizard follows the Windows display language (English, Spanish, Portuguese, Italian, French or Chinese);
-; /LANG=spanish (english, portuguese, italian, french, chinesesimplified) forces one.
+; The wizard follows the Windows display language (English, Spanish, Portuguese, Italian, French, Chinese or Japanese);
+; /LANG=spanish (english, portuguese, italian, french, chinesesimplified, japanese) forces one.
 ; Silent installs keep the current settings, or use the defaults on a first install. They can also set the options:
 ;   /OPTIONS=desktop,startup,admin,widget,updates   (the ones listed are turned on, the rest off)
-;   /APPLANG=es                             (en, es, pt, it, fr, zh)
+;   /APPLANG=es                             (en, es, pt, it, fr, zh, ja)
 
 #ifndef AppVersion
   #error Pass the version: ISCC /DAppVersion=x.y.z StellarHub.iss
@@ -106,6 +106,7 @@ Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 ; unofficial translation from the Inno Setup project (jrsoftware/issrc, tag is-6_7_3), unchanged
 Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [Messages]
 ; no boilerplate about the buttons on the welcome and finish pages
@@ -141,6 +142,11 @@ chinesesimplified.WelcomeLabel2=即将在您的电脑上安装 [name/ver]。%n%n
 chinesesimplified.FinishedHeadingLabel=StellarHub 已准备就绪
 chinesesimplified.FinishedLabelNoIcons=StellarHub 已安装完成。
 chinesesimplified.FinishedLabel=StellarHub 已安装完成。您可以随时从“开始”菜单打开它。
+japanese.WelcomeLabel1=StellarHub へようこそ
+japanese.WelcomeLabel2=お使いの PC に [name/ver] をインストールします。%n%nリアルタイムのハードウェア情報、ドライバー、アプリ、ディスク容量、クリーンアップ、ハードウェア テスト: PC に必要なものがすべて 1 か所に揃っています。
+japanese.FinishedHeadingLabel=StellarHub の準備ができました
+japanese.FinishedLabelNoIcons=StellarHub がインストールされました。
+japanese.FinishedLabel=StellarHub がインストールされました。スタート メニューからいつでも開けます。
 
 [CustomMessages]
 english.AppTagline=The control center for your Windows PC
@@ -286,6 +292,29 @@ chinesesimplified.RunWebView=正在安装 Microsoft Edge WebView2 Runtime...
 chinesesimplified.RunApp=立即打开 StellarHub
 chinesesimplified.RunNotes=查看 %1 版本的新功能
 chinesesimplified.UninstRemoveData=是否同时删除 StellarHub 的设置和 Autopilot 历史记录？%n%n选择“否”可将其保留，供以后安装时使用。
+japanese.AppTagline=Windows PC のコントロール センター
+japanese.InfoInstalls=StellarHub をインストールします。Windows に Microsoft Edge WebView2 Runtime がまだない場合は、Microsoft からダウンロードしてインストールします。
+japanese.InfoRequires=Windows 10 (バージョン 1809) 以降の 64 ビット版が必要です。
+japanese.InfoFree=GNU GPL v3 ライセンスの無料のオープンソース ソフトウェアです。広告もアカウントもありません。
+japanese.LinkGitHub=GitHub の StellarHub
+japanese.OptionsTitle=オプションの選択
+japanese.OptionsDesc=StellarHub をどのように起動しますか? これらはすべて後から「設定」で変更できます。
+japanese.OptDesktop=デスクトップにショートカットを作成する
+japanese.OptStartup=Windows の起動時に StellarHub を開く
+japanese.OptStartupHint=時計の横にある通知領域で静かに待機します。
+japanese.OptAdmin=常に管理者として開く
+japanese.OptAdminHint=毎回 Windows の許可を求められることなく、すべてのツールをすぐに使えます。
+japanese.OptWidget=起動時に常に手前に表示されるウィジェットを表示する
+japanese.OptWidgetHint=PC の状態をリアルタイムで表示する小さなパネルで、すべてのウィンドウの上に表示されます。
+japanese.OptUpdate=StellarHub を最新の状態に保つ
+japanese.OptUpdateHint=StellarHub は起動時に GitHub で新しいバージョンを確認し、更新する前に確認します。
+japanese.OptLanguage=アプリの言語
+japanese.StatusApplying=選択内容を適用しています...
+japanese.StatusWarm=StellarHub の初回起動を準備しています...
+japanese.RunWebView=Microsoft Edge WebView2 Runtime をインストールしています...
+japanese.RunApp=今すぐ StellarHub を開く
+japanese.RunNotes=バージョン %1 の新機能を見る
+japanese.UninstRemoveData=StellarHub の設定とオートパイロットの履歴も削除しますか?%n%n今後のインストールのために残す場合は「いいえ」を選んでください。
 
 [InstallDelete]
 ; an update replaces the runtime folder completely (the old one is kept as _internal.bak until the new one is in
@@ -399,6 +428,7 @@ begin
     3: Result := 'it';
     4: Result := 'fr';
     5: Result := 'zh';
+    6: Result := 'ja';
   else
     Result := 'en';
   end;
@@ -410,7 +440,7 @@ var
 begin
   Result := -1;
   Code := Lowercase(Copy(Trim(Code), 1, 2));
-  for I := 0 to 5 do
+  for I := 0 to 6 do
     if AppLangAt(I) = Code then
       Result := I;
 end;
@@ -422,6 +452,7 @@ begin
   else if WizardLanguage = 'italian' then Result := 'it'
   else if WizardLanguage = 'french' then Result := 'fr'
   else if WizardLanguage = 'chinesesimplified' then Result := 'zh'
+  else if WizardLanguage = 'japanese' then Result := 'ja'
   else Result := 'en';
 end;
 
@@ -573,6 +604,7 @@ begin
   LangCombo.Items.Add('Italiano');
   LangCombo.Items.Add('Français');
   LangCombo.Items.Add('简体中文');
+  LangCombo.Items.Add('日本語');
   LangCombo.ItemIndex := AppLangIndex(WasLang);
   LangLabel.FocusControl := LangCombo;
 end;
