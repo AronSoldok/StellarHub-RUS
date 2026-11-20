@@ -73,7 +73,7 @@
 #v-remover .rf-foot .t b{color:var(--ink);font-weight:500}
 #v-remover .mcards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:900px}
 #v-remover .mcard{text-align:left;padding:16px;border-radius:16px;border:1px solid var(--line);background:var(--raise);display:flex;flex-direction:column;gap:8px;
-  transition:border-color calc(180ms*var(--f)),background-color calc(180ms*var(--f)),transform calc(220ms*var(--f)) cubic-bezier(.2,.9,.3,1.3)}
+  transition:border-color calc(180ms*var(--f)),background-color calc(180ms*var(--f)),transform calc(220ms*var(--f)) var(--e-snap)}
 #v-remover .mcard:hover{background:var(--raise2);transform:translateY(-2px)}
 #v-remover .mcard.on{border-color:var(--accent);background:color-mix(in oklab,var(--accent) 8%,transparent)}
 #v-remover .mcard[disabled]{opacity:.4;pointer-events:none}
@@ -179,7 +179,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .qs{border-radius:14px;border:1px solid var(--line);background:var(--raise);margin-bottom:8px}
 #v-remover .qs-h{display:grid;grid-template-columns:22px 34px minmax(0,1fr) 120px 150px auto;gap:12px;align-items:center;width:100%;text-align:left;padding:10px 14px;border-radius:14px;transition:background-color calc(150ms*var(--f))}
 #v-remover .qs-h:hover{background:var(--raise2)}
-#v-remover .qs-h .cv{color:var(--faint);transition:transform calc(260ms*var(--f)) cubic-bezier(.2,.9,.3,1.2)}
+#v-remover .qs-h .cv{color:var(--faint);transition:transform calc(260ms*var(--f)) var(--e-snap)}
 #v-remover .qs.open .qs-h .cv{transform:rotate(90deg)}
 #v-remover .qs-h .rt b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-remover .qs-h .rt span{display:block;font-size:12px;color:var(--mute)}

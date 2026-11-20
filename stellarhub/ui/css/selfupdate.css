@@ -23,7 +23,7 @@ html[data-int=min] .su-moon{animation:none}
 .su-x svg{width:15px;height:15px}
 .su-body{flex:1;min-height:0;overflow:auto;padding:0 22px}
 .su-notes{padding:14px 16px;border-radius:14px;background:color-mix(in oklab,var(--raise) 70%,transparent);font-size:12.5px;line-height:1.55;color:var(--mute)}
-.su-notes h4{margin:12px 0 6px;font:500 13px var(--display);color:var(--ink);letter-spacing:-.01em}
+.su-notes h4{margin:14px 0 6px;font:600 13.5px var(--text);color:var(--ink)}
 .su-notes h4:first-child{margin-top:0}
 .su-notes ul{margin:0;padding-left:18px}
 .su-notes li{margin:3px 0}
@@ -41,7 +41,7 @@ html[data-int=min] .su-moon{animation:none}
 .su-prog{padding:18px 4px 6px}
 .su-steps{display:flex;align-items:center;gap:8px}
 .su-step{display:flex;flex-direction:column;align-items:center;gap:7px;flex:none;width:84px;color:var(--faint);font-size:11.5px}
-.su-step span{width:38px;height:38px;border-radius:13px;display:grid;place-items:center;background:var(--raise);transition:background-color calc(300ms*var(--f)),color calc(300ms*var(--f)),transform calc(400ms*var(--f)) cubic-bezier(.2,.9,.3,1.4)}
+.su-step span{width:38px;height:38px;border-radius:13px;display:grid;place-items:center;background:var(--raise);transition:background-color calc(300ms*var(--f)),color calc(300ms*var(--f)),transform calc(400ms*var(--f)) var(--e-snap)}
 .su-step span svg{width:17px;height:17px}
 .su-step b{font-weight:500}
 .su-step.on{color:var(--ink)}

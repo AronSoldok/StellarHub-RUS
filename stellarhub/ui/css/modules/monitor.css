@@ -1,7 +1,7 @@
 /* StellarHub · Live Monitor (everything under #v-monitor) */
 #v-monitor .pan>h4{min-height:22px}
 #v-monitor .goto{display:inline-flex;align-items:center;gap:4px;color:var(--mute);font-weight:500;border-radius:7px;padding:1px 4px 1px 0;transition:color calc(160ms*var(--f))}
-#v-monitor .goto svg{width:14px;height:14px;opacity:0;transform:translateX(-4px);transition:opacity calc(160ms*var(--f)),transform calc(220ms*var(--f)) cubic-bezier(.2,.9,.3,1.3)}
+#v-monitor .goto svg{width:14px;height:14px;opacity:0;transform:translateX(-4px);transition:opacity calc(160ms*var(--f)),transform calc(220ms*var(--f)) var(--e-snap)}
 #v-monitor .goto:hover{color:var(--ink)}
 #v-monitor .goto:hover svg{opacity:1;transform:none}
 #v-monitor canvas.ch{display:block;width:100%;height:100%;cursor:crosshair}
@@ -128,8 +128,7 @@
 #v-monitor .stick i{flex:1;height:14px;border-radius:2px;background:color-mix(in oklab,var(--ink) 18%,var(--deep))}
 #v-monitor .stick.empty{background:none;border:1.5px dashed var(--line2)}
 #v-monitor .stick.empty::after{display:none}
-#v-monitor .slot.on .stick{animation:mon-glow calc(2400ms*var(--f) + 600ms) ease-in-out infinite alternate}
-@keyframes mon-glow{from{box-shadow:0 0 0 0 transparent}to{box-shadow:0 0 18px -4px color-mix(in oklab,var(--accent2) 60%,transparent)}}
+#v-monitor .slot.on .stick{box-shadow:0 8px 18px -10px color-mix(in oklab,var(--accent2) 55%,transparent)}
 html[data-int=min] #v-monitor .slot.on .stick{animation:none}
 
 /* disks */
@@ -167,7 +166,7 @@ html[data-int=min] #v-monitor .seg.pending .ind{animation:none}
 #v-monitor .wifi b{display:block;font-weight:500}
 #v-monitor .wifi span{font-size:12px;color:var(--mute)}
 #v-monitor .sig{display:flex;align-items:flex-end;gap:3px;height:20px}
-#v-monitor .sig i{width:5px;border-radius:2px;background:var(--raise3);transition:background-color calc(300ms*var(--f)),transform calc(300ms*var(--f)) cubic-bezier(.2,.9,.3,1.4);transform-origin:50% 100%}
+#v-monitor .sig i{width:5px;border-radius:2px;background:var(--raise3);transition:background-color calc(300ms*var(--f)),transform calc(300ms*var(--f)) var(--e-snap);transform-origin:50% 100%}
 #v-monitor .sig i:nth-child(1){height:6px} #v-monitor .sig i:nth-child(2){height:10px} #v-monitor .sig i:nth-child(3){height:15px} #v-monitor .sig i:nth-child(4){height:20px}
 #v-monitor .sig i.on{background:var(--accent2)}
 #v-monitor .mini{display:flex;gap:18px;font-size:12px;color:var(--mute);margin-top:10px}
@@ -195,7 +194,7 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .ph button:first-child{justify-content:flex-start}
 #v-monitor .ph button:hover{color:var(--ink)}
 #v-monitor .ph button.on{color:var(--ink)}
-#v-monitor .ph button svg{width:13px;height:13px;opacity:0;transition:opacity calc(160ms*var(--f)),transform calc(260ms*var(--f)) cubic-bezier(.2,.9,.3,1.3)}
+#v-monitor .ph button svg{width:13px;height:13px;opacity:0;transition:opacity calc(160ms*var(--f)),transform calc(260ms*var(--f)) var(--e-snap)}
 #v-monitor .ph button.on svg{opacity:1}
 #v-monitor .ph button.asc svg{transform:rotate(180deg)}
 #v-monitor .pb{flex:1;overflow:auto;padding:6px 2px 4px;position:relative}
@@ -205,7 +204,7 @@ html[data-int=min] #v-monitor .batt .bolt{animation:none}
 #v-monitor .pn b{display:block;font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-monitor .pn span{display:block;font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-monitor .pr .c{text-align:right;font-size:12.5px;padding:4px 8px;border-radius:7px;background:color-mix(in oklab,var(--accent) calc(var(--h,0) * 30%),transparent);transition:background-color calc(500ms*var(--f))}
-#v-monitor .pa{display:flex;justify-content:flex-end;gap:2px;opacity:0;transform:translateX(6px);transition:opacity calc(150ms*var(--f)),transform calc(220ms*var(--f)) cubic-bezier(.2,.9,.3,1.3)}
+#v-monitor .pa{display:flex;justify-content:flex-end;gap:2px;opacity:0;transform:translateX(6px);transition:opacity calc(150ms*var(--f)),transform calc(220ms*var(--f)) var(--e-snap)}
 #v-monitor .pr:hover .pa,#v-monitor .pa:focus-within{opacity:1;transform:none}
 #v-monitor .pa .iconbtn{width:30px;height:30px}
 #v-monitor .pa .iconbtn svg{width:16px;height:16px}

@@ -15,7 +15,7 @@
   .hd svg.logo{width:15px;height:15px}
   .hd .sp{flex:1}
   .hd button{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:var(--faint);opacity:0;transform:scale(.8);
-     transition:opacity calc(160ms*var(--f)),transform calc(200ms*var(--f)) cubic-bezier(.2,.9,.3,1.3),background-color calc(150ms*var(--f)),color calc(150ms*var(--f))}
+     transition:opacity calc(160ms*var(--f)),transform calc(200ms*var(--f)) var(--e-snap),background-color calc(150ms*var(--f)),color calc(150ms*var(--f))}
   .w:hover .hd button{opacity:1;transform:scale(1)}
   .hd button:hover{background:var(--raise2);color:var(--ink)}
   .hd button svg{width:14px;height:14px}
@@ -69,9 +69,9 @@
   .M-mini .c{position:relative;padding:0 8px 0 6px;height:26px;border-radius:8px;
      transition:background-color calc(180ms*var(--f))}
   .M-mini .c::before{content:"";position:absolute;inset:0;border-radius:8px;background:var(--raise2);opacity:0;transform:scale(.85);
-     transition:opacity calc(180ms*var(--f)),transform calc(260ms*var(--f)) cubic-bezier(.2,.9,.3,1.3)}
+     transition:opacity calc(180ms*var(--f)),transform calc(260ms*var(--f)) var(--e-snap)}
   .M-mini .c:hover::before{opacity:1;transform:scale(1)}
-  .M-mini .c .n{position:relative;transition:transform calc(260ms*var(--f)) cubic-bezier(.2,.9,.3,1.4)}
+  .M-mini .c .n{position:relative;transition:transform calc(260ms*var(--f)) var(--e-snap)}
   .M-mini .c:hover .n{transform:scale(1.15) rotate(-6deg)}
   .M-mini .c:hover .n svg{color:var(--accent)}
   .M-mini .slot{position:relative;display:grid;height:16px;overflow:hidden;align-items:center}
@@ -81,7 +81,7 @@
   .M-mini .c:hover .slot .lab{transform:none;opacity:1}
   .lab{display:none}
   .M-mini .lab{display:block}
-  .M-mini .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);flex:none}
+  .M-mini .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2.5px var(--acc-soft);flex:none}
   /* edges to resize the widget (the small version only stretches sideways) */
   .wrz{position:fixed;z-index:20}
   .wrz[data-edge=n]{top:0;left:8px;right:8px;height:4px;cursor:n-resize}

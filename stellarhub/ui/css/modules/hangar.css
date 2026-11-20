@@ -48,7 +48,7 @@
 #v-hangar .hg-rail{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0;padding:0 10px 8px 0;border-right:1px solid var(--line);scrollbar-width:none}
 #v-hangar .hg-rail::-webkit-scrollbar{display:none}
 #v-hangar .hg-rb{display:flex;align-items:center;gap:10px;min-height:36px;padding:7px 10px;border-radius:11px;color:var(--mute);font-size:12.5px;text-align:left;border:1px solid transparent;
-  transition:color calc(160ms*var(--f)),background-color calc(160ms*var(--f)),border-color calc(160ms*var(--f)),transform calc(160ms*var(--f)) cubic-bezier(.2,.9,.3,1.3)}
+  transition:color calc(160ms*var(--f)),background-color calc(160ms*var(--f)),border-color calc(160ms*var(--f)),transform calc(160ms*var(--f)) var(--e-snap)}
 #v-hangar .hg-rb:hover{color:var(--ink);background:var(--raise)}
 #v-hangar .hg-rb:active{transform:scale(.97)}
 #v-hangar .hg-rb.on{color:var(--ink);background:var(--raise2);border-color:var(--line2)}
@@ -68,7 +68,7 @@
 #v-hangar .hg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:8px}
 #v-hangar .hg-app{display:grid;grid-template-columns:36px minmax(0,1fr) 18px;gap:12px;align-items:center;padding:10px 12px;border-radius:14px;text-align:left;
   background:var(--raise);border:1px solid var(--line);content-visibility:auto;contain-intrinsic-size:auto 66px;
-  transition:background-color calc(160ms*var(--f)),border-color calc(160ms*var(--f)),transform calc(220ms*var(--f)) cubic-bezier(.2,.9,.3,1.25)}
+  transition:background-color calc(160ms*var(--f)),border-color calc(160ms*var(--f)),transform calc(220ms*var(--f)) var(--e-snap)}
 #v-hangar .hg-app:hover{background:var(--raise2);border-color:var(--line2);transform:translateY(-1px)}
 #v-hangar .hg-app:active{transform:scale(.98)}
 #v-hangar .hg-app.on{background:color-mix(in oklab,var(--accent) 9%,var(--raise));border-color:color-mix(in oklab,var(--accent) 52%,transparent)}
@@ -168,7 +168,7 @@
 #v-hangar .hg-kh p{font-size:12.5px;margin-top:5px;max-width:640px}
 #v-hangar .hg-kgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:14px;margin-bottom:28px}
 #v-hangar .hg-kit{display:flex;flex-direction:column;gap:12px;padding:16px 16px 12px;
-  transition:transform calc(220ms*var(--f)) cubic-bezier(.2,.9,.3,1.25),border-color calc(200ms*var(--f)),background-color calc(200ms*var(--f))}
+  transition:transform calc(220ms*var(--f)) var(--e-snap),border-color calc(200ms*var(--f)),background-color calc(200ms*var(--f))}
 #v-hangar .hg-kit:hover{transform:translateY(-3px);border-color:var(--line2)}
 #v-hangar .hg-kit.is-in{border-color:color-mix(in oklab,var(--ok) 30%,transparent);background:linear-gradient(180deg,color-mix(in oklab,var(--ok) 5%,transparent),var(--raise) 70%)}
 #v-hangar .hg-kt{display:flex;align-items:center;gap:12px;min-width:0;min-height:58px}  /* room for a two-line title: the cards line up */
@@ -176,7 +176,7 @@
   background:color-mix(in oklab,var(--c) 14%,transparent);border:1px solid color-mix(in oklab,var(--c) 28%,transparent)}
 #v-hangar .hg-ki svg{width:20px;height:20px}
 #v-hangar .hg-ktt{flex:1;min-width:0}
-#v-hangar .hg-ktt b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:500 14.5px/1.25 var(--display);letter-spacing:-.01em;overflow-wrap:anywhere}
+#v-hangar .hg-ktt b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:600 14.5px/1.25 var(--text);letter-spacing:0;overflow-wrap:anywhere}
 #v-hangar .hg-ktt span{display:block;font-size:12px;margin-top:3px}
 #v-hangar .hg-kdel{width:32px;height:32px;flex:none}
 #v-hangar .hg-kdel svg{width:16px;height:16px}
@@ -257,7 +257,7 @@ html[data-int=min] #v-hangar .hg-qrow.st-inst .hg-qbar>span{animation:none}
 #v-hangar .hg-qc i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--faint)}
 #v-hangar .hg-qc.c-ok i{background:var(--ok)} #v-hangar .hg-qc.c-bad i{background:var(--bad)} #v-hangar .hg-qc.c-acc i{background:var(--accent2)}
 #v-hangar .hg-qc span{flex:1;min-width:0;font-size:11.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#v-hangar .hg-qc b{font:500 14px var(--display)}
+#v-hangar .hg-qc b{font:500 15px var(--display);letter-spacing:-.02em}
 #v-hangar .hg-qsum{padding:16px 18px;flex:none}
 #v-hangar .hg-qsum h4{color:var(--ink);font-size:14px;margin-bottom:6px}
 #v-hangar .hg-qsum p.muted{font-size:12.5px;line-height:1.5}

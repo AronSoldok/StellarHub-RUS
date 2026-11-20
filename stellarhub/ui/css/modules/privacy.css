@@ -6,8 +6,9 @@
 #v-privacy .pv-sk.tight .sk-row .a{width:26px;height:26px}
 #v-privacy .pv-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:7px;flex:none;vertical-align:1px}
 #v-privacy .pv-dot.off{background:var(--faint)}
-#v-privacy .pv-pulse{position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 var(--accent);
-  animation:pvPulse calc(1300ms*var(--f) + 300ms) ease-out infinite}
+/* "in use now": a steady coral dot with a ring; it calls once when it appears, then stays quiet */
+#v-privacy .pv-pulse{position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2.5px color-mix(in oklab,var(--accent) 24%,transparent);
+  animation:pvPulse calc(1300ms*var(--f) + 300ms) var(--e-out) 2}
 html[data-int=min] #v-privacy .pv-pulse{animation:none}
 @keyframes pvPulse{0%{box-shadow:0 0 0 0 color-mix(in oklab,var(--accent) 65%,transparent)}100%{box-shadow:0 0 0 9px transparent}}
 #v-privacy .pv-av{width:32px;height:32px;flex:none;border-radius:10px;display:grid;place-items:center;background:var(--raise2);overflow:hidden;position:relative}
@@ -39,7 +40,7 @@ html[data-int=min] #v-privacy .pv-pulse{animation:none}
 /* live sensors: three tiles across the top */
 #v-privacy .pv-lives{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%}
 #v-privacy .pv-live{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;padding:9px 6px 8px;border-radius:12px;background:var(--raise);
-  transition:background-color calc(150ms*var(--f)),transform calc(220ms*var(--f)) cubic-bezier(.2,.9,.3,1.25)}
+  transition:background-color calc(150ms*var(--f)),transform calc(220ms*var(--f)) var(--e-snap)}
 #v-privacy .pv-live:hover{background:var(--raise2);transform:translateY(-2px)}
 #v-privacy .pv-li{position:relative;width:26px;height:26px;flex:none;border-radius:8px;display:grid;place-items:center;color:var(--mute)}
 #v-privacy .pv-li svg{width:16px;height:16px}
@@ -66,7 +67,7 @@ html[data-int=min] #v-privacy .pv-pulse{animation:none}
 #v-privacy .pv-radar .edge{stroke:var(--accent2);stroke-width:1.2;stroke-opacity:.75}
 #v-privacy .pv-radar .hub{fill:var(--accent2)}
 #v-privacy .pv-radar .blip{cursor:pointer}
-#v-privacy .pv-radar .blip .dot{fill:var(--accent2);transition:transform calc(200ms*var(--f)) cubic-bezier(.2,.9,.3,1.4);animation:pvBlipIn calc(500ms*var(--f) + 100ms) cubic-bezier(.2,.9,.3,1.4) both;animation-delay:calc(var(--k) * 60ms * var(--f))}
+#v-privacy .pv-radar .blip .dot{fill:var(--accent2);transition:transform calc(200ms*var(--f)) var(--e-snap);animation:pvBlipIn calc(500ms*var(--f) + 100ms) var(--e-snap) both;animation-delay:calc(var(--k) * 60ms * var(--f))}
 #v-privacy .pv-radar .blip:hover .dot{transform:scale(1.5)}
 #v-privacy .pv-radar .blip.warn .dot{fill:var(--warn)}
 #v-privacy .pv-radar .blip.bad .dot{fill:var(--accent)}
@@ -91,7 +92,7 @@ html[data-int=min] #v-privacy .pv-radar .blip .dot{animation:none}
 #v-privacy .pv-sc>span{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px}
 #v-privacy .pv-sc em{font-style:normal;font-size:11.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-privacy .pv-gauge{display:grid;grid-template-columns:repeat(20,1fr);gap:3px;height:12px}
-#v-privacy .pv-gauge i{border-radius:2px;background:var(--raise2);transition:background-color calc(260ms*var(--f)),transform calc(260ms*var(--f)) cubic-bezier(.2,.9,.3,1.4)}
+#v-privacy .pv-gauge i{border-radius:2px;background:var(--raise2);transition:background-color calc(260ms*var(--f)),transform calc(260ms*var(--f)) var(--e-snap)}
 #v-privacy .pv-gauge i.on{background:var(--accent2)}
 #v-privacy .pv-gauge i.on[data-t=warn]{background:var(--warn)}
 #v-privacy .pv-gauge i.on[data-t=bad]{background:var(--accent)}
@@ -127,7 +128,7 @@ html[data-int=min] #v-privacy .pv-radar .blip .dot{animation:none}
 #v-privacy .pv-ph:hover{background:var(--raise2);color:var(--ink)}
 #v-privacy .pv-ph svg:first-child{color:var(--ok);width:16px;height:16px}
 #v-privacy .pv-ph span{flex:1}
-#v-privacy .pv-ph svg:last-child{transition:transform calc(260ms*var(--f)) cubic-bezier(.2,.9,.3,1.2)}
+#v-privacy .pv-ph svg:last-child{transition:transform calc(260ms*var(--f)) var(--e-snap)}
 #v-privacy .pv-pass.open .pv-ph svg:last-child{transform:rotate(180deg)}
 #v-privacy .pv-pl{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows calc(320ms*var(--f)) cubic-bezier(.16,1,.3,1),opacity calc(240ms*var(--f))}
 #v-privacy .pv-pass.open .pv-pl{grid-template-rows:1fr;opacity:1}
@@ -151,7 +152,7 @@ html[data-int=min] #v-privacy .pv-radar .blip .dot{animation:none}
 #v-privacy .pv-pml>h4{padding:0 10px}
 #v-privacy .pv-caps{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:2px}
 #v-privacy .pv-cap{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:9px 10px;border-radius:12px;position:relative;
-  transition:background-color calc(150ms*var(--f)),transform calc(200ms*var(--f)) cubic-bezier(.2,.9,.3,1.25)}
+  transition:background-color calc(150ms*var(--f)),transform calc(200ms*var(--f)) var(--e-snap)}
 #v-privacy .pv-cap:hover{background:var(--raise2);transform:translateX(3px)}
 #v-privacy .pv-cap.on{background:var(--raise2)}
 #v-privacy .pv-cap.on::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--accent)}
@@ -234,7 +235,7 @@ html[data-int=min] #v-privacy .pv-radar .blip .dot{animation:none}
 #v-privacy .pv-uac span{display:flex;flex-direction:column;gap:7px}
 #v-privacy .pv-uac i{height:6px;border-radius:6px;background:var(--raise3);transition:background-color calc(300ms*var(--f))}
 #v-privacy .pv-uac span.f i{background:color-mix(in oklab,var(--accent2) 55%,transparent)}
-#v-privacy .pv-uac span.on i{background:var(--accent2);box-shadow:0 0 12px -2px var(--accent2)}
+#v-privacy .pv-uac span.on i{background:var(--accent2);box-shadow:0 0 0 1px color-mix(in oklab,var(--accent2) 50%,transparent),0 4px 10px -4px color-mix(in oklab,var(--accent2) 55%,transparent)}
 #v-privacy .pv-uac em{font-style:normal;font-size:10.5px;line-height:1.3;color:var(--faint)}
 #v-privacy .pv-uac span.on em{color:var(--ink)}
 #v-privacy .pv-encb b{display:block;font:500 22px var(--display);letter-spacing:-.02em}
@@ -251,9 +252,8 @@ html[data-int=min] #v-privacy .pv-radar .blip .dot{animation:none}
 #v-privacy .pv-nstats span{display:block;font-size:11.5px;color:var(--mute);margin-top:5px;white-space:nowrap}
 #v-privacy .pv-nref{display:flex;align-items:center;gap:10px;font-size:11.5px;flex:none}
 #v-privacy .pv-livetag{display:inline-flex;align-items:center;gap:6px;color:var(--ok);font-size:11.5px}
-#v-privacy .pv-livetag i{width:6px;height:6px;border-radius:50%;background:var(--ok);animation:pvBlink calc(2s*var(--f) + .4s) ease-in-out infinite}
+#v-privacy .pv-livetag i{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 2.5px color-mix(in oklab,var(--ok) 20%,transparent)}
 html[data-int=min] #v-privacy .pv-livetag i{animation:none}
-@keyframes pvBlink{50%{opacity:.25}}
 #v-privacy .pv-ng{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 300px;gap:14px}
 #v-privacy .pv-np,#v-privacy .pv-na{display:flex;flex-direction:column;min-height:0;padding:14px 10px 6px}
 #v-privacy .pv-pcols,#v-privacy .pv-port{display:grid;grid-template-columns:minmax(0,1fr) 118px 136px;gap:12px;align-items:center}
@@ -272,7 +272,7 @@ html[data-int=min] #v-privacy .pv-livetag i{animation:none}
 #v-privacy .pv-napp{border-radius:11px;transition:background-color calc(150ms*var(--f))}
 #v-privacy .pv-napp:hover,#v-privacy .pv-napp.open{background:var(--raise2)}
 #v-privacy .pv-nar{display:flex;align-items:center;gap:10px;padding:7px 10px;cursor:pointer}
-#v-privacy .pv-nar>svg{width:15px;height:15px;color:var(--faint);transition:transform calc(260ms*var(--f)) cubic-bezier(.2,.9,.3,1.2);flex:none}
+#v-privacy .pv-nar>svg{width:15px;height:15px;color:var(--faint);transition:transform calc(260ms*var(--f)) var(--e-snap);flex:none}
 #v-privacy .pv-napp.open .pv-nar>svg{transform:rotate(180deg)}
 #v-privacy .pv-bar{width:64px;height:4px;border-radius:4px;background:var(--raise3);overflow:hidden;flex:none}
 #v-privacy .pv-bar i{display:block;height:100%;background:var(--accent2);transform-origin:0 50%;border-radius:4px;transition:transform calc(500ms*var(--f)) cubic-bezier(.16,1,.3,1)}
@@ -341,7 +341,7 @@ html[data-int=min] #v-privacy .pv-livetag i{animation:none}
 #v-privacy .pv-pst{flex:none;padding:12px 16px}
 #v-privacy .pv-pss{display:flex;align-items:center;gap:8px}
 #v-privacy .pv-rk{text-align:left;padding:8px 14px;border-radius:13px;border:1px solid transparent;min-width:92px;
-  transition:background-color calc(150ms*var(--f)),border-color calc(150ms*var(--f)),transform calc(200ms*var(--f)) cubic-bezier(.2,.9,.3,1.3)}
+  transition:background-color calc(150ms*var(--f)),border-color calc(150ms*var(--f)),transform calc(200ms*var(--f)) var(--e-snap)}
 #v-privacy .pv-rk:hover{background:var(--raise2);transform:translateY(-1px)}
 #v-privacy .pv-rk.on{background:var(--raise2);border-color:var(--line2)}
 #v-privacy .pv-rk .big{font-size:26px;display:block;color:var(--ink)}
@@ -378,7 +378,7 @@ html[data-int=min] #v-privacy .pv-bspin{animation-duration:2.4s}
 #v-privacy .pv-pit.off .pv-at b{color:var(--mute)}
 #v-privacy .pv-pw{font-size:12px;line-height:1.35;color:var(--mute);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 #v-privacy .pv-pk .chip{height:22px;font-size:11px}
-#v-privacy .pv-chev svg{width:15px;height:15px;color:var(--faint);transition:transform calc(260ms*var(--f)) cubic-bezier(.2,.9,.3,1.2)}
+#v-privacy .pv-chev svg{width:15px;height:15px;color:var(--faint);transition:transform calc(260ms*var(--f)) var(--e-snap)}
 #v-privacy .pv-pit.open .pv-chev svg{transform:rotate(180deg)}
 #v-privacy .pv-pd{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows calc(320ms*var(--f)) cubic-bezier(.16,1,.3,1),opacity calc(240ms*var(--f))}
 #v-privacy .pv-pit.open .pv-pd{grid-template-rows:1fr;opacity:1}

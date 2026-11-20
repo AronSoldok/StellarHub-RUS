@@ -83,7 +83,7 @@ html[data-int=min] #v-benchmark .bm-run svg{animation:none}
 #v-benchmark .bm-sd{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:var(--raise2);color:var(--mute);transition:color calc(250ms*var(--f)),background-color calc(250ms*var(--f))}
 #v-benchmark .bm-sd svg{width:15px;height:15px}
 #v-benchmark .bm-sn{font-size:12.5px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#v-benchmark .bm-sx b{font:500 14px var(--display);letter-spacing:-.02em}
+#v-benchmark .bm-sx b{font:500 15px var(--display);letter-spacing:-.025em}
 #v-benchmark .bm-sp{position:absolute;left:12px;right:12px;bottom:6px;height:2px;border-radius:2px;background:var(--raise2);overflow:hidden}
 #v-benchmark .bm-sp u{display:block;height:100%;background:var(--accent2);transform-origin:0 50%;transform:scaleX(0);transition:transform calc(300ms*var(--f)) linear}
 #v-benchmark .bm-st.on{border-color:color-mix(in oklab,var(--accent2) 45%,transparent);background:color-mix(in oklab,var(--accent2) 6%,var(--raise))}
@@ -228,7 +228,7 @@ html[data-int=min] #v-benchmark .bm-run svg{animation:none}
 #v-benchmark .bm-dh,#v-benchmark .bm-dr{display:grid;grid-template-columns:200px minmax(0,1fr) minmax(0,1fr);gap:8px}
 #v-benchmark .bm-dh span{font-size:11.5px;color:var(--faint);padding:0 4px}
 #v-benchmark .bm-dn{display:flex;flex-direction:column;justify-content:center;padding:0 4px;min-width:0}
-#v-benchmark .bm-dn b{font:500 13px var(--display);letter-spacing:-.01em}
+#v-benchmark .bm-dn b{font:600 13.5px var(--text);letter-spacing:0}
 #v-benchmark .bm-dn span{font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-benchmark .bm-dc2{position:relative;border-radius:12px;background:var(--raise);border:1px solid var(--line);padding:8px 12px;display:flex;align-items:baseline;justify-content:space-between;gap:8px;overflow:hidden;min-width:0;
   transition:border-color calc(240ms*var(--f))}

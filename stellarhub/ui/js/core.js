@@ -180,7 +180,8 @@ function springEase(k = 180, c = 19) {
   for (let i = 0; i <= 60; i++) { pts.push(+x.toFixed(4)); for (let j = 0; j < 4; j++) { const a = -k * (x - 1) - c * v; v += a * h / 4; x += v * h / 4; } }
   pts[pts.length - 1] = 1; return `linear(${pts.join(',')})`;
 }
-const EASE = { out: 'cubic-bezier(.16,1,.3,1)', io: 'cubic-bezier(.62,0,.18,1)', spring: springEase(), soft: springEase(120, 17), snappy: springEase(300, 26),
+/* springs keep the orbital, living feel but are damped (about 0.85) so they settle instead of wobbling */
+const EASE = { out: 'cubic-bezier(.16,1,.3,1)', io: 'cubic-bezier(.62,0,.18,1)', spring: springEase(180, 22.5), soft: springEase(120, 19), snappy: springEase(300, 30),
   glide: springEase(150, 22) /* settles without overshoot: smooth view and tab changes */ };
 
 /* WAAPI with the motion intensity applied. Cancels whatever the element was animating (interruptible). */

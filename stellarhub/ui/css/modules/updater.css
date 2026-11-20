@@ -181,7 +181,7 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 /* components */
 #v-updater .u-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:auto;gap:14px;align-content:start;padding:2px 6px 12px 2px}
 #v-updater .u-cards>.u-card{min-height:min-content}
-#v-updater .u-card{display:flex;flex-direction:column;padding:16px;transition:transform calc(220ms*var(--f)) cubic-bezier(.2,.9,.3,1.25),border-color calc(200ms*var(--f))}
+#v-updater .u-card{display:flex;flex-direction:column;padding:16px;transition:transform calc(220ms*var(--f)) var(--e-snap),border-color calc(200ms*var(--f))}
 #v-updater .u-card:hover{transform:translateY(-3px);border-color:var(--line2)}
 #v-updater .u-ch{display:flex;align-items:flex-start;gap:12px;margin-bottom:10px}
 #v-updater .u-cht{flex:1;min-width:0}
@@ -261,7 +261,7 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-rr b{width:44px;color:var(--ink);font-weight:500;text-align:right}
 #v-updater input[type=range]{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:22px;background:transparent;cursor:pointer}
 #v-updater input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:var(--raise3)}
-#v-updater input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;border-radius:50%;background:var(--ink);border:3px solid var(--accent);transition:transform calc(160ms*var(--f)) cubic-bezier(.2,.9,.3,1.4)}
+#v-updater input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;border-radius:50%;background:var(--ink);border:3px solid var(--accent);transition:transform calc(160ms*var(--f)) var(--e-snap)}
 #v-updater input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.15)}
 #v-updater input[type=range]:active::-webkit-slider-thumb{transform:scale(1.3)}
 #v-updater .u-excl{display:flex;flex-wrap:wrap;gap:8px;padding:4px 0 10px}
@@ -288,7 +288,7 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-wd.on{color:var(--ink)}
 #v-updater .u-wd.on i{background:var(--accent2)}
 #v-updater .u-wd.next{background:color-mix(in oklab,var(--accent) 14%,transparent)}
-#v-updater .u-wd.next i{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+#v-updater .u-wd.next i{background:var(--accent);box-shadow:0 0 0 3px var(--acc-soft)}
 #v-updater .u-nfoot{margin-top:14px;font-size:12px}
 
 /* real program icons */

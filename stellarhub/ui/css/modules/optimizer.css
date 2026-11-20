@@ -37,7 +37,7 @@ html[data-int=min] #v-optimizer .ring.scanning .sweep{animation:none}
 #v-optimizer .ov-fi span{display:block;font-size:11.5px}
 #v-optimizer .ov-fi b{font-weight:500;font-size:13.5px}
 #v-optimizer .ov-auto{justify-self:end;display:flex;align-items:center;gap:12px;text-align:left;padding:10px 12px 10px 14px;border-radius:14px;border:1px solid var(--line);background:var(--raise);
-  transition:background-color calc(160ms*var(--f)),border-color calc(160ms*var(--f)),transform calc(220ms*var(--f)) cubic-bezier(.2,.9,.3,1.25)}
+  transition:background-color calc(160ms*var(--f)),border-color calc(160ms*var(--f)),transform calc(220ms*var(--f)) var(--e-snap)}
 #v-optimizer .ov-auto:hover{background:var(--raise2);border-color:var(--line2);transform:translateY(-2px)}
 #v-optimizer .ov-auto>svg:first-child{width:22px;height:22px;color:var(--accent2)}
 #v-optimizer .ov-auto span{font-size:12px;color:var(--mute)} #v-optimizer .ov-auto b{display:block;color:var(--ink);font-weight:500;font-size:13px}
@@ -97,7 +97,7 @@ html[data-int=min] #v-optimizer .phase .bar.indet>span{animation:none;width:100%
 #v-optimizer .cl-row .chip{height:20px;font-size:11px;padding:0 7px}
 #v-optimizer .cl-size{font-weight:500;font-size:13px;white-space:nowrap;text-align:right;min-width:62px}
 #v-optimizer .cl-x{width:30px;height:30px}
-#v-optimizer .cl-x svg{transition:transform calc(280ms*var(--f)) cubic-bezier(.2,.9,.3,1.2)}
+#v-optimizer .cl-x svg{transition:transform calc(280ms*var(--f)) var(--e-snap)}
 #v-optimizer .cl-it.open .cl-x svg{transform:rotate(180deg)}
 #v-optimizer .cl-det,#v-optimizer .st-det{display:grid;grid-template-rows:0fr;transition:grid-template-rows calc(320ms*var(--f)) cubic-bezier(.16,1,.3,1),opacity calc(240ms*var(--f));opacity:0}
 #v-optimizer .cl-det>div,#v-optimizer .st-det>div{overflow:hidden}
@@ -132,13 +132,14 @@ html[data-int=min] #v-optimizer .phase .bar.indet>span{animation:none;width:100%
 #v-optimizer .st-bars{display:flex;align-items:flex-end;gap:10px;height:118px;padding-top:16px}
 #v-optimizer .sb{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;position:relative}
 #v-optimizer .sb span{width:100%;max-width:46px;height:80px;border-radius:8px 8px 4px 4px;background:var(--raise3);transform-origin:50% 100%;transform:scaleY(var(--h,0));
-  transition:transform calc(700ms*var(--f)) cubic-bezier(.2,.9,.3,1.15);animation:optGrow calc(800ms*var(--f)) cubic-bezier(.2,.9,.3,1.15) both;animation-delay:calc(var(--i)*60ms*var(--f))}
+  transition:transform calc(700ms*var(--f)) var(--e-snap);animation:optGrow calc(800ms*var(--f)) var(--e-snap) both;animation-delay:calc(var(--i)*60ms*var(--f))}
 @keyframes optGrow{from{transform:scaleY(0)}}
 #v-optimizer .sb:hover span{background:var(--line2)}
 #v-optimizer .sb em{font-style:normal;font-size:11px;color:var(--faint)}
 #v-optimizer .sb i{position:absolute;top:0;font-style:normal;font-size:11px;color:var(--mute);opacity:0;transition:opacity calc(160ms*var(--f))}
 #v-optimizer .sb:hover i,#v-optimizer .sb.est i{opacity:1}
-#v-optimizer .sb.est span{background:repeating-linear-gradient(135deg,color-mix(in oklab,var(--accent) 70%,transparent) 0 6px,color-mix(in oklab,var(--accent) 45%,transparent) 6px 12px)}
+/* an estimate is drawn hollow: a light fill inside an accent outline */
+#v-optimizer .sb.est span{background:color-mix(in oklab,var(--accent) 26%,transparent);box-shadow:inset 0 0 0 1.5px color-mix(in oklab,var(--accent) 80%,transparent)}
 #v-optimizer .sb.est em{color:var(--accent)}
 #v-optimizer .st-tbl{display:flex;flex-direction:column;min-height:0;padding:14px 10px 6px}
 #v-optimizer .st-th{display:flex;align-items:center;gap:12px;padding:0 8px 10px}
@@ -184,7 +185,7 @@ html[data-int=min] #v-optimizer .phase .bar.indet>span{animation:none;width:100%
 #v-optimizer .sv-l{display:flex;flex-direction:column;min-height:0}
 #v-optimizer .sv-profs{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:8px}
 #v-optimizer .sv-pr{display:flex;gap:12px;text-align:left;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--raise);
-  transition:border-color calc(180ms*var(--f)),background-color calc(180ms*var(--f)),transform calc(200ms*var(--f)) cubic-bezier(.2,.9,.3,1.3)}
+  transition:border-color calc(180ms*var(--f)),background-color calc(180ms*var(--f)),transform calc(200ms*var(--f)) var(--e-snap)}
 #v-optimizer .sv-pr:hover{background:var(--raise2);transform:translateX(3px)}
 #v-optimizer .sv-pr.on{border-color:color-mix(in oklab,var(--accent) 55%,transparent);background:color-mix(in oklab,var(--accent) 7%,transparent)}
 #v-optimizer .sv-dot{width:16px;height:16px;flex:none;border-radius:50%;border:2px solid var(--line2);margin-top:2px;position:relative}
@@ -203,15 +204,16 @@ html[data-int=min] #v-optimizer .phase .bar.indet>span{animation:none;width:100%
 #v-optimizer .sv-cols,#v-optimizer .sv-it{display:grid;grid-template-columns:34px 1fr 110px 110px 46px;gap:14px;align-items:center}
 #v-optimizer .sv-cols{grid-template-columns:1fr 110px 110px 46px;padding:0 12px 8px 60px;font-size:11.5px;color:var(--faint);border-bottom:1px solid var(--line)}
 #v-optimizer .sv-list{flex:1;min-height:0;overflow:auto;padding-top:4px}
-#v-optimizer .sv-it{position:relative;padding:10px 12px;border-radius:12px;transition:background-color calc(150ms*var(--f))}
+#v-optimizer .sv-it{position:relative;padding:10px 12px;border-radius:12px;border:1px solid transparent;transition:background-color calc(150ms*var(--f)),border-color calc(200ms*var(--f))}
 #v-optimizer .sv-it:hover{background:var(--raise2)}
 #v-optimizer .sv-it .ri{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:var(--raise2)}
 #v-optimizer .sv-it .rt b{display:block;font-weight:500}
 #v-optimizer .sv-it .rt b em{font-style:normal;font-weight:400;font-size:11.5px;margin-left:4px}
 #v-optimizer .sv-it .rt>span{display:block;font-size:12px;color:var(--mute);margin-top:2px}
 #v-optimizer .sv-it .chip{height:22px;font-size:11.5px}
-#v-optimizer .sv-it::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--accent);transform:scaleY(0);transition:transform calc(300ms*var(--f)) cubic-bezier(.2,.9,.3,1.2)}
-#v-optimizer .sv-it.chg::before{transform:scaleY(1)}
+/* a changed service: the whole row is tinted and outlined (no side stripe) */
+#v-optimizer .sv-it.chg{background:var(--acc-soft);border-color:var(--acc-line)}
+#v-optimizer .sv-it.chg:hover{background:color-mix(in oklab,var(--accent) 16%,transparent)}
 #v-optimizer .sv-st{display:flex;flex-direction:column;font-size:12.5px}
 #v-optimizer .sv-st s{color:var(--faint);font-size:11.5px}
 #v-optimizer .sv-it.chg .sv-st>span{color:var(--accent)}
@@ -245,7 +247,7 @@ html[data-int=min] #v-optimizer .phase .bar.indet>span{animation:none;width:100%
 #v-optimizer .rp-l>h4{padding:0 10px}
 #v-optimizer .rp-list{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:2px}
 #v-optimizer .rp-it{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:10px;border-radius:12px;position:relative;
-  transition:background-color calc(150ms*var(--f)),transform calc(200ms*var(--f)) cubic-bezier(.2,.9,.3,1.25)}
+  transition:background-color calc(150ms*var(--f)),transform calc(200ms*var(--f)) var(--e-snap)}
 #v-optimizer .rp-it:hover{background:var(--raise2);transform:translateX(3px)}
 #v-optimizer .rp-it.on{background:var(--raise2)}
 #v-optimizer .rp-it.on::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--accent)}

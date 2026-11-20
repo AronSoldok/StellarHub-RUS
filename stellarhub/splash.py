@@ -78,6 +78,19 @@ def _font(name, size):
         return ImageFont.load_default()
 
 
+def _brand_font(size):
+    """The name in the app's brand face (Unbounded 500, bundled with the UI), like the top bar and the installer."""
+    try:
+        f = ImageFont.truetype(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui", "fonts", "unbounded-latin.woff2"), size)
+        try:
+            f.set_variation_by_axes([500])
+        except (OSError, AttributeError):
+            pass
+        return f
+    except OSError:
+        return _font("seguisb.ttf", size)
+
+
 class _Card:
     """Draws the card: everything static once, then the moving bar and the status line per frame."""
 
@@ -121,8 +134,8 @@ class _Card:
             pass
         txt = Image.new("RGBA", card.size, (0, 0, 0, 0))
         d = ImageDraw.Draw(txt)
-        name = _font("seguisb.ttf", int(25 * s))
-        d.text((self.cw // 2, int(160 * s)), "StellarHub", font=name, fill=(232, 238, 248, 255), anchor="mm")
+        name = _brand_font(int(22 * s))
+        d.text((self.cw // 2, int(160 * s)), "StellarHub", font=name, fill=(233, 238, 247, 255), anchor="mm")
         d.text((self.cw - int(16 * s), self.ch - int(14 * s)), VERSION, font=_font("segoeui.ttf", int(11 * s)),
                fill=(232, 238, 248, 90), anchor="rs")
         card.alpha_composite(txt)
