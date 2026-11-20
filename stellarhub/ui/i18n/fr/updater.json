@@ -303,5 +303,6 @@
   "Checking…": "Vérification…",
   "{n} app, {m} optional": "{n} appli, {m} facultative",
   "{n} apps, {m} optional": "{n} applis, {m} facultatives",
-  "Couldn't check for updates (no internet?)": "Impossible de rechercher les mises à jour (pas d'internet ?)"
+  "Couldn't check for updates (no internet?)": "Impossible de rechercher les mises à jour (pas d'internet ?)",
+  "{name} could not be updated": "Mise à jour impossible : {name}"
 }

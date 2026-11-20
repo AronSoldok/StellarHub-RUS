@@ -303,5 +303,6 @@
   "Checking…": "Verificando…",
   "{n} app, {m} optional": "{n} app, {m} opcional",
   "{n} apps, {m} optional": "{n} apps, {m} opcionais",
-  "Couldn't check for updates (no internet?)": "Não foi possível verificar atualizações (sem internet?)"
+  "Couldn't check for updates (no internet?)": "Não foi possível verificar atualizações (sem internet?)",
+  "{name} could not be updated": "Não foi possível atualizar: {name}"
 }

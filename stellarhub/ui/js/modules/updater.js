@@ -206,6 +206,8 @@ async function runQueueReal() {
     } catch (e) { cur.st = e.cancelled ? 'cancel' : 'fail'; cur.msg = e.message; }
     if (cur.cancelAfter && cur.st !== 'done') cur.st = 'cancel';
     if (cur.st === 'done') { it.done = true; onItemDone(it); SH.logActivity(t('{name} updated', { name: dn(it.name) }), { sub: it.to && it.kind !== 'wu' ? t('to version {v}', { v: it.to }) : (it.kb || ''), ic: 'updater', go: ID, tab: 'apps' }); }
+    /* a failed update stays in the history too, with the reason: nobody should believe it was installed */
+    else if (cur.st === 'fail') SH.logActivity(t('{name} could not be updated', { name: dn(it.name) }), { sub: String(cur.msg || t('Something went wrong.')).slice(0, 120), ic: 'alert', go: ID, tab: 'apps' });
     updQRow(cur);
     if (cur.cancelAfter) { Q.list.forEach(q => { if (q.st === 'queued') { q.st = 'cancel'; updQRow(q); } }); break; }
   }
