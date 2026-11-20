@@ -392,5 +392,6 @@
  "Kits": "Kits",
  "Queue": "Cola",
  "Windows is asking for permission: look for the flashing shield in the taskbar": "Windows está pidiendo permiso: busca el escudo que parpadea en la barra de tareas",
- "{state} · no news for {min} min": "{state} · sin novedades desde hace {min} min"
+ "{state} · no news for {min} min": "{state} · sin novedades desde hace {min} min",
+ "winget isn't available on this PC. Install or update App Installer from the Microsoft Store.": "winget no está disponible en este PC. Instala o actualiza el Instalador de aplicaciones desde Microsoft Store."
 }

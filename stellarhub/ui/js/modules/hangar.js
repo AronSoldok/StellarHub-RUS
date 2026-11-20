@@ -540,7 +540,7 @@ function sideRow(a, on) {
     const empty = $('.hg-sempty', box); if (empty) empty.remove();
     box.insertAdjacentHTML('afterbegin', sideRowHTML(a));
     const row = box.firstElementChild; anim(row, [{ opacity: 0, transform: 'translate3d(16px,0,0) scale(.97)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
-    const sc = box.parentElement; if (sc.scrollTop > 0) sc.scrollTo({ top: 0, behavior: state.settings.intensity === 'min' ? 'auto' : 'smooth' });
+    const sc = box.parentElement; if (sc.scrollTop > 0) sc.scrollTo({ top: 0, behavior: SH.effInt() === 'min' ? 'auto' : 'smooth' });
   } else {
     const row = $(`[data-srow="${CSS.escape(a.id)}"]`, box); if (!row) return;
     const h = row.offsetHeight;
@@ -554,7 +554,7 @@ function updSide() {
   const cnt = $('.hg-n', el); if (+(cnt.dataset.v || 0) !== n) SH.countUp(cnt, n, 420);
   $('.hg-nl', el).textContent = n === 1 ? t('app selected') : t('apps selected');
   $('.hg-nsub', el).textContent = !n ? t('Pick apps on the left, or start from a kit.') : skip ? (skip === 1 ? t('1 is already installed and will be skipped.') : t('{n} are already installed and will be skipped.', { n: skip })) : t('They install silently, one after another.');
-  const b = $('[data-go]', el); b.disabled = !go; $('span', b).textContent = go ? (go === 1 ? t('Install 1 app') : t('Install {n} apps', { n: go })) : t('Install');
+  const b = $('[data-go]', el); b.disabled = !go || !(S.winget || S.dry); b.title = S.winget || S.dry ? '' : t("winget isn't available on this PC."); $('span', b).textContent = go ? (go === 1 ? t('Install 1 app') : t('Install {n} apps', { n: go })) : t('Install');
   $('[data-clear]', el).disabled = !n; $('[data-savekit]', el).disabled = !n;
   $$('.hg-srow', el).forEach(r => { const inst = S.inst.has(r.dataset.srow); r.classList.toggle('is-inst', inst); const a = S.sel.get(r.dataset.srow); const s = $('.hg-st>span', r);
     if (a && s) { const txt = inst ? (opts().skip ? t('Installed, will be skipped') : t('Installed, will be updated')) : (a.pub || (CAT[a.cat] || {}).n || 'winget'); if (s.textContent !== txt) s.textContent = txt; } });
@@ -571,7 +571,7 @@ function sideClick(e) {
 }
 function updHeader() {
   const b = $(`#v-${ID} .acts [data-hgo]`); if (!b) return; const n = toInstall().length;
-  b.disabled = !n; const s = $('span', b); const txt = n ? (n === 1 ? t('Install 1 app') : t('Install {n} apps', { n })) : t('Install'); if (s.textContent !== txt) s.textContent = txt;
+  b.disabled = !n || !(S.winget || S.dry); const s = $('span', b); const txt = n ? (n === 1 ? t('Install 1 app') : t('Install {n} apps', { n })) : t('Install'); if (s.textContent !== txt) s.textContent = txt;
 }
 
 /* ---------------- dialogs ---------------- */
@@ -593,7 +593,7 @@ function startInstall(list) {
   const sel = list || [...S.sel.values()];
   const go = sel.filter(a => !(o.skip && S.inst.has(a.id))), skipped = sel.length - go.length;
   if (!go.length) { SH.toast(sel.length ? t('Everything you picked is already installed.') : t('Pick at least one app.')); return; }
-  if (!S.winget) { SH.toast(t("winget isn't available on this PC.")); return; }
+  if (!S.winget && !S.dry) { SH.toast(t("winget isn't available on this PC.")); return; }
   const scopeTxt = o.scope === 'machine' ? t('For everyone on this PC.') : o.scope === 'user' ? t('Only for your account.') : t('Each app installs the way it prefers.');
   dialog(`<h3>${go.length === 1 ? t('Install 1 app?') : t('Install {n} apps?', { n: go.length })}</h3>
     <p class="muted">${t('They install silently, one after another, with winget. Some installers close the app they replace, and Windows may ask for permission on some of them.')} ${esc(scopeTxt)}${skipped ? ' ' + (skipped === 1 ? t('1 is already installed and will be skipped.') : t('{n} are already installed and will be skipped.', { n: skipped })) : ''}${S.dry ? ' ' + t('Dry run: nothing will really be installed.') : ''}</p>
@@ -731,7 +731,7 @@ function updQRow(q, light) {
   if (q.st === 'done') { const m = $('.hg-okmark', row); if (m) anim(m, [{ strokeDashoffset: 24 }, { strokeDashoffset: 0 }], { d: 420 }); anim($('.hg-ic', row), [{ transform: 'scale(1)' }, { transform: 'scale(1.12)', offset: .35 }, { transform: 'scale(1)' }], { d: 460, e: EASE.spring }); }
   renderQueueHead();
 }
-function scrollQ(q) { const row = $(`#v-${ID} .hg-qrow[data-q="${Q.list.indexOf(q)}"]`); if (row && row.offsetParent) row.scrollIntoView({ block: 'nearest', behavior: state.settings.intensity === 'min' ? 'auto' : 'smooth' }); }
+function scrollQ(q) { const row = $(`#v-${ID} .hg-qrow[data-q="${Q.list.indexOf(q)}"]`); if (row && row.offsetParent) row.scrollIntoView({ block: 'nearest', behavior: SH.effInt() === 'min' ? 'auto' : 'smooth' }); }
 function qProgress() {
   const live = Q.list.filter(q => q.st !== 'cancel' && q.st !== 'skip'); if (!live.length) return Q.list.length ? 1 : 0;
   const w = q => q.mb || fakeMb(q.a.id); const tot = live.reduce((a, q) => a + w(q), 0) || 1;

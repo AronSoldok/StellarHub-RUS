@@ -302,5 +302,6 @@
   "winget isn't available on this PC.": "winget no está disponible en este PC.",
   "Checking…": "Revisando…",
   "{n} app, {m} optional": "{n} aplicación, {m} opcional",
-  "{n} apps, {m} optional": "{n} aplicaciones, {m} opcionales"
+  "{n} apps, {m} optional": "{n} aplicaciones, {m} opcionales",
+  "Couldn't check for updates (no internet?)": "No se pudo buscar actualizaciones (¿sin internet?)"
 }

@@ -22,6 +22,7 @@ Live hardware stats, drivers, apps, disk space, cleanup and hardware tests, in o
 - [Screenshots](#-screenshots)
 - [Getting started](#-getting-started)
 - [Keyboard shortcuts](#-keyboard-shortcuts)
+- [Controller support](#-controller-support)
 - [Safety](#-safety)
 - [Privacy](#-privacy)
 - [Code signing policy](#-code-signing-policy)
@@ -114,6 +115,9 @@ conditions and what to do.
 - **Settings for almost everything**: theme, colors, interface size, density, corners, starfield, animation
   intensity and speed, shortcuts to Windows tools and more.
 - The **side buttons of your mouse** go back and forward, like in a browser.
+- **Lighter effects on battery**: unplugged, StellarHub switches to simpler effects, a calmer starfield and slower
+  live data, so it stays smooth and saves power (*Settings > Animation*, on by default). Hidden in the tray it uses
+  no GPU at all.
 - **Six languages**: English, Español, Português (Brasil), Italiano, Français and 简体中文. It follows the Windows
   language by default and can be changed in *Settings > General*.
 
@@ -206,6 +210,29 @@ if one of them is running, and says which one it used.
 | `Alt ←` / `Alt →` or mouse side buttons | Back / forward |
 | `Esc` | Close whatever is open, or go back to Home |
 | Double-click the top bar | Maximize or restore |
+| `Tab` / `Shift Tab` | Move between buttons (dialogs keep the focus inside) |
+
+## 🎮 Controller support
+
+Use StellarHub from the couch or on a handheld: it works with Xbox-style controllers and with handhelds such as the
+ROG Ally, and shows PlayStation button names for DualShock and DualSense pads. A focus ring follows you around and
+a bar at the bottom lists the buttons that work right now. Plug in or pair a controller and press any button; touch
+the mouse or keyboard and the normal interface comes back. With no controller connected it costs nothing.
+
+| Button | Action |
+|---|---|
+| D-pad / left stick | Move around |
+| `A` | Select |
+| `B` | Back, or close the dialog |
+| `LB` / `RB` | Previous / next tab |
+| `LT` / `RT` | Previous / next module |
+| `Y` | Search (command palette) |
+| `Menu` | Settings |
+| `View` | Home |
+| Right stick | Scroll |
+
+It can be turned off in *Settings > General*. To check a controller (buttons, triggers, sticks, drift, rumble) open
+*Device Tester > Controller*.
 
 ## 🛡️ Safety
 

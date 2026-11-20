@@ -369,9 +369,16 @@ def _save(info):
         pass
 
 
+STALE_AFTER = 30 * 60  # facts (drivers, disks, GPU) older than this are measured again in the background
+_refreshing = threading.Event()
+
+
 def pc_info_fresh():
     global _mem
+    t0 = time.time()
     with _lock:
+        if _mem and _mem.get("ts", 0) >= t0:  # another caller measured while this one waited for the lock
+            return _localize(_mem)
         info = _build()
         try:
             info["facts"]["drivers"] = _drivers_count()
@@ -382,10 +389,30 @@ def pc_info_fresh():
         return _localize(info)
 
 
+def _refresh_bg():
+    try:
+        pc_info_fresh()
+    except Exception:
+        pass
+    finally:
+        _refreshing.clear()
+
+
+def _refresh_async():
+    """One background measurement at a time; never blocks the caller."""
+    if _refreshing.is_set():
+        return
+    _refreshing.set()
+    threading.Thread(target=_refresh_bg, daemon=True).start()
+
+
 def pc_info():
-    """What was saved (instantly), refreshed in the background; the first time it waits for the measurement."""
+    """What was measured last (instantly); older than STALE_AFTER it is measured again in the background, so the
+    next call (the UI asks again when Home is shown after a while) has the new data. The first time it waits."""
     global _mem
     if _mem:
+        if time.time() - _mem.get("ts", 0) > STALE_AFTER:
+            _refresh_async()
         return _localize(_mem)
     try:
         with open(_CACHE, encoding="utf-8") as fh:
@@ -393,7 +420,7 @@ def pc_info():
         if cached.get("v") != CACHE_VERSION:
             return pc_info_fresh()
         _mem = cached
-        threading.Thread(target=pc_info_fresh, daemon=True).start()
+        _refresh_async()
         return _localize(_mem)
     except (OSError, ValueError):
         return pc_info_fresh()

@@ -184,6 +184,15 @@ document.querySelectorAll('.wrz').forEach(h => h.addEventListener('mousedown', e
   if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); SH.call('widget_drag_resize', h.dataset.edge);
 }));
 SH.widgetResized = () => { SH.loadSettings().then(() => paint(SH.tele.v)); };
+/* Python calls this when the theme, accent or animation setting changes */
+SH.lookChanged = async () => {
+  await SH.loadSettings(); const st = state.settings, root = document.documentElement;
+  if (st.accent) root.style.setProperty('--accent', st.accent);
+  if (st.accent2) root.style.setProperty('--accent2', st.accent2);
+  if (st.theme) root.dataset.theme = st.theme;
+  if (st.intensity) root.style.setProperty('--f', SH.FACT[st.intensity] / (st.animSpeed || 1));
+  paint(SH.tele.v);
+};
 SH.widgetApply = conf => { const st = build(Object.assign({}, state.settings, conf)); fitWindow(st); };
 $('#sizeBtn').addEventListener('click', async () => {
   const next = state.settings.widgetMode === 'mini' ? 'full' : 'mini';

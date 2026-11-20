@@ -10,6 +10,9 @@ import threading
 import unittest
 from unittest import mock
 
+os.environ["STELLARHUB_NO_DIALOGS"] = "1"  # (the updater also shows a message box on failure)
+os.environ["STELLARHUB_NO_SPLASH"] = "1"  # the updater shows the start screen; a test must not
+
 from stellarhub.engine import selfupdate as su
 
 
@@ -114,7 +117,8 @@ class CheckAndDownload(unittest.TestCase):
         self.assertEqual(st["st"], "installing")
         args = popen.call_args[0][0]
         self.assertTrue(args[0].endswith("StellarHub-Setup-9.9.9.exe"))
-        self.assertIn("/VERYSILENT", args)
+        self.assertIn("/SILENT", args)  # Setup shows its own progress window
+        self.assertNotIn("/VERYSILENT", args)
         self.assertIn("/CURRENTUSER", args)  # installed for one user: the update too
         self.assertTrue(any(a.startswith("/SELFUPDATE=") for a in args))
 

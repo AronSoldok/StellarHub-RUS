@@ -392,5 +392,6 @@
  "Kits": "Kits",
  "Queue": "Fila",
  "Windows is asking for permission: look for the flashing shield in the taskbar": "O Windows está pedindo permissão: procure o escudo piscando na barra de tarefas",
- "{state} · no news for {min} min": "{state} · sem novidades há {min} min"
+ "{state} · no news for {min} min": "{state} · sem novidades há {min} min",
+ "winget isn't available on this PC. Install or update App Installer from the Microsoft Store.": "O winget não está disponível neste PC. Instale ou atualize o Instalador de Aplicativo na Microsoft Store."
 }

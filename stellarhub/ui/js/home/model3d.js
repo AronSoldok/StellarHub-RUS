@@ -350,14 +350,14 @@ function setEnv(R0) {
 /* ---------- scene construction ---------- */
 function build(canvas) {
   R0tex = [];
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !softGL, alpha: true, powerPreference: 'high-performance' });
-  const dpr = Math.min(softGL ? 1 : 1.5, devicePixelRatio || 1);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !softGL, alpha: true, powerPreference: state.lite ? 'low-power' : 'high-performance' });
+  const dpr = Math.min(softGL || state.lite ? 1 : 1.5, devicePixelRatio || 1);
   renderer.setPixelRatio(dpr); renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(30, 1, .1, 100);
   const pmrem = new THREE.PMREMGenerator(renderer);
-  const R0 = { renderer, scene, camera, pmrem, tex: R0tex, dpr, fa: 0, fn: 0, t0: performance.now(), scrT: 1, scrNew: true, scrMin: -1, scr: null };
+  const R0 = { renderer, scene, camera, pmrem, tex: R0tex, dpr, dpr0: dpr, acc: 0, fa: 0, fn: 0, t0: performance.now(), scrT: 1, scrNew: true, scrMin: -1, scr: null };
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const accent = new THREE.Color(css('--accent')), accent2 = new THREE.Color(css('--accent2'));
   setEnv(R0);
@@ -652,9 +652,15 @@ function adapt(dt) {
   else R.lowFps = true;
 }
 
+/* on battery: render at 1x and, below, at most 30 fps; the idle floating stops (the scene only renders when it changes) */
+SH.on('power', () => {
+  if (!R) return; const d = state.lite ? Math.min(R.dpr, 1) : Math.min(R.dpr0, devicePixelRatio || 1, 1.5);
+  if (d !== R.dpr) { R.dpr = d; R.renderer.setPixelRatio(d); if (R.w) R.renderer.setSize(R.w, R.h, false); }
+  R.lowFps = false; R.fa = R.fn = 0; dirty = true;
+});
 function frame(dt, t) {
   if (!mounted || !R || (state.view !== 'home' && !SH.homeAnimating)) return;
-  const moving = state.settings.intensity !== 'min';
+  const lite = state.lite, moving = SH.effInt() !== 'min' && !lite;
   let active = dragging || moving;
   let springs = false;
   for (const k in S) { const s = S[k]; const before = s.v; s.step(dt); if (Math.abs(s.v - before) > 1e-5) springs = true; }
@@ -665,6 +671,10 @@ function frame(dt, t) {
   if (R.scrT > .25 && S.screen.v > .02) { const m = new Date().getMinutes(); if (R.scrNew || m !== R.scrMin) { R.scrT = 0; R.scrNew = false; R.scrMin = m; drawScreen(); dirty = true; } }
   if (!active && !dirty) return;
   if (moving) adapt(dt);
+  /* the slow floating (and the fans) need 30 fps, not 60; the frame time they skip is added to the next one */
+  R.acc += dt; const still = !dragging && !springs && !dirty;
+  if (R.acc < (still || lite ? .031 : 0)) return;
+  const dtr = R.acc; R.acc = 0;
   if (R.lowFps && !dragging && !springs && !dirty && (R.skip = !R.skip)) return;
   dirty = false;
   // orbit camera around the target
@@ -705,7 +715,7 @@ function frame(dt, t) {
       const v = SH.tele.v || {};
       const rpmOf = (f, load) => f != null ? f : 1500 + fin(load, 0) * 32;
       const rpm = [rpmOf(fin(v.fanCpu), v.cpu), rpmOf(fin(v.fanGpu) != null ? fin(v.fanGpu) * 55 : null, v.gpu)];
-      R.fans.forEach((f, i) => { const r = clamp(rpm[i], 0, 7000); f.rotation.y += (i ? -1 : 1) * dt * r / 6000 * 1.5 * TAU; R.fanBlur[i].material.opacity = .32 * clamp(r / 5000, 0, 1) * xr; });
+      R.fans.forEach((f, i) => { const r = clamp(rpm[i], 0, 7000); f.rotation.y += (i ? -1 : 1) * dtr * r / 6000 * 1.5 * TAU; R.fanBlur[i].material.opacity = .32 * clamp(r / 5000, 0, 1) * xr; });
     }
   }
   R.renderer.render(R.scene, c);

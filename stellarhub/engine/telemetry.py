@@ -397,6 +397,7 @@ class Sampler:
         self.rate = 1.0
         self.active = True          # window visible or widget open
         self.gpu_wanted = True      # NVML only while someone is looking at GPU data
+        self.lite = False           # on battery with the UI in its lighter mode: fewer slow extras (ping, Wi-Fi)
         self._stop = threading.Event()
         self._slow = {"wifiSignal": None, "ping": None}
         self._pdh = _Pdh({
@@ -633,11 +634,13 @@ class Sampler:
         n = 0
         while not self._stop.is_set():
             if self.active:
+                # lighter mode (battery): the latency every 6 s instead of 2 s and Wi-Fi every minute instead of 10 s
                 if self.ping_on:
-                    self._ping()
+                    if not self.lite or n % 3 == 0:
+                        self._ping()
                 else:
                     self._slow["ping"] = None
-                if n % 5 == 0:
+                if n % (30 if self.lite else 5) == 0:
                     self._wifi()
                 if self._acpi_missing:
                     try:  # a hardware monitor the user runs (it can take a moment, so not on the fast loop)

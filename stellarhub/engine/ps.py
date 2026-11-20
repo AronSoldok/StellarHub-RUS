@@ -1,7 +1,12 @@
 """Run PowerShell and console programs without opening windows, in UTF-8, with live output when needed."""
 import json
+import os
+import queue
 import subprocess
 import threading
+import time
+
+from ..i18n import tr
 
 NO_WINDOW = 0x08000000
 _PRE = ("$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Continue'; "
@@ -12,12 +17,56 @@ _PRE = ("$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Continu
 _SLOTS = threading.BoundedSemaphore(3)
 
 
+class ToolError(RuntimeError):
+    """A Windows tool did not answer or is missing. The message is short, translated and fit for the user."""
+
+
+def _missing(cmd):
+    exe = cmd[0] if isinstance(cmd, (list, tuple)) and cmd else str(cmd)
+    name = os.path.basename(str(exe))
+    if name.lower().endswith(".exe"):
+        name = name[:-4]
+    return ToolError(tr("{tool} isn't available on this PC.", tool=name or "Windows"))
+
+
+def _timeout_error():
+    return ToolError(tr("Windows took too long to answer. Try again."))
+
+
+def kill_tree(p):
+    """Kills a process and everything it started (an installer launched by winget, a child of PowerShell)."""
+    try:
+        if p.poll() is None:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True, timeout=15,
+                           creationflags=NO_WINDOW)
+    except Exception:
+        pass
+    try:
+        p.kill()
+    except Exception:
+        pass
+
+
 def ps(script, timeout=90):
-    """Returns the output (text) of a PowerShell script."""
+    """Returns the output (text) of a PowerShell script. Raises ToolError (short, translated) if PowerShell is
+    missing or takes longer than `timeout`; on a timeout the whole process tree is killed."""
     with _SLOTS:
-        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                            "-Command", _PRE + script], capture_output=True, timeout=timeout, creationflags=NO_WINDOW)
-    return r.stdout.decode("utf-8", "replace")
+        try:
+            p = subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                                  "-Command", _PRE + script], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
+        except FileNotFoundError:
+            raise _missing(["PowerShell"])
+        try:
+            out, _err = p.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            kill_tree(p)
+            try:
+                p.communicate(timeout=5)
+            except Exception:
+                pass
+            raise _timeout_error()
+    return out.decode("utf-8", "replace")
 
 
 def ps_json(script, timeout=90, as_list=False):
@@ -35,25 +84,70 @@ def ps_json(script, timeout=90, as_list=False):
     return data
 
 
-def run(cmd, on_line=None, timeout=None, cwd=None, encoding=None, job=None):
+def run(cmd, on_line=None, timeout=None, cwd=None, encoding=None, job=None, raise_on_timeout=False):
     """Runs a program. With on_line it gets each line as soon as it is printed (for live consoles).
-    If `job` is passed and the user cancels, the process is killed. Returns (exit code, full output)."""
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                         cwd=cwd, creationflags=NO_WINDOW)
+    The output is read on its own thread, so a silent program cannot hold back Cancel or the timeout: if `job` is
+    cancelled, or `timeout` seconds pass in total, the whole process tree is killed. A timeout returns what was
+    read so far, or raises subprocess.TimeoutExpired with raise_on_timeout. Raises ToolError if the program is
+    missing. Returns (exit code, full output)."""
+    try:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                             cwd=cwd, creationflags=NO_WINDOW)
+    except FileNotFoundError:
+        raise _missing(cmd)
+    q = queue.Queue()
+
+    def reader():
+        try:
+            for raw in iter(p.stdout.readline, b""):
+                q.put(raw)
+        except (OSError, ValueError):
+            pass
+        q.put(None)
+    threading.Thread(target=reader, daemon=True).start()
     out = []
     enc = encoding or "utf-8"
-    try:
-        for raw in iter(p.stdout.readline, b""):
+    t0 = time.monotonic()
+    ended = None
+    timed_out = False
+    while True:
+        now = time.monotonic()
+        if job is not None and job.cancelled:
+            kill_tree(p)
+            break
+        if timeout and now - t0 > timeout:
+            timed_out = True
+            kill_tree(p)
+            break
+        try:
+            raw = q.get(timeout=0.25)
+        except queue.Empty:
+            raw = b""
+        if raw is None:
+            break
+        if raw:
             line = _decode(raw, enc)
             out.append(line)
             if on_line:
                 on_line(line.rstrip("\r\n"))
-            if job is not None and job.cancelled:
-                p.kill()
-                break
-        p.wait(timeout=timeout)
+        if ended is None and p.poll() is not None:
+            ended = time.monotonic()
+        if ended is not None and q.empty() and time.monotonic() - ended > 1.5:
+            break  # the program is over and a child it started still holds the pipe
+    try:
+        p.wait(timeout=10)
     except subprocess.TimeoutExpired:
-        p.kill()
+        kill_tree(p)
+    # lines the reader had queued before the kill
+    while True:
+        try:
+            raw = q.get_nowait()
+        except queue.Empty:
+            break
+        if raw:
+            out.append(_decode(raw, enc))
+    if timed_out and raise_on_timeout:
+        raise subprocess.TimeoutExpired(cmd, timeout)
     return p.returncode, "".join(out)
 
 

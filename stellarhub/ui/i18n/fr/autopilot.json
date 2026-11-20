@@ -729,5 +729,8 @@
   "Full network reset (no longer runs on its own)": "Réinitialisation complète du réseau (ne s'exécute plus seule)",
   "flush the DNS cache (a full network reset is never run by a routine)": "vider le cache DNS (une routine ne réinitialise jamais complètement le réseau)",
   "A full network reset is never run by a routine. Run it from Super Optimizer.": "Une routine ne réinitialise jamais complètement le réseau. Faites-le depuis Super optimiseur.",
-  "The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.": "Le cache DNS a été vidé, mais une routine ne réinitialise jamais complètement le réseau. Faites-le depuis Super optimiseur."
+  "The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.": "Le cache DNS a été vidé, mais une routine ne réinitialise jamais complètement le réseau. Faites-le depuis Super optimiseur.",
+  "autopilot|Asks you": "Vous demande",
+  "Skipped: needs administrator mode": "Ignoré : nécessite le mode administrateur",
+  "autopilot|Administrator": "Administrateur"
 }

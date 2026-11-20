@@ -13,16 +13,26 @@ makeStars(240);
 const shooters = []; let nextShot = performance.now() + 4000;
 const warp = new Spring(0, 70, 13);
 const mouse = { x: new Spring(0, 40, 12), y: new Spring(0, 40, 12) };
-function sizeStars() { DPR = Math.min(2, devicePixelRatio || 1); SW = innerWidth; SH_ = innerHeight; cv.width = SW * DPR; cv.height = SH_ * DPR; }
-sizeStars(); addEventListener('resize', sizeStars);
+function sizeStars() { DPR = Math.min(state.lite ? 1 : 1.5, devicePixelRatio || 1); SW = innerWidth; SH_ = innerHeight; cv.width = SW * DPR; cv.height = SH_ * DPR; starDirty = true; }
+let starDirty = true, starAcc = 0, starCleared = false;
+sizeStars(); addEventListener('resize', sizeStars); SH.on('power', sizeStars);
 addEventListener('pointermove', e => { mouse.x.t = (e.clientX / innerWidth - .5) * 2; mouse.y.t = (e.clientY / innerHeight - .5) * 2; });
 const starAlpha = new Spring(0, 40, 12); starAlpha.t = 1;
+SH.on('look', () => { starDirty = true; }); SH.on('setting', () => { starDirty = true; });
 tickers.add((dt, t) => {
   mouse.x.step(dt); mouse.y.step(dt); warp.step(dt); starAlpha.t = S().stars ? 1 : 0; starAlpha.step(dt);
+  if (starAlpha.v < .01) { if (!starCleared) { cx.setTransform(DPR, 0, 0, DPR, 0, 0); cx.clearRect(0, 0, SW, SH_); starCleared = true; } return; }
+  /* The stars drift less than 10 px per second and twinkle slowly: redrawing the whole canvas every frame buys
+     nothing. They are redrawn at 25 fps (10 fps on battery) unless something quick happens (camera flight, mouse
+     depth, a shooting star), and a still canvas costs the compositor nothing. */
+  const st = S(), lite = state.lite, inten = SH.effInt(), moving = inten !== 'min';
+  const par = st.parallax && moving && !lite ? 1 : 0;
+  const fast = Math.abs(warp.v) > .02 || (par && (!mouse.x.idle || !mouse.y.idle)) || shooters.length > 0 || starAlpha.v < .99;
+  starAcc += dt; t > nextShot && st.shooting && moving && (starDirty = true);
+  if (!starDirty && starAcc < (fast ? (lite ? .033 : 0) : (lite ? .1 : .04))) return;
+  const d = starAcc; starAcc = 0; starDirty = false; starCleared = false;
   cx.setTransform(DPR, 0, 0, DPR, 0, 0); cx.clearRect(0, 0, SW, SH_);
-  if (starAlpha.v < .01) return;
-  const st = S(), moving = st.intensity !== 'min'; const drift = moving ? dt * .004 * SH.ORBIT[st.intensity] * st.starSpeed : 0;
-  const par = st.parallax && moving ? 1 : 0, bright = st.starBright || 1;
+  const drift = moving ? d * .004 * SH.ORBIT[inten] * st.starSpeed : 0, bright = st.starBright || 1;
   const cxs = SW / 2, cys = SH_ * .52; const w = warp.v;
   /* shooting stars */
   if (st.shooting && moving && t > nextShot) {
@@ -31,23 +41,33 @@ tickers.add((dt, t) => {
     shooters.push({ x: Math.random() * SW * .8 + SW * .1, y: Math.random() * SH_ * .35, vx: Math.cos(a) * sp * (Math.random() < .5 ? -1 : 1), vy: Math.sin(a) * sp, life: 0, max: .7 + Math.random() * .4 });
   }
   for (let i = shooters.length - 1; i >= 0; i--) {
-    const sh = shooters[i]; sh.life += dt; sh.x += sh.vx * dt; sh.y += sh.vy * dt;
+    const sh = shooters[i]; sh.life += d; sh.x += sh.vx * d; sh.y += sh.vy * d;
     const k = sh.life / sh.max; if (k >= 1) { shooters.splice(i, 1); continue; }
     const fade = Math.sin(k * Math.PI), tail = .12;
     const g = cx.createLinearGradient(sh.x, sh.y, sh.x - sh.vx * tail, sh.y - sh.vy * tail);
     g.addColorStop(0, `rgba(230,242,255,${.9 * fade * starAlpha.v})`); g.addColorStop(1, 'rgba(230,242,255,0)');
     cx.globalAlpha = 1; cx.strokeStyle = g; cx.lineWidth = 1.4; cx.beginPath(); cx.moveTo(sh.x, sh.y); cx.lineTo(sh.x - sh.vx * tail, sh.y - sh.vy * tail); cx.stroke();
   }
+  const warping = Math.abs(w) > .02, tw0 = t / 1000, twk = moving && st.twinkle && !lite;
+  const bk = warping ? null : {};
   for (const s of stars) {
     s.x -= drift * s.z; if (s.x < 0) s.x += 1;
     const x = s.x * SW - mouse.x.v * 22 * s.z * par, y = s.y * SH_ - mouse.y.v * 16 * s.z * par;
-    const tw = moving && st.twinkle ? (.65 + .35 * Math.sin(t / 1000 * s.tw + s.p)) : .8;
-    cx.globalAlpha = Math.min(1, (.25 + .6 * s.z) * tw * starAlpha.v * bright);
-    if (Math.abs(w) > .02) {
+    const tw = twk ? (.65 + .35 * Math.sin(tw0 * s.tw + s.p)) : .8;
+    const al = Math.min(1, (.25 + .6 * s.z) * tw * starAlpha.v * bright);
+    if (warping) {
+      cx.globalAlpha = al;
       const dx = x - cxs, dy = y - cys, len = w * s.z * .22;
       cx.strokeStyle = s.z > .7 ? '#cfe6ff' : '#9fb6d8'; cx.lineWidth = s.r; cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x + dx * len, y + dy * len); cx.stroke();
-    } else { cx.fillStyle = s.z > .75 ? '#e6f2ff' : '#a9bddc'; cx.beginPath(); cx.arc(x, y, s.r * s.z + .2, 0, 6.283); cx.fill(); }
+    } else {
+      /* one path per (colour, opacity level): 30 fills instead of one per star */
+      const key = (s.z > .75 ? 16 : 0) + Math.round(al * 15), r = s.r * s.z + .2;
+      const pa = bk[key] || (bk[key] = new Path2D());
+      /* most stars are under 1 px: a small square is the same dot and far cheaper for the GPU than a tessellated circle */
+      if (r < 1.05) pa.rect(x - r, y - r, r * 2, r * 2); else { pa.moveTo(x + r, y); pa.arc(x, y, r, 0, 6.283); } /* moveTo: otherwise arc() joins the circles with straight lines (shards) */
+    }
   }
+  if (bk) for (const k in bk) { cx.globalAlpha = (k & 15) / 15; cx.fillStyle = k >= 16 ? '#e6f2ff' : '#a9bddc'; cx.fill(bk[k]); }
   cx.globalAlpha = 1;
 });
 SH.mouse = mouse; SH.warp = warp;
@@ -207,7 +227,7 @@ function go(name, opts = {}) {
   /* the incoming view starts clean: no leftovers from a previous exit (blur, scale, opacity) */
   to.getAnimations().forEach(a => a.cancel()); to.style.transform = to.style.filter = to.style.opacity = '';
   to.classList.add('is-on');
-  const cam = S().camera && S().intensity !== 'min';
+  const cam = S().camera && SH.effInt() !== 'min' && !state.lite;
   let outA;
   if (fromName === 'home') {
     SH.homeAnimating = true;
@@ -374,7 +394,8 @@ function sectionHTML(id) {
       ${rng('animSpeed', t('Speed'), t('Lower means slower, more cinematic animations.'), .5, 2, .1, RNG_FMT.animSpeed)}
       ${tog('camera', t('Camera flights'), t('The zoom that flies through the scene when you switch modules.'))}
       ${tog('parallax', t('Mouse depth'), t('The layers shift slightly as you move the mouse.'))}
-      ${tog('countUp', t('Counting numbers'), t('Figures count up to their value when they appear.'))}`;
+      ${tog('countUp', t('Counting numbers'), t('Figures count up to their value when they appear.'))}
+      ${tog('batterySaver', t('Lighter effects on battery'), t('On battery, StellarHub uses simpler effects, a calmer starfield and slower live data, so it stays smooth and saves power.'))}`;
     case 'home': return `<h3>${t('Home')}</h3><p>${t('What you see when you open StellarHub.')}</p>
       <div class="set"><div class="lbl">${t('PC view')}</div><div class="vcards" id="vcards">${variantCards()}</div></div>
       <div class="set"><div class="lbl"><div>${t('When the app opens')}<span>${t('Where you start each time.')}</span></div></div>${seg('startView', [['home', t('Home')], ['monitor', t('Live Monitor')], ['last', t('Where I left off')]])}</div>
@@ -395,6 +416,7 @@ function sectionHTML(id) {
       ${state.portable ? `<div class="set-note">${t('This is the portable version: it does not add itself to Windows startup, so it leaves nothing behind on the PC.')}</div>` : tog('startWithWindows', t('Open when Windows starts'), t('Starts hidden in the tray, with no window.'))}
       ${tog('trayOnClose', t('Close to the tray'), t('The X hides the window; StellarHub keeps running in the tray. To quit: right-click the icon > Quit.'))}
       ${tog('sounds', t('Sounds'), t('A soft sound when long tasks finish.'))}
+      <div class="set inline"><div class="lbl"><div>${t('Controller navigation')}<span>${t('Use a game controller to move around StellarHub. Turn it off if it gets in the way.')}</span></div></div><button class="toggle${S().gamepadNav !== false ? ' on' : ''}" data-key="gamepadNav" aria-label="${t('Controller navigation')}"><i></i></button></div>
       ${tog('confirmDanger', t('Confirm anything that cannot be undone'), t('Everything else always has an undo button.'))}
       <div class="set"><div class="lbl"><div>${t('Live data refresh rate')}<span>${t('Faster is smoother; slower uses less power.')}</span></div></div>${seg('teleRate', [['500', t('Fast')], ['1000', t('Normal')], ['2000', t('Saver')]])}</div>
       ${tog('measurePing', t('Measure the connection latency'), t('Every 2 seconds while StellarHub is open, it opens a connection to 1.1.1.1 (Cloudflare) and times it. Nothing is sent. Turn it off and latency shows as —.'))}`;
@@ -579,14 +601,15 @@ function applyZoom() {
   curZoom = z; SH.call('set_zoom', z);
 }
 function applyLook() {
-  const st = S(); ROOT.dataset.theme = st.theme; ROOT.dataset.density = st.density; ROOT.dataset.int = st.intensity; ROOT.dataset.corners = st.corners;
+  const st = S(); ROOT.dataset.theme = st.theme; ROOT.dataset.density = st.density; ROOT.dataset.int = SH.effInt(); ROOT.dataset.corners = st.corners;
   ROOT.dataset.quick = st.quickActions ? 'on' : 'off';
-  ROOT.style.setProperty('--f', SH.FACT[st.intensity] / (st.animSpeed || 1)); ROOT.style.setProperty('--accent', st.accent); ROOT.style.setProperty('--accent2', st.accent2);
-  ROOT.style.setProperty('--pa', st.panelAlpha); ROOT.style.setProperty('--neb', st.nebula);
+  ROOT.style.setProperty('--f', SH.FACT[SH.effInt()] / (st.animSpeed || 1)); ROOT.style.setProperty('--accent', st.accent); ROOT.style.setProperty('--accent2', st.accent2);
+  ROOT.style.setProperty('--pa', st.panelAlpha); ROOT.style.setProperty('--neb', st.nebula); ROOT.dataset.neb = st.nebula > 1 ? 'hi' : 'lo';
   if (stars.length !== st.starCount) makeStars(st.starCount);
   SH.emit('look');
 }
-function applyAll() { applyLook(); applyZoom(); }
+function applyAll() { applyLook(); applyZoom(); SH.power && SH.power.set(SH.power.forced); }
+SH.on('power', () => applyLook());
 function openSettings(section) {
   if (state.palOpen) closePal();
   state.setOpen = true; const o = $('#setO'); o.classList.add('on');
@@ -691,7 +714,7 @@ addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && k === 'k') { e.preventDefault(); state.palOpen ? closePal() : openPal(); return; }
   if ((e.ctrlKey || e.metaKey) && k === ',') { e.preventDefault(); state.setOpen ? closeSettings() : openSettings(); return; }
   if ((e.ctrlKey || e.metaKey) && /^[1-9]$/.test(k)) { e.preventDefault(); const id = ORDER[+k - 1]; if (id) go(id); return; }
-  if (e.key === 'Escape') { if (state.palOpen) closePal(); else if (state.setOpen) closeSettings(); else if (noteShown) hideNote(); else if (state.view !== 'home') go('home'); return; }
+  if (e.key === 'Escape') { if (state.palOpen) closePal(); else if (state.setOpen) closeSettings(); else if (noteShown) hideNote(); else if (state.view !== 'home' && !e.defaultPrevented && !(e.target && e.target.closest && e.target.closest('input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]),textarea,select,[contenteditable=""],[contenteditable="true"]'))) go('home'); return; }
   if (state.palOpen) {
     if (e.key === 'ArrowDown') { e.preventDefault(); setPalIdx(palIdx + 1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setPalIdx(palIdx - 1); }
@@ -716,8 +739,11 @@ function bootDone() {
 setTimeout(bootDone, 120000);  /* never leave it up for good, whatever happens */
 SH.boot = async () => {
   computeAutoZoom();
+  SH.call('phase', 'boot begins');
   await SH.loadSettings();
+  SH.call('phase', 'settings loaded');
   const [info, pc] = await Promise.all([SH.call('info'), SH.call('pc_info')]);
+  SH.call('phase', 'info + pc_info loaded');
   if (pc && pc.components) { Object.assign(SH.PC, pc); SH.PC.real = true; }
   if (info) { state.version = info.version; state.portable = !!info.portable; const ver = $('#sheet nav .ver'); if (ver) ver.textContent = `StellarHub ${info.version}`; if (info.admin) { state.admin = true; $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
   applyLook(); applyZoom();
@@ -731,6 +757,19 @@ SH.boot = async () => {
   SH.emit('boot');
   SH.booted = true; requestAnimationFrame(() => SH.call('ui_ready'));  /* startup time goes to the log */
   bootDone();
+  /* the page can reload (language change) while a task keeps running in Python: its waiters are gone, so say it is
+     still running and report how it ended */
+  SH.call('jobs_running').then(list => {
+    if (!Array.isArray(list) || !list.length) return;
+    const nm = j => { const m = modById(String(j.name).split('.')[0]); return m ? m.name : String(j.name); };
+    const names = new Map(list.map(j => [j.id, nm(j)]));
+    toast(SH.t('A task is still running: {name}.', { name: [...new Set(names.values())].join(', ') }));
+    SH.on('job', m => {
+      if (m.kind !== 'end' || !names.has(m.id)) return;
+      const n = names.get(m.id); names.delete(m.id);
+      toast(m.state === 'done' ? SH.t('{name} finished.', { name: n }) : SH.t('{name} did not finish.', { name: n }));
+    });
+  }).catch(() => {});
   /* after switching language the page reloads: come back to where the user was */
   try { const sec = sessionStorage.getItem('sh.reopenSettings'); if (sec) { sessionStorage.removeItem('sh.reopenSettings'); setTimeout(() => openSettings(sec), 350); } } catch {}
   /* test routes: #drivers/all opens that tab, #drivers/* walks through all of them, #home=bento forces a Home view */

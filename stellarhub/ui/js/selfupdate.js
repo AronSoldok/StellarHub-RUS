@@ -140,7 +140,7 @@ async function finish(ver) {
   $('#suNow', box).textContent = t('Installing {v}. StellarHub will open again in a moment…', { v: ver });
   const c = $('[data-su="cancel"]', box); if (c) c.disabled = true;
   try { await SH.engine('selfupdate', 'finish', ver, state.view || 'home'); } catch (e) { failView(e.message); return; }
-  setTimeout(() => SH.call('quit'), 900);
+  setTimeout(() => SH.call('quit', true), 900);
 }
 
 /* ---------- checking ---------- */

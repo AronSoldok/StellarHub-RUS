@@ -59,5 +59,15 @@
   "Disk {size}": "Disque de {size}",
   "Updating to {v}…": "Mise à jour vers {v}…",
   "Updating to {v}… {p}%": "Mise à jour vers {v}… {p} %",
-  "{v} GHz": "{v} GHz"
+  "{v} GHz": "{v} GHz",
+  "Windows took too long to answer. Try again.": "Windows a mis trop de temps à répondre. Réessayez.",
+  "{tool} isn't available on this PC.": "{tool} n'est pas disponible sur ce PC.",
+  "Opening StellarHub…": "Ouverture de StellarHub…",
+  "Opening as administrator…": "Ouverture en tant qu'administrateur…",
+  "StellarHub did not answer. Closing it…": "StellarHub ne répond pas. Fermeture en cours…",
+  "StellarHub is already running but is not answering, and it could not be closed (it may be running as administrator). End it from Task Manager and open StellarHub again.": "StellarHub est déjà ouvert mais ne répond pas, et il n'a pas pu être fermé (il s'exécute peut-être en tant qu'administrateur). Terminez-le depuis le Gestionnaire des tâches, puis rouvrez StellarHub.",
+  "{x} is still running. Quit anyway?": "{x} est toujours en cours. Quitter quand même ?",
+  "Installing the update…": "Installation de la mise à jour…",
+  "The update could not be installed. StellarHub will open again as it was.": "La mise à jour n'a pas pu être installée. StellarHub va se rouvrir tel qu'il était.",
+  "The update could not be applied: this copy is not where it should be.": "La mise à jour n'a pas pu être appliquée : cette copie n'est pas à l'endroit attendu."
 }

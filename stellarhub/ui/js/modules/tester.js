@@ -1,11 +1,11 @@
-/* StellarHub · Device Tester: keyboard, screen, speakers, microphone, camera and mouse. Everything really works in the browser. */
+/* StellarHub · Device Tester: keyboard, screen, speakers, microphone, camera, mouse and game controller. Everything really works in the browser. */
 'use strict';
 (() => {
 const { $, $$, anim, EASE, ic, esc, fmt1, state, tickers } = SH;
 const t = SH.t;
 let curTab = null;
 const active = t => state.view === 'tester' && curTab === t;
-const isMin = () => state.settings.intensity === 'min';
+const isMin = () => SH.effInt() === 'min';
 SH.icons.add({
   wave: '<path d="M3 12h2l2-6 3 12 3-9 2 6 2-3h4"/>',
   rec: '<circle cx="12" cy="12" r="6.5"/>',
@@ -683,19 +683,217 @@ tickers.add(() => {
   x.globalAlpha = 1;
 });
 
+/* ========================= Controller ========================= */
+/* Standard Gamepad API: every button, both sticks with their dead zone and drift, the analog triggers, the polling
+   rate and the rumble motors. Reads navigator.getGamepads() once per frame, only while this tab is open. */
+SH.icons.add({ bluetooth: '<path d="m7 7 10 10-5 5V2l5 5L7 17"/>', usb: '<circle cx="12" cy="19" r="2"/><path d="M12 17V4M12 4 9.5 6.5M12 4l2.5 2.5M12 12l5-3V7M7 14l5-2"/><path d="M16 6h2v2h-2z"/>', gamepad: '<path d="M7 7h10a4.5 4.5 0 0 1 4.4 5.4l-.9 4.2a2.6 2.6 0 0 1-4.3 1.4L14 16h-4l-2.2 2.9a2.6 2.6 0 0 1-4.3-1.4l-.9-4.2A4.5 4.5 0 0 1 7 7z"/><path d="M8 10v3M6.5 11.5h3M15.5 10.5h.01M17.5 12.5h.01"/>' });
+const PD_BTN = [[0, 'A'], [1, 'B'], [2, 'X'], [3, 'Y'], [4, 'LB'], [5, 'RB'], [6, 'LT'], [7, 'RT'], [8, t('View')], [9, t('Menu')], [10, t('Left stick click')], [11, t('Right stick click')],
+  [12, t('D-pad up')], [13, t('D-pad down')], [14, t('D-pad left')], [15, t('D-pad right')]];
+const PD_DIRS = [['ls', 'up', t('Left stick up')], ['ls', 'down', t('Left stick down')], ['ls', 'left', t('Left stick left')], ['ls', 'right', t('Left stick right')],
+  ['rs', 'up', t('Right stick up')], ['rs', 'down', t('Right stick down')], ['rs', 'left', t('Right stick left')], ['rs', 'right', t('Right stick right')]];
+const pd = { el: null, sel: -1, tested: new Set(), hist: [[], []], rest: [{ win: [] }, { win: [] }], sig: '', cnt: 0, t0: 0, ts: -1, frames: 0, hz: 0, hzMax: 0, lastMove: 0, lastAx: [0, 0, 0, 0], noStd: false,
+  dz: +(state.settings.testerPadDz ?? 10), weak: 50, strong: 60, shown: {}, free: false, chordP: 0, refs: null, mode: null, statT: 0 };
+const pdPads = () => [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(g => g && g.connected);
+const pdName = id => String(id || t('Controller')).replace(/\s*\(.*$/, '').replace(/\s+/g, ' ').trim() || t('Controller');
+const pdSigned = v => (v < 0 ? '−' : '+') + fmt1(Math.abs(v) * 100) + '%';
+const pdOn = (el, k, v) => { if (el && pd.shown[k] !== v) { pd.shown[k] = v; return true; } return false; };
+function padSVG() {
+  const face = (b, x, y, l) => `<g class="pd-b pd-face" data-b="${b}"><circle cx="${x}" cy="${y}" r="14"/><text x="${x}" y="${y + 4.6}" text-anchor="middle">${l}</text></g>`;
+  const well = (id, cx, cy) => `<g id="${id}w"><circle class="pd-well" cx="${cx}" cy="${cy}" r="42"/><circle class="pd-dz" id="${id}dz" cx="${cx}" cy="${cy}" r="3"/><circle class="pd-ring" cx="${cx}" cy="${cy}" r="34"/>
+    <polyline class="pd-trail" id="${id}tr" points=""/><circle class="pd-head" id="${id}h" cx="${cx}" cy="${cy}" r="14" data-b="${id === 'ls' ? 10 : 11}"/></g>`;
+  const trig = (b, x, l) => `<g class="pd-t" data-b="${b}"><rect class="pd-tb" x="${x}" y="14" width="58" height="30" rx="9"/><rect class="pd-tf" x="${x}" y="14" width="58" height="30" rx="9"/><text x="${x + 29}" y="34" text-anchor="middle">${l}</text></g>`;
+  return `<svg viewBox="0 0 520 340" class="pd-svg" role="img" aria-label="${esc(t('Controller'))}">
+    ${trig(6, 108, 'LT')}${trig(7, 354, 'RT')}
+    <rect class="pd-b pd-bump" data-b="4" x="100" y="52" width="80" height="16" rx="8"/><rect class="pd-b pd-bump" data-b="5" x="340" y="52" width="80" height="16" rx="8"/>
+    <path class="pd-body" d="M130 62C150 50 190 54 260 54S370 50 390 62C440 72 470 150 485 230C495 290 470 322 440 320C410 318 395 292 380 264C372 250 360 246 345 246L175 246C160 246 148 250 140 264C125 292 110 318 80 320C50 322 25 290 35 230C50 150 80 72 130 62Z"/>
+    ${well('ls', 150, 130)}${well('rs', 330, 218)}
+    <g class="pd-dpad"><rect class="pd-b" data-b="12" x="195" y="186" width="20" height="24" rx="5"/><rect class="pd-b" data-b="13" x="195" y="226" width="20" height="24" rx="5"/>
+      <rect class="pd-b" data-b="14" x="173" y="208" width="24" height="20" rx="5"/><rect class="pd-b" data-b="15" x="213" y="208" width="24" height="20" rx="5"/><rect class="pd-dpc" x="195" y="208" width="20" height="20"/></g>
+    ${face(0, 385, 158, 'A')}${face(1, 413, 130, 'B')}${face(2, 357, 130, 'X')}${face(3, 385, 102, 'Y')}
+    <circle class="pd-b pd-small" data-b="8" cx="228" cy="130" r="8"/><circle class="pd-b pd-small" data-b="9" cx="292" cy="130" r="8"/><circle class="pd-b pd-guide" data-b="16" cx="260" cy="100" r="10"/>
+  </svg>`;
+}
+function pdHowTo() {
+  const li = a => a.map(x => `<li>${x}</li>`).join('');
+  return `<div class="pd-howto"><div><h5>${ic('bluetooth')}Bluetooth</h5><ol>${li([t('Put the controller in pairing mode: hold its pairing or sync button until the light flashes.'), t('On Windows, open Settings > Bluetooth & devices > Add device > Bluetooth.'), t('Choose your controller, then press any button here.')])}</ol></div>
+    <div><h5>${ic('usb')}USB</h5><ol>${li([t('Plug the controller into a USB port with its cable, or plug in its wireless adapter.'), t('Wait a few seconds while Windows sets it up.'), t('Press any button here.')])}</ol></div></div>`;
+}
+function renderController(el) {
+  el.classList.add('fill'); pd.el = el;
+  el.innerHTML = `<div class="pd empty" id="pdRoot">
+    <div class="pan pd-stage" data-asm>
+      <div class="pd-nav" id="pdNav" hidden></div>
+      <div class="pd-live" id="pdLive" hidden>
+        <div class="pd-draw">${padSVG()}</div>
+        <div class="pd-trigs">${['LT', 'RT'].map((n, i) => `<div class="pd-tg" data-t="${i}"><span class="muted">${n}</span><div class="bar"><span style="transform:scaleX(0)"></span></div><b>0%</b></div>`).join('')}</div>
+        <div class="pd-axes">${['LX', 'LY', 'RX', 'RY'].map((n, i) => `<div data-a="${i}"><span class="muted">${n}</span><b>0,00</b></div>`).join('')}</div>
+      </div>
+      <div class="pd-empty" id="pdEmpty"><div class="pd-eh"><div class="pd-ic">${ic('gamepad')}</div><b>${t('Connect a controller and press any button')}</b>
+        <span class="muted">${t('StellarHub only sees a controller after you press a button on it.')}</span>
+        <span class="faint pd-note">${t('Xbox, PlayStation, Switch and most generic controllers work. On a handheld like the ROG Ally, press a button on its built-in controller.')}</span></div>${pdHowTo()}</div>
+    </div>
+    <div class="pd-side">
+      <div class="pan" data-asm><h4>${t('Controllers')}</h4><div class="pd-list" id="pdList"></div></div>
+      <div class="pan" data-asm><h4>${t('Progress')}</h4><div class="kb-n"><b class="big" id="pdN">0</b><span class="muted" id="pdTot"></span></div><div class="bar" style="margin-top:12px"><span id="pdBar" style="transform:scaleX(0)"></span></div>
+        <div class="pd-stats"><div title="${esc(t('Counted from the reports the controller sends while you move a stick or hold a button. Your screen can only show as many as its refresh rate.'))}"><span class="muted">${t('Polling rate')}</span><b id="pdHz">–</b></div>
+        <div><span class="muted">${t('Buttons')}</span><b id="pdBc">–</b></div></div>
+        <button class="btn sec pd-reset" id="pdReset">${ic('reset')}${t('Reset')}</button></div>
+      <div class="pan" data-asm><h4>${t('Sticks')}</h4>
+        <div class="pd-drift" id="pdDrift">${[0, 1].map(i => `<div data-s="${i}"><div class="pd-dh"><span>${i ? t('Right stick') : t('Left stick')}</span><span class="chip" id="pdDc${i}"></span></div><p class="faint" id="pdDp${i}"></p></div>`).join('')}</div>
+        <div class="pd-dzr"><span class="muted">${t('Dead zone')}</span><input type="range" id="pdDz" min="0" max="30" step="1" value="${pd.dz}" aria-label="${esc(t('Dead zone'))}"><b id="pdDzv">${pd.dz}%</b></div></div>
+      <div class="pan" data-asm><h4>${t('Vibration')}</h4><div id="pdVib"></div></div>
+      <div class="pan" data-asm><h4>${t('Controls to test')}</h4><div class="pd-chk" id="pdChk"></div></div>
+    </div></div>`;
+  const R = pd.refs = { root: $('#pdRoot', el), live: $('#pdLive', el), empty: $('#pdEmpty', el), list: $('#pdList', el), n: $('#pdN', el), tot: $('#pdTot', el), bar: $('#pdBar', el), hz: $('#pdHz', el), bc: $('#pdBc', el), vib: $('#pdVib', el), chk: $('#pdChk', el), nav: $('#pdNav', el), dzv: $('#pdDzv', el),
+    svg: $('.pd-svg', el), tg: $$('.pd-tg', el), ax: $$('.pd-axes [data-a]', el), bEls: new Map(), tf: $$('.pd-tf', el) };
+  $$('[data-b]', R.svg).forEach(n => { const b = +n.dataset.b; if (!R.bEls.has(b)) R.bEls.set(b, []); R.bEls.get(b).push(n); });
+  R.stick = [{ h: $('#lsh', el), dz: $('#lsdz', el), tr: $('#lstr', el), c: [150, 130] }, { h: $('#rsh', el), dz: $('#rsdz', el), tr: $('#rstr', el), c: [330, 218] }];
+  $('#pdReset', el).addEventListener('click', () => { pd.tested.clear(); pd.rest.forEach(r => { r.win = []; r.has = false; }); pd.hzMax = 0; pdChecklist(); pdUpdate(true); SH.toast(t('Controller test reset.')); });
+  $('#pdDz', el).addEventListener('input', e => { pd.dz = +e.target.value; R.dzv.textContent = pd.dz + '%'; pdDz(); });
+  $('#pdDz', el).addEventListener('change', () => SH.setSetting('testerPadDz', pd.dz));
+  R.list.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) { pd.sel = +b.dataset.i; pd.sig = ''; pd.shown = {}; } });
+  R.vib.addEventListener('input', e => { const r = e.target.closest('input[data-m]'); if (r) { pd[r.dataset.m] = +r.value; $(`[data-mv="${r.dataset.m}"]`, R.vib).textContent = r.value + '%'; } });
+  R.vib.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; const gp = pdPad(); const a = gp && gp.vibrationActuator; if (!a) return;
+    if (b.dataset.v === 'stop') { try { a.reset && a.reset(); } catch {} return; }
+    try { a.playEffect('dual-rumble', { startDelay: 0, duration: 700, weakMagnitude: pd.weak / 100, strongMagnitude: pd.strong / 100 }); } catch (err) { SH.toast(t('This controller did not accept the vibration.')); } });
+  pdChecklist(); pdDz(); pdNavUI();
+}
+const pdPad = () => { const l = pdPads(); return l.find(g => g.index === pd.sel) || l[0] || null; };
+const pdKeys = gp => (gp && gp.mapping !== 'standard' ? gp.buttons.map((_, i) => [i, t('Button {n}', { n: i })]) : PD_BTN).map(([i, l]) => ['b' + i, l]).concat(PD_DIRS.map(([s, d, l]) => [s + ':' + d, l]));
+function pdChecklist() {
+  const R = pd.refs; if (!R) return; const keys = pdKeys(pdPad());
+  R.chk.innerHTML = keys.map(([k, l]) => `<span class="pd-k${pd.tested.has(k) ? ' done' : ''}" data-k="${k}">${ic('check')}${esc(l)}</span>`).join('');
+  R.keys = keys.map(k => k[0]); pdProgress();
+}
+function pdProgress() {
+  const R = pd.refs; if (!R || !R.keys) return; const n = R.keys.filter(k => pd.tested.has(k)).length, tot = R.keys.length;
+  if (+R.n.textContent !== n) { R.n.textContent = n; anim(R.n, [{ transform: 'translateY(-4px)', opacity: .5 }, { transform: 'none', opacity: 1 }], { d: 220 }); }
+  R.tot.textContent = t('of {n} controls', { n: tot }); R.bar.style.transform = `scaleX(${tot ? (n / tot).toFixed(3) : 0})`;
+}
+function pdMark(k) {
+  if (pd.tested.has(k)) return; pd.tested.add(k);
+  const c = pd.refs && $(`[data-k="${k}"]`, pd.refs.chk); if (c) { c.classList.add('done'); if (!isMin()) anim(c, [{ transform: 'scale(.88)' }, { transform: 'none' }], { d: 380, e: EASE.spring }); }
+  pdProgress();
+}
+function pdDz() { const R = pd.refs; if (!R) return; R.stick.forEach(s => s.dz.setAttribute('r', Math.max(1.5, pd.dz / 100 * 34))); }
+function pdNavUI() {
+  const R = pd.refs; if (!R) return; const G = SH.gamepad, can = !!G && G.enabled();
+  R.nav.hidden = !can || !pdPads().length;
+  if (R.nav.hidden) return;
+  R.nav.innerHTML = pd.free
+    ? `${ic('gamepad')}<span>${t('The controller is moving around StellarHub right now.')}</span><button class="btn sec sm" id="pdNavBtn">${t('Test the buttons')}</button>`
+    : `${ic('info')}<span>${t('Controller navigation is paused so you can test every button. Hold View + Menu for a second to use it again.')}</span><i class="pd-nb"><u id="pdNavBar"></u></i>`;
+  const b = $('#pdNavBtn', R.nav); if (b) b.addEventListener('click', () => pdCapture(true));
+}
+function pdCapture(on) {
+  const G = SH.gamepad; if (!G) return;
+  if (!on) { G.release(); return; }
+  pd.free = false; G.capture({ onExit: () => { pd.free = true; pdNavUI(); }, onProgress: p => { const u = pd.el && $('#pdNavBar', pd.el); if (u) u.style.transform = `scaleX(${p.toFixed(3)})`; } }); pdNavUI();
+}
+function pdVibUI(gp) {
+  const R = pd.refs, ok = !!(gp && gp.vibrationActuator && gp.vibrationActuator.playEffect); const k = ok ? 'y' : 'n';
+  if (pd.shown.vib === k) return; pd.shown.vib = k;
+  R.vib.innerHTML = ok
+    ? `<div class="pd-mot"><span class="muted">${t('Strong motor')}</span><input type="range" data-m="strong" min="0" max="100" step="5" value="${pd.strong}" aria-label="${esc(t('Strong motor'))}"><b data-mv="strong">${pd.strong}%</b></div>
+       <div class="pd-mot"><span class="muted">${t('Weak motor')}</span><input type="range" data-m="weak" min="0" max="100" step="5" value="${pd.weak}" aria-label="${esc(t('Weak motor'))}"><b data-mv="weak">${pd.weak}%</b></div>
+       <div class="pd-vb"><button class="btn sec" data-v="play">${ic('wave')}${t('Vibrate')}</button><button class="btn ghost" data-v="stop">${t('Stop')}</button></div>
+       <p class="faint pd-vn">${t('The strong motor is usually in the left grip and the weak one in the right grip.')}</p>`
+    : `<span class="chip">${ic('info')}${t('Vibration is not available for this controller or connection.')}</span>`;
+}
+function pdList(pads, sel) {
+  const R = pd.refs; const sig = pads.map(g => g.index + g.id + g.mapping).join('|') + '#' + sel; if (sig === pd.sig) return; pd.sig = sig;
+  R.list.innerHTML = pads.length ? pads.map(g => `<button class="pd-c${g.index === sel ? ' on' : ''}" data-i="${g.index}" title="${esc(g.id)}"><b>${esc(pdName(g.id))}</b>
+    <span class="faint">${t('Controller {n}', { n: g.index + 1 })} · ${g.mapping === 'standard' ? t('standard layout') : t('non-standard layout')} · ${t('{b} buttons, {a} axes', { b: g.buttons.length, a: g.axes.length })}</span></button>`).join('')
+    : `<span class="faint">${t('No controllers detected.')}</span>`;
+  if (pads.length && pads.some(g => g.mapping !== 'standard')) R.list.insertAdjacentHTML('beforeend', `<div class="chip warn pd-ns">${ic('alert')}<span>${t('This controller does not report the standard layout, so the drawing may not match its buttons. The list below uses raw button numbers.')}</span></div>`);
+}
+function pdUpdate(force) {
+  const R = pd.refs; if (!R) return; const pads = pdPads(); const gp = pdPad(); if (gp && pd.sel < 0) pd.sel = gp.index;
+  const has = !!gp, was = R.root.classList.contains('empty');
+  if (has === was) {
+    R.root.classList.toggle('empty', !has); R.live.hidden = !has; R.empty.hidden = has; pdNavUI();
+    if (!isMin()) anim(has ? R.live : R.empty, [{ opacity: 0, transform: 'translate3d(0,8px,0) scale(.98)' }, { opacity: 1, transform: 'none' }], { d: 460, e: EASE.spring });
+    if (has) { pdChecklist(); pdDz(); }
+  }
+  pdList(pads, gp ? gp.index : -1);
+  if (!has) { pd.ts = -1; return; }
+  if (pdOn(R, 'map', gp.mapping + gp.index)) { pdChecklist(); pdNavUI(); }
+  pdVibUI(gp);
+  const now = performance.now();
+  /* buttons */
+  const btn = i => { const b = gp.buttons[i]; return b ? (b.pressed || b.value > .5) : false; };
+  let down = 0;
+  R.bEls.forEach((els, i) => { const on = btn(i); if (on) down++; if (pdOn(els, 'b' + i, on) || force) els.forEach(n => { n.classList.toggle('down', on); if (on && !isMin() && i !== 6 && i !== 7) anim(n, [{ transform: 'scale(.94)' }, { transform: 'none' }], { d: 240, e: EASE.spring, keep: true }); }); if (on) pdMark('b' + i); });
+  const std = gp.mapping === 'standard'; if (!std) gp.buttons.forEach((_, i) => { if (btn(i)) pdMark('b' + i); });
+  let tot = 0; for (let i = 0; i < gp.buttons.length; i++) if (btn(i)) tot++;
+  if (pdOn(R.bc, 'bc', tot)) R.bc.textContent = tot ? tot : '–';
+  /* triggers */
+  [6, 7].forEach((bi, k) => {
+    const b = gp.buttons[bi]; const v = b ? (b.value || (b.pressed ? 1 : 0)) : 0; const p = Math.round(v * 100);
+    if (pdOn(R.tg[k], 'tg' + k, p)) { R.tg[k].querySelector('.bar span').style.transform = `scaleX(${v.toFixed(3)})`; R.tg[k].querySelector('b').textContent = p + '%'; R.tf[k].style.opacity = (.05 + .95 * v).toFixed(2); }
+  });
+  /* sticks */
+  const ax = [0, 1, 2, 3].map(i => gp.axes[i] || 0); let moved = false;
+  ax.forEach((v, i) => { if (Math.abs(v - pd.lastAx[i]) > .004) moved = true; if (pdOn(R.ax[i], 'ax' + i, Math.round(v * 100))) R.ax[i].querySelector('b').textContent = (v < 0 ? '−' : '') + Math.abs(v).toLocaleString(SH.i18n && SH.i18n.lang || undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); });
+  pd.lastAx = ax; if (moved || tot) pd.lastMove = now;
+  [0, 1].forEach(i => {
+    const x = ax[i * 2], y = ax[i * 2 + 1], s = R.stick[i], key = i ? 'rs' : 'ls', mag = Math.hypot(x, y), k = mag > 1 ? 1 / mag : 1;
+    const px = x * k * 34, py = y * k * 34;
+    if (pdOn(s.h, 'h' + i, Math.round(px * 4) + ',' + Math.round(py * 4))) s.h.setAttribute('transform', `translate(${px.toFixed(2)} ${py.toFixed(2)})`);
+    s.h.classList.toggle('act', mag > pd.dz / 100); s.h.classList.toggle('down', btn(10 + i));
+    if (mag > .9) pdMark(key + ':' + (Math.abs(x) > Math.abs(y) ? (x > 0 ? 'right' : 'left') : (y > 0 ? 'down' : 'up')));
+    const hs = pd.hist[i]; hs.push({ t: now, x: px, y: py }); while (hs.length && now - hs[0].t > 1100) hs.shift();
+    const pts = hs.length > 1 && mag > .02 ? hs.map(p => `${(s.c[0] + p.x).toFixed(1)},${(s.c[1] + p.y).toFixed(1)}`).join(' ') : '';
+    if (pts !== pd.shown['tr' + i]) { pd.shown['tr' + i] = pts; s.tr.setAttribute('points', pts); }
+    pdDrift(i, x, y, now);
+  });
+  /* polling rate: distinct reports per second while something moves */
+  pd.frames++;
+  if (gp.timestamp !== pd.ts) { pd.ts = gp.timestamp; pd.cnt++; }
+  if (now - pd.t0 >= 600) {
+    const el = (now - pd.t0) / 1000, hz = pd.cnt / el, fps = pd.frames / el, live = now - pd.lastMove < 700;
+    pd.t0 = now; pd.cnt = 0; pd.frames = 0;
+    if (live && hz > 5) { pd.hz = hz; const capped = hz >= fps * .9; pd.hzMax = Math.max(pd.hzMax, hz); R.hz.textContent = (capped ? '≥ ' : '~') + SH.fmtInt(Math.round(hz)) + ' Hz'; R.hz.title = capped ? t('Your screen refreshes at about {n} Hz, so the real rate may be higher.', { n: SH.fmtInt(Math.round(fps)) }) : ''; }
+    else if (!live && pd.hz === 0) R.hz.textContent = t('move a stick');
+  }
+}
+/* drift: where the stick sits when it is left alone. Still for 1.2 s and near the middle = its resting position */
+function pdDrift(i, x, y, now) {
+  const r = pd.rest[i]; r.win.push({ t: now, x, y }); while (r.win.length && now - r.win[0].t > 1500) r.win.shift();
+  if (r.win.length > 20 && now - r.win[0].t > 1200) {
+    let a = 1e9, b = -1e9, c = 1e9, d = -1e9, sx = 0, sy = 0; for (const p of r.win) { a = Math.min(a, p.x); b = Math.max(b, p.x); c = Math.min(c, p.y); d = Math.max(d, p.y); sx += p.x; sy += p.y; }
+    const mx = sx / r.win.length, my = sy / r.win.length;
+    if (b - a < .03 && d - c < .03 && Math.hypot(mx, my) < .5) { r.has = true; r.x = mx; r.y = my; }
+  }
+  const R = pd.refs, chip = $('#pdDc' + i, R.root), p = $('#pdDp' + i, R.root); if (!chip) return;
+  let st, txt, cls, ico;
+  if (!r.has) { st = 'wait'; cls = ''; ico = 'info'; txt = t('Waiting'); }
+  else { const mag = Math.hypot(r.x, r.y) * 100; st = mag < 3 ? 'ok' : mag < pd.dz ? 'warn' : 'bad'; cls = st; ico = st === 'ok' ? 'check' : 'alert'; txt = st === 'ok' ? t('Centered') : st === 'warn' ? t('Slight drift') : t('Drift'); }
+  const detail = !r.has ? t('Let go of the stick and keep it still to check it.')
+    : st === 'ok' ? t('Resting at the middle: {x}, {y}.', { x: pdSigned(r.x), y: pdSigned(r.y) })
+    : st === 'warn' ? t('Rests off center ({x}, {y}) but inside the dead zone, so games should not notice.', { x: pdSigned(r.x), y: pdSigned(r.y) })
+    : t('Rests off center ({x}, {y}), beyond the dead zone. Games will see input you are not making.', { x: pdSigned(r.x), y: pdSigned(r.y) });
+  const sig = st + detail; if (pd.shown['dr' + i] === sig) return; pd.shown['dr' + i] = sig;
+  chip.className = 'chip ' + cls; chip.innerHTML = `${ic(ico)}${txt}`; p.textContent = detail;
+}
+tickers.add(() => { if (!active('controller') || !pd.refs) return; pdUpdate(false); });
+addEventListener('gamepadconnected', () => { if (active('controller') && pd.refs) { pd.sig = ''; pdUpdate(true); } });
+addEventListener('gamepaddisconnected', () => { if (pd.refs) { pd.sig = ''; pd.shown = {}; if (pd.el) setTimeout(() => active('controller') && pdUpdate(true), 0); } });
+
 /* ========================= registration ========================= */
-const RENDER = { keyboard: renderKeyboard, screen: renderScreen, speakers: renderSpeakers, mic: renderMic, camera: renderCamera, mouse: renderMouse };
+const RENDER = { keyboard: renderKeyboard, screen: renderScreen, speakers: renderSpeakers, mic: renderMic, camera: renderCamera, mouse: renderMouse, controller: renderController };
 function release(tab) {
   if (tab === 'keyboard' && kb.capturing && kb.el) setCapture(kb.el, false);
   if (tab === 'speakers') closeAudio();
   if (tab === 'mic') { stopMic(); if (mic.el) showMicState(); }
+  if (tab === 'controller') pdCapture(false);
   if (tab === 'camera') { stopCam(); if (cam.el && !$('#cmState', cam.el).classList.contains('bad')) camState(); }
 }
 SH.module({
   id: 'tester',
   actions(el) { el.innerHTML = `<span class="chip">${ic('info')}${t("These tests don't change anything on your PC")}</span>`; },
   renderTab(tab, el) { RENDER[tab](el); },
-  enterTab(tab) { curTab = tab; },
+  enterTab(tab) { curTab = tab; if (tab === 'controller') pdCapture(true); },
   leaveTab(tab) { release(tab); if (curTab === tab) curTab = null; },
   leave() { if (curTab) release(curTab); curTab = null; },
   enter() {},
@@ -706,6 +904,7 @@ SH.actions.add([
   { t: t('Test the microphone'), go: 'tester', tab: 'mic', ic: 'mic' },
   { t: t('Test the camera'), go: 'tester', tab: 'camera', ic: 'camera' },
   { t: t('Test the mouse buttons'), go: 'tester', tab: 'mouse', ic: 'mouse' },
+  { t: t('Test the game controller'), go: 'tester', tab: 'controller', ic: 'gamepad' },
   { t: t('Measure the screen refresh rate'), go: 'tester', tab: 'screen', ic: 'display' },
 ]);
 })();

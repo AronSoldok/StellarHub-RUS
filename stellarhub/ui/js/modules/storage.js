@@ -736,7 +736,7 @@ async function revealInTree(n) {
   const chain = []; for (let x = n; x; x = x.parent) chain.unshift(x);
   for (const x of chain) { if (x === n && !x.dir) break; const row = $(`#v-${ID} .st-tr[data-id="${x.id}"]`); if (row && !row.classList.contains('open') && x !== n) await toggleTree(x.id, true); }
   const row = $(`#v-${ID} .st-tr[data-id="${n.id}"]`);
-  if (row) setTimeout(() => { row.scrollIntoView({ block: 'center', behavior: state.settings.intensity === 'min' ? 'auto' : 'smooth' }); row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1600); }, 380 * SH.motion());
+  if (row) setTimeout(() => { row.scrollIntoView({ block: 'center', behavior: SH.effInt() === 'min' ? 'auto' : 'smooth' }); row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1600); }, 380 * SH.motion());
 }
 
 /* ---------------- File types ---------------- */
@@ -941,7 +941,7 @@ function bindDups(el) {
     if (e.target.closest('[data-dagain]')) { ST.dups = null; renderDups(el); return; }
     const go = e.target.closest('[data-dgo]'); if (go) { const g = $(`[data-dg="${go.dataset.dgo}"]`, el); if (!g || g.style.display === 'none') return;
       if (!g.classList.contains('open')) $('[data-dt]', g).click();
-      g.scrollIntoView({ block: 'nearest', behavior: state.settings.intensity === 'min' ? 'auto' : 'smooth' }); g.classList.add('flash'); setTimeout(() => g.classList.remove('flash'), 1400); return; }
+      g.scrollIntoView({ block: 'nearest', behavior: SH.effInt() === 'min' ? 'auto' : 'smooth' }); g.classList.add('flash'); setTimeout(() => g.classList.remove('flash'), 1400); return; }
     const tg = e.target.closest('[data-dt]'); if (tg) { const g = tg.closest('.st-dg'); g.classList.toggle('open'); if (g.classList.contains('open')) $$('.st-dc', g).forEach((c, i) => anim(c, [{ opacity: 0, transform: 'translate3d(0,-6px,0)' }, { opacity: 1, transform: 'none' }], { d: 300, delay: 60 + i * 30 })); return; }
     const k = e.target.closest('[data-dk]'); if (k) { const [gid, j] = k.dataset.dk.split(':').map(Number); const d = DUPS[gid]; d.keep = j;
       $$(`[data-dk^="${gid}:"]`, el).forEach(b => { const on = b.dataset.dk === `${gid}:${j}`; b.classList.toggle('keep', on); $('.st-dkl', b).textContent = on ? T('Keep') : T('Delete'); });

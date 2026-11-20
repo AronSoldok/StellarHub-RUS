@@ -61,12 +61,42 @@ function push(d) {
 const has = k => v[k] !== null && v[k] !== undefined;
 /* formats the value, or returns "—" if Windows does not provide it */
 const fmt = (k, f = x => Math.round(x)) => has(k) ? f(v[k]) : '—';
-SH.tele = {
-  v, hist, has, fmt, push, simulated: true,
-  on(fn) { subs.add(fn); return () => subs.delete(fn); },
-  setRate(ms) { SH.call('tele_rate', ms); if (timer) { clearInterval(timer); timer = setInterval(tick, Math.max(250, ms * .7)); } },
+
+/* ---------- power: on battery (and "Lighter effects on battery" on) the UI switches to lighter effects ----------
+   SH.state.lite is what the rest of the UI reads (html[data-lite] for CSS); SH.on('power', fn) fires when it changes.
+   Desktops report charging = null: they are never "on battery". SH.power.set(true|false|null) forces it (tests). */
+let userRate = 1000, owner = false; /* only the main window sets the sampler's rate (the widget and the tray panel load this file too) */
+const power = {
+  onBattery: false, forced: null,
+  set(b) { power.forced = b === undefined ? null : b; apply(); },
 };
+function apply() {
+  if (!window.SH || !SH.state) return;
+  const onB = power.forced !== null ? !!power.forced : v.charging === false;
+  const lite = onB && SH.state.settings.batterySaver !== false;
+  const changed = lite !== SH.state.lite;
+  power.onBattery = onB; SH.state.lite = lite;
+  if (!changed) return;
+  document.documentElement.dataset.lite = lite ? '1' : '0';
+  if (owner) sendRate();
+  SH.emit('power', { lite, onBattery: onB });
+}
+/* on battery the data refreshes at most every 2 s (and the sampler does less work, see Sampler.lite) */
+function sendRate() {
+  const ms = SH.state.lite ? Math.max(2000, userRate) : userRate;
+  SH.call('tele_rate', ms, !!SH.state.lite);
+  if (timer) { clearInterval(timer); timer = setInterval(tick, Math.max(250, ms * .7)); }
+}
+let lastCharging;
+SH.tele = {
+  v, hist, has, fmt, push, simulated: true, power,
+  on(fn) { subs.add(fn); return () => subs.delete(fn); },
+  setRate(ms) { userRate = +ms || 1000; if (owner) sendRate(); },
+};
+SH.power = power;
+SH.tele.on(() => { if (v.charging !== lastCharging) { lastCharging = v.charging; apply(); } });
+SH.on && SH.on('setting', d => { if (d.key === 'batterySaver') apply(); });
 /* inside the app: real from the start (even if the first sample takes a moment) */
 SH.apiReady.then(a => { if (a) goReal(); });
-SH.on && SH.on('boot', () => SH.tele.setRate(+(SH.state.settings.teleRate || 1000)));
+SH.on && SH.on('boot', () => { owner = true; apply(); SH.tele.setRate(+(SH.state.settings.teleRate || 1000)); });
 })();

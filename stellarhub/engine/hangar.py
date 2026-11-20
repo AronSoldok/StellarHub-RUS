@@ -131,7 +131,7 @@ def scan_installed(job, items=None):
     job.progress(.05, tr("Checking what's installed…"))
     stop = _creep(job, tr("Checking what's installed…"))
     try:
-        rows = U.parse_table(U._winget(["list"], timeout=240) or "")
+        rows = U.parse_table(U._winget(["list"], timeout=240, job=job) or "")
     finally:
         stop.set()
     res = {"winget": True, "installed": match_installed(items, rows),
@@ -174,7 +174,7 @@ def search(job, query, limit=40):
     job.progress(.05, tr("Searching winget…"))
     stop = _creep(job, tr("Searching winget…"))
     try:
-        out = U._winget(["search", "--query", q], timeout=120) or ""
+        out = U._winget(["search", "--query", q], timeout=120, job=job) or ""
     finally:
         stop.set()
     job.check()
@@ -512,6 +512,8 @@ def _install_one(job, it, opts, report):
             report(state["phase"], 1 if state["phase"] == "inst" else state.get("p", 0), mb=state["mb"], note=note, quiet=quiet)
 
     run = _runner(opts)
+    if run is U._stream and not U._exe("winget"):
+        return "fail", tr("winget isn't available on this PC. Install or update App Installer from the Microsoft Store."), {}
     kw = {"on_tick": on_tick} if run is U._stream else {}
     cmd = install_command(it, opts)
     code, out = run(cmd, on_text, job=job, timeout=3600, **kw)

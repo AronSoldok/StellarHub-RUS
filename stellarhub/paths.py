@@ -71,3 +71,11 @@ def local_dir():
 
 def settings_file():
     return os.path.join(data_dir(), "settings.json")
+
+
+def dialogs_allowed():
+    """False for tests and isolated test copies (STELLARHUB_NO_DIALOGS=1, STELLARHUB_ISOLATED=1 or a test update
+    folder): a message that would be a Windows message box is only written to the log, so a test never leaves a
+    modal box on someone's screen."""
+    e = os.environ
+    return not (e.get("STELLARHUB_NO_DIALOGS") == "1" or e.get("STELLARHUB_ISOLATED") == "1" or e.get("STELLARHUB_UPDATE_DIR"))

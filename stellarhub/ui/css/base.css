@@ -359,7 +359,9 @@ html[data-int=min] .sk::after{animation:none}
 html[data-corners=soft]{--r-l:28px;--r-m:18px;--r-s:12px}
 html[data-corners=sharp]{--r-l:8px;--r-m:6px;--r-s:4px}
 .pan{background:color-mix(in oklab,var(--deep) clamp(0%,calc((var(--pa,1) - 1) * 85%),85%),var(--raise))}
-.atmo{opacity:min(1,var(--neb,1));filter:brightness(max(1,var(--neb,1))) saturate(max(1,var(--neb,1)))}
+.atmo{opacity:min(1,var(--neb,1))}
+/* a filter on a full-window layer costs a shader pass over the whole window: only when the nebula is pushed past 1 */
+html[data-neb=hi] .atmo{filter:brightness(max(1,var(--neb,1))) saturate(max(1,var(--neb,1)))}
 html[data-quick=off] .h-quick{display:none}
 
 .toasts{position:fixed;right:26px;bottom:26px;z-index:70;display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none;max-width:min(420px,calc(50vw - 300px))}
@@ -433,3 +435,20 @@ html[data-corners=soft] :is(.row,.vit,.pend,.nx,.tool,.dk,.pal .it,.pal .hl,.cs-
   .sheet nav button{height:34px}
   .sheet nav .ind{height:34px}
 }
+
+/* ---------- lighter effects on battery (html[data-lite="1"], set by js/telemetry.js) ----------
+   The same look with the costly parts swapped: no backdrop blur (a more opaque fill instead), no mask on scrolling
+   lists, short shadows, no endless skeleton sweep. */
+html[data-lite="1"] .cs-scrim,html[data-lite="1"] .su-ov,html[data-lite="1"] #v-hangar .hg-dlg,html[data-lite="1"] #v-updater .u-confirm,
+html[data-lite="1"] #v-tester .kb-cover{-webkit-backdrop-filter:none;backdrop-filter:none}
+html[data-lite="1"] .cs-scrim{background:rgba(3,5,11,.74)}
+html[data-lite="1"] .su-ov{background:color-mix(in oklab,var(--void) 80%,transparent)}
+html[data-lite="1"] #v-hangar .hg-dlg,html[data-lite="1"] #v-updater .u-confirm{background:rgba(3,6,14,.72)}
+html[data-lite="1"] #v-tester .kb-cover{background:color-mix(in oklab,var(--deep) 94%,transparent)}
+html[data-lite="1"] .sf{-webkit-mask-image:none;mask-image:none}
+html[data-lite="1"] .sk::after{animation:none}
+html[data-lite="1"] .pan{box-shadow:0 8px 18px -12px rgba(0,0,0,.7)}
+html[data-lite="1"] .pan .pan{box-shadow:none}
+html[data-lite="1"] .subnav,html[data-lite="1"] .search,html[data-lite="1"] .mode,html[data-lite="1"] .btn.pri,html[data-lite="1"] .btn.sec{box-shadow:0 4px 10px -6px rgba(0,0,0,.6)}
+html[data-lite="1"] .dock{box-shadow:0 8px 20px -10px rgba(0,0,0,.7)}
+html[data-lite="1"] .sheet,html[data-lite="1"] .pal{box-shadow:0 16px 40px -18px rgba(0,0,0,.85)}

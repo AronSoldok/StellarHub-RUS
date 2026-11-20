@@ -106,8 +106,12 @@ class _Card:
         mask = Image.new("L", card.size, 0)
         ImageDraw.Draw(mask).rounded_rectangle((0, 0, self.cw - 1, self.ch - 1), radius=int(22 * s), fill=255)
         card.putalpha(mask)
-        ImageDraw.Draw(card).rounded_rectangle((0, 0, self.cw - 1, self.ch - 1), radius=int(22 * s),
+        # ImageDraw REPLACES pixels (alpha included): anything translucent is drawn on its own transparent layer and
+        # composited, or it would punch see-through holes in the card
+        edge = Image.new("RGBA", card.size, (0, 0, 0, 0))
+        ImageDraw.Draw(edge).rounded_rectangle((0, 0, self.cw - 1, self.ch - 1), radius=int(22 * s),
                                                outline=(158, 214, 255, 38), width=max(1, int(s)))
+        card.alpha_composite(edge)
         # logo, name, version
         try:
             from .tray import make_icon_image
@@ -115,11 +119,13 @@ class _Card:
             card.alpha_composite(logo, (self.cw // 2 - logo.width // 2, gy - logo.height // 2))
         except Exception:
             pass
-        d = ImageDraw.Draw(card)
+        txt = Image.new("RGBA", card.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(txt)
         name = _font("seguisb.ttf", int(25 * s))
         d.text((self.cw // 2, int(160 * s)), "StellarHub", font=name, fill=(232, 238, 248, 255), anchor="mm")
         d.text((self.cw - int(16 * s), self.ch - int(14 * s)), VERSION, font=_font("segoeui.ttf", int(11 * s)),
                fill=(232, 238, 248, 90), anchor="rs")
+        card.alpha_composite(txt)
         base.alpha_composite(card, (self.pad, self.pad))
         self.base = base
         self.small = _font("segoeui.ttf", int(12 * s))
@@ -127,7 +133,8 @@ class _Card:
 
     def frame(self, t, status):
         im = self.base.copy()
-        d = ImageDraw.Draw(im)
+        layer = Image.new("RGBA", im.size, (0, 0, 0, 0))  # drawn apart and composited: see _Card.__init__
+        d = ImageDraw.Draw(layer)
         x, y, w, h = self.bar
         d.rounded_rectangle((x, y, x + w, y + h), radius=h, fill=(232, 238, 248, 22))
         seg = int(w * .36)
@@ -140,6 +147,7 @@ class _Card:
                 d.line((i, y, i, y + h - 1), fill=col)
         if status:
             d.text((x + w // 2, y + int(24 * self.s)), status, font=self.small, fill=(232, 238, 248, 140), anchor="mm")
+        im.alpha_composite(layer)
         return im
 
 
@@ -240,6 +248,24 @@ def close():
     if th is None:
         return
     _state["closing"] = True
+
+
+def other_showing():
+    """True if a start screen of ANOTHER StellarHub process is on screen (the copy this one hands over to)."""
+    found = []
+
+    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    def cb(h, _):
+        buf = ctypes.create_unicode_buffer(32)
+        u32.GetClassNameW(h, buf, 32)
+        if buf.value == "StellarHubSplash" and h != _state["hwnd"] and u32.IsWindowVisible(h):
+            found.append(h)
+        return True
+    try:
+        u32.EnumWindows(cb, 0)
+    except Exception:
+        return False
+    return bool(found)
 
 
 def showing():

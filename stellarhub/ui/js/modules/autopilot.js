@@ -433,7 +433,7 @@ function itemH(s, x, i, n) {
   return `<div class="si" data-i="${i}" data-k="${x.k}">
     ${isA ? `<span class="si-grip" title="${esc(tr('Drag to reorder'))}">${ic('drag')}</span>` : ''}
     <span class="si-ic">${isA ? `<em>${i + 1}</em>` : ic(d.ic)}</span>
-    <div class="si-b"><div class="si-t"><b>${esc(d.t)}</b>${d.mod ? `<em>${esc(modName(d.mod))}</em>` : ''}${d.admin ? `<span class="chip">${tr('administrator')}</span>` : ''}${d.decide && d.decide(x.p) ? `<span class="chip acc">${tr('asks you')}</span>` : ''}</div>
+    <div class="si-b"><div class="si-t"><b>${esc(d.t)}</b>${d.mod ? `<em>${esc(modName(d.mod))}</em>` : ''}${d.admin ? `<span class="chip">${tr('Administrator')}</span>` : ''}${d.decide && d.decide(x.p) ? `<span class="chip acc">${tr('Asks you')}</span>` : ''}</div>
       ${ps.length ? `<div class="si-p">${ps.map(([k, spec]) => paramH(s, i, k, spec, x.p[k])).join('')}</div>` : ''}
       ${ps.length ? `<div class="si-say">${esc(cap(d.say(x.p)))}</div>` : ''}</div>
     <div class="si-tools">${isA ? `<button class="iconbtn" data-mv="-1"${i === 0 ? ' disabled' : ''} title="${esc(tr('Move up'))}">${ic('up')}</button><button class="iconbtn" data-mv="1"${i === n - 1 ? ' disabled' : ''} title="${esc(tr('Move down'))}">${ic('down')}</button>` : ''}<button class="iconbtn" data-rm title="${esc(tr('Remove'))}">${ic('x')}</button></div>
@@ -464,7 +464,7 @@ function drawRoutines() {
       </div>
       <div class="ape-tpls"><span class="ape-l">${tr('Or start from a template')}</span><div class="ape-grid">${TEMPLATES.map((t, i) => `<button class="ape-t" data-tpl="${i}"><span class="ape-ti">${ic(t.ic)}</span><b>${esc(t.n)}</b><span>${esc(t.d)}</span></button>`).join('')}</div></div>
     </div>`;
-    const svg = $('.ape-art svg', el); if (svg && state.settings.intensity === 'min') svg.pauseAnimations();
+    const svg = $('.ape-art svg', el); if (svg && SH.effInt() === 'min') svg.pauseAnimations();
     $$('.ape-t', el).forEach((b, i) => anim(b, [{ opacity: 0, transform: 'translate3d(0,12px,0) scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 460, delay: 200 + i * 45, e: EASE.spring, keep: true }));
     return;
   }

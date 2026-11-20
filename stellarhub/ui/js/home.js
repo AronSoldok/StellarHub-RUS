@@ -20,13 +20,15 @@ const VITALS = [
 const VARIANT_IC = { bento: 'grid', model3d: 'cube' };
 const ago = ts => { const s = (Date.now() - ts) / 1000; if (s < 90) return t('just now'); if (s < 3600) return t('{n} min ago', { n: Math.round(s / 60) }); if (s < 86400) return t('{n} h ago', { n: Math.round(s / 3600) }); const d = Math.round(s / 86400); return d === 1 ? t('yesterday') : t('{n} days ago', { n: d }); };
 
+const subLine = () => PC.code ? t('{type}, model {code}. {os}.', { type: esc(PC.typeName), code: esc(PC.code), os: esc(PC.os) }) : `${esc(PC.typeName)}. ${esc(PC.os)}.`;
+
 let rows = [], built = false;
 function render() {
   const hasGpu = PC.components.some(c => c.id === 'gpu'), hasBat = PC.components.some(c => c.id === 'battery');
   const vit = VITALS.filter(x => (x.need !== 'gpu' || hasGpu) && (x.need !== 'battery' || hasBat));
   home.innerHTML = `<div class="home-grid">
   <header class="h-head" data-intro>
-    <div class="h-id"><div class="model" id="hModel">${esc(PC.model)}</div><div class="sub">${PC.code ? t('{type}, model {code}. {os}.', { type: esc(PC.typeName), code: esc(PC.code), os: esc(PC.os) }) : `${esc(PC.typeName)}. ${esc(PC.os)}.`}</div></div>
+    <div class="h-id"><div class="model" id="hModel">${esc(PC.model)}</div><div class="sub">${subLine()}</div></div>
     <div class="facts">
       <div><b data-count="${PC.facts.drivers ?? ''}">${PC.facts.drivers == null ? dash : 0}</b><span>${t('drivers')}</span></div>
       <div><b data-count="${PC.facts.programs ?? ''}">${PC.facts.programs == null ? dash : 0}</b><span>${t('programs')}</span></div>
@@ -89,7 +91,7 @@ function readVitals() {
 SH.tele.on(() => { if (state.view === 'home') readVitals(); });
 tickers.add(dt => {
   if (!built || (state.view !== 'home' && !SH.homeAnimating)) return;
-  rows.forEach(r => { if (r.s.idle && r.drawn) return; r.s.step(dt); r.bar.style.transform = `scaleX(${r.s.v.toFixed(4)})`; r.drawn = true; });
+  rows.forEach(r => { if (r.s.idle && r.drawn) return; r.s.step(dt); const tf = `scaleX(${r.s.v.toFixed(3)})`; if (tf !== r.tf) { r.tf = tf; r.bar.style.transform = tf; } r.drawn = true; });
 });
 home.addEventListener('click', e => {
   const v = e.target.closest('.vit[data-comp]'); if (v) { SH.openComponent(v.dataset.comp, v); return; }
@@ -187,6 +189,41 @@ SH.on('setting', ({ key, val }) => { if (key === 'homeVariant') mountVariant(val
 SH.on('variant:registered', () => { renderSwitch(); if (!current && built) mountVariant(state.settings.homeVariant, true); });
 addEventListener('resize', () => { if (current && current.resize) try { current.resize(); } catch (e) { console.error(e); } });
 
+/* ---------- the PC facts go stale when the app stays open for days (drivers, disks, GPU): measure again in the
+   background (the engine does it in its own thread; the interface never waits) once they are older than 30
+   minutes, when Home is shown again, and on a slow timer while Home is open. Home updates only if something changed. */
+const PC_STALE = 30 * 60e3;
+let pcAt = Date.now(), pcBusy = false;
+const pcSig = o => JSON.stringify([o.model, o.code, o.typeName, o.os, o.facts, o.components]);
+async function refreshPC(force) {
+  if (pcBusy || !SH.PC.real) return;                       /* sample mode has nothing to measure */
+  if (!force && (Date.now() - pcAt < PC_STALE || document.hidden)) return;
+  pcBusy = true;
+  try {
+    const pc = await SH.engine('system', 'pc_info_fresh');
+    if (!pc || !Array.isArray(pc.components) || !pc.components.length) return;
+    pcAt = Date.now();
+    if (pcSig(pc) === pcSig(PC)) return;
+    const comps = JSON.stringify(pc.components) !== JSON.stringify(PC.components);
+    Object.assign(PC, pc);
+    if (!built) return;
+    const m = $('#hModel'); if (m) m.textContent = PC.model;
+    const sub = $('.h-id .sub', home); if (sub) sub.innerHTML = subLine();
+    $$('.facts b', home).forEach((b, i) => {
+      const v = [PC.facts.drivers, PC.facts.programs, PC.facts.freeC][i];
+      if (v == null) { b.dataset.count = ''; b.textContent = dash; } else { b.dataset.count = v; SH.countUp(b, +v); }
+    });
+    if (comps) {
+      const chip = $('.stage-head .chip', home); if (chip) chip.textContent = PC.components.length;
+      const id = current && current.id;
+      if (id && state.view === 'home') { try { current.unmount && current.unmount(); } catch (e) { console.error(e); } if (currentWrap) currentWrap.remove(); current = null; currentWrap = null; mountVariant(id, false); }
+    }
+  } catch (e) { /* the old data stays; try again later */ }
+  finally { pcBusy = false; }
+}
+setInterval(() => { if (state.view === 'home') refreshPC(); }, 10 * 60e3);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.view === 'home') refreshPC(); });
+
 /* ---------- entrance ---------- */
 function intro(back) {
   const base = back ? 140 : 0;
@@ -197,8 +234,10 @@ function intro(back) {
   if (!back) rows.forEach(r => { r.s.set(0); r.drawn = false; });
   setTimeout(readVitals, (back ? 100 : 850) * motion());
 }
-SH.on('home:return', () => { renderPending(); renderRecent(); renderNext(); intro(true); if (current && current.onReturn) try { current.onReturn(); } catch (e) { console.error(e); } });
+SH.on('home:return', () => { refreshPC(); renderPending(); renderRecent(); renderNext(); intro(true); if (current && current.onReturn) try { current.onReturn(); } catch (e) { console.error(e); } });
 SH.on('boot', () => {
+  if (SH.PC.ts) pcAt = SH.PC.ts * 1000;                    /* what Python hands over may come from the saved copy */
+  setTimeout(refreshPC, 20000);                            /* a saved copy older than 30 minutes: update it once started */
   render();
   if (!registry.variants[state.settings.homeVariant]) SH.setSetting('homeVariant', 'bento');
   (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { fit(); renderSwitch(); SH.placeSeg($('#nxSeg'), true); mountVariant(state.settings.homeVariant, true); intro(false); loadHealth(); });

@@ -911,5 +911,10 @@
   "Nothing was fixed: {error}": "No se corrigió nada: {error}",
   "{n} fixed; {failed} couldn't be fixed. First one: {error}": "{n} corregidas; {failed} no se pudieron corregir. La primera: {error}",
   "This resets static IP and DNS settings. StellarHub saves them first and tells you where.": "Esto restablece la IP estática y los ajustes de DNS. StellarHub los guarda antes y te dice dónde.",
-  "Click again: static IP and DNS settings will be reset": "Haz clic otra vez: se restablecerán la IP estática y el DNS"
+  "Click again: static IP and DNS settings will be reset": "Haz clic otra vez: se restablecerán la IP estática y el DNS",
+  "Partly applied": "Aplicado en parte",
+  "Measured when applied": "Se mide al aplicar",
+  "Check what it is": "Comprueba qué es",
+  "Administrator": "Administrador",
+  "Open": "Abierto"
 }

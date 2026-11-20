@@ -392,5 +392,6 @@
  "Kits": "套装",
  "Queue": "队列",
  "Windows is asking for permission: look for the flashing shield in the taskbar": "Windows 正在请求权限：请在任务栏中找到闪烁的盾牌图标",
- "{state} · no news for {min} min": "{state} · 已 {min} 分钟没有新进展"
+ "{state} · no news for {min} min": "{state} · 已 {min} 分钟没有新进展",
+ "winget isn't available on this PC. Install or update App Installer from the Microsoft Store.": "此电脑上没有 winget。请从 Microsoft Store 安装或更新“应用安装程序”。"
 }

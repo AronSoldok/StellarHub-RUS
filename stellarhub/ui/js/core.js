@@ -23,12 +23,15 @@ const DEFAULTS = {
   startWithWindows: false, autoUpdate: true, autoUpdateFeatures: true, skipVersion: '', language: 'auto', density: 'comfortable', sounds: false,
   widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetLayout: 'grid',
   starCount: 400, starSpeed: 1.5, starBright: 1.2, widgetMode: 'full', widgetWasOpen: false, alwaysAdmin: false, twinkle: true, shooting: true, nebula: 1, animSpeed: 1, panelAlpha: 1.75, corners: 'mid',
-  countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', measurePing: true, lastView: 'home',
+  countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', measurePing: true, lastView: 'home', batterySaver: true,
 };
-const state = { view: 'home', admin: false, palOpen: false, setOpen: false, version: '0.2.0', settings: { ...DEFAULTS } };
+const state = { view: 'home', admin: false, palOpen: false, setOpen: false, version: '0.2.0', settings: { ...DEFAULTS }, lite: false };
 const FACT = { max: 1, normal: .72, min: .3 };
 const ORBIT = { max: 1, normal: .55, min: 0 };
-const motion = () => FACT[state.settings.intensity] ?? 1;
+/* state.lite: running on battery with "Lighter effects on battery" on (telemetry.js sets it). The intensity the
+   user chose stays as it is in the settings; effInt() is the one the animations use: one step lower while lite. */
+const effInt = () => { const i = state.settings.intensity; return state.lite && i === 'max' ? 'normal' : i; };
+const motion = () => FACT[effInt()] ?? 1;
 
 /* simple events between parts of the UI */
 const bus = {};
@@ -97,10 +100,37 @@ function job(mod, fn, args = [], o = {}) {
   p.cancel = () => { cancelWanted = true; if (id) call('job_cancel', id); };
   return p;
 }
+/* Saved settings come from disk (an older build, a hand-edited file): never trust their types. Keys that have a
+   default must have the same type (numbers also inside their range); keys without one (the lists and maps the
+   modules keep) must have the shape below. Anything else falls back to the default, or is dropped, key by key. */
+const RANGE = { starCount: [0, 3000], starSpeed: [0, 5], starBright: [0, 3], nebula: [0, 3], animSpeed: [.25, 3], panelAlpha: [0, 3] };
+const ENUM = { intensity: ['max', 'normal', 'min'], widgetLayout: ['grid', 'list', 'row'] };
+const SHAPE = { activity: 'a', hangarKits: 'a', cleanExclusions: 'a', autopilotRoutines: 'a', autopilotLog: 'a',
+  pending: 'o', updIgnored: 'o', updSchedule: 'o', testerKbMissing: 'o', autopilotNotify: 'o', cpsBest: 'n', autopilotSchema: 'n' };
+const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+function sanitizeSettings(saved) {
+  const out = {};
+  if (!isObj(saved)) return out;
+  for (const [k, v] of Object.entries(saved)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    if (k in DEFAULTS) {
+      const d = DEFAULTS[k];
+      if (Array.isArray(d)) { if (Array.isArray(v)) out[k] = typeof d[0] === 'string' ? v.filter(x => typeof x === 'string') : v; }
+      else if (typeof d === 'number') { if (typeof v === 'number' && isFinite(v)) { const r = RANGE[k]; out[k] = r ? Math.min(r[1], Math.max(r[0], v)) : v; } }
+      else if (typeof d === 'boolean') { if (typeof v === 'boolean') out[k] = v; }
+      else if (typeof d === 'string') { if (typeof v === 'string' && (!ENUM[k] || ENUM[k].includes(v))) out[k] = v; }
+      else out[k] = v;
+    } else if (SHAPE[k]) {
+      const sh = SHAPE[k];
+      if (sh === 'a' ? Array.isArray(v) : sh === 'o' ? isObj(v) : typeof v === 'number' && isFinite(v)) out[k] = v;
+    } else out[k] = v;
+  }
+  return out;
+}
 async function loadSettings() {
   let saved = await call('settings_get');
   if (saved === undefined) { try { saved = JSON.parse(localStorage.getItem('sh.settings') || '{}'); } catch { saved = {}; } }
-  Object.assign(state.settings, saved || {});
+  Object.assign(state.settings, sanitizeSettings(saved));
   /* the language lives in the settings; i18n.js read a local copy to translate before this point. If they differ
      (first start after installing in another language, or changed elsewhere), switch once. */
   const L = window.SH && SH.i18n;
@@ -127,7 +157,7 @@ class Spring {
   constructor(v = 0, k = 170, c = 24) { this.v = v; this.t = v; this.vel = 0; this.k = k; this.c = c; }
   set(v) { this.v = this.t = v; this.vel = 0; return this; }
   step(dt) {
-    const it = state.settings.intensity;
+    const it = effInt();
     if (it === 'min') { this.v = this.t; this.vel = 0; return this.v; }
     const k = it === 'normal' ? this.k * 1.5 : this.k, c = it === 'normal' ? this.c * 1.22 : this.c;
     const n = Math.ceil(dt / 0.008), h = dt / n;
@@ -150,6 +180,8 @@ function anim(el, kf, o = {}) {
   /* only animations made with anim() are interrupted; CSS transitions carry on */
   if (!o.keep) el.getAnimations().forEach(a => { if (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) return; try { a.commitStyles(); } catch {} a.cancel(); });
   const d = Math.max(1, (o.d ?? 400) * motion());
+  /* blur() on a big animated layer costs a full-size shader pass every frame: on battery the same entrance runs without it */
+  if (state.lite && Array.isArray(kf) && kf.some(k => k.filter)) kf = kf.map(({ filter, ...k }) => k);
   return el.animate(kf, { duration: d, delay: (o.delay || 0) * motion(), easing: o.e || EASE.out, fill: o.fill || 'both' });
 }
 /* staggered entrance of everything marked [data-asm] inside a container */
@@ -162,7 +194,11 @@ function assemble(root, base = 0, step = 40, sel = '[data-asm]') {
 
 /* single per-frame animation loop */
 const tickers = new Set(); let last = performance.now();
-function loop(t) { const dt = Math.min(.05, (t - last) / 1000); last = t; for (const fn of tickers) { try { fn(dt, t); } catch (e) { console.error(e); tickers.delete(fn); } } requestAnimationFrame(loop); }
+/* The tickers (springs, charts, the 3D scene) do not need the display's refresh rate: on a 144 or 165 Hz laptop screen
+   every extra frame is a full-window composite for the GPU. They run at most ~70 times a second, ~30 on battery. */
+function loop(t) {
+  if (t - last < (state.lite ? 28 : 12)) { requestAnimationFrame(loop); return; }
+  const dt = Math.min(.05, (t - last) / 1000); last = t; for (const fn of tickers) { try { fn(dt, t); } catch (e) { console.error(e); tickers.delete(fn); } } requestAnimationFrame(loop); }
 requestAnimationFrame(loop);
 
 /* ---------- formatting ---------- */
@@ -291,8 +327,8 @@ const MODS0 = [
     tabs: [['overview', 'Overview'], ['permissions', 'App permissions'], ['protection', 'Protection'], ['network', 'Network'], ['tracking', 'Tracking'], ['persistence', 'Auto-starts']] },
   { id: 'benchmark', name: 'Benchmark Testing', icon: 'benchmark', real: true, desc: 'Measure every component, stress-test it and get a score for your PC.',
     tabs: [['overview', 'Overview'], ['cpu', 'Processor'], ['gpu', 'Graphics'], ['memory', 'Memory'], ['disk', 'Disks'], ['network', 'Network'], ['stress', 'Stress test'], ['history', 'History']] },
-  { id: 'tester', name: 'Device Tester', icon: 'tester', real: true, desc: 'Test your keyboard, screen, speakers, microphone, camera and mouse.',
-    tabs: [['keyboard', 'Keyboard'], ['screen', 'Screen'], ['speakers', 'Speakers'], ['mic', 'Microphone'], ['camera', 'Camera'], ['mouse', 'Mouse']] },
+  { id: 'tester', name: 'Device Tester', icon: 'tester', real: true, desc: 'Test your keyboard, screen, speakers, microphone, camera, mouse and game controller.',
+    tabs: [['keyboard', 'Keyboard'], ['screen', 'Screen'], ['speakers', 'Speakers'], ['mic', 'Microphone'], ['camera', 'Camera'], ['mouse', 'Mouse'], ['controller', 'Controller']] },
   { id: 'autopilot', name: 'Autopilot', icon: 'autopilot', real: true, desc: 'Automatic maintenance: you set the rules, StellarHub follows them.',
     tabs: [['routines', 'Routines'], ['calendar', 'Calendar'], ['notify', 'Notifications'], ['log', 'Log']] },
 ];
@@ -356,11 +392,18 @@ function sfScan(root) {
 }
 addEventListener('scroll', e => { const el = e.target; if (el.nodeType === 1 && sfSet.has(el)) sfUpdate(el); }, true);
 addEventListener('resize', () => sfSet.forEach(sfUpdate));
-setInterval(() => { const v = document.querySelector('.view.is-on'); if (v) sfScan(v); const s = document.querySelector('.overlay.on .sheet .body'); if (s) sfScan(s); }, 1200);
+/* the scan reads the style of every element: it only runs when something was added to the page (or the view or tab changed) */
+let sfDirty = 2;
+new MutationObserver(ms => { if (!sfDirty && ms.some(m => [...m.addedNodes].some(n => n.nodeType === 1))) sfDirty = 2; }).observe(document.documentElement, { childList: true, subtree: true });
+on('view', () => { sfDirty = 2; }); on('tab', () => { sfDirty = 2; });
+setInterval(() => {
+  if (!sfDirty || document.hidden) return; sfDirty--;
+  const v = document.querySelector('.view.is-on'); if (v) sfScan(v); const s = document.querySelector('.overlay.on .sheet .body'); if (s) sfScan(s);
+}, 1200);
 
 /* i18n.js ran first and already put SH.t and SH.i18n here: keep them */
 window.SH = Object.assign(window.SH || {}, {
-  $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, on, emit, call, apiReady, loadSettings, setSetting,
+  $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, effInt, on, emit, call, apiReady, loadSettings, setSetting,
   engine, job, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, fitText, esc,
   ic, icons, PC, MODS, modById, registry, module, homeVariant, actions,
   go: () => {}, toast: () => {}, openComponent: () => {}, sfScan,

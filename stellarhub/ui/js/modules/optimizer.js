@@ -8,7 +8,7 @@ const tc = (w, vars) => SH.tc('optimizer', w, vars);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const gb = b => b >= 1e9 ? fmt1(b / 1e9) + ' GB' : Math.max(0, Math.round(b / 1e6)) + ' MB';
 const sec = s => fmt1(s) + ' s';
-const isMin = () => state.settings.intensity === 'min';
+const isMin = () => SH.effInt() === 'min';
 
 SH.icons.add({
   reg: '<path d="M4 5.5h7v5H4zM13 5.5h7v5h-7zM4 13.5h7v5H4z"/><path d="M15 15.5h3M16.5 14v3"/>',
@@ -470,7 +470,7 @@ function showPlan(el) {
   const steps = planSteps(); const right = $('#optRight', el);
   swap(right, `<h4 class="pan-h">${t("Here's what will happen")} <em>${state.admin ? t('administrator mode') : t('in normal mode some steps are skipped')}</em></h4>
     <div class="plan">${steps.map(s => `<div class="pstep${s.dis ? ' dis' : ''}" data-step="${s.id}"><button class="check${s.on && !s.dis ? ' on' : ''}"${s.lock || s.dis ? ' disabled' : ''} aria-label="${esc(s.t)}">${ic('check')}</button>
-      <div class="pt"><b>${esc(s.t)}</b><span>${esc(s.d)}</span></div>${s.admin && !state.admin ? `<span class="chip warn">${t('administrator')}</span>` : ''}${s.lock ? `<span class="chip">${t('always')}</span>` : ''}</div>`).join('')}</div>
+      <div class="pt"><b>${esc(s.t)}</b><span>${esc(s.d)}</span></div>${s.admin && !state.admin ? `<span class="chip warn">${t('Administrator')}</span>` : ''}${s.lock ? `<span class="chip">${t('Always')}</span>` : ''}</div>`).join('')}</div>
     <div class="plan-acts"><button class="btn pri lg" id="optGo">${ic('play')}${t('Start')}</button><button class="btn ghost" id="optCancel">${t('Cancel')}</button></div>`, () => {
     $$('.pstep', right).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(16px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: 60 + i * 50, e: EASE.spring }));
     $('.plan', right).addEventListener('click', e => { const c = e.target.closest('.check'); if (c && !c.disabled) c.classList.toggle('on'); });
@@ -676,7 +676,7 @@ function renderClean(el) {
     <div class="cl-list">${cols.map(col => `<div class="cl-col">${col.map(g => `<div class="cl-g" data-asm><div class="cl-gh"><button class="check grp" data-ga="${esc(g)}" aria-label="${esc(t('Select all in {group}', { group: g }))}">${ic('check')}</button><span>${esc(g)}</span><em data-g="${esc(g)}"></em></div>${DB.clean.filter(c => c.g === g).map(c => `
       <div class="cl-it${c.rows && c.id === 'user_temp' ? ' open' : ''}" data-id="${c.id}">
         <div class="cl-row"><button class="check" aria-label="${esc(c.label)}">${ic('check')}</button>
-          <div class="rt"><b>${esc(c.label)}${c.busy ? ` <span class="chip warn">${t('open')}</span>` : ''}${c.admin && !state.admin ? ` <span class="chip">${t('administrator')}</span>` : ''}</b><span>${esc(c.desc)}</span></div>
+          <div class="rt"><b>${esc(c.label)}${c.busy ? ` <span class="chip warn">${t('Open')}</span>` : ''}${c.admin && !state.admin ? ` <span class="chip">${t('Administrator')}</span>` : ''}</b><span>${esc(c.desc)}</span></div>
           <span class="cl-size"></span><button class="iconbtn cl-x" aria-label="${t('Show details')}">${ic('chevd')}</button></div>
         <div class="cl-det"><div><div class="cl-det-in">${detHTML(c)}</div></div></div>
         <div class="cl-prog"><span></span></div></div>`).join('')}</div>`).join('')}</div>`).join('')}</div></div>`;
@@ -851,7 +851,7 @@ function renderStartup(el) {
       <div class="st-rows" id="stList"></div></div></div>`;
   const list = $('#stList', el);
   const rowHTML = s => `<div class="st-it${s.on ? '' : ' off'}${open.has(s.id) ? ' open' : ''}" data-id="${s.id}">
-      <div class="st-r"><span class="st-n">${avatar(s)}<span class="st-nt"><b>${esc(s.name)}${s.count ? ` <em>(${s.count})</em>` : ''}</b>${s.review && s.on ? `<span class="chip warn">${t('check what it is')}</span>` : ''}</span></span>
+      <div class="st-r"><span class="st-n">${avatar(s)}<span class="st-nt"><b>${esc(s.name)}${s.count ? ` <em>(${s.count})</em>` : ''}</b>${s.review && s.on ? `<span class="chip warn">${t('Check what it is')}</span>` : ''}</span></span>
         <span class="st-pub">${s.pub ? esc(s.pub) : `<span class="faint">${t('no publisher')}</span>`}</span>
         <span><span class="chip${s.on ? ' ok' : ''}">${s.on ? t('Enabled') : t('Disabled')}</span></span>
         <span class="st-imp i-${s.impact.replace(' ', '-')}"><i></i>${IMP_N[s.impact]}</span>
@@ -1257,7 +1257,7 @@ function renderPerformance(el) {
       ctl: `<div class="pf-bg">${P.bg.map(a => `<div class="pf-bgr"><span>${esc(a.n)}</span>${seg('bg:' + a.id, BG, a.v)}</div>`).join('')}</div>`,
       d: t('Windows 11 no longer has a global switch: it’s decided app by app. “Power optimized” lets Windows stop them when it needs to save battery.'), chips: [t('per app')], open: 'ms-settings:privacy-backgroundapps' },
   ];
-  el.innerHTML = `<div class="pf-wrap"><div class="pan pf-note" data-asm>${ic('info')}<div><b>${t('These are Windows’ own settings, not ours')}</b><span>${t('They’re read from where Windows stores them and changed right there: you can check them with “Open in Settings”. We don’t show a made-up before and after; when you change something, StellarHub will measure the next boot and idle power draw, and you’ll see it here.')}</span></div><span class="chip">${t('measured when applied')}</span></div>
+  el.innerHTML = `<div class="pf-wrap"><div class="pan pf-note" data-asm>${ic('info')}<div><b>${t('These are Windows’ own settings, not ours')}</b><span>${t('They’re read from where Windows stores them and changed right there: you can check them with “Open in Settings”. We don’t show a made-up before and after; when you change something, StellarHub will measure the next boot and idle power draw, and you’ll see it here.')}</span></div><span class="chip">${t('Measured when applied')}</span></div>
     <div class="pf">${CARDS.map(card).join('')}</div></div>`;
   $$('[data-open=""]', el).forEach(b => b.remove());
   const now = () => CARDS.forEach(c => { const n = $(`[data-now="${c.id}"]`, el); if (n && n.textContent !== c.now()) { n.textContent = c.now(); anim(n, [{ opacity: .3, transform: 'translate3d(0,4px,0)' }, { opacity: 1, transform: 'none' }], { d: 300 }); } });
@@ -1349,7 +1349,7 @@ function renderDebloat(el, ctx) {
   };
   const twRow = x => { const off = x.state === 'off';
     return `<div class="db-it tw${off ? ' done' : ''}" data-t="${x.id}">${off ? `<span class="db-ok">${ic('check')}</span>` : `<button class="check" aria-label="${esc(x.t)}">${ic('check')}</button>`}
-      <span class="rt"><b>${esc(x.t)}${x.admin && !state.admin && !off ? ` <span class="chip">${t('administrator')}</span>` : ''}${x.state === 'partial' ? ` <span class="chip warn">${t('partly applied')}</span>` : ''}</b><span>${esc(x.d)}</span></span>
+      <span class="rt"><b>${esc(x.t)}${x.admin && !state.admin && !off ? ` <span class="chip">${t('Administrator')}</span>` : ''}${x.state === 'partial' ? ` <span class="chip warn">${t('Partly applied')}</span>` : ''}</b><span>${esc(x.d)}</span></span>
       ${off ? `<span class="db-st"><span class="chip ok">${t('Applied')}</span><button class="btn ghost xs" data-tu="${x.id}" title="${esc(x.ours ? t('Put back the value it had before StellarHub changed it') : t('Write the Windows default'))}">${ic('undo')}${x.ours ? t('Undo') : t('Restore default')}</button></span>` : '<span class="db-st"></span>'}</div>`; };
   const twHTML = () => (DBX.groups || []).map(g => { const list = DBX.tweaks.filter(x => x.g === g.id); if (!list.length) return '';
     return `<div class="db-g" data-tg="${g.id}"><div class="db-gh"><button class="check grp" data-tga="${g.id}" aria-label="${esc(t('Select all in {group}', { group: g.n }))}">${ic('check')}</button><span class="db-gt"><b>${esc(g.n)} <em>${list.length}</em></b></span></div>${list.map(twRow).join('')}</div>`; }).join('');
@@ -1466,7 +1466,7 @@ function renderDebloat(el, ctx) {
         ${apps.length ? step(++n, apps.length === 1 ? t('Remove {n} app', { n: apps.length }) : t('Remove {n} apps', { n: apps.length }), deprov ? t('For you and for new users of this PC.') : t('Only for your user. Other users and new users keep them.'),
           `<div class="db-pl">${apps.map(a => { const how = backHow(a); return `<div class="db-pi"><span class="db-ic">${a.icon ? `<img src="${a.icon}" alt="">` : ic('package')}</span><span class="db-pn2"><b>${esc(a.label)}</b><span class="${how === 'none' ? 'warn-t' : 'faint'}">${BACK_TXT[how]}</span></span><span class="db-sz">${szTxt(a.size)}</span></div>`; }).join('')}</div>`) : ''}
         ${tws.length ? step(++n, tws.length === 1 ? t('Change {n} Windows setting', { n: tws.length }) : t('Change {n} Windows settings', { n: tws.length }), t('The current values are saved first, so Undo puts back exactly what was there.'),
-          `<div class="db-pl tw">${tws.map(x => `<div class="db-pt"><b>${esc(x.t)}${x.admin && !state.admin ? ` <span class="chip warn">${t('skipped: needs administrator mode')}</span>` : ''}</b>${x.vals.map(v => `<div class="db-rv"><code title="${esc(v.path)}">${esc(v.path.replace(/^(HK..)\\.*\\([^\\]+)$/, '$1\\…\\$2'))}</code><span title="${esc(v.name)}">${esc(v.name)}</span><span class="db-ft">${esc(regVal(v.now))}</span><span class="db-ar">${ic('chev')}</span><b class="db-to">${esc(regVal(v.to))}</b></div>`).join('')}</div>`).join('')}</div>`) : ''}
+          `<div class="db-pl tw">${tws.map(x => `<div class="db-pt"><b>${esc(x.t)}${x.admin && !state.admin ? ` <span class="chip warn">${t('Skipped: needs administrator mode')}</span>` : ''}</b>${x.vals.map(v => `<div class="db-rv"><code title="${esc(v.path)}">${esc(v.path.replace(/^(HK..)\\.*\\([^\\]+)$/, '$1\\…\\$2'))}</code><span title="${esc(v.name)}">${esc(v.name)}</span><span class="db-ft">${esc(regVal(v.now))}</span><span class="db-ar">${ic('chev')}</span><b class="db-to">${esc(regVal(v.to))}</b></div>`).join('')}</div>`).join('')}</div>`) : ''}
         ${expl ? step(++n, t('Restart File Explorer'), t('The taskbar and File Explorer pick up some changes only after it restarts. You can do it at the end; open windows of File Explorer close.')) : ''}
       </div>
       <div class="plan-acts"><button class="btn pri lg" id="dbGo">${ic('play')}${t('Apply changes')}</button><button class="btn ghost" id="dbBack">${t('Back')}</button></div></div>`;

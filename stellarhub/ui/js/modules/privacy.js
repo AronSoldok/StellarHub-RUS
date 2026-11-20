@@ -310,7 +310,7 @@ function paintBlips() {
 function startSweep() {
   const sw = ovEl && $('.pv-radar .sweep', ovEl); if (!sw) return;
   sw.getAnimations().forEach(a => a.cancel());
-  if (state.settings.intensity === 'min') return;
+  if (SH.effInt() === 'min') return;
   sw.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: sweepMs(), iterations: Infinity });
   const g = $('.pv-radar .blips', ovEl); if (g) { delete g.dataset.sig; paintBlips(); }
 }
@@ -330,7 +330,7 @@ function findingRow(f) {
   const fx = f.fix, needAdm = fx && fx.admin && !state.admin && !(fx.kind === 'tracking');
   return `<div class="pv-f ${f.sev}" data-f="${esc(f.id)}"><span class="pv-fi">${ic(f.sev === 'bad' ? 'alert' : f.sev === 'warn' ? 'info' : AREA_IC[f.area] || 'info')}</span>
     <div class="pv-ft"><b>${esc(f.title)}</b><span>${esc(f.desc)}</span></div>
-    <div class="pv-fa">${fx ? `<button class="btn sm pri" data-fix="${esc(f.id)}">${fx.kind === 'tracking' ? ic('pvradar') : ic('wrench')}${esc(fx.label || t('Fix'))}</button>${needAdm ? `<span class="chip warn pv-adm">${t('administrator')}</span>` : ''}` : f.uri ? `<button class="btn sm sec" data-uri="${esc(f.uri)}">${ic('external')}${t('Open')}</button>` : ''}<button class="btn sm ghost" data-gotab="${f.tab || f.area}">${t('Review')}</button></div></div>`;
+    <div class="pv-fa">${fx ? `<button class="btn sm pri" data-fix="${esc(f.id)}">${fx.kind === 'tracking' ? ic('pvradar') : ic('wrench')}${esc(fx.label || t('Fix'))}</button>${needAdm ? `<span class="chip warn pv-adm">${t('Administrator')}</span>` : ''}` : f.uri ? `<button class="btn sm sec" data-uri="${esc(f.uri)}">${ic('external')}${t('Open')}</button>` : ''}<button class="btn sm ghost" data-gotab="${f.tab || f.area}">${t('Review')}</button></div></div>`;
 }
 let ovEl = null, ovMode = 'list', passOpen = false;
 function ovState() {
@@ -356,7 +356,7 @@ function renderOverview(el, ctx) {
     const tb = e.target.closest("[data-gotab]"); if (tb) { ctx.setTab(tb.dataset.gotab); return; }
     const cp = e.target.closest('[data-cap]'); if (cp) { selCap = cp.dataset.cap; ctx.setTab('permissions'); paintPerm(); return; }
     const u = e.target.closest('[data-uri]'); if (u) { openUri(u.dataset.uri); return; }
-    if (e.target.closest('#pvPass')) { passOpen = !passOpen; const p = $('.pv-pass', el); if (p) { p.classList.toggle('open', passOpen); if (passOpen) setTimeout(() => { const r = $('#pvRight', el); r.scrollTo({ top: r.scrollHeight, behavior: state.settings.intensity === 'min' ? 'auto' : 'smooth' }); }, 200); } return; }
+    if (e.target.closest('#pvPass')) { passOpen = !passOpen; const p = $('.pv-pass', el); if (p) { p.classList.toggle('open', passOpen); if (passOpen) setTimeout(() => { const r = $('#pvRight', el); r.scrollTo({ top: r.scrollHeight, behavior: SH.effInt() === 'min' ? 'auto' : 'smooth' }); }, 200); } return; }
     const fb = e.target.closest('[data-fix]'); if (fb) {
       if (fb.disabled) return;
       const f = findings().find(x => x.id === fb.dataset.fix); if (!f) return; const back = fixBusy(fb);
@@ -411,7 +411,7 @@ function showPlan() {
   const fs = findings().filter(f => f.fix); if (!fs.length) return; ovMode = 'plan';
   const right = $('#pvRight', ovEl);
   paintInto(right, `<h4 class="pan-h">${t("Here's what will change")} <em>${t('each change is backed up first')}</em></h4>
-    <div class="pv-plan">${fs.map(f => { const adm = f.fix.admin && !state.admin && f.fix.kind !== 'tracking'; return `<div class="pv-ps${adm ? ' dis' : ''}" data-f="${esc(f.id)}"><button class="check${adm ? '' : ' on'}"${adm ? ' disabled' : ''} aria-label="${esc(f.title)}">${ic('check')}</button><div class="pv-ft"><b>${esc(f.title)}</b><span>${esc(f.desc)}</span></div>${adm ? `<span class="chip warn">${t('administrator')}</span>` : ''}</div>`; }).join('')}</div>
+    <div class="pv-plan">${fs.map(f => { const adm = f.fix.admin && !state.admin && f.fix.kind !== 'tracking'; return `<div class="pv-ps${adm ? ' dis' : ''}" data-f="${esc(f.id)}"><button class="check${adm ? '' : ' on'}"${adm ? ' disabled' : ''} aria-label="${esc(f.title)}">${ic('check')}</button><div class="pv-ft"><b>${esc(f.title)}</b><span>${esc(f.desc)}</span></div>${adm ? `<span class="chip warn">${t('Administrator')}</span>` : ''}</div>`; }).join('')}</div>
     <div class="pv-pa"><button class="btn pri lg" id="pvPlanGo">${ic('check')}${t('Apply')}</button><button class="btn ghost" id="pvPlanNo">${t('Cancel')}</button><span class="faint">${t('You can undo everything from the notification or from Tracking.')}</span></div>`, true);
   $$('.pv-ps', right).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(14px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: 40 + i * 45, e: EASE.spring }));
 }
@@ -539,7 +539,7 @@ function paintProt(first) {
   const box = protEl && $('#pvProt', protEl); if (!box) return;
   if (!has('protection')) { box.innerHTML = ERR.protection ? errBox('protection') : `<div class="pv-pgrid">${Array.from({ length: 6 }, (_, i) => `<div class="pan pv-pc sk-card"><div class="pv-pch"><span class="ri sk"></span><div class="sk" style="height:12px;width:40%"></div></div>${skelRows(3, 'tight')}</div>`).join('')}</div>`; return; }
   const P = D.protection, d = P.defender || {}, fw = P.firewall || {}, ss = P.smartscreen || {};
-  const fixBtn = (k, label, adm) => `<button class="btn sm pri" data-fixk="${k}">${ic('wrench')}${label}</button>${adm && !state.admin ? `<span class="chip warn">${t('administrator')}</span>` : ''}`;
+  const fixBtn = (k, label, adm) => `<button class="btn sm pri" data-fixk="${k}">${ic('wrench')}${label}</button>${adm && !state.admin ? `<span class="chip warn">${t('Administrator')}</span>` : ''}`;
   const act = (P.av || []).filter(a => a.on);
   /* antivirus */
   const avRows = (P.av || []).map(a => `<div class="pv-avr${a.on ? '' : ' off'}"><span class="pv-dot${a.on ? '' : ' off'}"></span><div><b>${esc(a.name === 'Windows Defender' ? 'Microsoft Defender' : a.name)}</b><span>${a.on ? (a.uptodate ? t('Active and up to date') : t('Active, definitions out of date')) : a.defender && act.length ? t('On standby: another antivirus is protecting you') : t('Off')}</span></div>${a.on ? chipOf(a.uptodate ? 'ok' : 'warn', a.uptodate ? t('Protecting') : t('Update')) : ''}</div>`).join('') || `<p class="muted">${t('Windows Security did not report any antivirus.')}</p>`;
@@ -721,7 +721,7 @@ function paintTrack(first) {
   if (head.dataset.sig !== hh) { head.dataset.sig = hh; head.innerHTML = hh; }
   const groups = T.groups || GROUPS;
   const row = i => `<div class="pv-tg${i.on ? ' on' : ''}${i.locked ? ' locked' : ''}" data-id="${i.id}"><div class="pv-ttx"><b>${esc(i.name)}${i.rec === 'off' && i.on ? `<span class="pv-rec">${t('recommended off')}</span>` : ''}</b><span>${esc(i.desc)}</span>
-      ${i.locked || (i.admin && !state.admin) || i.note ? `<span class="pv-tchips">${i.locked ? `<span class="chip">${t('Managed by your organization')}</span>` : ''}${i.admin && !state.admin && !i.locked ? `<span class="chip warn">${t('administrator')}</span>` : ''}${i.note ? `<span class="faint">${esc(i.note)}</span>` : ''}</span>` : ''}</div>
+      ${i.locked || (i.admin && !state.admin) || i.note ? `<span class="pv-tchips">${i.locked ? `<span class="chip">${t('Managed by your organization')}</span>` : ''}${i.admin && !state.admin && !i.locked ? `<span class="chip warn">${t('Administrator')}</span>` : ''}${i.note ? `<span class="faint">${esc(i.note)}</span>` : ''}</span>` : ''}</div>
       ${i.page ? `<button class="iconbtn" data-uri="${esc(i.page)}" title="${t('Open in Windows Settings')}" aria-label="${t('Open in Windows Settings')}">${ic('external')}</button>` : '<span></span>'}
       <button class="toggle${i.on ? ' on' : ''}" data-tr="${i.id}"${i.locked ? ' disabled' : ''} aria-label="${esc(i.name)}"><i></i></button></div>`;
   const lh = Object.keys(groups).filter(g => T.items.some(i => i.g === g)).map(g => `<div class="pv-tgr"><h4 class="pv-gh">${esc(groups[g])}<em>${T.items.filter(i => i.g === g && i.on && i.rec === 'off').length || ''}</em></h4>${T.items.filter(i => i.g === g).map(row).join('')}</div>`).join('');

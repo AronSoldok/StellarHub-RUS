@@ -889,11 +889,47 @@ def network(job, scale=1.0):
 
 
 # ---------------------------------------------------------------- CPU stress test
-def stress_cpu(job, seconds=60, threads=None):
+STRESS_CPU_LIMIT = 100   # °C: same limit as the interface
+STRESS_MAX_SECONDS = 3600  # hard ceiling, enforced here and not only in the interface
+_NO_TEMP_GRACE = 20.0    # seconds without any reading before a temperature-based run gives up
+_tz = {"pdh": None, "tried": False}
+
+
+def _read_cpu_temp():
+    """Current CPU temperature in °C from the ACPI thermal zones (own PDH query, so it works with the window
+    hidden and no telemetry running) or a hardware monitor the user runs; None if Windows does not report one."""
+    if not _tz["tried"]:
+        _tz["tried"] = True
+        try:
+            from .telemetry import _Pdh
+            q = _Pdh({"tz": r"\Thermal Zone Information(*)\High Precision Temperature"})
+            _tz["pdh"] = q if q.ok else None
+        except Exception:
+            _tz["pdh"] = None
+    q = _tz["pdh"]
+    if q is not None:
+        try:
+            q.collect()
+            temps = [v / 10 - 273.15 for _n, v in q.array("tz")]
+            temps = [c for c in temps if 35 < c < 110]  # a fixed 27.8 °C is a placeholder, not a reading
+            if temps:
+                return round(max(temps))
+        except Exception:
+            pass
+    try:
+        from . import sensors
+        return sensors.cpu_temp(max_age=1.0)[0]
+    except Exception:
+        return None
+
+
+def stress_cpu(job, seconds=60, threads=None, require_temp=False):
     """Loads every logical processor and checks every result: a wrong hash or a failed compression round trip is a
-    calculation error (an unstable CPU, overclock or undervolt). Stops at `seconds` or when cancelled; the
-    interface also stops it at safe temperature limits."""
-    seconds = max(5, min(3600, int(seconds or 60)))
+    calculation error (an unstable CPU, overclock or undervolt). Stops at `seconds` (never more than
+    STRESS_MAX_SECONDS), when cancelled, or by itself at STRESS_CPU_LIMIT °C (checked here every ~0.5 s, so it holds
+    even if the window is hidden or frozen). With require_temp it also stops when no temperature can be read.
+    The result's "reason" says why it stopped early: {"part": "cpu", "temp": n} or {"part": "notemp"}."""
+    seconds = max(5, min(STRESS_MAX_SECONDS, int(seconds or 60)))
     lps = [lp for c in topology() for lp in c["lps"]]
     if threads:
         lps = lps[:max(1, int(threads))]
@@ -921,10 +957,19 @@ def stress_cpu(job, seconds=60, threads=None):
     t0 = time.perf_counter()
     last_t, last_c = t0, 0
     rates = []
+    reason = None
+    temp_max = None
     try:
         while True:
             time.sleep(0.5)
             now = time.perf_counter()
+            temp = _read_cpu_temp()
+            if temp is not None:
+                temp_max = temp if temp_max is None else max(temp_max, temp)
+                if temp >= STRESS_CPU_LIMIT:
+                    reason = {"part": "cpu", "temp": temp}
+            elif require_temp and temp_max is None and now - t0 >= _NO_TEMP_GRACE:
+                reason = {"part": "notemp"}
             tot = sum(counts)
             rate = (tot - last_c) * MB / 1e6 / max(1e-6, now - last_t)
             rates.append(rate)
@@ -932,7 +977,7 @@ def stress_cpu(job, seconds=60, threads=None):
             el = now - t0
             job.progress(min(1.0, el / seconds), tr("Stress test running…"), elapsed=round(el, 1), rate=round(rate),
                          errors=errors[0])
-            if job.cancelled or el >= seconds:
+            if job.cancelled or el >= seconds or reason:
                 break
     finally:
         stop[0] = True
@@ -942,6 +987,6 @@ def stress_cpu(job, seconds=60, threads=None):
     k = max(1, len(rates) // 6)
     first, last = rates[:k], rates[-k:]
     # a cancelled stress test still has a useful summary: it is returned, not raised
-    return {"elapsed": round(el, 1), "errors": errors[0], "threads": len(lps), "stopped": bool(job.cancelled),
-            "rateStart": round(sum(first) / len(first)) if first else None,
+    return {"elapsed": round(el, 1), "errors": errors[0], "threads": len(lps), "stopped": bool(job.cancelled or reason), "reason": reason,
+            "cpuTempMax": temp_max, "rateStart": round(sum(first) / len(first)) if first else None,
             "rateEnd": round(sum(last) / len(last)) if last else None}

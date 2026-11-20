@@ -7,8 +7,10 @@
 ; on-demand task StellarHub updates itself with, and registers a normal uninstaller.
 ; The uninstaller also removes what the app registered itself (its scheduled tasks and "open with Windows" entry).
 ;
-; /SELFUPDATE=<path of state.json> is how StellarHub's updater runs it (see stellarhub/engine/selfupdate.py): Setup
-; writes "done" or "failed" there when it ends, so the app can reopen itself.
+; /SELFUPDATE=<path of state.json> is how StellarHub's updater runs it (see stellarhub/engine/selfupdate.py), with
+; /SILENT: Setup shows only its small progress window (no pages, no questions). It writes "done" or "failed" to that
+; file when it ends, and opens StellarHub itself the moment the files are in place (or, if the installation failed,
+; the previous version again), so nothing is left waiting on a helper.
 ;
 ; The wizard follows the Windows display language (English, Spanish, Portuguese, Italian, French or Chinese);
 ; /LANG=spanish (english, portuguese, italian, french, chinesesimplified) forces one.
@@ -151,6 +153,7 @@ english.OptUpdate=Keep StellarHub up to date
 english.OptUpdateHint=When it opens, StellarHub checks GitHub for a new version and asks before updating.
 english.OptLanguage=App language
 english.StatusApplying=Applying your choices...
+english.StatusWarm=Preparing StellarHub for its first start...
 english.RunWebView=Installing the Microsoft Edge WebView2 Runtime...
 english.RunApp=Open StellarHub now
 english.RunNotes=See what's new in version %1
@@ -174,6 +177,7 @@ spanish.OptUpdate=Mantener StellarHub al día
 spanish.OptUpdateHint=Al abrirse, StellarHub busca una versión nueva en GitHub y pregunta antes de actualizar.
 spanish.OptLanguage=Idioma de la aplicación
 spanish.StatusApplying=Aplicando tus preferencias...
+spanish.StatusWarm=Preparando StellarHub para su primer inicio...
 spanish.RunWebView=Instalando Microsoft Edge WebView2 Runtime...
 spanish.RunApp=Abrir StellarHub ahora
 spanish.RunNotes=Ver las novedades de la versión %1
@@ -197,6 +201,7 @@ portuguese.OptUpdate=Manter o StellarHub atualizado
 portuguese.OptUpdateHint=Ao abrir, o StellarHub procura uma versão nova no GitHub e pergunta antes de atualizar.
 portuguese.OptLanguage=Idioma do aplicativo
 portuguese.StatusApplying=Aplicando suas escolhas...
+portuguese.StatusWarm=Preparando o StellarHub para a primeira inicialização...
 portuguese.RunWebView=Instalando o Microsoft Edge WebView2 Runtime...
 portuguese.RunApp=Abrir o StellarHub agora
 portuguese.RunNotes=Ver as novidades da versão %1
@@ -220,6 +225,7 @@ italian.OptUpdate=Mantieni StellarHub aggiornato
 italian.OptUpdateHint=All'apertura, StellarHub cerca una nuova versione su GitHub e chiede prima di aggiornare.
 italian.OptLanguage=Lingua dell'app
 italian.StatusApplying=Applicazione delle tue scelte...
+italian.StatusWarm=Preparazione di StellarHub per il primo avvio...
 italian.RunWebView=Installazione di Microsoft Edge WebView2 Runtime...
 italian.RunApp=Apri StellarHub ora
 italian.RunNotes=Scopri le novità della versione %1
@@ -243,6 +249,7 @@ french.OptUpdate=Garder StellarHub à jour
 french.OptUpdateHint=À l'ouverture, StellarHub cherche une nouvelle version sur GitHub et demande avant de mettre à jour.
 french.OptLanguage=Langue de l'application
 french.StatusApplying=Application de vos choix...
+french.StatusWarm=Préparation de StellarHub pour son premier démarrage...
 french.RunWebView=Installation de Microsoft Edge WebView2 Runtime...
 french.RunApp=Ouvrir StellarHub maintenant
 french.RunNotes=Voir les nouveautés de la version %1
@@ -266,6 +273,7 @@ chinesesimplified.OptUpdate=让 StellarHub 保持最新
 chinesesimplified.OptUpdateHint=每次打开时，StellarHub 会在 GitHub 上检查新版本，并在更新前征得你的同意。
 chinesesimplified.OptLanguage=应用语言
 chinesesimplified.StatusApplying=正在应用您的选择...
+chinesesimplified.StatusWarm=正在为 StellarHub 的首次启动做准备...
 chinesesimplified.RunWebView=正在安装 Microsoft Edge WebView2 Runtime...
 chinesesimplified.RunApp=立即打开 StellarHub
 chinesesimplified.RunNotes=查看 %1 版本的新功能
@@ -291,6 +299,7 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: "
 
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "{cm:RunWebView}"; Check: NeedsWebView2 and WebView2SetupTrusted; Flags: waituntilterminated
+Filename: "{app}\{#AppExe}"; Check: IsSelfUpdate; Flags: nowait runasoriginaluser
 Filename: "{app}\{#AppExe}"; Description: "{cm:RunApp}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 Filename: "{#AppUrl}/releases/tag/v{#AppVersion}"; Description: "{cm:RunNotes,{#AppVersion}}"; Flags: shellexec nowait postinstall skipifsilent runasoriginaluser unchecked
 
@@ -306,6 +315,17 @@ Type: filesandordirs; Name: "{localappdata}\StellarHub\webview"
 Type: dirifempty; Name: "{localappdata}\StellarHub"
 
 [Code]
+{ a silent install started by the updater has no foreground rights: its progress window would open behind whatever
+  the user was looking at. Making it topmost (without taking the focus) keeps it in view for the whole update. }
+function SetWindowPos(hWnd, hWndInsertAfter: HWND; X, Y, cx, cy: Integer; uFlags: Cardinal): BOOL;
+  external 'SetWindowPos@user32.dll stdcall';
+
+procedure KeepProgressInView;
+begin
+  if ExpandConstant('{param:SELFUPDATE|}') <> '' then
+    SetWindowPos(WizardForm.Handle, HWND(-1), 0, 0, 0, 0, $0001 or $0002 or $0010);  { NOSIZE | NOMOVE | NOACTIVATE }
+end;
+
 const
   WebView2Key = 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
   WebView2Key32 = 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
@@ -636,6 +656,12 @@ begin
   SetPreviousData(PreviousDataKey, 'AppLanguage', AppLangAt(LangCombo.ItemIndex));
 end;
 
+{ run by StellarHub's own updater (/SELFUPDATE): it opens the app again as soon as Setup is done }
+function IsSelfUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:SELFUPDATE|}') <> '';
+end;
+
 function WantDesktopIcon: Boolean;
 begin
   Result := DesktopBox.Checked;
@@ -655,6 +681,7 @@ var
   Exe: String;
 begin
   Result := '';
+  KeepProgressInView;
   Exe := ExpandConstant('{app}\{#AppExe}');
   if FileExists(Exe) then
     Exec(Exe, '--quit', '', SW_HIDE, ewWaitUntilTerminated, Code);
@@ -713,6 +740,11 @@ begin
     Exec(Exe, '--update-task on', '', SW_HIDE, ewWaitUntilTerminated, Code);
   end;
 
+  { Windows scans every new file the first time it runs; doing that here, with the progress window up, keeps the
+    first real start from taking 15-20 s with nothing on screen }
+  WizardForm.StatusLabel.Caption := CustomMessage('StatusWarm');
+  Exec(Exe, '--warm', '', SW_HIDE, ewWaitUntilTerminated, Code);
+
   if WasDesktop and not DesktopBox.Checked then
     DeleteFile(ExpandConstant('{autodesktop}\{#AppName}.lnk'));
 end;
@@ -729,6 +761,7 @@ end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
+  KeepProgressInView;
   if CurStep = ssInstall then
   begin
     { a full disk, a locked file or an antivirus can stop the copy halfway; Inno rolls back the files it copied but
@@ -754,6 +787,8 @@ begin
 end;
 
 procedure DeinitializeSetup;
+var
+  Code: Integer;
 begin
   if RuntimeBackedUp and not RuntimeInstalled and DirExists(AppDirAtInstall + '\_internal.bak') then
   begin
@@ -762,7 +797,12 @@ begin
     RenameFile(AppDirAtInstall + '\_internal.bak', AppDirAtInstall + '\_internal');
   end;
   if not SelfUpdateDone then
+  begin
     WriteSelfUpdateState('failed');
+    { the installation did not finish: StellarHub (the previous version, put back above) opens again, and says so }
+    if IsSelfUpdate and FileExists(AppDirAtInstall + '\{#AppExe}') then
+      ExecAsOriginalUser(AppDirAtInstall + '\{#AppExe}', '', AppDirAtInstall, SW_SHOWNORMAL, ewNoWait, Code);
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

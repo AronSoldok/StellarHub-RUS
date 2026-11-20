@@ -102,7 +102,9 @@ def start(name, fn, *args, **kwargs):
             print(f"[job {name}]", traceback.format_exc())
         job.pct = 1.0 if job.state == "done" else job.pct
         job._send("end")
-        threading.Timer(600, lambda: _jobs.pop(job.id, None)).start()
+        t = threading.Timer(600, lambda: _jobs.pop(job.id, None))
+        t.daemon = True  # a pending Timer must never keep the process alive after the window is gone
+        t.start()
 
     threading.Thread(target=run, daemon=True, name=f"job-{name}").start()
     return job.id

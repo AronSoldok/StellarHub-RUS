@@ -139,7 +139,7 @@ function liveHTML(area) {
 }
 const uptime = s => SH.fmtUptime(s);  /* the same "8 days 11 h" as Home and Live Monitor, in the interface language */
 
-let root = null, tick = null, offs = [], tiles = [];
+let root = null, tick = null, offs = [], tiles = [], barEl = {};
 const gfan = { a: 0, sp: new Spring(0, 30, 10), boost: new Spring(0, 60, 14) };
 const bars = { vram: new Spring(0, 60, 14), ram: new Spring(0, 60, 14), disk: new Spring(0, 60, 14) };
 
@@ -162,7 +162,7 @@ function mount(el, ctx) {
   tiles = $$('.bt', root).map(b => ({ b, tilt: $('.tilt', b), rx: new Spring(0, 170, 18), ry: new Spring(0, 170, 18), lift: new Spring(0, 200, 20) }));
   tiles.forEach(t => {
     t.b.addEventListener('pointermove', e => {
-      if (SH.state.settings.intensity === 'min') return;
+      if (SH.effInt() === 'min') return;
       const r = t.b.getBoundingClientRect(); const nx = (e.clientX - r.left) / r.width * 2 - 1, ny = (e.clientY - r.top) / r.height * 2 - 1;
       const big = r.width > 260 ? .6 : 1;
       t.rx.t = -ny * 7 * big; t.ry.t = nx * 9 * big; t.lift.t = 1;
@@ -175,13 +175,15 @@ function mount(el, ctx) {
     t.b.addEventListener('pointerdown', () => anim(t.b, [{ transform: 'scale(1)' }, { transform: 'scale(.97)', offset: .4 }, { transform: 'scale(1)' }], { d: 320, e: EASE.out }));
   });
   offs.push(SH.tele.on(read)); read();
-  const fans = $$('.gfan', root);
+  const fans = $$('.gfan', root); barEl = {};
   tick = dt => {
     if (!root || (SH.state.view !== 'home' && !SH.homeAnimating)) return;
-    const still = SH.state.settings.intensity === 'min';
+    const still = SH.effInt() === 'min' || SH.state.lite;
     const fv = SH.tele.v.fanGpu, gu = SH.tele.v.gpu; gfan.sp.t = still ? 0 : !nil(fv) ? fv / 100 * 1.1 : .15 + (gu || 0) / 100 * .9; gfan.sp.step(dt); gfan.boost.step(dt);
-    if (!still) { gfan.a = (gfan.a + (gfan.sp.v + gfan.boost.v * 1.6) * 360 * dt) % 360; fans.forEach(f => { f.style.transform = `rotate(${gfan.a.toFixed(2)}deg)`; }); }
-    for (const k in bars) { bars[k].step(dt); const e = $(`[data-b="${k}"]`, root); if (e) e.style.transform = `scaleX(${Math.max(0, bars[k].v).toFixed(4)})`; }
+    /* an SVG group cannot be composited: each turn repaints the card, so the fans turn at 30 fps (the angle uses the time that passed) */
+    gfan.acc = (gfan.acc || 0) + dt;
+    if (!still && gfan.acc >= .032) { gfan.a = (gfan.a + (gfan.sp.v + gfan.boost.v * 1.6) * 360 * gfan.acc) % 360; gfan.acc = 0; fans.forEach(f => { f.style.transform = `rotate(${gfan.a.toFixed(2)}deg)`; }); }
+    for (const k in bars) { const b = bars[k]; if (b.idle && b.drawn) continue; b.step(dt); const e = barEl[k] || (barEl[k] = $(`[data-b="${k}"]`, root)); if (e) e.style.transform = `scaleX(${Math.max(0, b.v).toFixed(4)})`; b.drawn = true; }
     for (const t of tiles) {
       t.rx.step(dt); t.ry.step(dt); t.lift.step(dt);
       if (Math.abs(t.rx.v) + Math.abs(t.ry.v) + t.lift.v > .002 || !t.rest) {
@@ -194,7 +196,7 @@ function mount(el, ctx) {
   if (ctx.intro) intro(false);
 }
 function read() {
-  if (!root) return; const v = SH.tele.v;
+  if (!root || (SH.state.view !== 'home' && !SH.homeAnimating)) return; const v = SH.tele.v;
   /* null = Windows does not provide this stat: "—", never 0 */
   const set = (k, x, f = Math.round) => { const e = $(`[data-l="${k}"]`, root); if (!e) return; const t = nil(x) ? '—' : f(x); if (e.textContent !== String(t)) e.textContent = t; e.classList.toggle('na', nil(x)); };
   set('gpu', v.gpu); set('gtemp', v.gpuTemp); set('gpow', v.gpuPower);
@@ -213,7 +215,7 @@ function intro(quick) {
     { opacity: 1, transform: 'perspective(1000px) translate3d(0,0,0) rotateX(0deg)', filter: 'blur(0px)' }
   ], { d: quick ? 520 : 820, delay: (quick ? 40 : 260) + i * (quick ? 30 : 70), e: EASE.spring }));
   if (!quick) {
-    for (const k in bars) bars[k].set(0);
+    for (const k in bars) { bars[k].set(0); bars[k].drawn = false; }
     const fill = $('.art-bat .fill', root); if (fill) anim(fill, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(.97)' }], { d: 1400, delay: 900, e: EASE.out });
     gfan.sp.set(0);
   }
@@ -225,6 +227,6 @@ function unmount() {
 SH.homeVariant({
   id: 'bento', name: SH.t('Mosaic'), short: SH.t('Mosaic'),
   desc: SH.t('One tile per component, with its live stat.'),
-  mount, unmount, resize() {}, onReturn() { intro(true); },
+  mount, unmount, resize() {}, onReturn() { intro(true); read(); },
 });
 })();

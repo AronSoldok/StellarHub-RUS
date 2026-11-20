@@ -236,3 +236,88 @@ html[data-int=min] #v-tester .sp-spk.play .sp-cone i,html[data-int=min] #v-teste
 #v-tester .kb-stage.marking .k:not(.nd){cursor:pointer}
 #v-tester .kb-stage.marking .k:not(.nd):hover{border-color:var(--accent2);opacity:1}
 #v-tester .kb-missn{font-size:12px;margin-top:10px}
+
+/* ---------- controller ---------- */
+#v-tester .pd{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:14px;height:100%;min-height:0}
+#v-tester .pd.empty{grid-template-columns:1fr}
+#v-tester .pd.empty .pd-side{display:none}
+#v-tester .pd-stage{position:relative;display:flex;flex-direction:column;min-height:0;padding:16px 20px 18px;overflow:hidden}
+#v-tester .pd-live{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px}
+#v-tester .pd-draw{position:relative;flex:1;min-height:150px}
+#v-tester .pd-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+#v-tester .pd-body{fill:var(--raise);stroke:var(--line2);stroke-width:1.5}
+#v-tester .pd-well{fill:var(--raise2);stroke:var(--line2);stroke-width:1.2}
+#v-tester .pd-ring{fill:none;stroke:var(--line);stroke-width:1;stroke-dasharray:2 4}
+#v-tester .pd-dz{fill:color-mix(in oklab,var(--warn) 10%,transparent);stroke:var(--warn);stroke-width:1;stroke-dasharray:3 3}
+#v-tester .pd-trail{fill:none;stroke:var(--accent2);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;opacity:.55}
+#v-tester .pd-head{fill:var(--raise3);stroke:var(--mute);stroke-width:1.6;transition:fill calc(140ms*var(--f)),stroke calc(140ms*var(--f))}
+#v-tester .pd-head.act{fill:color-mix(in oklab,var(--accent2) 45%,var(--raise3));stroke:var(--accent2)}
+#v-tester .pd-head.down{fill:var(--accent);stroke:var(--accent)}
+#v-tester .pd-b{fill:var(--raise2);stroke:var(--line2);stroke-width:1.3;transition:fill calc(120ms*var(--f)),stroke calc(120ms*var(--f))}
+#v-tester .pd-b circle{fill:inherit;stroke:inherit}
+#v-tester .pd-face text,#v-tester .pd-t text{fill:var(--mute);font:600 12px var(--text);pointer-events:none}
+#v-tester .pd-dpc{fill:var(--raise2);stroke:none}
+#v-tester .pd-b.down,#v-tester .pd-b.down circle{fill:var(--accent);stroke:var(--accent)}
+#v-tester .pd-face.down text{fill:var(--on-accent)}
+#v-tester .pd-b.down{filter:drop-shadow(0 0 8px var(--accent))}
+#v-tester .pd-tb{fill:var(--raise2);stroke:var(--line2);stroke-width:1.3}
+#v-tester .pd-tf{fill:var(--accent);opacity:.05}
+#v-tester .pd-t.down .pd-tb{stroke:var(--accent)}
+#v-tester .pd-trigs{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+#v-tester .pd-tg{display:flex;align-items:center;gap:10px;font-size:12.5px}
+#v-tester .pd-tg .bar{flex:1}
+#v-tester .pd-tg b{min-width:40px;text-align:right;font-weight:500}
+#v-tester .pd-axes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+#v-tester .pd-axes div{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 12px;border-radius:11px;background:var(--raise);border:1px solid var(--line);font-size:12.5px}
+#v-tester .pd-axes b{font-weight:500}
+#v-tester .pd-nav{display:flex;align-items:center;gap:10px;padding:8px 12px;margin-bottom:10px;border-radius:12px;font-size:12.5px;position:relative;overflow:hidden;
+  background:color-mix(in oklab,var(--accent2) 9%,transparent);border:1px solid color-mix(in oklab,var(--accent2) 30%,transparent)}
+#v-tester .pd-nav>svg{color:var(--accent2);width:16px;height:16px}
+#v-tester .pd-nav>span{flex:1}
+#v-tester .pd-nb{position:absolute;left:0;right:0;bottom:0;height:3px}
+#v-tester .pd-nb u{display:block;height:100%;background:var(--accent);transform:scaleX(0);transform-origin:0 50%}
+#v-tester .pd-empty{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:28px;align-items:center;padding:6px 10px;overflow:auto}
+#v-tester .pd-eh{display:flex;flex-direction:column;align-items:flex-start;gap:8px;text-align:left}
+#v-tester .pd-eh>b{font:500 20px var(--display);letter-spacing:-.02em}
+#v-tester .pd-ic{flex:none;width:58px;height:58px;border-radius:50%;display:grid;place-items:center;color:var(--accent2);background:color-mix(in oklab,var(--accent2) 10%,transparent);border:1px solid color-mix(in oklab,var(--accent2) 28%,transparent);margin:0 0 4px;position:relative}
+#v-tester .pd-ic svg{width:28px;height:28px;stroke-width:1.4}
+#v-tester .pd-ic::after{content:"";position:absolute;inset:-9px;border-radius:50%;border:1.5px solid var(--accent);opacity:0;animation:pdPing calc(2.6s*var(--f) + .4s) cubic-bezier(.16,1,.3,1) infinite}
+html[data-int=min] #v-tester .pd-ic::after{animation:none}
+@keyframes pdPing{0%{transform:scale(.85);opacity:.7}100%{transform:scale(1.25);opacity:0}}
+#v-tester .pd-howto{display:flex;flex-direction:column;gap:10px;text-align:left}
+#v-tester .pd-howto>div{padding:10px 14px;border-radius:14px;background:var(--raise);border:1px solid var(--line)}
+#v-tester .pd-howto h5{display:flex;align-items:center;gap:8px;font:500 13px var(--text);margin-bottom:8px}
+#v-tester .pd-howto h5 svg{color:var(--accent2);width:16px;height:16px}
+#v-tester .pd-howto ol{padding-left:18px;color:var(--mute);font-size:12.5px;display:flex;flex-direction:column;gap:5px}
+#v-tester .pd-note{font-size:12px;margin-top:4px}
+#v-tester .pd-side{display:flex;flex-direction:column;gap:14px;min-height:0;overflow:auto}
+#v-tester .pd-side>*{flex-shrink:0}
+#v-tester .pd-list{display:flex;flex-direction:column;gap:6px}
+#v-tester .pd-c{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:9px 12px;border-radius:12px;background:var(--raise);border:1px solid var(--line);transition:border-color calc(160ms*var(--f)),background-color calc(160ms*var(--f))}
+#v-tester .pd-c b{font-weight:500;font-size:13px}
+#v-tester .pd-c span{font-size:11.5px}
+#v-tester .pd-c.on{border-color:color-mix(in oklab,var(--accent2) 50%,transparent);background:color-mix(in oklab,var(--accent2) 9%,transparent)}
+#v-tester .pd-ns{height:auto;padding:6px 10px;white-space:normal;align-items:flex-start;border-radius:10px;margin-top:4px}
+#v-tester .pd-ns svg{margin-top:2px}
+#v-tester .pd-stats{display:flex;flex-direction:column;gap:10px;margin-top:14px}
+#v-tester .pd-stats div{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:12.5px}
+#v-tester .pd-stats b{font-weight:500;font-size:14px}
+#v-tester .pd-reset{margin-top:14px;width:100%}
+#v-tester .pd-drift{display:flex;flex-direction:column;gap:12px}
+#v-tester .pd-dh{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px}
+#v-tester .pd-drift p{font-size:12px;margin-top:4px}
+#v-tester .pd-dzr{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:12.5px}
+#v-tester .pd-dzr input{flex:1;width:auto;min-width:0}
+#v-tester .pd-dzr b{min-width:34px;text-align:right;font-weight:500}
+#v-tester .pd-mot{display:grid;grid-template-columns:96px 1fr 40px;align-items:center;gap:10px;font-size:12.5px;margin-bottom:10px}
+#v-tester .pd-mot input{width:100%}
+#v-tester .pd-mot b{text-align:right;font-weight:500}
+#v-tester .pd-vb{display:flex;gap:8px;margin-top:4px}
+#v-tester .pd-vn{font-size:11.5px;margin-top:10px}
+#v-tester .pd-chk{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+#v-tester .pd-k{display:flex;align-items:center;gap:7px;padding:6px 9px;border-radius:10px;font-size:12px;color:var(--faint);background:var(--raise);border:1px solid var(--line);transition:color calc(200ms*var(--f)),background-color calc(200ms*var(--f)),border-color calc(200ms*var(--f))}
+#v-tester .pd-k svg{width:13px;height:13px;stroke-width:2.4;opacity:.25;flex:none}
+#v-tester .pd-k.done{color:var(--ink);background:color-mix(in oklab,var(--accent2) 14%,var(--raise));border-color:color-mix(in oklab,var(--accent2) 42%,transparent)}
+#v-tester .pd-k.done svg{opacity:1;color:var(--accent2)}
+@media (max-width:1100px){#v-tester .pd{grid-template-columns:minmax(0,1fr) 290px}}
+@media (max-width:900px){#v-tester .pd-empty{grid-template-columns:1fr}}

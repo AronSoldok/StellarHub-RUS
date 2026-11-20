@@ -63,8 +63,22 @@ def _make_writable(func, path, exc):
         raise exc[1] if isinstance(exc, tuple) else exc
 
 
-def _rmtree(path):
-    shutil.rmtree(path, onexc=_make_writable)
+def _rmtree(path, tries=6):
+    """Antivirus and the search indexer briefly open files that were just written, so Windows can answer "directory
+    not empty" or "in use" for a moment: try again a few times before giving up."""
+    import time
+    for i in range(tries):
+        try:
+            shutil.rmtree(path, onexc=_make_writable)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if i == tries - 1 or not os.path.exists(path):
+                if os.path.exists(path):
+                    raise
+                return
+            time.sleep(0.15 * (i + 1))
 
 
 def _move_on_reboot(src, dst):

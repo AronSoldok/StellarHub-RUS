@@ -12,13 +12,14 @@ import ctypes
 import json
 import os
 import re
+import shutil
 import subprocess
 import threading
 import time
 
 from ..i18n import tr
 from .jobs import Cancelled
-from .ps import ps_json, run, NO_WINDOW
+from .ps import ps_json, run, kill_tree, NO_WINDOW
 
 EXPORTS = {"list_drivers", "last_search", "problems", "history", "backups", "default_backup_dir", "pick_folder",
            "open_folder", "driver_versions", "restart", "cancel_restart", "is_admin", "store_packages"}
@@ -79,10 +80,10 @@ def _ps_job(job, script, timeout=900):
     while t.is_alive():
         t.join(0.3)
         if job.cancelled:
-            p.kill()
+            kill_tree(p)
             raise Cancelled()
         if time.monotonic() - t0 > timeout:
-            p.kill()
+            kill_tree(p)
             raise TimeoutError(tr("Windows Update did not respond in time."))
     return (out.get("o") or b"").decode("utf-8", "replace"), (out.get("e") or b"").decode("utf-8", "replace")
 
@@ -294,17 +295,27 @@ def install(job, ids, restore_point=True):
             elif st == "none":
                 job.progress(1, tr("Those drivers are no longer available"), step="search", phase="none", force=True)
     script = _INSTALL.replace("__IDS__", json.dumps(ids))
-    code, _ = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
-                   "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; " + script],
-                  on_line=on_line, job=job, timeout=3600)
+    try:
+        run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+             "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; " + script],
+            on_line=on_line, job=job, timeout=3600)
+    except Exception:
+        _prune_installed(results)
+        raise
+    # what was installed is no longer pending, even if the user cancelled (or it failed) halfway through
+    last = _prune_installed(results)
     job.check()
-    # what was installed is no longer pending
+    return {"results": list(results.values()), "reboot": reboot, "restorePoint": rp, "pending": len(last["updates"])}
+
+
+def _prune_installed(results):
+    """Takes the drivers already installed out of the saved last search and the inventory cache."""
     last = last_search()
     okids = {k for k, v in results.items() if v.get("ok")}
     last["updates"] = [u for u in last.get("updates", []) if u["id"] not in okids]
     _save_json(LAST, last)
     _cache["at"] = 0
-    return {"results": list(results.values()), "reboot": reboot, "restorePoint": rp, "pending": len(last["updates"])}
+    return last
 
 
 def restart(seconds=60):
@@ -372,7 +383,7 @@ def remove_device(job, instance_id):
     need = _need_admin()
     if need:
         return need
-    code, out = run(["pnputil", "/remove-device", str(instance_id)], encoding="cp1252", job=job, timeout=120)
+    code, out = run(["pnputil", "/remove-device", str(instance_id)], encoding="oem", job=job, timeout=120)
     return {"ok": code == 0, "msg": out.strip().splitlines()[-1] if out.strip() else ""}
 
 
@@ -422,6 +433,9 @@ def _legacy_backup_dir():
     return os.path.join(os.path.dirname(default_backup_dir()), "Copias de drivers")
 
 
+PARTIAL = ".partial"  # marker inside a backup folder while it is still being written
+
+
 def _dir_stats(path):
     n, size = 0, 0
     for root, _d, files in os.walk(path):
@@ -445,8 +459,8 @@ def backups():
             for d in os.listdir(b):
                 cands.add(os.path.join(b, d))
     for p in cands:
-        if not os.path.isdir(p):
-            continue
+        if not os.path.isdir(p) or os.path.exists(os.path.join(p, PARTIAL)):
+            continue  # a backup that was cancelled or interrupted is never listed as a real one
         n, size = _dir_stats(p)
         if n == 0:
             continue
@@ -486,6 +500,11 @@ def export(job, folder=None):
     base = folder or default_backup_dir()
     dest = os.path.join(base, time.strftime("%Y-%m-%d %H%M"))
     os.makedirs(dest, exist_ok=True)
+    marker = os.path.join(dest, PARTIAL)
+    try:
+        open(marker, "w").close()
+    except OSError:
+        pass
     total = max(1, _third_party_count())
     seen = set()
 
@@ -495,8 +514,16 @@ def export(job, folder=None):
                 seen.add(inf.lower())
                 job.progress(len(seen) / total, line.strip()[:160], n=len(seen), total=total)
     job.progress(0, tr("Preparing the backup"), n=0, total=total, force=True)
-    code, out = run(["pnputil", "/export-driver", "*", dest], on_line=on_line, encoding="cp1252", job=job, timeout=3600)
-    job.check()
+    try:
+        code, out = run(["pnputil", "/export-driver", "*", dest], on_line=on_line, encoding="oem", job=job, timeout=3600)
+        job.check()
+    except BaseException:
+        shutil.rmtree(dest, ignore_errors=True)  # cancelled or failed: no half backup left behind
+        raise
+    try:
+        os.remove(marker)
+    except OSError:
+        pass
     n, size = _dir_stats(dest)
     known = set(_load_json(KNOWN_BACKUPS, []))
     if os.path.dirname(dest) != default_backup_dir():
@@ -525,7 +552,7 @@ def restore_backup(job, path):
             done[0] += 1
             job.progress(min(1, done[0] / total), line.strip()[:160], n=done[0], total=total)
     code, out = run(["pnputil", "/add-driver", os.path.join(path, "*.inf"), "/subdirs", "/install"], on_line=on_line,
-                    encoding="cp1252", job=job, timeout=3600)
+                    encoding="oem", job=job, timeout=3600)
     _cache["at"] = 0
     return {"ok": code in (0, 3010), "reboot": code == 3010, "msg": out.strip().splitlines()[-1] if out.strip() else ""}
 
@@ -549,7 +576,7 @@ def delete_backup(job, path):
 # ================= stored versions and rollback =================
 def driver_versions(instance_id):
     """Driver packages in the driver store that fit this device (the installed one and older ones)."""
-    code, out = run(["pnputil", "/enum-devices", "/instanceid", str(instance_id), "/drivers"], encoding="cp1252", timeout=60)
+    code, out = run(["pnputil", "/enum-devices", "/instanceid", str(instance_id), "/drivers"], encoding="oem", timeout=60)
     if code != 0:
         return []
     res, cur = [], None
@@ -731,7 +758,7 @@ def delete_packages(job, infs):
     for k, inf in enumerate(todo):
         job.check()
         job.progress(k / max(1, len(todo)), tr("Removing {name} {version}", name=allowed[inf]["name"], version=allowed[inf]["version"]), n=k, total=len(todo))
-        code, out = run(["pnputil", "/delete-driver", inf], encoding="cp1252", job=job, timeout=300)
+        code, out = run(["pnputil", "/delete-driver", inf], encoding="oem", job=job, timeout=300)
         lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
         results.append({"inf": inf, "ok": code == 0, "msg": "" if code == 0 else (lines[-1] if lines else tr("pnputil exit code {code}", code=code))})
     job.progress(1, tr("Done"), n=len(todo), total=len(todo), force=True)

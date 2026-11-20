@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import sys
+import collections
 import threading
 import time
 
@@ -14,6 +15,35 @@ from .i18n import tr
 
 APP_ID = "StellarHub.App"
 BG = "#060A14"
+
+
+def _since_start():
+    """Seconds since this process was created (Windows' own creation time: includes the interpreter/exe start)."""
+    try:
+        from ctypes import wintypes as wt
+        k32 = ctypes.windll.kernel32
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        c, e, kt, ut = (wt.FILETIME() for _ in range(4))
+        k32.GetProcessTimes(ctypes.c_void_p(k32.GetCurrentProcess()), ctypes.byref(c), ctypes.byref(e), ctypes.byref(kt), ctypes.byref(ut))
+        created = ((c.dwHighDateTime << 32) | c.dwLowDateTime) / 1e7 - 11644473600
+        return max(0.0, time.time() - created)
+    except Exception:
+        return 0.0
+
+
+_PHASES_SEEN = set()
+
+
+def _phase(name, once=True):
+    """One log line per start phase, with the time since the process was created: [phase] 1.23 s name.
+    That is how a slow start is told apart from a slow piece of it."""
+    if once and name in _PHASES_SEEN:
+        return
+    _PHASES_SEEN.add(name)
+    try:
+        print(f"[phase] {_since_start():6.2f} s  {name}", flush=True)
+    except Exception:
+        pass
 
 
 def base_dir():
@@ -85,6 +115,53 @@ def _gui_python():
     return exe
 
 
+class _Sender:
+    """One thread per window that runs its evaluate_js calls IN ORDER from a bounded queue. evaluate_js waits for
+    WebView2's reply, which arrives on the window thread, so nobody on that thread may call it directly: they put the
+    code here instead. Under pressure the oldest "lossy" item (job progress) goes first, never an "end"."""
+    LIMIT = 600
+
+    def __init__(self, window):
+        self.window = window
+        self._q = collections.deque()
+        self._cv = threading.Condition()
+        self._stop = False
+        threading.Thread(target=self._run, daemon=True, name="js-sender").start()
+
+    def put(self, code, lossy=False):
+        with self._cv:
+            if self._stop:
+                return
+            if len(self._q) >= self.LIMIT:
+                for i, (_, l) in enumerate(self._q):
+                    if l:
+                        del self._q[i]
+                        break
+                else:
+                    self._q.popleft()
+            self._q.append((code, lossy))
+            self._cv.notify()
+
+    def stop(self):
+        with self._cv:
+            self._stop = True
+            self._q.clear()
+            self._cv.notify()
+
+    def _run(self):
+        while True:
+            with self._cv:
+                while not self._q and not self._stop:
+                    self._cv.wait()
+                if self._stop:
+                    return
+                code, _ = self._q.popleft()
+            try:
+                self.window.evaluate_js(code)
+            except Exception:
+                pass
+
+
 class Api:
     """Everything public in this class can be called from JS as window.pywebview.api.<name>."""
 
@@ -99,9 +176,12 @@ class Api:
         self._panel_hidden_at = 0.0
         self._sampler = None
         self._visible = True
+        self._minimized = False
         self._quitting = False
         self._told_tray = False
         self._lock = threading.Lock()
+        self._senders = {}          # window -> _Sender
+        self._widget_pos_timer = None
 
     def _attach(self, window):
         self._window = window
@@ -132,9 +212,16 @@ class Api:
         except Exception:
             pass
 
+    def phase(self, name):
+        """The UI reports its own steps (boot data loaded...) into the start timeline in the log."""
+        _phase("ui: " + str(name)[:40])
+        return True
+
     def ui_ready(self):
         """The interface finished its first frame: logs how long the start took, from the process launch."""
+        _phase("ui_ready")
         self._reveal()
+        _phase("revealed")
         try:
             import psutil
             secs = time.time() - psutil.Process().create_time()
@@ -162,6 +249,8 @@ class Api:
             _write_json(SETTINGS, data)
         if "language" in changes:
             self._language_changed(changes["language"])
+        if any(k in changes for k in self.LOOK_KEYS):
+            self._look_changed()
         if "measurePing" in changes and self._sampler:
             self._sampler.ping_on = changes["measurePing"] is not False
         return True
@@ -176,8 +265,19 @@ class Api:
                 self._tray.rebuild()
             except Exception:
                 pass
+        reload = f"try{{localStorage.setItem('sh.lang', {json.dumps(pref or 'auto')})}}catch(e){{}};location.reload()"
         if self._widget is not None:
-            self._js(f"try{{localStorage.setItem('sh.lang', {json.dumps(pref or 'auto')})}}catch(e){{}};location.reload()", self._widget)
+            self._js(reload, self._widget)
+        if self._panel is not None:   # built once: it reloads (hidden) in the new language
+            self._js(reload, self._panel)
+
+    LOOK_KEYS = ("theme", "accent", "accent2", "intensity", "animSpeed")
+
+    def _look_changed(self):
+        """Theme, accent or animation changed: the widget and the tray panel re-read the settings and re-apply them."""
+        for w in (self._widget, self._panel):
+            if w is not None:
+                self._js("window.SH && SH.lookChanged && SH.lookChanged()", w)
 
     # ---------- custom window frame ----------
     def win_drag(self):
@@ -229,22 +329,35 @@ class Api:
             params = f'"{os.path.join(base_dir(), "run.py")}" {params}'
         r = ctypes.windll.shell32.ShellExecuteW(None, "runas", _gui_python(), params, base_dir(), 1)
         if r > 32:
-            threading.Timer(0.05, self.quit).start()
+            self._handoff = True  # main() keeps the start screen up until the new copy shows its own
+            try:
+                from . import splash
+                splash.show()
+                splash.status(tr("Opening as administrator…"))
+            except Exception:
+                pass
+            threading.Timer(0.05, lambda: self.quit(True)).start()
             return True
+        print("[start] relaunch as administrator: Windows did not give permission", flush=True)
         return False
 
     # ---------- close, hide in the tray and quit ----------
-    def _js(self, code, target=None):
-        """Notifies the UI WITHOUT waiting. evaluate_js waits for WebView2's reply, which arrives on the window
-        thread: called from that thread (events, Invoke, resizing) it would block it forever."""
+    def _js(self, code, target=None, lossy=False):
+        """Notifies the UI WITHOUT waiting, and in order (one sender thread per window)."""
         w = target or self._window
+        if w is None:
+            return
+        with self._lock:
+            sd = self._senders.get(w)
+            if sd is None:
+                sd = self._senders[w] = _Sender(w)
+        sd.put(code, lossy)
 
-        def run():
-            try:
-                w.evaluate_js(code)
-            except Exception:
-                pass
-        threading.Thread(target=run, daemon=True).start()
+    def _sender_drop(self, w):
+        with self._lock:
+            sd = self._senders.pop(w, None)
+        if sd is not None:
+            sd.stop()
 
     def close_main(self):
         """The X: with "close to the tray" on it only hides the window; otherwise it quits the app."""
@@ -259,7 +372,37 @@ class Api:
         self.quit()
         return "quit"
 
-    def quit(self):
+    def _confirm_quit(self):
+        """The user asked to quit while engine jobs run (a driver or winget install, a backup, a restore point):
+        say so and let them back out. True = go ahead (the jobs are cancelled and given a moment to stop)."""
+        try:
+            from .engine import jobs
+            busy = jobs.running()
+        except Exception:
+            return True
+        if not busy:
+            return True
+        name = str(busy[0].get("text") or busy[0].get("name") or "")[:60]
+        more = len(busy) - 1
+        msg = tr("{x} is still running. Quit anyway?", x=name + (f" (+{more})" if more > 0 else ""))
+        try:
+            if not paths.dialogs_allowed():
+                raise RuntimeError("no dialogs")  # a test copy: answer yes  # a native box: it works the same from the window, the tray menu and the tray panel
+            if ctypes.windll.user32.MessageBoxW(None, msg, "StellarHub", 0x04 | 0x20 | 0x00040000) != 6:  # Yes/No, ?, topmost
+                return False
+        except Exception:
+            pass
+        for j in busy:
+            jobs.cancel(j.get("id"))
+        end = time.monotonic() + 1.5
+        while jobs.running() and time.monotonic() < end:
+            time.sleep(0.1)
+        return True
+
+    def quit(self, force=False):
+        """force: the update, the installer or the administrator relaunch asked for it: never ask."""
+        if not force and not self._quitting and not self._confirm_quit():
+            return False
         self._quitting = True
         if self._sampler:
             self._sampler.stop()
@@ -269,6 +412,12 @@ class Api:
         except Exception:
             pass
         self.widget_close()
+        pw = self._panel  # the tray panel is a window of its own: if it stays, the app does not end
+        if pw is not None:
+            try:
+                pw.destroy()
+            except Exception:
+                pass
         if self._tray is not None:
             self._tray.stop()
         delay = 0.05
@@ -335,18 +484,22 @@ class Api:
             return False
         w, h = max(160, min(1100, int(width or 400))), max(32, min(600, int(height or 190)))
         x = y = None
-        try:
-            import ctypes.wintypes as wt
-            wa = wt.RECT()
-            ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(wa), 0)  # SPI_GETWORKAREA (primary)
-            dpi = ctypes.windll.user32.GetDpiForSystem() / 96 if hasattr(ctypes.windll.user32, "GetDpiForSystem") else 1
-            x, y = int(wa.right / dpi) - w - 28, int(wa.top / dpi) + 72
-        except Exception:
+        saved = self._widget_saved_pos(w)
+        if saved:
+            x, y = saved
+        else:
             try:
-                scr = webview.screens[0]
-                x, y = scr.width - w - 28, 72
+                import ctypes.wintypes as wt
+                wa = wt.RECT()
+                ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(wa), 0)  # SPI_GETWORKAREA (primary)
+                dpi = _sys_scale()
+                x, y = int(wa.right / dpi) - w - 28, int(wa.top / dpi) + 72
             except Exception:
-                pass
+                try:
+                    scr = webview.screens[0]
+                    x, y = scr.width - w - 28, 72
+                except Exception:
+                    pass
         self._widget = webview.create_window(
             tr("StellarHub widget"), url=os.path.join(UI_DIR, "widget.html"), js_api=self,
             width=w, height=h, x=x, y=y, frameless=True, easy_drag=True, on_top=True, min_size=(120, 30),
@@ -354,7 +507,7 @@ class Api:
         )
         wref = self._widget
         self._widget.events.closed += lambda: self._widget_gone(wref)
-        self._widget.events.shown += lambda: (_round_corners(wref), self._widget_keep_on_top(wref))
+        self._widget.events.shown += lambda: (_round_corners(wref), self._widget_keep_on_top(wref), self._widget_track(wref))
         self.settings_set({"widgetWasOpen": True})
         self._tele_refresh()
         self._tray and self._tray.refresh()
@@ -390,10 +543,58 @@ class Api:
                 time.sleep(0.35)
         threading.Thread(target=keep, daemon=True, name="widget-top").start()
 
+    def _widget_saved_pos(self, w):
+        """Where the widget was left: (x, y) in logical px for create_window, or None when there is nothing saved or
+        that spot is no longer on any screen (monitor unplugged). The right edge is what is kept: the widget
+        resizes with its top-right corner fixed."""
+        pos = self.settings_get().get("widgetPos")
+        try:
+            right, top = float(pos["r"]), float(pos["y"])
+        except Exception:
+            return None
+        k = _sys_scale()
+        x, y = int(right - w), int(top)
+        if not _on_screen(int((x + w / 2) * k), int((y + 12) * k)) or not _on_screen(int((x + w - 24) * k), int((y + 12) * k)):
+            return None
+        return x, y
+
+    def _widget_track(self, w):
+        """Saves the position (debounced) every time the widget is moved or resized; also the size is in
+        widgetSize_<mode>, saved by widget_drag_resize."""
+        try:
+            from System import Action, EventHandler
+            form = w.native
+
+            def changed(sender, args):
+                t = self._widget_pos_timer
+                if t is not None:
+                    t.cancel()
+                t = self._widget_pos_timer = threading.Timer(0.6, lambda: self._widget_save_pos(w))
+                t.daemon = True
+                t.start()
+            form.BeginInvoke(Action(lambda: (form.add_LocationChanged(EventHandler(changed)), form.add_SizeChanged(EventHandler(changed)))))
+        except Exception as e:
+            print("widget track:", e)
+
+    def _widget_save_pos(self, w):
+        if self._widget is not w:
+            return
+        try:
+            form = w.native
+            loc, size = form.Location, form.Size
+            if loc.X <= -30000:
+                return
+            k = _sys_scale()
+            self.settings_set({"widgetPos": {"r": round((loc.X + size.Width) / k, 1), "y": round(loc.Y / k, 1)}})
+        except Exception as e:
+            print("widget pos:", e)
+
     def _widget_gone(self, w=None):
         if w is not None and self._widget is not w:
             return  # it was an earlier widget that has already been replaced
         self._widget = None
+        if w is not None:
+            self._sender_drop(w)
         self._tray and self._tray.refresh()
         self._js("SH.emit('widget', {on: false})")
 
@@ -401,9 +602,12 @@ class Api:
         """It closes a moment after replying: if the call comes from the widget itself, destroying it
         while pywebview is still returning the result to it can leave it hanging."""
         w = self._widget
+        if w is not None:
+            self._widget_save_pos(w)
         self._widget = None
         if w is not None:
             def kill():
+                self._sender_drop(w)
                 try:
                     w.destroy()
                 except Exception:
@@ -517,7 +721,7 @@ class Api:
             self._panel_setup(pw)
             self._panel_place_and_show()
         pw.events.loaded += loaded
-        pw.events.closed += lambda: setattr(self, "_panel", None) or setattr(self, "_panel_ready", False)
+        pw.events.closed += lambda: (setattr(self, "_panel", None), setattr(self, "_panel_ready", False), self._sender_drop(pw))
 
     def _panel_setup(self, pw):
         """Tool window (no taskbar button, no Alt+Tab), rounded corners, and hide as soon as it loses focus."""
@@ -544,7 +748,7 @@ class Api:
 
     def _panel_place_and_show(self):
         """Above the tray (or next to it when the taskbar is on a side), inside the work area of the monitor
-        under the cursor, in device pixels for that monitor's scaling."""
+        under the cursor, in device pixels at the process (system) scaling."""
         pw = self._panel
         if pw is None:
             return
@@ -561,24 +765,8 @@ class Api:
             mi = MONITORINFO()
             mi.cbSize = ctypes.sizeof(mi)
             u.GetMonitorInfoW(mon, ctypes.byref(mi))
-            dx, dy = ctypes.c_uint(96), ctypes.c_uint(96)
-            try:
-                ctypes.windll.shcore.GetDpiForMonitor(mon, 0, ctypes.byref(dx), ctypes.byref(dy))
-            except Exception:
-                pass
-            k = dx.value / 96
-            w, h = int(self.PANEL_W * k), int(self.PANEL_H * k)
-            wa, m = mi.rcWork, int(10 * k)
-            if pt.y >= wa.bottom:      # taskbar at the bottom (the usual)
-                x, y = pt.x - w // 2, wa.bottom - h - m
-            elif pt.y <= wa.top:       # at the top
-                x, y = pt.x - w // 2, wa.top + m
-            elif pt.x >= wa.right:     # on the right
-                x, y = wa.right - w - m, pt.y - h // 2
-            else:                      # on the left (or the panel was opened another way)
-                x, y = wa.left + m, pt.y - h // 2
-            x = max(wa.left + m, min(x, wa.right - w - m))
-            y = max(wa.top + m, min(y, wa.bottom - h - m))
+            x, y, w, h = _panel_geometry((pt.x, pt.y), _rect(mi.rcWork), _rect(mi.rcMonitor), _sys_scale(),
+                                         self.PANEL_W, self.PANEL_H)
             form = pw.native
             tray_hwnd = getattr(getattr(self._tray, "icon", None), "_hwnd", None)
 
@@ -648,6 +836,11 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def jobs_running(self):
+        """Tasks still running in Python: after the page reloads (language change) the UI asks for them."""
+        from .engine import jobs
+        return jobs.running()
+
     def job_cancel(self, job_id):
         from .engine import jobs
         return jobs.cancel(job_id)
@@ -663,8 +856,11 @@ class Api:
         except Exception:
             return None
 
-    def tele_rate(self, ms):
+    def tele_rate(self, ms, lite=False):
+        """The UI sends the refresh period it wants (already slower on battery) and whether it is in its
+        lighter mode, so the sampler also skips the slow extras (latency every 6 s, Wi-Fi every minute)."""
         if self._sampler:
+            self._sampler.lite = bool(lite)
             self._sampler.set_rate(float(ms) / 1000)
         return True
 
@@ -672,7 +868,7 @@ class Api:
         """Each telemetry sample goes to the main window (if visible) and to the widget (if open).
         Called from the sampler thread, never from the window thread."""
         payload = json.dumps(data)
-        if self._visible:
+        if self._visible and not self._minimized:
             try:
                 self._window.evaluate_js(f"window.SH && SH.tele.push && SH.tele.push({payload})")
             except Exception:
@@ -690,12 +886,50 @@ class Api:
             except Exception:
                 pass
 
+    def _wv_visible(self, window, on):
+        """Tells WebView2 whether the window can be seen. A WebView2 whose window is hidden in the tray keeps
+        painting and running requestAnimationFrame at full speed (measured: 11% GPU and over 100% CPU for a window
+        nobody sees) unless its controller gets IsVisible = False. The WinForms control keeps that controller in a
+        private field, and does not update it when the form is hidden."""
+        if window is None:
+            return
+        try:
+            from System import Action
+            from System.Reflection import BindingFlags
+            form = window.native
+
+            def apply():
+                try:
+                    wv = form.webview
+                    f = wv.GetType().GetField("_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance)
+                    c = f.GetValue(wv) if f is not None else None
+                    if c is not None and c.IsVisible != on:
+                        c.IsVisible = on
+                except Exception as e:
+                    print("webview visibility:", e)
+            form.BeginInvoke(Action(apply))
+        except Exception:
+            pass
+
+    def _win_state(self, *_):
+        """Minimized, restored or maximized (window thread): a minimized window is not 'visible' for the UI work."""
+        try:
+            from System.Windows.Forms import FormWindowState
+            self._minimized = self._window.native.WindowState == FormWindowState.Minimized
+        except Exception:
+            return
+        self._tele_refresh()
+
     def _tele_refresh(self):
+        shown = self._visible and not self._minimized
+        self._wv_visible(self._window, shown)
+        self._wv_visible(self._panel, self._panel_shown)
+        self._wv_visible(self._widget, True)   # (re)assert: a widget WebView2 only ever renders while it exists
         if self._sampler:
             stats = self.settings_get().get("widgetStats") or []
             gpu_in_widget = any(s.startswith("gpu") or s == "vram" for s in stats)
-            self._sampler.set_active(self._visible or self._widget is not None or self._panel_shown,
-                                     gpu=self._visible or self._panel_shown or (self._widget is not None and gpu_in_widget))
+            self._sampler.set_active(shown or self._widget is not None or self._panel_shown,
+                                     gpu=shown or self._panel_shown or (self._widget is not None and gpu_in_widget))
 
     # ---------- permanent administrator mode ----------
     def set_always_admin(self, on):
@@ -850,6 +1084,55 @@ def refresh_ui_cache():
         pass
 
 
+def _sys_scale():
+    """The scale this process renders at. pywebview makes it system-DPI aware: every window, on any monitor, is laid
+    out at the primary monitor's scale (Windows stretches it on the others), so that is the one to size with."""
+    try:
+        return ctypes.windll.user32.GetDpiForSystem() / 96
+    except Exception:
+        return 1.0
+
+
+def _rect(r):
+    return (r.left, r.top, r.right, r.bottom)
+
+
+def _panel_geometry(pt, work, mon, k, pw, ph):
+    """Where the tray panel goes, in device pixels: (x, y, w, h). pt = the click, work/mon = (l, t, r, b) of the work
+    area and of the monitor under it. This process is system-DPI aware: the page renders at the system scale k on
+    every monitor and the coordinates Windows gives (cursor, monitors) are in that same space, so the panel is sized
+    with k, not with the monitor's own scale. The taskbar is the edge where the work area is smaller than the monitor
+    (any edge, any monitor); with an auto-hidden taskbar the edge closest to the click is used."""
+    w, h, m = int(pw * k), int(ph * k), int(10 * k)
+    wl, wt_, wr, wb = work
+    ml, mt, mr, mb = mon
+    gaps = {"bottom": mb - wb, "top": wt_ - mt, "right": mr - wr, "left": wl - ml}
+    edge = max(gaps, key=gaps.get)
+    if gaps[edge] <= 0:
+        near = {"bottom": mb - pt[1], "top": pt[1] - mt, "right": mr - pt[0], "left": pt[0] - ml}
+        edge = min(near, key=near.get)
+    if edge == "bottom":
+        x, y = pt[0] - w // 2, wb - h - m
+    elif edge == "top":
+        x, y = pt[0] - w // 2, wt_ + m
+    elif edge == "right":
+        x, y = wr - w - m, pt[1] - h // 2
+    else:
+        x, y = wl + m, pt[1] - h // 2
+    x = max(wl + m, min(x, wr - w - m))
+    y = max(wt_ + m, min(y, wb - h - m))
+    return x, y, w, h
+
+
+def _on_screen(x, y):
+    """Is this point (device pixels) on a connected monitor?"""
+    try:
+        import ctypes.wintypes as wt
+        return bool(ctypes.windll.user32.MonitorFromPoint(wt.POINT(int(x), int(y)), 0))
+    except Exception:
+        return True
+
+
 def _round_corners(window):
     """Windows 11 rounded corners for frameless windows, with a subtle edge drawn by Windows
     (the widget UI draws no border of its own, so there is no double frame at the corners)."""
@@ -918,13 +1201,59 @@ def style_titlebar(window):
         pass
 
 
+class _LogOnce:
+    """Wraps the log file: the same line repeated back to back (a failing sampler, a UI error every second) is
+    written once and then counted, so the log stays readable and small."""
+
+    def __init__(self, fh):
+        self.fh, self.last, self.n, self.buf = fh, None, 0, ""
+
+    def write(self, text):
+        self.buf += text
+        while "\n" in self.buf:
+            line, self.buf = self.buf.split("\n", 1)
+            key = line.strip()
+            if key and key == self.last:
+                self.n += 1
+                continue
+            self._flush_repeats()
+            self.last = key or None
+            self.fh.write(line + "\n")
+        return len(text)
+
+    def _flush_repeats(self):
+        if self.n:
+            self.fh.write(f"  (the same line {self.n} more time{'s' if self.n > 1 else ''})\n")
+            self.n = 0
+
+    def flush(self):
+        try:
+            self._flush_repeats()
+            self.fh.flush()
+        except (OSError, ValueError):
+            pass
+
+    def isatty(self):
+        return False
+
+
+def _rotate_log(path, limit=2 * 1024 * 1024):
+    """Above 2 MB the log becomes stellarhub.log.1 (one older copy is kept) and a new one starts."""
+    try:
+        if os.path.getsize(path) > limit:
+            os.replace(path, path + ".1")
+    except OSError:
+        pass
+
+
 def _log_to_file():
-    """With pythonw there is no console: errors go to %APPDATA%\\StellarHub\\stellarhub.log."""
+    """With pythonw there is no console: errors go to the stellarhub.log in the data folder."""
     if sys.stderr is None or "pythonw" in os.path.basename(sys.executable).lower():
         try:
             os.makedirs(DATA_DIR, exist_ok=True)
-            fh = open(os.path.join(DATA_DIR, "stellarhub.log"), "a", encoding="utf-8", buffering=1)
-            sys.stdout = sys.stderr = fh
+            path = os.path.join(DATA_DIR, "stellarhub.log")
+            _rotate_log(path)
+            sys.stdout = sys.stderr = _LogOnce(open(path, "a", encoding="utf-8", buffering=1))
         except OSError:
             pass
 
@@ -974,19 +1303,26 @@ def _delete_admin_task():
         subprocess.run(["schtasks", "/delete", "/tn", name, "/f"], capture_output=True, creationflags=0x08000000)
 
 
-def _elevate_on_start():
-    """If the user chose permanent administrator mode and this copy is not elevated: relaunch elevated
-    (first through the scheduled task, with no prompt; if it does not exist, with the UAC prompt). Returns True if we must exit."""
+def _wants_elevation():
+    """Permanent administrator mode is on and this copy is not elevated (nor a test copy, nor already the elevated one)."""
     if is_admin() or ISOLATED or "--no-elevate" in sys.argv or "--from-task" in sys.argv:
         return False
-    hidden = "--tray" in sys.argv
     try:
         with open(SETTINGS, encoding="utf-8") as fh:
-            if not json.load(fh).get("alwaysAdmin"):
-                return False
+            return bool(json.load(fh).get("alwaysAdmin"))
     except (OSError, ValueError):
         return False
+
+
+def _elevate_on_start():
+    """If the user chose permanent administrator mode and this copy is not elevated: relaunch elevated
+    (first through the scheduled task, with no prompt; if it does not exist, with the UAC prompt). Returns True if we must exit.
+    The start screen is already up ("Opening as administrator…") and stays until the elevated copy takes over."""
+    if not _wants_elevation():
+        return False
+    hidden = "--tray" in sys.argv
     import subprocess
+    _phase("elevating")
     if hidden:  # the task can't take arguments: the elevated copy reads this note and stays in the tray
         try:
             os.makedirs(os.path.dirname(_START_HIDDEN), exist_ok=True)
@@ -994,8 +1330,9 @@ def _elevate_on_start():
         except OSError:
             pass
     if not PORTABLE and _task_opens_this_copy(ADMIN_TASK) and subprocess.run(
-            ["schtasks", "/run", "/tn", ADMIN_TASK], capture_output=True, creationflags=0x08000000).returncode == 0:
+            ["schtasks", "/run", "/tn", ADMIN_TASK], capture_output=True, creationflags=0x08000000, timeout=15).returncode == 0:
         if _elevated_copy_started():
+            _phase("elevated copy started (task)")
             return True
         # Windows kept the task waiting (a task made by an older version doesn't start on battery) or it failed:
         # drop it and ask Windows the usual way; the elevated copy then makes the task again, the right way
@@ -1005,7 +1342,10 @@ def _elevate_on_start():
     # the elevated copy then points the task at itself
     exe, args = _launch_cmd("--no-elevate" + (" --tray" if hidden else ""))
     if ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, args, base_dir(), 1) > 32:
+        _elevated_copy_started(10)  # keep the start screen up until the elevated copy has its own
+        _phase("elevated copy started (UAC)")
         return True
+    print("[start] administrator mode was declined: opening in normal mode", flush=True)
     return False  # the user said no: stay in normal mode
 
 
@@ -1017,7 +1357,7 @@ def _elevated_copy_started(seconds=8):
     k32.OpenMutexW.restype = ctypes.c_void_p
     end = time.monotonic() + seconds
     while time.monotonic() < end:
-        h = k32.OpenMutexW(0x00100000, False, r"Local\StellarHub.SingleInstance")  # SYNCHRONIZE
+        h = k32.OpenMutexW(0x00100000, False, _mutex_name())  # SYNCHRONIZE
         err = k32.GetLastError()
         if h:
             k32.CloseHandle(ctypes.c_void_p(h))
@@ -1129,6 +1469,32 @@ def _wait_other_copies_gone(seconds=12):
 
 
 SETUP_KEYS = {"language": str, "startWithWindows": bool, "alwaysAdmin": bool, "widgetWasOpen": bool, "autoUpdate": bool}
+
+
+def _warm():
+    """--warm (the installer, once the files are in place, with its progress window up): loads every DLL of the
+    program once. The first time Windows runs a new file, Defender / SmartScreen scan it, and that can take 15-20 s
+    on the first start of a fresh install or update, with nothing on screen. Paying it here, while the installer
+    shows its progress, makes the first real start as fast as any other."""
+    t0 = time.monotonic()
+    k32 = ctypes.windll.kernel32
+    k32.LoadLibraryExW.restype = ctypes.c_void_p
+    n = 0
+    for root, _dirs, files in os.walk(base_dir()):
+        for f in files:
+            if f.lower().endswith((".dll", ".pyd")):
+                path = os.path.join(root, f)
+                h = k32.LoadLibraryExW(path, None, 0x1)  # DONT_RESOLVE_DLL_REFERENCES: mapped (and scanned), not run
+                if h:
+                    k32.FreeLibrary(ctypes.c_void_p(h))
+                n += 1
+            elif f.lower().endswith(".exe"):
+                try:
+                    with open(os.path.join(root, f), "rb") as fh:
+                        fh.read(1 << 20)
+                except OSError:
+                    pass
+    print(f"[warm] {n} libraries in {time.monotonic() - t0:.1f} s", flush=True)
 
 
 def _cli_setup(pairs):
@@ -1257,13 +1623,13 @@ def _install_staged_update(splash_on):
             if say:
                 say("")
             return False
-        if splash_on:
-            from . import splash
-            splash.close()
-            time.sleep(.35)
+        # the start screen stays up ("Installing the update…") until this process exits: the updater puts up the
+        # same card right away, and then the installer's own progress window
         return True
     except Exception as e:
         print("staged update:", e)
+        if splash_on:
+            _fatal(tr("The update could not be installed. StellarHub will open again as it was."))
         return False
 
 
@@ -1278,8 +1644,12 @@ def _load_settings_strict():
         except FileNotFoundError:
             return {}
         except ValueError:
+            # keep each damaged copy (settings.json.bad-<time>, the last 3), so a second corruption can't erase the first
             try:
-                shutil.copy2(SETTINGS, SETTINGS + ".bad")
+                shutil.copy2(SETTINGS, SETTINGS + ".bad-" + time.strftime("%Y%m%d-%H%M%S"))
+                import glob
+                for old in sorted(glob.glob(glob.escape(SETTINGS) + ".bad-*"))[:-3]:
+                    os.remove(old)
             except OSError:
                 pass
             return {}
@@ -1352,16 +1722,21 @@ def _session_id():
 # single instance: a second copy asks the first one to show itself, then exits. One port per Windows session, so
 # a second user signed in on the same PC (fast user switching, Remote Desktop) gets their own StellarHub
 SINGLE_PORT = 47830 + _session_id() % 70
+# STELLARHUB_LOCK_ID: isolated test copies that must see each other (the single-instance tests) share this id
+LOCK_ID = os.environ.get("STELLARHUB_LOCK_ID") or str(os.getpid())
 if ISOLATED:
-    SINGLE_PORT = 47900 + os.getpid() % 90
+    SINGLE_PORT = 47900 + sum(map(ord, LOCK_ID)) % 90
 
 
-def _already_running():
+def _ask_running_to_show(wait=1.5):
+    """Asks the running copy to show its window. True only if it ANSWERED that it did (it replies "ok" once the
+    window is up), so a copy that is quitting, hung or deaf is told apart from one that obeyed."""
     import socket
     try:
-        with socket.create_connection(("127.0.0.1", SINGLE_PORT), timeout=0.6) as s:
+        with socket.create_connection(("127.0.0.1", SINGLE_PORT), timeout=min(wait, 0.5)) as s:
+            s.settimeout(wait)
             s.sendall(b"show")
-        return True
+            return s.recv(4).startswith(b"ok")
     except OSError:
         return False
 
@@ -1380,19 +1755,26 @@ def _listen_single(api):
             try:
                 conn, _ = srv.accept()
                 with conn:
+                    conn.settimeout(2)  # a client that connects and says nothing must not block "show" or "quit"
                     msg = conn.recv(16)
                     if msg.startswith(b"show"):
-                        api.show_main()
+                        t = threading.Thread(target=api.show_main, daemon=True, name="single-show")
+                        t.start()
+                        t.join(1.2)  # a window thread that is stuck must not keep the other copy waiting
+                        if not t.is_alive():
+                            conn.sendall(b"ok")
                     elif msg.startswith(b"quit"):  # the installer closes the running copy before updating it
                         conn.sendall(b"bye")
-                        threading.Timer(0.05, api.quit).start()
+                        threading.Timer(0.05, lambda: api.quit(True)).start()
             except OSError:
-                break
+                time.sleep(0.05)  # one bad client never ends the listener
+                continue
     threading.Thread(target=loop, daemon=True, name="single").start()
 
 
-def _wait_for_previous():
-    """--wait-pid N: when relaunching as administrator, wait for the previous copy to close."""
+def _wait_for_previous(seconds=10):
+    """--wait-pid N: when relaunching as administrator, wait (bounded) for the previous copy to close. If it is
+    still there after that, it is stuck quitting: it is ended, so the handoff can never deadlock."""
     if "--wait-pid" not in sys.argv:
         return
     try:
@@ -1400,25 +1782,53 @@ def _wait_for_previous():
     except (IndexError, ValueError):
         return
     k32 = ctypes.windll.kernel32
-    h = k32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
-    if h:
-        k32.WaitForSingleObject(h, 15000)
-        k32.CloseHandle(h)
+    k32.OpenProcess.restype = ctypes.c_void_p
+    h = k32.OpenProcess(0x00100000 | 0x0001, False, pid)  # SYNCHRONIZE | PROCESS_TERMINATE
+    if not h:
+        return  # already gone (or not ours to wait for)
+    try:
+        if k32.WaitForSingleObject(ctypes.c_void_p(h), int(seconds * 1000)) == 0:
+            _phase("previous copy exited")
+            return
+        print(f"[start] the previous copy (pid {pid}) is still there after {seconds} s: ending it", flush=True)
+        k32.TerminateProcess(ctypes.c_void_p(h), 0)
+        k32.WaitForSingleObject(ctypes.c_void_p(h), 3000)
+        _phase("previous copy ended")
+    finally:
+        k32.CloseHandle(ctypes.c_void_p(h))
 
 
 _MUTEX = None  # held for the whole life of the process
+_MUTEX_NAME = r"Local\StellarHub.SingleInstance"
 
 
-def _claim_single_instance():
-    """One StellarHub per Windows session, normal or elevated: a named mutex. True if this copy got it.
-    A copy started by the scheduled task or relaunched as administrator gives the previous one a few seconds
-    to exit first."""
+def _mutex_name():
+    return _MUTEX_NAME + (f".test{LOCK_ID}" if ISOLATED else "")
+
+
+def _mutex_exists():
+    """True if another copy holds the single-instance mutex (an elevated copy's mutex can't be opened from a
+    normal one: access denied also means it exists)."""
+    k32 = ctypes.windll.kernel32
+    k32.OpenMutexW.restype = ctypes.c_void_p
+    h = k32.OpenMutexW(0x00100000, False, _mutex_name())  # SYNCHRONIZE
+    err = k32.GetLastError()
+    if h:
+        k32.CloseHandle(ctypes.c_void_p(h))
+        return True
+    return err == 5
+
+
+def _claim_single_instance(wait=0.0):
+    """One StellarHub per Windows session, normal or elevated: a named mutex. True if this copy got it. With
+    `wait` (a copy started by the scheduled task or relaunched as administrator) it keeps trying that many
+    seconds, to give the previous copy time to exit."""
     global _MUTEX
     k32 = ctypes.windll.kernel32
     k32.CreateMutexW.restype = ctypes.c_void_p
-    tries = 50 if ("--from-task" in sys.argv or "--wait-pid" in sys.argv) else 1
-    for i in range(tries):
-        h = k32.CreateMutexW(None, False, (r"Local\StellarHub.SingleInstance" + (f".test{os.getpid()}" if ISOLATED else "")))
+    end = time.monotonic() + wait
+    while True:
+        h = k32.CreateMutexW(None, False, _mutex_name())
         err = k32.GetLastError()
         if h and err != 183:  # 183 = ERROR_ALREADY_EXISTS
             _MUTEX = h
@@ -1426,17 +1836,124 @@ def _claim_single_instance():
         if h:
             k32.CloseHandle(ctypes.c_void_p(h))
         # no handle with error 5 = it exists but belongs to an elevated copy: also "already running"
-        if i + 1 < tries:
-            time.sleep(0.1)
-    return False
+        if time.monotonic() >= end:
+            return False
+        time.sleep(0.1)
 
 
-def _show_running_copy():
-    """Brings the copy that is already running to the front (it may still be starting: retry a moment)."""
-    for _ in range(30):
-        if _already_running():
-            return
+def _other_copies():
+    """The other StellarHub processes that could be holding the lock (not workers, updaters or installer helpers)."""
+    try:
+        import psutil
+    except ImportError:
+        return []
+    me, out = os.getpid(), []
+    mine = os.path.normcase(sys.executable)
+    run_py = os.path.normcase(os.path.join(base_dir(), "run.py"))
+    for pr in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
+        try:
+            if pr.info["pid"] == me:
+                continue
+            cmd = [os.path.normcase(a) for a in (pr.info["cmdline"] or [])]
+            if any(a.startswith(("--multiprocessing", "--self-update", "--finish-update", "--quit", "--setup",
+                                 "--admin-task", "--update-task", "--uninstall-cleanup")) for a in cmd):
+                continue
+            if FROZEN:
+                same = (pr.info["name"] or "").lower() == os.path.basename(mine) and \
+                    (pr.info["exe"] is None or os.path.normcase(pr.info["exe"]) == mine)
+            else:
+                same = run_py in cmd
+            if same:
+                out.append(pr)
+        except (psutil.Error, OSError):
+            continue
+    return out
+
+
+def _fatal(msg):
+    """A last resort that never stays silent: the log and a Windows message box."""
+    print("[start]", msg, flush=True)
+    try:
+        from . import splash
+        splash.close()
+    except Exception:
+        pass
+    if not paths.dialogs_allowed():
+        return
+    try:
+        ctypes.windll.user32.MessageBoxW(None, msg, "StellarHub", 0x10 | 0x00040000)  # error icon, topmost
+    except Exception:
+        pass
+
+
+def _take_over_running_copy():
+    """The single-instance lock is taken. Returns True when this copy got it (and must start), False when it has
+    nothing more to do: the running copy showed itself, or the user was told why not.
+      1. ask it to show itself (it answers "ok" once its window is up);
+      2. no answer: it may be starting, or quitting: keep asking and trying for the lock for a while, with the
+         start screen saying "Opening StellarHub…";
+      3. still nothing: it is stuck: end it (only an old one: a copy that is just starting is given time) and
+         take over;
+      4. cannot end it (an administrator copy, from a normal one): say so in a message, never exit silently."""
+    _phase("another copy holds the lock")
+    try:
+        from . import splash
+        if splash.showing():
+            splash.status(tr("Opening StellarHub…"))
+    except Exception:
+        pass
+    if _ask_running_to_show(1.5):
+        _phase("running copy showed itself")
+        return False
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 12:
+        if _claim_single_instance(0):
+            _phase("lock released by the other copy")
+            return True
+        if _ask_running_to_show(0.6):
+            _phase("running copy showed itself (late)")
+            return False
         time.sleep(0.2)
+    others = _other_copies()
+    # a copy that is still starting (or installing a staged update) has its start screen up: give it its time
+    # (the update can take a couple of minutes); one with no start screen and no answer is stuck
+    try:
+        from . import splash
+        end = time.monotonic() + 130
+        while time.monotonic() < end and splash.other_showing():
+            if _claim_single_instance(0):
+                return True
+            if _ask_running_to_show(0.6):
+                return False
+            time.sleep(0.3)
+    except Exception:
+        pass
+    print(f"[start] the running copy does not answer ({[p.pid for p in others]}): ending it", flush=True)
+    try:
+        from . import splash
+        if splash.showing():
+            splash.status(tr("StellarHub did not answer. Closing it…"))
+    except Exception:
+        pass
+    for pr in others:
+        try:
+            for ch in pr.children(recursive=True):
+                try:
+                    ch.kill()
+                except Exception:
+                    pass
+            pr.kill()
+        except Exception as e:
+            print("[start] could not end", pr.pid, e, flush=True)
+    end = time.monotonic() + 5
+    while time.monotonic() < end:
+        if _claim_single_instance(0):
+            _phase("took over after ending the stuck copy")
+            return True
+        time.sleep(0.2)
+    _fatal(tr("StellarHub is already running but is not answering, and it could not be closed (it may be running "
+              "as administrator). End it from Task Manager and open StellarHub again."))
+    return False
 
 
 def main():
@@ -1446,6 +1963,9 @@ def main():
         return _quit_running()
     if "--uninstall-cleanup" in sys.argv:
         return _uninstall_cleanup()
+    if "--warm" in sys.argv:
+        _log_to_file()
+        return _warm()
     if "--setup" in sys.argv:
         return _cli_setup(sys.argv[sys.argv.index("--setup") + 1:])
     if "--admin-task" in sys.argv:
@@ -1464,33 +1984,42 @@ def main():
         on = sys.argv[sys.argv.index("--update-task") + 1:][:1] == ["on"]
         return selfupdate.ensure_task() if on else selfupdate.delete_task()
     _log_to_file()
+    _phase("main")
     if FROZEN:
         _migrate_store_python_data()
     from . import i18n
     i18n.set_language(os.environ.get("STELLARHUB_LANG") or _read_settings().get("language"))
-    _wait_for_previous()
-    if _already_running():
-        return
-    if _elevate_on_start():
-        return
-    if not _claim_single_instance():
-        _show_running_copy()
-        return
     start_hidden = "--tray" in sys.argv
     if "--from-task" in sys.argv and os.path.exists(_START_HIDDEN):
         start_hidden = True
+    handoff = "--wait-pid" in sys.argv or "--from-task" in sys.argv  # a copy the previous one is handing over to
+    splash_on = not start_hidden and os.environ.get("STELLARHUB_NO_SPLASH") != "1"
+    if splash_on:  # the start screen comes first, before anything that can wait (StellarHub opens with it, like FL Studio)
+        try:
+            from . import splash
+            splash.show()
+            if handoff or _wants_elevation():
+                splash.status(tr("Opening as administrator…"))
+        except Exception as e:
+            print("splash:", e)
+            splash_on = False
+    _phase("splash shown" if splash_on else "no splash")
+    _wait_for_previous()
+    claimed = False
+    if not handoff and _mutex_exists():  # already running (even elevated): show it, or take over if it is stuck
+        if not _take_over_running_copy():
+            return
+        claimed = True
+    if not claimed:
+        if _elevate_on_start():
+            return
+        if not _claim_single_instance(10 if handoff else 0) and not _take_over_running_copy():
+            return
+    _phase("single-instance claimed")
     try:
         os.remove(_START_HIDDEN)
     except OSError:
         pass
-    splash_on = not start_hidden and os.environ.get("STELLARHUB_NO_SPLASH") != "1"
-    if splash_on:  # the start screen, while everything below loads (StellarHub opens with it, like FL Studio)
-        try:
-            from . import splash
-            splash.show()
-        except Exception as e:
-            print("splash:", e)
-            splash_on = False
     if not start_hidden and _install_staged_update(splash_on):
         return  # the installer (or the new portable copy) takes over and opens StellarHub again, updated
     if not ISOLATED:  # a test copy never takes over the user's "open with Windows" entry or administrator task
@@ -1539,6 +2068,8 @@ def main():
     # with the start screen up, the window is placed and maximized when it is revealed (Api._reveal)
     window.events.shown += lambda: (None if api._reveal_pending else api._chrome.setup(start_max=True), _grant_media(window))
     window.events.closing += api._on_closing
+    for ev in (window.events.minimized, window.events.restored, window.events.maximized):
+        ev += api._win_state
     _let_windows_shut_down(api)
 
     from .tray import Tray
@@ -1553,7 +2084,8 @@ def main():
 
     # engine: long-task notifications and real telemetry
     from .engine import jobs
-    jobs.set_emitter(lambda ev, data: api._js(f"window.SH && SH.emit({json.dumps(ev)}, {json.dumps(data)})"))
+    jobs.set_emitter(lambda ev, data: api._js(f"window.SH && SH.emit({json.dumps(ev)}, {json.dumps(data)})",
+                                              lossy=isinstance(data, dict) and data.get("kind") == "progress"))
     try:
         from .engine.telemetry import Sampler
         api._sampler = Sampler(api._tele_push)
@@ -1573,11 +2105,21 @@ def main():
     except Exception as e:
         print("autopilot:", e)
 
+    window.events.loaded += lambda: _phase("page loaded")
     refresh_ui_cache()
+    _phase("window created, starting webview")
     webview.start(gui="edgechromium", debug="--debug" in sys.argv, http_server=True, http_port=_ui_port(),
                   private_mode=False, storage_path=WEB_DIR)
     if api._tray is not None:
         api._tray.stop()
+    if getattr(api, "_handoff", False):  # no gap on screen: wait (bounded) until the new copy's start screen is up
+        try:
+            from . import splash
+            end = time.monotonic() + 5
+            while time.monotonic() < end and not splash.other_showing():
+                time.sleep(0.05)
+        except Exception:
+            pass
     # The window is gone and settings are saved as they change. Background scans still running in thread pools
     # (winget, PowerShell...) would keep the process alive until they finish, so end it now.
     try:

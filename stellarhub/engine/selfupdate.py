@@ -12,8 +12,10 @@ How an update runs (the same steps for every kind of install):
      <install folder>\\update\\state.json, which the app reads to show the progress.
   4. The app leaves a note for after the update (update-pending.json), starts a small helper that will reopen it,
      and closes. The updater waits for it to be gone, starts the installer silently (/VERYSILENT) and exits so no
-     file of the install folder is in use. The installer writes "done" (or "failed") to state.json when it ends;
-     the helper sees it and opens StellarHub again, which then says it was updated.
+     file of the install folder is in use. The installer shows its own small progress window (/SILENT: no
+     questions, nothing to click; the start screen covers the moment before it appears), writes "done" (or
+     "failed") to state.json when it ends, and opens StellarHub again itself (see StellarHub.iss); the helper is
+     only a safety net for an installer that never got to run. StellarHub then says it was updated.
 
 The portable version (stellarhub/paths.py) takes the release's StellarHub-Portable-X.zip instead: the updater
 unpacks it into <program>/update/new and says "ready"; the app closes and starts the NEW copy with --finish-update,
@@ -84,6 +86,75 @@ def _cancel_flag():
 
 def _pending_path():
     return os.path.join(_data_dir(), "update-pending.json")
+
+
+def _alert(msg):
+    """A last resort that never stays silent: the log and a Windows message box."""
+    print("[update]", msg, flush=True)
+    from .. import paths
+    if not paths.dialogs_allowed():
+        return
+    try:
+        ctypes.windll.user32.MessageBoxW(None, msg, "StellarHub", 0x10 | 0x00040000)  # error icon, topmost
+    except Exception:
+        pass
+
+
+def _splash(text):
+    """The start screen in this process (the updater and the portable --finish-update have no window of their own),
+    so the screen is never empty between the old app closing and the new one opening. None if it can't be shown."""
+    if os.environ.get("STELLARHUB_NO_SPLASH") == "1":
+        return None
+    try:
+        from .. import i18n, splash
+        try:
+            with open(os.path.join(_data_dir(), "settings.json"), encoding="utf-8") as fh:
+                i18n.set_language((json.load(fh) or {}).get("language"))
+        except (OSError, ValueError, AttributeError):
+            pass
+        splash.show()
+        splash.status(tr(text))
+        return splash
+    except Exception as e:
+        print("[update] splash:", e, flush=True)
+        return None
+
+
+def _windows_of(pids):
+    """True if any visible top-level window belongs to one of these processes."""
+    pids, found = set(pids), []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p)
+    def cb(h, _):
+        pid = ctypes.c_ulong(0)
+        ctypes.windll.user32.GetWindowThreadProcessId(ctypes.c_void_p(h), ctypes.byref(pid))
+        if pid.value in pids and ctypes.windll.user32.IsWindowVisible(ctypes.c_void_p(h)):
+            found.append(h)
+        return 1
+    try:
+        ctypes.windll.user32.EnumWindows(cb, 0)
+    except Exception:
+        return False
+    return bool(found)
+
+
+def _installer_window_up(proc, seconds=10):
+    """Waits (bounded) until the installer (or the copy of itself it runs from a temp folder) shows its progress
+    window, so the start screen can give way to it without a blank moment."""
+    end = time.monotonic() + seconds
+    try:
+        import psutil
+        me = psutil.Process(proc.pid)
+    except Exception:
+        return
+    while time.monotonic() < end and proc.poll() is None:
+        try:
+            pids = [proc.pid] + [c.pid for c in me.children(recursive=True)]
+        except Exception:
+            pids = [proc.pid]
+        if _windows_of(pids):
+            return
+        time.sleep(0.1)
 
 
 def _under(path, root):
@@ -334,7 +405,8 @@ def spawn_reopener(timeout_min=20):
           "do { Start-Sleep -Milliseconds 700; $s = $null;"
           " try { $s = Get-Content -Raw -LiteralPath $f -ErrorAction Stop | ConvertFrom-Json } catch {} }"
           " until (($s -and ($s.st -eq 'done' -or $s.st -eq 'failed' -or $s.st -eq 'cancelled')) -or ((Get-Date) -gt $end));"
-          " Start-Sleep -Milliseconds 600; Start-Process -FilePath $exe")
+          " Start-Sleep -Milliseconds 400;"
+          " if (-not (Get-Process -Name StellarHub -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe })) { Start-Process -FilePath $exe }")
     # a hidden console of its own (not DETACHED_PROCESS: PowerShell started without a console by a windowed app
     # dies right away), no inherited handles, and out of any job the app may be in, so it outlives the app
     args = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", ps]
@@ -470,6 +542,8 @@ def run_updater():
     except OSError:
         return 3
     global _LOCK
+    closed = False  # True once the app was told to close: from then on a failure must be shown
+    sp = None
     if _LOCK is None:  # (already held when this process runs the updater again: the tests do)
         _LOCK = _one_updater(d)
     if _LOCK is None:
@@ -524,6 +598,8 @@ def run_updater():
             _write_state(st="ready", ver=ver, new=new)
             return 0  # the app closes and the new copy finishes the update itself (see finish and finish_update)
         _write_state(st="ready", ver=ver)
+        closed = True
+        sp = _splash("Installing the update…")  # the app is fading out: the screen is never empty from here on
         end = time.monotonic() + 600  # the app closes as soon as it sees "ready"
         while _app_running():
             if _cancelled() or time.monotonic() > end:
@@ -532,14 +608,24 @@ def run_updater():
                 return 0
             time.sleep(.3)
         _write_state(st="installing", ver=ver)
-        args = [exe, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCANCEL",
+        # /SILENT, not /VERYSILENT: Setup shows its small progress window (no pages, no questions) for the 20-60 s
+        # it takes, instead of nothing at all
+        args = [exe, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCANCEL",
                 "/LOG=" + os.path.join(d, "setup.log"), "/SELFUPDATE=" + state_path()]
         args.append("/ALLUSERS" if per_machine() else "/CURRENTUSER")
         args.append("/DIR=" + install_dir())
-        subprocess.Popen(args, creationflags=DETACHED, close_fds=True, cwd=d)
-        return 0  # and exit right away: the installer replaces this very program
+        proc = subprocess.Popen(args, creationflags=DETACHED, close_fds=True, cwd=d)
+        if sp is not None:
+            _installer_window_up(proc)  # then this process exits: the installer replaces this very program
+        return 0
     except Exception as e:
         _write_state(st="failed", why="error", error=str(e)[:200])
+        if closed:
+            _alert(tr("The update could not be installed. StellarHub will open again as it was."))
+            try:
+                subprocess.Popen([sys.executable], cwd=install_dir(), close_fds=True)
+            except OSError:
+                pass
         return 5
 
 
@@ -620,11 +706,15 @@ def apply_staged_at_start(say=None, timeout=120):
             if say and st.get("st") == "download" and st.get("total"):
                 say(tr("Updating to {v}… {p}%", v=ver, p=int(100 * (st.get("got") or 0) / st["total"])))
             if st.get("st") == "ready":
+                if say:
+                    say(tr("Installing the update…"))
                 finish(st.get("ver") or ver, "home")
                 return True
             if st.get("st") in ("failed", "uptodate", "cancelled"):
+                print(f"[update] the staged update was not applied at start: {st.get('st')} {st.get('why') or ''}", flush=True)
                 return False
         time.sleep(.3)
+    print("[update] the staged update took too long at start: cancelled, opening as it was", flush=True)
     cancel()
     return False
 
@@ -677,7 +767,9 @@ def finish_update(dst, pid):
         except OSError:
             pass
     if not os.path.isfile(exe) or not os.path.realpath(src).startswith(dst + os.sep):
+        _alert(tr("The update could not be applied: this copy is not where it should be."))
         return 2  # only ever from <dst>\update\...
+    sp = _splash("Installing the update…")  # up while the old copy closes and the files are put in place
     try:
         import psutil
         psutil.Process(int(pid)).wait(timeout=60)
@@ -719,6 +811,7 @@ def finish_update(dst, pid):
             except OSError:
                 pass
         report(st="failed", why="apply", error=str(e)[:200])
+        _alert(tr("The update could not be installed. StellarHub will open again as it was."))
         subprocess.Popen([exe], cwd=dst, close_fds=True)
         return 5
     for _target, old in moved:
@@ -731,6 +824,10 @@ def finish_update(dst, pid):
                 pass
     report(st="done", ver=VERSION)
     subprocess.Popen([exe], cwd=dst, close_fds=True)
+    if sp is not None:  # no gap: hold this start screen until the updated app has put up its own
+        end = time.monotonic() + 8
+        while time.monotonic() < end and not sp.other_showing():
+            time.sleep(0.1)
     return 0
 
 

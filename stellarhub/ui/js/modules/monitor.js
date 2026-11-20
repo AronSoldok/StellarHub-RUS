@@ -703,7 +703,7 @@ function renderProcs(reorder, force) {
   const keep = new Set(list.map(p => p.id));
   rowEls.forEach((el, id) => { if (!keep.has(id) && el.parentNode) el.remove(); });
   list.forEach(p => { let el = rowEls.get(p.id); if (!el) { el = makeRow(p); rowEls.set(p.id, el); } fillRow(el, p); procBody.appendChild(el); });
-  if (state.settings.intensity === 'min') return;
+  if (SH.effInt() === 'min') return;
   list.forEach((p, i) => {
     const el = rowEls.get(p.id), f = first.get(p.id);
     /* keep + fill without 'forwards': row animations do not cancel each other (cancelling midway left opacity stuck at 0) */
@@ -811,7 +811,7 @@ SH.tele.on(v => {
 tickers.add((dt, t) => {
   if (!visible()) return;
   const tc = T[curTab]; if (!tc) return;
-  const minI = state.settings.intensity === 'min';
+  const minI = SH.effInt() === 'min';
   const frac = paused ? frozenFrac : minI ? 0 : Math.min(1, (t - lastPush) / 700);
   for (const b of tc.nums) { b.s.step(dt); const s = b.nil ? '—' : b.fmt(Math.max(0, b.s.v)); if (s !== b.last) { b.el.textContent = s; b.last = s; } }
   for (const b of tc.bars) { b.s.step(dt); b.el.style.transform = b.axis === 'y' ? `scaleY(${b.s.v.toFixed(4)})` : `scaleX(${b.s.v.toFixed(4)})`; }

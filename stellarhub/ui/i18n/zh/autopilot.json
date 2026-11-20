@@ -729,5 +729,8 @@
   "Full network reset (no longer runs on its own)": "完全重置网络（不再自动运行）",
   "flush the DNS cache (a full network reset is never run by a routine)": "清除 DNS 缓存（例程永远不会完全重置网络）",
   "A full network reset is never run by a routine. Run it from Super Optimizer.": "例程永远不会完全重置网络。请在“超级优化”中手动运行。",
-  "The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.": "DNS 缓存已清除，但例程永远不会完全重置网络。请在“超级优化”中手动运行。"
+  "The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.": "DNS 缓存已清除，但例程永远不会完全重置网络。请在“超级优化”中手动运行。",
+  "autopilot|Asks you": "会询问你",
+  "Skipped: needs administrator mode": "已跳过：需要管理员模式",
+  "autopilot|Administrator": "管理员"
 }

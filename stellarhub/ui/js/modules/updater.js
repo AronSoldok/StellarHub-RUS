@@ -122,7 +122,7 @@ function scanApps(force) {
   if (pA && (!force || S.appsScanning)) return pA;      // a search already running is reused, never doubled
   setAppsScanning(true);
   pA = (REAL ? SH.job(ID, 'scan_apps', [], { onProgress: m => scanProgress('apps', m) }) : wait(900).then(MOCK.apps))
-    .then(r => { r = r || { items: [] }; S.noWinget = r.winget === false; S.errs.apps = null; S.apps = S.noWinget ? { items: [] } : r; S.scanned = true; setAppsScanning(false); setItems(); onData('apps'); return r; })
+    .then(r => { r = r || { items: [] }; S.noWinget = r.winget === false; S.errs.apps = r.failed ? 'offline' : null; S.apps = S.noWinget ? { items: [] } : r; S.scanned = true; setAppsScanning(false); setItems(); onData('apps'); return r; })
     .catch(e => { S.errs.apps = e.message; S.scanned = true; setAppsScanning(false); S.apps = S.apps || { items: [] }; setItems(); onData('apps'); });
   return pA;
 }
@@ -272,7 +272,7 @@ function updQRow(q, light) {
   if (q.st === 'done') { const m = $('.u-okmark', row); if (m) anim(m, [{ strokeDashoffset: 24 }, { strokeDashoffset: 0 }], { d: 420 }); }
   renderQueueHead();
 }
-function scrollQ(q) { const row = $(`#v-${ID} .u-qrow[data-q="${Q.list.indexOf(q)}"]`); if (row && row.offsetParent) row.scrollIntoView({ block: 'nearest', behavior: state.settings.intensity === 'min' ? 'auto' : 'smooth' }); }
+function scrollQ(q) { const row = $(`#v-${ID} .u-qrow[data-q="${Q.list.indexOf(q)}"]`); if (row && row.offsetParent) row.scrollIntoView({ block: 'nearest', behavior: SH.effInt() === 'min' ? 'auto' : 'smooth' }); }
 function qProgress() {
   const live = Q.list.filter(q => q.st !== 'cancel'); if (!live.length) return 0;
   const w = q => q.mb || q.it.mb || 50; const tot = live.reduce((a, q) => a + w(q), 0) || 1;
@@ -485,7 +485,7 @@ function collapseRow(row) {
   anim(row, [{ opacity: 1, transform: 'none', height: h + 'px' }, { opacity: 0, transform: 'translate3d(24px,0,0)', height: h + 'px', offset: .55 }, { opacity: 0, transform: 'translate3d(24px,0,0)', height: '0px', paddingTop: '0px', paddingBottom: '0px' }], { d: 420, e: EASE.out })
     .finished.then(() => row.remove()).catch(() => row.remove());
 }
-const ERR_MSG = { apps: error => t("Couldn't ask winget: {error}", { error }), win: error => t("Couldn't search Windows Update: {error}", { error }) };
+const ERR_MSG = { apps: error => error === 'offline' ? t("Couldn't check for updates (no internet?)") : t("Couldn't ask winget: {error}", { error }), win: error => t("Couldn't search Windows Update: {error}", { error }) };
 const errBox = k => k === 'apps' && S.noWinget && !S.errs.apps ? `<div class="u-err">${ic('alert')}<span>${t("winget isn't available on this PC, so StellarHub can't check your apps for updates. Install or update App Installer from the Microsoft Store, then check again.")}</span><button class="btn sm sec" data-url="https://apps.microsoft.com/detail/9nblggh4nns1">${ic('external')}${t('Open the Store')}</button><button class="btn sm sec" data-rescan="apps">${ic('refresh')}${t('Retry')}</button></div>` : S.errs[k] ? `<div class="u-err">${ic('alert')}<span>${ERR_MSG[k](esc(S.errs[k]))}</span><button class="btn sm sec" data-rescan="${k}">${ic('refresh')}${t('Retry')}</button></div>` : '';
 
 /* ---------------- Overview ---------------- */

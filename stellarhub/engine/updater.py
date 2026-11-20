@@ -19,7 +19,7 @@ import winreg
 from concurrent.futures import ThreadPoolExecutor
 
 from ..i18n import tr
-from .ps import ps_json, NO_WINDOW
+from .ps import ps_json, NO_WINDOW, kill_tree, run as _run, ToolError
 
 EXPORTS = {"status", "notes", "pin", "unpin", "set_pause", "store_auto", "set_store_auto", "icon_for"}
 JOBS = {"scan_apps", "scan_windows", "scan_dev", "install"}
@@ -90,7 +90,7 @@ def _stream(cmd, on_text=None, job=None, timeout=None, env=None, on_tick=None):
     while True:
         now = time.monotonic()
         if (job is not None and job.cancelled) or (timeout and now - t0 > timeout):
-            p.kill()
+            kill_tree(p)  # the installer winget started is a child too: it must not outlive "Cancelled"
             break
         try:
             ch = q.get(timeout=.25)
@@ -133,13 +133,37 @@ def consent_prompt_open():
         return False
 
 
-def _winget(args, timeout=180):
+def _winget_ex(args, timeout=180, job=None):
+    """(exit code, text) of a winget command, or None when winget is not installed. Cancelling the job kills winget
+    and what it started. Raises ToolError (short, translated) when it takes longer than `timeout`."""
     exe = _exe("winget")
     if not exe:
         return None
-    r = subprocess.run([exe, *args, "--accept-source-agreements", "--disable-interactivity"],
-                       capture_output=True, timeout=timeout, creationflags=NO_WINDOW)
-    return r.stdout.decode("utf-8", "replace")
+    try:
+        return _run([exe, *args, "--accept-source-agreements", "--disable-interactivity"], timeout=timeout, job=job,
+                    raise_on_timeout=True)
+    except subprocess.TimeoutExpired:
+        raise ToolError(tr("Windows took too long to answer. Try again."))
+
+
+def _winget(args, timeout=180, job=None):
+    r = _winget_ex(args, timeout, job)
+    return None if r is None else r[1]
+
+
+# winget exit codes that mean "nothing to show", not "it failed": no match, nothing to upgrade, not applicable
+_WINGET_EMPTY_OK = {0, 0x8A150014, 0x8A15002B, 0x8A15004F}
+_WINGET_FAIL_TEXT = re.compile(r"0x8a15\w{4}|0x8007\w{4}|0x8000\w{4}|0x800c\w{4}|failed when|failed to|unable to|"
+                               r"internet|connection|conexi[oó]n", re.I)
+
+
+def check_failed(code, text, rows):
+    """True when a winget table read did not really work (no internet, a broken source): no rows, no table at all,
+    and either an error exit code or error text. A table with no rows still means winget answered."""
+    if rows or re.search(r"^-{10,}\s*$", text or "", re.M):
+        return False
+    c = (code if code is not None else 0) & 0xFFFFFFFF
+    return c not in _WINGET_EMPTY_OK or bool(_WINGET_FAIL_TEXT.search(text or ""))
 
 
 _PAD = "⁠"  # word joiner: placeholder for the second display cell of a wide character
@@ -331,12 +355,17 @@ def scan_apps(job):
         return {"winget": False}
     job.progress(.05, tr("Asking winget what's new…"))
     pool = ThreadPoolExecutor(4)
-    f_up = pool.submit(lambda: parse_table(_winget(["upgrade", "--include-unknown"], timeout=240) or ""))
-    f_ls = pool.submit(lambda: parse_table(_winget(["list"], timeout=240) or ""))
+    f_up = pool.submit(_winget_ex, ["upgrade", "--include-unknown"], 240, job)
+    f_ls = pool.submit(lambda: parse_table(_winget(["list"], timeout=240, job=job) or ""))
     f_pin = pool.submit(_pins)
     f_prog = pool.submit(_programs)
-    ups = f_up.result()
+    code_up, text_up = f_up.result() or (0, "")
     job.check()
+    ups = parse_table(text_up)
+    if check_failed(code_up, text_up, ups):
+        # no internet or a broken source: never show it as "everything is up to date"
+        return {"winget": True, "failed": "offline", "items": [], "unknown": [], "storeOk": [], "runtimesOk": [],
+                "devOk": [], "pins": {}, "ts": time.time()}
     job.progress(.45, tr("{n} updates found. Reading what's installed…", n=len(ups)))
     installed = f_ls.result()
     pins = f_pin.result()

@@ -911,5 +911,10 @@
  "Nothing was fixed: {error}": "未修复任何内容：{error}",
  "{n} fixed; {failed} couldn't be fixed. First one: {error}": "已修复 {n} 项；{failed} 项无法修复。第一项：{error}",
  "This resets static IP and DNS settings. StellarHub saves them first and tells you where.": "这会重置静态 IP 和 DNS 设置。StellarHub 会先保存它们，并告诉你保存位置。",
- "Click again: static IP and DNS settings will be reset": "再次点击：静态 IP 和 DNS 设置将被重置"
+ "Click again: static IP and DNS settings will be reset": "再次点击：静态 IP 和 DNS 设置将被重置",
+ "Partly applied": "部分应用",
+ "Measured when applied": "应用后测量",
+ "Check what it is": "请确认来源",
+ "Administrator": "管理员",
+ "Open": "已打开"
 }

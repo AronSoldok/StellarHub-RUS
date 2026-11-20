@@ -9,7 +9,7 @@ const { $, $$, anim, EASE, Spring, tickers, ic, esc, fmt1, fmtInt, state } = SH;
 const t = SH.t;
 const LOCALE = (SH.i18n && SH.i18n.locale) || 'en-US';
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const isMin = () => state.settings.intensity === 'min';
+const isMin = () => SH.effInt() === 'min';
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const nil = x => x == null || Number.isNaN(x);
 let REAL = false; SH.apiReady.then(a => { REAL = !!a; });
@@ -1053,7 +1053,7 @@ async function runStress() {
     if (useC) {
       job = REAL ? SH.job('benchmark', 'stress_cpu', [total], { onProgress: m => { const d = m.data || {}; if (m.kind !== 'progress') return; errors = d.errors || 0; const x = $('[data-err]', el); if (x) { x.textContent = fmtInt(errors); x.className = errors ? 'bad' : ''; } if (!nil(d.rate)) D.perf.push(d.rate); } })
         : (() => { let s = false; const p = (async () => { const t1 = performance.now(); while (!s && performance.now() - t1 < total * 1000) { D.perf.push(13400 - (performance.now() - t1) / 1000 * 2); await wait(500); } return { elapsed: (performance.now() - t1) / 1000, errors: 0 }; })(); p.cancel = () => { s = true; }; return p; })();
-      tasks.push(job.catch(e => { if (!e.cancelled) throw e; return null; }));
+      tasks.push(job.then(r => { if (r && r.reason && r.reason.part === 'cpu') stop(r.reason); return r; }).catch(e => { if (!e.cancelled) throw e; return null; }));
     }
     if (useG) {
       glCv = document.createElement('canvas'); glCv.className = 'bm-gl'; $('[data-glh]', el).appendChild(glCv);

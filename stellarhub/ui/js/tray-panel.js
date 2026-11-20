@@ -52,7 +52,7 @@ async function refreshState() {
 
 /* called by Python every time the panel is shown */
 SH.panelShown = () => {
-  refreshState(); paint(SH.tele.v);
+  SH.lookChanged(); refreshState(); paint(SH.tele.v);
   const p = $('#p');
   anim(p, [{ opacity: 0, transform: 'translate3d(0,14px,0) scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 380, e: EASE.spring });
   $$('.vt, .mods button, .qa button, .ft > *', p).forEach((el, i) =>
@@ -87,13 +87,20 @@ document.addEventListener('click', e => {
 });
 addEventListener('keydown', e => { if (e.key === 'Escape') SH.call('panel_hide'); });
 
-(async () => {
-  await SH.loadSettings();
+/* the panel is built once: it re-reads the settings and re-applies the look whenever it is told (Python calls
+   SH.lookChanged on a theme/accent/animation change) and every time it is shown. A language change reloads it. */
+function applyLook() {
   const st = state.settings, root = document.documentElement;
   if (st.accent) root.style.setProperty('--accent', st.accent);
   if (st.accent2) root.style.setProperty('--accent2', st.accent2);
   if (st.theme) root.dataset.theme = st.theme;
-  if (st.intensity) root.style.setProperty('--f', SH.FACT[st.intensity]);
+  if (st.intensity) root.style.setProperty('--f', SH.FACT[st.intensity] / (st.animSpeed || 1));
+}
+SH.lookChanged = async () => { await SH.loadSettings(); applyLook(); };
+
+(async () => {
+  await SH.loadSettings();
+  applyLook();
   build(); paint(SH.tele.v); refreshState();
 })();
 })();

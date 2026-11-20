@@ -59,5 +59,15 @@
   "Disk {size}": "{size} 磁盘",
   "Updating to {v}…": "正在更新到 {v}…",
   "Updating to {v}… {p}%": "正在更新到 {v}… {p}%",
-  "{v} GHz": "{v} GHz"
+  "{v} GHz": "{v} GHz",
+  "Windows took too long to answer. Try again.": "Windows 响应超时。请重试。",
+  "{tool} isn't available on this PC.": "此电脑上没有 {tool}。",
+  "Opening StellarHub…": "正在打开 StellarHub…",
+  "Opening as administrator…": "正在以管理员身份打开…",
+  "StellarHub did not answer. Closing it…": "StellarHub 没有响应，正在关闭它…",
+  "StellarHub is already running but is not answering, and it could not be closed (it may be running as administrator). End it from Task Manager and open StellarHub again.": "StellarHub 已在运行但没有响应，也无法将其关闭（它可能以管理员身份运行）。请在任务管理器中结束它，然后重新打开 StellarHub。",
+  "{x} is still running. Quit anyway?": "{x} 仍在运行。仍要退出吗？",
+  "Installing the update…": "正在安装更新…",
+  "The update could not be installed. StellarHub will open again as it was.": "无法安装更新。StellarHub 将按原样重新打开。",
+  "The update could not be applied: this copy is not where it should be.": "无法应用更新：此副本不在应有的位置。"
 }
