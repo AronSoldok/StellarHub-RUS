@@ -43,7 +43,7 @@ const SPOTS = {
   display: { screen: true, az: .05, el: .2, dist: 8.2 },
   sys: { screen: true, az: -.3, el: .24, dist: 8.2 },
 };
-const POSE = { az: .58, el: .36, dist: 8.7, target: [0, .5, -.15] };
+let POSE = { az: .58, el: .36, dist: 8.7, target: [0, .5, -.15] };
 
 /* ---------- view state ---------- */
 let root = null, mounted = false, token = 0, ctxRef = null, timers = [], unsubLook = null, unsubTele = null, ro = null;
@@ -54,6 +54,8 @@ const S = {
   offAz: new Spring(0, 26, 7), offEl: new Spring(0, 26, 7), lid: new Spring(0, 34, 7.5), shell: new Spring(1, 70, 15),
   screen: new Spring(0, 40, 12), zoom: new Spring(1, 70, 14), kb: new Spring(0, 30, 10),
 };
+const POSE_L = POSE, isTower = () => !!(ctxRef && ctxRef.PC && ctxRef.PC.type === 'desktop');
+let SP = SPOTS;
 let focused = null, leaveT = 0, dragging = false, lastX = 0, lastY = 0, lastT = 0, idleT = 0, vAz = 0, vEl = 0;
 const halo = {}; // id -> {mats, k, s, part}
 
@@ -201,7 +203,7 @@ function lidCanvas() {
   g.fillStyle = 'rgba(214,224,240,.5)'; g.font = FONT(600, 20, 'Unbounded'); g.textAlign = 'center'; g.letterSpacing = '8px'; g.fillText('TUF GAMING', cx + 4, cy + s * 1.9);
   return c;
 }
-function pcbCanvas(w, d) {
+function pcbCanvas(w, d, label = 'FX608JPR  MAIN BOARD  REV 1.0') {
   const W = 1024, H = Math.round(W * d / w), c = mk(W, H), g = c.getContext('2d');
   g.fillStyle = '#0b1f24'; g.fillRect(0, 0, W, H);
   let s = 5; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
@@ -213,7 +215,7 @@ function pcbCanvas(w, d) {
   g.fillStyle = 'rgba(205,170,100,.35)'; for (let i = 0; i < 500; i++) { g.beginPath(); g.arc(rnd() * W, rnd() * H, 1.3, 0, TAU); g.fill(); }
   for (let i = 0; i < 170; i++) { g.fillStyle = rnd() < .5 ? 'rgba(20,24,30,.9)' : 'rgba(160,140,110,.55)'; g.fillRect(rnd() * W, rnd() * H, 6 + rnd() * 10, 4 + rnd() * 5); }
   g.fillStyle = 'rgba(230,236,245,.32)'; g.font = FONT(500, 13); for (let i = 0; i < 26; i++) g.fillText(['C', 'R', 'U', 'L', 'Q'][i % 5] + Math.floor(rnd() * 900 + 100), rnd() * W, rnd() * H);
-  g.font = FONT(600, 18); g.fillStyle = 'rgba(230,236,245,.4)'; g.fillText('FX608JPR  MAIN BOARD  REV 1.0', 24, H - 20);
+  g.font = FONT(600, 18); g.fillStyle = 'rgba(230,236,245,.4)'; g.fillText(label, 24, H - 20);
   return c;
 }
 function labelCanvas(w, d, base, draw) { const W = 512, H = Math.max(16, Math.round(W * d / w)), c = mk(W, H), g = c.getContext('2d'); g.fillStyle = base; g.fillRect(0, 0, W, H); draw(g, W, H); return c; }
@@ -311,7 +313,8 @@ function drawScreen() {
   row(268, SH.t('GPU power'), pw == null ? '—' : Math.round(pw) + ' W');
   row(310, SH.t('Download'), dn == null ? '—' : SH.fmt1(dn) + ' Mb/s');
   row(352, SH.t('Upload'), up == null ? '—' : SH.fmt1(up) + ' Mb/s');
-  row(394, SH.t('Battery'), bt == null ? '—' : Math.round(bt) + ' %' + (v.charging ? '  ⚡' : ''));
+  if (ctxRef && ctxRef.PC && ctxRef.PC.type === 'desktop') row(394, SH.t('Uptime'), fin(v.uptime) == null ? '—' : SH.fmtUptime(v.uptime)); // a desktop has no battery
+  else row(394, SH.t('Battery'), bt == null ? '—' : Math.round(bt) + ' %' + (v.charging ? '  ⚡' : ''));
   // history chart
   const hist = (SH.tele.hist || {}), X0 = 70, Y0 = 566, CW = 884, CH = 74;
   g.textAlign = 'left'; g.fillStyle = 'rgba(232,237,246,.6)'; g.font = FONT(500, 15); g.fillText(SH.t('Last 2 minutes'), 70, 484);
@@ -598,6 +601,7 @@ function refreshLook() {
   R.kbUni.uA.value.copy(a); R.kbUni.uB.value.copy(b); R.kbMats.forEach(m => { m.uniforms.uA.value.copy(a); m.uniforms.uB.value.copy(b); });
   Object.values(halo).forEach(h => h.mats.forEach(m => m.color.copy(a)));
   R.scr.bg = screenBG(R.scr.c.width, R.scr.c.height); R.scr.a = css('--accent'); R.scr.b = css('--accent2'); R.scrNew = true;
+  if (R.onLook) R.onLook(a, b);
   setEnv(R); dirty = true;
 }
 
@@ -606,11 +610,12 @@ let dirty = true;
 function focus(id) {
   clearTimeout(leaveT); if (focused === id) return; focused = id;
   $$('.m3-row', root).forEach(r => r.classList.toggle('on', r.dataset.comp === id));
-  const sp = id && SPOTS[id];
+  const sp = id && SP[id];
   Object.entries(halo).forEach(([k, h]) => { h.s.t = k === id ? 1 : 0; });
   if (!sp) { S.az.t = POSE.az; S.el.t = POSE.el; S.dist.t = POSE.dist; [S.tx.t, S.ty.t, S.tz.t] = POSE.target; S.shell.t = 1; return; }
   S.az.t = sp.az; S.el.t = sp.el; S.dist.t = sp.dist; S.offAz.t = 0; S.offEl.t = 0;
   if (sp.screen && R) { const w = new THREE.Vector3(); R.screen.getWorldPosition(w); S.tx.t = w.x; S.ty.t = w.y; S.tz.t = w.z; }
+  else if (sp.tg) [S.tx.t, S.ty.t, S.tz.t] = sp.tg;
   else { S.tx.t = sp.mirror ? 0 : sp.pos[0]; S.ty.t = .1; S.tz.t = sp.pos[2]; }
   S.shell.t = sp.inside ? 0 : 1;
 }
@@ -692,7 +697,7 @@ function frame(dt, t) {
   const glassy = op < .995;
   R.shellMats.forEach(m => { m.opacity = m === R.mat.keys || m === R.mat.pad ? op * op : op; if (m.transparent !== glassy) { m.transparent = glassy; m.needsUpdate = true; } m.depthWrite = !glassy; });
   R.ledMats.forEach(m => { m.opacity = op; });
-  R.inner.visible = xr > .015;
+  R.inner.visible = R.tower || xr > .015;
   R.outline.visible = xr > .015; R.outline.material.opacity = .55 * xr;
   R.kbUni.uOn.value = clamp(S.kb.v, 0, 1.2) * op * op * op; R.kbPlanes.forEach(p => { p.visible = R.kbUni.uOn.value > .004; });
   R.keysMesh.visible = op > .16;
@@ -715,15 +720,181 @@ function frame(dt, t) {
       const v = SH.tele.v || {};
       const rpmOf = (f, load) => f != null ? f : 1500 + fin(load, 0) * 32;
       const rpm = [rpmOf(fin(v.fanCpu), v.cpu), rpmOf(fin(v.fanGpu) != null ? fin(v.fanGpu) * 55 : null, v.gpu)];
-      R.fans.forEach((f, i) => { const r = clamp(rpm[i], 0, 7000); f.rotation.y += (i ? -1 : 1) * dtr * r / 6000 * 1.5 * TAU; R.fanBlur[i].material.opacity = .32 * clamp(r / 5000, 0, 1) * xr; });
+      R.fans.forEach((f, i) => { const r = clamp(rpm[i % 2], 0, 7000); f.rotation.y += (i ? -1 : 1) * dtr * r / 6000 * 1.5 * TAU; R.fanBlur[i].material.opacity = .32 * clamp(r / 5000, 0, 1) * xr; });
     }
   }
   R.renderer.render(R.scene, c);
 }
 
+/* ---------- desktop tower: a custom ATX tower (glass side and front, vertical GPU, AIO cooler) and its monitor ----------
+   Same interface as build(): it returns an R with the fields frame() and the rest of the view use (the laptop-only ones are
+   inert dummies). Scene units: 1 = 10 cm. x: side to side (the glass is the -x side), y: up, z: front (+) to rear (-). */
+const TW = { w: 2.1, h: 4.5, d: 4.4 };
+const POSE_T = { az: -.78, el: .17, dist: 16.2, target: [2.3, 2.3, .4] };
+const SPOTS_T = {
+  cpu: { tg: [.7, 2.7, -1], az: -1.05, el: .12, dist: 6.6 },
+  gpu: { tg: [-.55, 1.5, -.5], az: -.95, el: .1, dist: 7.6 },
+  ram: { tg: [.8, 2.7, -.05], az: -1.0, el: .1, dist: 6.4 },
+  ssd: { tg: [.9, 2.2, -1.05], az: -1.0, el: .15, dist: 5.8 },
+  wifi: { tg: [.9, 3.1, -1.75], az: -1.05, el: .2, dist: 6.2 },
+  audio: { tg: [.9, 2.55, -1.75], az: -1.05, el: .15, dist: 6.2 },
+  display: { screen: true, az: -.18, el: .1, dist: 9.4 },
+  sys: { screen: true, az: -.35, el: .16, dist: 9.4 },
+};
+function fanBlades(nB = 9, r0 = .13, r1 = .56, sweep = .9) {
+  const P = [], seg = 5;
+  for (let i = 0; i < nB; i++) {
+    const a0 = i / nB * TAU, pts = [];
+    for (let k = 0; k <= seg; k++) { const f = k / seg, r = r0 + (r1 - r0) * f, a = a0 + f * sweep, wd = .5 * Math.sin(Math.PI * (.1 + .8 * f)) + .05; pts.push([r * Math.cos(a), r * Math.sin(a), r * Math.cos(a + wd), r * Math.sin(a + wd)]); }
+    for (let k = 0; k < seg; k++) { const p = pts[k], q = pts[k + 1]; P.push(p[0], 0, p[1], p[2], 0, p[3], q[0], 0, q[1], q[0], 0, q[1], p[2], 0, p[3], q[2], 0, q[3]); }
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.computeVertexNormals(); return g;
+}
+function buildTower(canvas) {
+  R0tex = [];
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !softGL, alpha: true, powerPreference: state.lite ? 'low-power' : 'high-performance' });
+  const dpr = Math.min(softGL || state.lite ? 1 : 1.5, devicePixelRatio || 1);
+  renderer.setPixelRatio(dpr); renderer.setClearColor(0x000000, 0);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+  const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(30, 1, .1, 100), pmrem = new THREE.PMREMGenerator(renderer);
+  const R0 = { renderer, scene, camera, pmrem, tex: R0tex, dpr, dpr0: dpr, acc: 0, fa: 0, fn: 0, t0: performance.now(), scrT: 1, scrNew: true, scrMin: -1, scr: null, tower: true };
+  const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const accent = new THREE.Color(css('--accent')), accent2 = new THREE.Color(css('--accent2'));
+  setEnv(R0);
+  const std = o => new THREE.MeshStandardMaterial(o);
+  const basic = c => new THREE.MeshBasicMaterial({ color: c, toneMapped: false });
+  const mat = {
+    case: std({ color: 0x1a1e26, metalness: .75, roughness: .42 }),
+    shroud: std({ color: 0x232833, metalness: .6, roughness: .45 }),
+    glass: std({ color: 0xaec2dc, metalness: 0, roughness: .05, transparent: true, opacity: .09, envMapIntensity: 1.8, depthWrite: false }),
+    pcbBase: std({ color: 0x0b1f24, metalness: .2, roughness: .6 }),
+    sink: std({ color: 0x2c323e, metalness: .85, roughness: .33 }),
+    alu: std({ color: 0xa3acba, metalness: 1, roughness: .36 }),
+    card: std({ color: 0x161a22, metalness: .55, roughness: .38 }),
+    fan: std({ color: 0x3a4250, metalness: .3, roughness: .4, side: THREE.DoubleSide }),
+    tube: std({ color: 0x0f1217, metalness: .1, roughness: .55 }),
+    dimm: std({ color: 0x20252f, metalness: .7, roughness: .35 }),
+    bezel: std({ color: 0x07080b, metalness: .2, roughness: .3 }),
+    rgbA: basic(accent.clone()), rgbB: basic(accent2.clone()),
+  };
+  R0.mat = mat;
+  const key = new THREE.DirectionalLight(0xffffff, 1.5); key.position.set(-3.5, 6.5, 6.5); scene.add(key);
+  const rimA = new THREE.DirectionalLight(accent, 1.6); rimA.position.set(5.5, .25, -4.5); scene.add(rimA);
+  const rimB = new THREE.DirectionalLight(accent2, 1.6); rimB.position.set(-5.5, .25, -5); scene.add(rimB);
+  scene.add(new THREE.HemisphereLight(0x9ed6ff, 0x05070c, .4));
+  R0.lights = { rimA, rimB };
+
+  const rig = new THREE.Group(); scene.add(rig); R0.laptop = rig;               // everything that floats together
+  const ground = new THREE.Group(); ground.position.y = -.016; scene.add(ground); R0.ground = ground;
+  const shTex = canvasTex(shadowCanvas(), false);
+  const shMat = new THREE.MeshBasicMaterial({ map: shTex, transparent: true, depthWrite: false, opacity: .9, toneMapped: false });
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(12.5, 7), shMat); shadow.rotation.x = -Math.PI / 2; shadow.position.x = 1.9; ground.add(shadow); R0.shadow = shadow;
+  R0.lidSh = new THREE.Mesh(new THREE.PlaneGeometry(.01, .01), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }));
+  // laptop-only pieces frame() still touches
+  R0.lidPivot = new THREE.Object3D(); R0.top = new THREE.Group(); R0.shellMats = []; R0.ledMats = []; R0.kbMats = []; R0.kbPlanes = []; R0.keysMesh = { visible: true };
+  R0.kbUni = { uA: { value: new THREE.Color() }, uB: { value: new THREE.Color() }, uT: { value: 0 }, uOn: { value: 0 } };
+  R0.outline = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: accent2.clone(), transparent: true, opacity: 0 })); R0.outline.visible = false;
+
+  /* ---- the case: dark steel frame with a tempered-glass side and front ---- */
+  const T = new THREE.Group(); T.position.y = .14; rig.add(T);
+  const { w, h, d } = TW, hw = w / 2, hd = d / 2;
+  const shell = [box(w, .08, d, 0, .04, 0), box(w, .08, d, 0, h - .04, 0), box(w, h, .06, 0, h / 2, -hd + .03), box(.06, h, d, hw - .03, h / 2, 0),
+    box(.07, h, .07, -hw + .035, h / 2, hd - .035), box(.07, h, .07, -hw + .035, h / 2, -hd + .035), box(.07, h, .07, hw - .035, h / 2, hd - .035), box(w, .07, .07, 0, h - .035, hd - .035), box(w, .07, .07, 0, .035, hd - .035),
+    ...[[-1, -1], [-1, 1], [1, -1], [1, 1]].map(([a, b]) => box(.2, .14, .2, a * (hw - .25), -.07, b * (hd - .25)))];
+  T.add(new THREE.Mesh(merge(shell), mat.case));
+  const glassL = new THREE.Mesh(new THREE.PlaneGeometry(d - .14, h - .14), mat.glass); glassL.rotation.y = -Math.PI / 2; glassL.position.set(-hw + .012, h / 2, 0); glassL.renderOrder = 8; T.add(glassL);
+  const glassF = new THREE.Mesh(new THREE.PlaneGeometry(w - .14, h - .14), mat.glass); glassF.position.set(0, h / 2, hd - .012); glassF.renderOrder = 8; T.add(glassF);
+  // RGB trim along the front edge of the glass
+  T.add(new THREE.Mesh(box(.02, h - .3, .02, -hw + .06, h / 2, hd - .06), mat.rgbA));
+
+  const inner = new THREE.Group(); T.add(inner); R0.inner = inner;
+  // power supply shroud with a lit edge
+  inner.add(new THREE.Mesh(merge([box(w - .12, .78, 3.5, -.02, .47, -.4), box(w - .3, .03, 3.2, -.02, .87, -.4)]), mat.shroud));
+  inner.add(new THREE.Mesh(box(.02, .02, 3.0, -hw + .1, .88, -.5), mat.rgbB));
+  // motherboard on the right wall, facing the glass
+  const BX = .955, BZ = -.475, BY = 2.2;
+  inner.add(new THREE.Mesh(box(.04, 2.44, 3.05, BX + .02, BY, BZ), mat.pcbBase));
+  const pcbTex = canvasTex(pcbCanvas(3.05, 2.44, (ctxRef && ctxRef.PC && ctxRef.PC.model) || ''), true, aniso);
+  const pcb = new THREE.Mesh(new THREE.PlaneGeometry(3.05, 2.44), std({ map: pcbTex, metalness: .25, roughness: .55 })); pcb.rotation.y = -Math.PI / 2; pcb.position.set(BX - .001, BY, BZ); inner.add(pcb);
+  // VRM / I-O cover at the rear, heatsink along the top, chipset plate
+  const sink = [box(.26, 1.3, .5, BX - .13, 2.78, -1.72), box(.22, .2, 1.5, BX - .11, 3.31, -1.1), box(.12, .5, .5, BX - .06, 1.6, .15)];
+  inner.add(new THREE.Mesh(merge(sink), mat.sink));
+  const io = []; for (let i = 0; i < 9; i++) io.push(box(.012, .03, .46, BX - .265, 2.28 + i * .12, -1.72));
+  inner.add(new THREE.Mesh(merge(io), mat.alu));
+  // M.2 SSD under its heatsink
+  inner.add(new THREE.Mesh(box(.09, .17, .95, BX - .05, 2.15, -1.05), mat.alu));
+  inner.add(new THREE.Mesh(box(.02, .1, .8, BX - .1, 2.15, -1.05), mat.sink));
+  // RAM: two modules with a lit top edge, two empty slots
+  const dimmG = [], rgbG = [];
+  for (const z of [-.14, .1]) { dimmG.push(box(.32, 1.33, .09, BX - .16, 2.7, z)); rgbG.push(box(.3, .02, .06, BX - .17, 3.37, z)); rgbG.push(box(.015, 1.2, .03, BX - .325, 2.7, z)); }
+  for (const z of [-.38, .34]) dimmG.push(box(.02, 1.33, .09, BX - .02, 2.7, z));
+  inner.add(new THREE.Mesh(merge(dimmG), mat.dimm), new THREE.Mesh(merge(rgbG), mat.rgbA));
+  // AIO: pump head on the CPU and two tubes to the front radiator
+  const pumpG = new THREE.CylinderGeometry(.38, .38, .34, 40); pumpG.rotateZ(Math.PI / 2); pumpG.translate(.75, 2.72, -1);
+  inner.add(new THREE.Mesh(pumpG, mat.card));
+  const cap = new THREE.CircleGeometry(.3, 40); cap.rotateY(-Math.PI / 2); cap.translate(.575, 2.72, -1); inner.add(new THREE.Mesh(cap, mat.rgbB));
+  const capDark = new THREE.CircleGeometry(.2, 32); capDark.rotateY(-Math.PI / 2); capDark.translate(.572, 2.72, -1); inner.add(new THREE.Mesh(capDark, std({ color: 0x0b0e14, metalness: .4, roughness: .2 })));
+  const tube = pts => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), 50, .052, 8, false);
+  inner.add(new THREE.Mesh(merge([tube([[.6, 2.95, -.8], [.35, 3.4, -.3], [.12, 3.8, .9], [.3, 4.12, 1.45]]), tube([[.6, 2.5, -.8], [.15, 3.1, -.2], [-.1, 3.7, .9], [-.2, 4.12, 1.45]])]), mat.tube));
+  // front radiator
+  inner.add(new THREE.Mesh(box(1.2, 3.55, .3, 0, 2.58, 1.53), mat.sink));
+  // GPU mounted vertically near the glass: shroud, lit strip, backplate edge
+  inner.add(new THREE.Mesh(merge([box(.4, 1.1, 2.8, -.55, 1.5, -.5), box(.05, 1.3, .07, -.55, 1.5, -1.95)]), mat.card));
+  inner.add(new THREE.Mesh(box(.015, .03, 2.7, -.755, 2.03, -.5), mat.rgbA));
+  inner.add(new THREE.Mesh(box(.02, .26, 1.1, -.76, 1.0, -1.35), mat.alu));
+  // fans: static ring + spinning blades. Facing: 'x' = toward the glass (-x), 'z' = toward the front (+z), 'r' = toward the rear
+  const bladeG = fanBlades(), hubG = new THREE.CylinderGeometry(.15, .15, .06, 24), ringG = new THREE.TorusGeometry(.6, .018, 6, 48);
+  const blurTex = canvasTex((() => { const c = mk(128, 128), g = c.getContext('2d'); const gr = g.createRadialGradient(64, 64, 14, 64, 64, 62); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(.3, 'rgba(255,255,255,.5)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return c; })(), false);
+  R0.fans = []; R0.fanBlur = [];
+  const fan = (x, y, z, face, rgb, r = 1) => {
+    const wr = new THREE.Group(); wr.position.set(x, y, z); wr.scale.setScalar(r);
+    if (face === 'x') wr.rotation.z = Math.PI / 2; else if (face === 'z') wr.rotation.x = Math.PI / 2; else wr.rotation.x = -Math.PI / 2;
+    const sp = new THREE.Group(); sp.add(new THREE.Mesh(bladeG, mat.fan), new THREE.Mesh(hubG, mat.card)); wr.add(sp);
+    const ring = new THREE.Mesh(ringG, rgb); ring.rotation.x = Math.PI / 2; wr.add(ring);
+    const hubCap = new THREE.Mesh(new THREE.CircleGeometry(.07, 20), rgb); hubCap.rotation.x = -Math.PI / 2; hubCap.position.y = .032; wr.add(hubCap);
+    const fb = new THREE.Mesh(new THREE.CircleGeometry(.58, 32), new THREE.MeshBasicMaterial({ map: blurTex, color: 0x8d9ab0, transparent: true, opacity: 0, depthWrite: false })); fb.rotation.x = -Math.PI / 2; fb.position.y = .04; wr.add(fb);
+    inner.add(wr); R0.fans.push(sp); R0.fanBlur.push(fb);
+  };
+  fan(-.775, 1.5, -1.2, 'x', mat.rgbA, .78); fan(-.775, 1.5, -.2, 'x', mat.rgbA, .78);   // GPU
+  for (const y of [1.4, 2.58, 3.76]) fan(0, y, 1.83, 'z', mat.rgbB, 1);                  // radiator, front
+  fan(.25, 3.55, -1.98, 'r', mat.rgbB, .9);                                                // rear exhaust
+
+  /* ---- the monitor: its screen carries the live dashboard ---- */
+  const M = new THREE.Group(); M.position.set(4.6, 0, 1.7); M.rotation.y = -.3; rig.add(M);
+  const MW = 5.2, MH = 3.25, MY = 2.5;
+  M.add(new THREE.Mesh(merge([box(MW + .16, MH + .16, .12, 0, MY, 0), box(.4, 1.05, .1, 0, .6, -.12), box(1.8, .05, 1.0, 0, .025, -.08)]), mat.bezel));
+  const scrC = mk(1024, 640); R0.scr = { c: scrC, g: scrC.getContext('2d'), bg: screenBG(1024, 640), a: css('--accent'), b: css('--accent2') };
+  const screenTex = canvasTex(scrC, true, 1); screenTex.generateMipmaps = false; screenTex.minFilter = THREE.LinearFilter; R0.screenTex = screenTex;
+  mat.screen = new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false, color: 0x000000 });
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(MW, MH), mat.screen); screen.position.set(0, MY, .062); M.add(screen); R0.screen = screen;
+
+  /* ---- highlights: soft glow + bright frame ---- */
+  const hTex = canvasTex(haloCanvas(), false);
+  const hMat = () => new THREE.MeshBasicMaterial({ map: hTex, color: accent.clone(), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, toneMapped: false });
+  const hPlane = (parent, pw, ph, x, y, z, ry = -Math.PI / 2) => { const p = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), hMat()); p.rotation.y = ry; p.position.set(x, y, z); p.renderOrder = 10; p.visible = false; parent.add(p); return p; };
+  const hs = (id, p, k = 1) => { halo[id] = { mats: [p.material], meshes: [p], k, s: new Spring(0, 90, 15) }; };
+  hs('cpu', hPlane(inner, 1.15, 1.15, .5, 2.72, -1)); hs('gpu', hPlane(inner, 3.2, 1.5, -.78, 1.5, -.5)); hs('ram', hPlane(inner, .75, 1.7, .6, 2.7, 0)); hs('ssd', hPlane(inner, 1.3, .42, .86, 2.15, -1.05));
+  hs('wifi', hPlane(inner, .62, .36, .7, 3.1, -1.72)); hs('audio', hPlane(inner, .62, .36, .7, 2.5, -1.72));
+  hs('display', hPlane(M, MW * 1.08, MH * 1.1, 0, MY, .07, 0), .7); hs('sys', hPlane(M, MW * .92, .4, 0, MY - MH / 2 + .22, .07, 0), .9);
+  R0.onLook = (a, b) => { mat.rgbA.color.copy(a); mat.rgbB.color.copy(b); };
+  return R0;
+}
+
 /* ---------- surrounding UI ---------- */
 function listHTML(PC) {
   return `<div class="pan m3-list"><h4>${SH.t('Components')}</h4>${PC.components.map(c => `<button class="m3-row" data-comp="${c.id}"><span class="ci">${ic(c.id === 'sys' ? 'windows' : c.id)}</span><span class="ct"><b>${esc(c.name)}</b><span>${esc(c.title)}</span></span></button>`).join('')}</div>`;
+}
+function fallbackTowerSVG() {
+  return `<svg class="m3-fallback" viewBox="0 0 420 300" aria-label="${SH.t('Tower')}">
+    <defs><linearGradient id="m3t" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a3550"/><stop offset="1" stop-color="#1a2236"/></linearGradient>
+    <linearGradient id="m3m" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0d1a30"/><stop offset="1" style="stop-color:color-mix(in oklab,var(--accent) 30%,#0d1a30)"/></linearGradient>
+    <radialGradient id="m3th"><stop offset="0" stop-color="#000" stop-opacity=".6"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient></defs>
+    <ellipse cx="220" cy="276" rx="200" ry="18" fill="url(#m3th)"/>
+    <rect x="40" y="30" width="110" height="236" rx="8" fill="url(#m3t)" stroke="#3a4766"/>
+    ${[78, 130, 182].map(y => `<circle cx="95" cy="${y}" r="21" fill="none" style="stroke:var(--accent2)" stroke-opacity=".7"/><circle cx="95" cy="${y}" r="5" style="fill:var(--accent)"/>`).join('')}
+    <rect x="196" y="70" width="200" height="124" rx="6" fill="#0c111e" stroke="#3a4766"/><rect x="202" y="76" width="188" height="112" rx="3" fill="url(#m3m)"/>
+    <ellipse cx="296" cy="132" rx="60" ry="20" fill="none" style="stroke:var(--accent2)" stroke-opacity=".5" transform="rotate(-8 296 132)"/><circle cx="296" cy="132" r="9" style="fill:var(--accent)"/>
+    <rect x="288" y="194" width="16" height="44" fill="#1e273c"/><rect x="250" y="238" width="92" height="8" rx="3" fill="#263049"/></svg>`;
 }
 function fallbackSVG() {
   return `<svg class="m3-fallback" viewBox="0 0 420 300" aria-label="${SH.t('Laptop')}">
@@ -766,11 +937,12 @@ SH.homeVariant({
       anim($('.m3-hint', root), [{ opacity: 0 }, { opacity: 1 }], { d: 500, delay: 1600 });
     }
     const stage = $('.m3-stage', root);
-    if (!webglOK()) { stage.innerHTML = fallbackSVG(); stage.classList.add('flat'); return; }
+    if (!webglOK()) { stage.innerHTML = isTower() ? fallbackTowerSVG() : fallbackSVG(); stage.classList.add('flat'); return; }
     loadThree().then(() => {
       if (!mounted || my !== token) return;
+      if (isTower()) { POSE = POSE_T; SP = SPOTS_T; } else { POSE = POSE_L; SP = SPOTS; }
       const cv = document.createElement('canvas'); cv.className = 'm3-canvas'; stage.appendChild(cv);
-      try { R = build(cv); } catch (e) { console.warn('StellarHub: no 3D', e); release(); R = null; cv.remove(); stage.innerHTML = fallbackSVG(); stage.classList.add('flat'); return; }
+      try { R = isTower() ? buildTower(cv) : build(cv); } catch (e) { console.warn('StellarHub: no 3D', e); release(); R = null; cv.remove(); stage.innerHTML = isTower() ? fallbackTowerSVG() : fallbackSVG(); stage.classList.add('flat'); return; }
       cv.addEventListener('pointerdown', onDown); cv.addEventListener('wheel', onWheel, { passive: false });
       cv.addEventListener('dblclick', () => { S.zoom.t = 1; S.offAz.t = 0; S.offEl.t = 0; });
       ro = new ResizeObserver(resize); ro.observe(root); resize();
@@ -788,14 +960,14 @@ SH.homeVariant({
         timers.push(setTimeout(() => { S.kb.t = 1; }, 1250 * SH.motion()));
       } else { S.lid.set(OPEN); S.screen.set(1); S.kb.set(1); }
       R.scrT = 1; R.scrNew = true; dirty = true; tickers.add(frame);
-    }).catch(e => { console.warn('StellarHub: could not load three.js', e); if (mounted && my === token) { stage.innerHTML = fallbackSVG(); stage.classList.add('flat'); } });
+    }).catch(e => { console.warn('StellarHub: could not load three.js', e); if (mounted && my === token) { stage.innerHTML = isTower() ? fallbackTowerSVG() : fallbackSVG(); stage.classList.add('flat'); } });
   },
   unmount() {
     mounted = false; token++; tickers.delete(frame); timers.forEach(clearTimeout); timers = []; clearTimeout(leaveT); clearTimeout(idleT);
     removeEventListener('pointermove', onMove); removeEventListener('pointerup', onUp); dragging = false;
     if (unsubLook) unsubLook(); unsubLook = null; if (unsubTele) unsubTele(); unsubTele = null; if (ro) ro.disconnect(); ro = null;
     release();
-    Object.keys(halo).forEach(k => delete halo[k]); focused = null; root = null; ctxRef = null;
+    POSE = POSE_L; SP = SPOTS; Object.keys(halo).forEach(k => delete halo[k]); focused = null; root = null; ctxRef = null;
   },
   resize,
   onReturn() { if (!R) return; S.dist.v = S.dist.v * 1.25; S.az.v += .25; dirty = true; },

@@ -66,6 +66,11 @@ const ART = {
   wif: () => `<svg viewBox="0 0 100 74" class="art-wif">
     <path class="arc a3" d="M8 30 A58 58 0 0 1 92 30"/><path class="arc a2" d="M22 44 A38 38 0 0 1 78 44"/><path class="arc a1" d="M36 57 A19 19 0 0 1 64 57"/><circle class="dotw" cx="50" cy="66" r="4.5"/>
   </svg>`,
+  /* a wired connection (Ethernet): an RJ45 port with its pins, in the same strokes as the Wi-Fi arcs */
+  eth: () => `<svg viewBox="0 0 100 74" class="art-wif art-eth">
+    <path class="arc a3" d="M14 8 H86 V48 H70 V62 H30 V48 H14 Z"/><path class="arc a2" d="M26 20 H74 V40 H26 Z" style="opacity:.2"/>
+    ${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<rect class="dotw" x="${30 + i * 5.6}" y="20" width="3" height="14" rx="1.2"/>`).join('')}
+  </svg>`,
   aud: () => `<svg viewBox="0 0 110 70" class="art-aud">
     ${[18, 34, 46, 28, 40, 22, 30].map((h, i) => `<rect class="eq" style="--d:${i * 70}ms" x="${8 + i * 14}" y="${62 - h}" width="8" height="${h}" rx="3"/>`).join('')}
   </svg>`,
@@ -174,7 +179,7 @@ function mount(el, ctx) {
   root.innerHTML = list.map(t => {
     const c = comp(t.comp);
     return `<div class="bt k-${t.kind} a-${t.area}" style="grid-area:${t.area}" data-comp="${t.comp}" tabindex="0" role="button" aria-label="${esc(c.name)}: ${esc(c.title)}">
-      <div class="tilt"><div class="glow"></div><div class="art">${t.area === 'gpu' ? `<div class="artbox">${ART.gpu()}${GPU_FANS.map(fanOverlay).join('')}</div>` : ART[t.area]()}</div>
+      <div class="tilt"><div class="glow"></div><div class="art">${t.area === 'gpu' ? `<div class="artbox">${ART.gpu()}${GPU_FANS.map(fanOverlay).join('')}</div>` : (t.area === 'wif' && /ethernet|gbe|lan/i.test(c.title + ' ' + rowv('wifi', 'Type')) && !/wi-?fi|wireless|802\.11/i.test(c.title) ? ART.eth : ART[t.area])()}</div>
       <div class="meta"><span class="k">${esc(c.name)}</span><b class="t" title="${esc(c.title)}">${esc(shortTitle(t, c))}</b><div class="live">${liveHTML(t.area)}</div></div></div></div>`;
   }).join('');
   /* the display drawing with the real resolutions */
