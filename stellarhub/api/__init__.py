@@ -46,11 +46,12 @@ class Api(SettingsApi, MainWindowApi, WidgetApi, TrayPanelApi, EngineApi):
     _reveal_pending = False
 
     def _reveal(self):
-        """The start screen gives way to the window: show it, fade the page in, fade the card out."""
+        """The start screen gives way to the window: the window comes up already painted and the card fades out on top
+        of it (a crossfade). The page is NOT faded in from transparent here: that left a fraction of a second of empty
+        dark window between the card and the interface, seen as a blink."""
         if not self._reveal_pending:
             return
         self._reveal_pending = False
-        self._js("window.SH && SH.enter && SH.enter()")
         try:  # from off screen to the primary monitor, where show_main maximizes it
             wa = winmgr.work_area()
             self._window.move(wa.left + 60, wa.top + 40)
@@ -59,7 +60,7 @@ class Api(SettingsApi, MainWindowApi, WidgetApi, TrayPanelApi, EngineApi):
         self.show_main()
         try:
             from .. import splash
-            threading.Timer(.12, splash.close).start()
+            threading.Timer(.22, splash.close).start()  # the maximized window gets a frame or two to repaint first
         except Exception:
             pass
 
