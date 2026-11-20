@@ -173,7 +173,7 @@ class _Card:
         self._moons = [self._moon(int(n * d), seed) + (cx + n * ox, ly + n * .53 + n * oy, amp * s, per, ph)
                        for d, ox, oy, seed, amp, per, ph in ((.085, -.47, -.17, 5, 3.4, 5.6, 0.0),
                                                              (.06, .52, .13, 9, 2.8, 4.7, 1.9),
-                                                             (.042, -.25, -.45, 13, 2.2, 6.3, 3.7))]
+                                                             (.042, -.13, -.46, 13, 2.2, 6.3, 3.7))]
 
     def _moon(self, size, seed):
         # a small grey moon: lit from the upper left like the planet, a few soft craters, a faint rim light
@@ -220,7 +220,13 @@ class _Card:
         shadow.alpha_composite(Image.merge("RGBA", (Image.new("L", small.size, 0),) * 3 + (small.getchannel("A").point(lambda v: v * 90 // 255),)), (8, 10))
         shadow = shadow.filter(ImageFilter.GaussianBlur(3))
         shadow.alpha_composite(small, (8, 8))
-        return (shadow,)
+        # 16 copies shifted by sixteenths of a pixel: the bob moves smoothly, not in whole-pixel steps
+        pad = Image.new("RGBA", (shadow.width, shadow.height + 2), (0, 0, 0, 0))
+        pad.alpha_composite(shadow, (0, 0))
+        pm = pad.convert("RGBa")
+        subs = [pm.transform(pad.size, Image.AFFINE, (1, 0, 0, 0, 1, -k / 16), resample=Image.BICUBIC).convert("RGBA")
+                for k in range(16)]
+        return (subs,)
 
     def _texture(self, logo):
         """Soft gas-giant bands on the planet, fine grooves on the ring, and the version engraved on the planet."""
@@ -294,9 +300,12 @@ class _Card:
     def _with_moons(self, t):
         im = self.base.copy()
         layer = Image.new("RGBA", im.size, (0, 0, 0, 0))
-        for spr, x, y, amp, per, ph in self._moons:
-            yy = y + amp * math.sin(t / per * 2 * math.pi + ph)
-            layer.alpha_composite(spr, (int(round(x - spr.width / 2)), int(round(yy - spr.height / 2))))
+        for subs, x, y, amp, per, ph in self._moons:
+            spr = subs[0]
+            top = y + amp * math.sin(t / per * 2 * math.pi + ph) - spr.height / 2
+            whole = math.floor(top)
+            spr = subs[min(15, int((top - whole) * 16))]
+            layer.alpha_composite(spr, (int(round(x - spr.width / 2)), whole))
         layer.putalpha(ImageChops.multiply(layer.getchannel("A"), self.fade))
         im.alpha_composite(layer)
         return im
