@@ -172,7 +172,7 @@ function renderTab(mid, tabId) {
   const ms = modState[mid]; const el = $(`#v-${mid} .tab[data-tab="${tabId}"]`); if (!el || ms.rendered.has(tabId)) return el;
   ms.rendered.add(tabId);
   const def = registry.modules[mid];
-  if (def && def.renderTab) { try { def.renderTab(tabId, el, ctxFor(modById(mid))); } catch (e) { console.error(e); el.innerHTML = `<div class="empty"><b>${SH.t('This tab failed to load')}</b>${esc(e.message)}</div>`; } }
+  if (def && def.renderTab) { try { def.renderTab(tabId, el, ctxFor(modById(mid))); } catch (e) { console.error(e); el.innerHTML = SH.emptyState({ art: 'error', title: SH.t('This tab failed to load'), text: esc(e.message) }); } }
   else el.innerHTML = skeletonFor(tabId.length);
   return el;
 }
@@ -332,7 +332,7 @@ function renderPal(q) {
   const n = norm(q.trim()); const all = paletteItems();
   palList = n ? all.filter(i => n.split(/\s+/).every(w => norm(i.t + ' ' + (i.path || '')).includes(w))) : all.filter(i => i.g !== 'Sections');
   palList = palList.slice(0, 40); palIdx = 0; const res = $('#palRes');
-  if (!palList.length) { res.innerHTML = `<div class="empty">${SH.t('Nothing matches “{q}”. Try “drivers”, “disk” or “clean”.', { q: esc(q) })}</div>`; return; }
+  if (!palList.length) { res.innerHTML = SH.emptyState({ art: 'none', small: true, title: SH.t('Nothing matches “{q}”. Try “drivers”, “disk” or “clean”.', { q: esc(q) }) }); return; }
   let html = '<div class="hl" id="palHl"></div>', g = '';
   palList.forEach((it, i) => { if (it.g !== g) { g = it.g; html += `<div class="grp">${GROUP[g] || g}</div>`; }
     html += `<button class="it" data-i="${i}"><span class="ic">${ic(it.ic)}</span>${it.path ? `<span class="path">${esc(it.path)}</span>` : ''}${esc(it.t)}<small>${it.g === 'Actions' ? SH.t('Run') : SH.t('Open')}</small></button>`; });
