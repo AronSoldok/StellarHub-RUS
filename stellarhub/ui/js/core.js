@@ -107,20 +107,32 @@ on('job', m => {
    leave it out and stay silent. */
 function job(mod, fn, args = [], o = {}) {
   let id = null, cancelWanted = false;
-  if (o.sound) {
+  /* the activity this job's progress goes to (SH.activity): the caller's own, or one of its own for a user-started job */
+  let act = o.activity && typeof o.activity === 'object' ? o.activity : null, own = null;
+  if (o.sound || act) {
     const t0 = performance.now(), op = o.onProgress; let mark = 0;
     if (o.sound === 'scan') sound('scan_start');
     o = { ...o, onProgress(m) {
       const q = m && m.kind === 'progress' && typeof m.pct === 'number' ? Math.floor(m.pct * 4) : 0;
-      if (q > mark && q < 4) { mark = q; if (performance.now() - t0 > 4000) sound('progress_tick'); }
+      if (o.sound && q > mark && q < 4) { mark = q; if (performance.now() - t0 > 4000) sound('progress_tick'); }
+      if (act && m && m.kind === 'progress') act.progress(typeof m.pct === 'number' && m.pct > 0 ? m.pct : null, m.text || null);
       if (op) op(m);
     } };
   }
+  const finish = (v, e) => {
+    if (!own) return;
+    if (e) own.end(e.cancelled ? { cancelled: true } : { ok: false, error: e.message });
+    else if (v && typeof v === 'object' && v.needAdmin) own.end({ cancelled: true });  /* the module asks for administrator mode itself */
+    else if (v && typeof v === 'object' && v.ok === false) own.end({ ok: false, error: v.error || v.msg || '' });
+    else own.end({ ok: true });
+  };
   const p = new Promise(async (res, rej) => {
     const r = await call('engine_job', mod, fn, args);
     if (r === undefined) { res(undefined); return; }
     if (!r.ok) { rej(new Error(r.error)); return; }
-    id = r.id; const w = { res: o.sound === 'scan' ? v => { sound('scan_complete'); res(v); } : res, rej, o }; jobWaiters.set(id, w); if (cancelWanted) call('job_cancel', id);
+    id = r.id;
+    if (!act && o.sound && o.activity !== false && !activity.busy(mod)) act = own = actStart(mod, { key: 'job:' + fn, label: o.label, auto: true, cancel: () => p.cancel() });
+    const w = { res: v => { if (o.sound === 'scan') sound('scan_complete'); finish(v); res(v); }, rej: e => { finish(undefined, e); rej(e); }, o }; jobWaiters.set(id, w); if (cancelWanted) call('job_cancel', id);
     const early = jobEarly.get(id);
     if (early) { jobEarly.delete(id); for (const m of early) { if (m.kind === 'end') jobWaiters.delete(id); jobDeliver(w, m); } }
   });
@@ -544,6 +556,110 @@ function setPending(key, n) {
   state.settings.pending = undefined; setSetting('pending', p); emit('pending', p);
 }
 
+/* ---------- activities: long work the user started, followed from anywhere ----------
+   const h = SH.activity.start('storage', { key: 'scan', label: SH.t('Scanning'), go: { tab: 'map' } });
+   h.progress(.38, SH.t('Reading C:\\Users'));   // 0..1, or null while it cannot be measured (the ring then orbits)
+   h.end({ ok: true, summary: SH.t('{size} can be freed', { size }) })   // or { ok: false, error } or { cancelled: true }
+   While the user is elsewhere the dock ring, Home's rows and the taskbar button follow it; when it ends there, end() says
+   so (a toast with View, or a tray notification while the window is hidden), leaves a badge on the dock icon until the
+   module is visited, and answers true. A module whose own result toast would say the same skips it then:
+   if (!h.end({ ok: true, summary })) SH.toast(...).   Only work the user started: background refreshes pass user: false
+   (or nothing at all). SH.job feeds it by itself for user-started jobs (sound: 'scan' | 'task') when the module has no
+   activity of its own open; o.activity: a handle the job's progress goes to, or false for none. */
+const ACT_ALIAS = { debloat: 'optimizer' };
+const ACT_EXTRA = { backups: { name: 'Backups and restore', icon: 'restore' } };
+const acts = new Map(), actDone = new Map();
+let actSeq = 0, actTimer = 0;
+const actMod = m => ACT_ALIAS[m] || m;
+const actInfo = mod => { const m = MODS.find(x => x.id === mod), x = ACT_EXTRA[mod]; return m ? { name: m.name, icon: m.icon } : x ? { name: t(x.name), icon: x.icon } : { name: String(mod), icon: 'dots' }; };
+/* the user is looking at that module (its own result UI answers): no toast, no badge */
+const actHere = mod => { mod = actMod(mod); if (document.hidden) return false; return mod === 'backups' ? !!state.setOpen : state.view === mod; };
+const actView = a => ({ id: a.id, mod: a.mod, key: a.key, label: a.label, text: a.text, pct: a.pct, at: a.at, user: a.user, cancel: !!a.cancel });
+/* many progress updates a second become one 'activity' event every ~90 ms (also while hidden, when frames stop) */
+function actFlush(now) {
+  if (now) { clearTimeout(actTimer); actTimer = 0; emit('activity'); actTaskbar(); return; }
+  if (!actTimer) actTimer = setTimeout(() => { actTimer = 0; emit('activity'); actTaskbar(); }, 90);
+}
+function actStart(mod, o = {}) {
+  mod = actMod(mod); const key = o.key || 'main';
+  for (const a of acts.values()) if (a.mod === mod && a.key === key) { if (o.label) a.label = o.label; if (o.go) a.go = o.go; actFlush(); return a.h; }
+  const a = { id: ++actSeq, mod, key, label: o.label || t('Working…'), text: '', pct: null, at: Date.now(), user: o.user !== false, go: o.go || null, cancel: o.cancel || null, auto: !!o.auto };
+  a.h = {
+    id: a.id, mod,
+    get open() { return acts.has(a.id); },
+    progress(pct, text) {
+      if (!acts.has(a.id)) return a.h;
+      const p = typeof pct === 'number' && isFinite(pct) ? Math.max(0, Math.min(1, pct)) : null;
+      a.pct = p; if (text != null) a.text = String(text); actFlush(); return a.h;
+    },
+    label(l) { if (l) { a.label = String(l); actFlush(); } return a.h; },
+    end: r => actEnd(a, r || {}),
+  };
+  acts.set(a.id, a); if (a.user) actDone.delete(mod);
+  emit('activity:start', actView(a)); actFlush(true);
+  return a.h;
+}
+function actEnd(a, r) {
+  if (!acts.has(a.id)) return false; acts.delete(a.id);
+  const cancelled = !!r.cancelled, ok = !cancelled && r.ok !== false && !r.error;
+  const tell = a.user && !cancelled && r.quiet !== true && !actHere(a.mod);
+  const go = { ...(a.go || {}), ...(r.go || {}) };
+  const error = r.error ? String(r.error.message || r.error) : '';
+  if (tell && state.view !== a.mod) actDone.set(a.mod, { mod: a.mod, ok, summary: r.summary ? String(r.summary) : '', error, go, at: Date.now() });
+  if (a.user && !ok && !cancelled) actTbErr = Date.now() + 2600;
+  emit('activity:end', { ...actView(a), ok, cancelled, told: tell });
+  actFlush(true);
+  if (tell) {
+    /* a job followed on its own: the module may still say how it went in its own toast, which then is enough */
+    if (a.auto) { const t0 = performance.now(); setTimeout(() => { if (!((SH.toast.lastAt || 0) > t0)) actTell(a, ok, r, error, go); }, 350); }
+    else actTell(a, ok, r, error, go);
+  }
+  return tell;
+}
+function actOpen(mod, go = {}) {
+  actDone.delete(mod); actFlush(true);
+  if (mod === 'backups') SH.go('settings', { section: 'backups' }); else SH.go(mod, go.tab ? { tab: go.tab } : {});
+}
+function actTell(a, ok, r, error, go) {
+  const name = actInfo(a.mod).name, sum = r.summary ? String(r.summary) : '';
+  const text = ok ? (sum ? t('{name} finished: {summary}', { name, summary: sum }) : t('{name} finished.', { name }))
+    : error ? t('{name} could not finish: {error}', { name, error }) : t('{name} did not finish.', { name });
+  /* the window is in the tray or minimized: a Windows notification, whose click opens the window on the module */
+  if (document.hidden) { call('notify_activity', text, a.mod, go.tab || ''); return; }
+  /* exactly one sound for the moment: the job's own scan_complete, if it just played, else this toast's */
+  const quiet = performance.now() - sound.last < 700;
+  SH.toast(text, { kind: ok ? (r.kind || 'success') : 'error', silent: quiet, ms: 9000, group: 'act:' + a.mod, action: { label: t('View'), run: () => actOpen(a.mod, go) } });
+}
+/* StellarHub's taskbar button follows every user-started activity at once: indeterminate while any of them cannot be
+   measured, red for a moment when one fails, nothing when all are done. Sent only when it changes. */
+let actTbSent = '', actTbErr = 0, actTbTimer = 0;
+function actTaskbar() {
+  const run = [...acts.values()].filter(a => a.user);
+  let st = 'none', v = 0;
+  if (Date.now() < actTbErr) { st = 'error'; v = 1; clearTimeout(actTbTimer); actTbTimer = setTimeout(actTaskbar, actTbErr - Date.now() + 20); }
+  else if (run.length) { if (run.some(a => a.pct == null)) st = 'indeterminate'; else { st = 'normal'; v = run.reduce((s, a) => s + a.pct, 0) / run.length; } }
+  v = Math.round(v * 100) / 100;
+  const sig = st + v; if (sig === actTbSent) return; actTbSent = sig;
+  call('taskbar_progress', st, v);
+}
+/* coming to the module clears its badge; the window coming back shows the taskbar progress again */
+on('view', d => { if (d && actDone.delete(d.to)) actFlush(true); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { actTbSent = ''; actTaskbar(); } });
+const activity = {
+  start: actStart,
+  /* running activities, the newest first; of(mod): the one to show for a module (the newest), with how many run there */
+  list: () => [...acts.values()].map(actView).reverse(),
+  of(mod) { mod = actMod(mod); let best = null, n = 0; for (const a of acts.values()) if (a.mod === mod && a.user) { n++; best = a; } return best ? { ...actView(best), count: n } : null; },
+  busy: mod => { mod = actMod(mod); for (const a of acts.values()) if (a.mod === mod) return true; return false; },
+  /* finished while the user was elsewhere and not looked at yet */
+  done: mod => actDone.get(actMod(mod)) || null,
+  doneAll: () => [...actDone.values()].sort((x, y) => y.at - x.at),
+  clear(mod) { if (actDone.delete(actMod(mod))) actFlush(true); },
+  here: actHere, open: actOpen, info: actInfo,
+  /* "62 %", or '' while it cannot be measured */
+  pct: a => a && a.pct != null ? fmtInt(a.pct * 100) + ' %' : '',
+};
+
 /* ---------- automatic fade on scrollable areas ---------- */
 const sfSet = new Set();
 function sfUpdate(el) { sfApply(el, el.scrollHeight - el.clientHeight, el.scrollTop); }
@@ -770,7 +886,7 @@ const compIcon = c => !c ? 'cpu' : c.id === 'sys' ? 'windows'
   : c.id === 'wifi' && /ethernet|gbe\b|gigabit|\blan\b|2\.5 ?g|10 ?g/i.test(`${c.title || ''} ${(c.rows || []).flat().join(' ')}`) && !/wi-?fi|wireless|802\.11/i.test(c.title || '') ? 'ethernet' : c.id;
 window.SH = Object.assign(window.SH || {}, {
   $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, effInt, on, emit, call, apiReady, loadSettings, setSetting, compIcon,
-  engine, job, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, rollNumber, fitText, esc,
+  engine, job, activity, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, rollNumber, fitText, esc,
   ic, icons, emptyState, emptyArt, chartKit, PC, MODS, modById, registry, module, homeVariant, actions,
   go: () => {}, toast: () => {}, openComponent: () => {}, sfScan, sound,
   /* the window coming in after the start screen, and going away when StellarHub closes, updates or reopens as

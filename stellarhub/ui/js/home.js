@@ -49,7 +49,7 @@ function render() {
   </section>
 
   <aside class="h-col">
-    <div class="pan pending" data-intro><h4>${t('To review')}</h4><div id="pendList"></div></div>
+    <div class="pan pending" data-intro><h4>${t('To review')}</h4><div id="actRows" class="act-rows"></div><div id="pendList"></div></div>
     <div class="pan healthp" data-intro>
       <div class="hh">
         <svg class="g" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="none" style="stroke:var(--raise2)" stroke-width="4"/><circle id="healthArc" cx="20" cy="20" r="16" fill="none" style="stroke:var(--accent2)" stroke-width="4" stroke-linecap="round" stroke-dasharray="100.5" stroke-dashoffset="100.5"/></svg>
@@ -69,7 +69,7 @@ function render() {
   </aside>
 </div>`;
   rows = vit.map(x => { const el = $(`.vit[data-vit="${x.id}"]`); return { x, el, s: new Spring(0, 90, 16), vv: $('.vv', el), bar: $('.bar>span', el) }; });
-  renderPending(); renderNext(); renderRecent(); bindNx();
+  renderPending(); renderActs(); renderNext(); renderRecent(); bindNx();
   if (SH.syncWidgetButtons) SH.syncWidgetButtons();
   built = true;
 }
@@ -108,6 +108,7 @@ tickers.add(dt => {
 });
 home.addEventListener('click', e => {
   const v = e.target.closest('.vit[data-comp]'); if (v) { SH.openComponent(v.dataset.comp, v); return; }
+  const a = e.target.closest('[data-act-go]'); if (a) { SH.activity.open(a.dataset.actGo, { tab: a.dataset.tab || '' }); return; }
   const p = e.target.closest('[data-go]'); if (p) SH.go(p.dataset.go, { tab: p.dataset.tab });
 });
 
@@ -128,6 +129,47 @@ function renderPending() {
   }).join('');
 }
 SH.on('pending', () => { renderPending(); if (state.view === 'home') $$('#pendList .pend').forEach((el, i) => anim(el, [{ opacity: .4 }, { opacity: 1 }], { d: 400, delay: i * 40, keep: true })); });
+
+/* ---------- running now: what the modules are doing for the user (SH.activity), live, and what finished while the
+   user was elsewhere, until it is looked at. The rows are rebuilt only when the set changes; progress only patches
+   the text and the ring (stroke-dashoffset). At most three, the newest first. ---------- */
+const ACT_MAX = 3, ACT_RING = '<svg class="ring" viewBox="0 0 36 36"><circle class="tr" cx="18" cy="18" r="16"/><circle class="arc" cx="18" cy="18" r="16" pathLength="100" transform="rotate(-90 18 18)"/></svg>';
+function actItems() {
+  const run = SH.activity.list().filter(a => a.user);
+  const fin = SH.activity.doneAll().filter(d => !run.some(a => a.mod === d.mod));
+  return [...run.map(a => ({ k: 'r' + a.id, a })), ...fin.map(d => ({ k: `d${d.mod}${d.at}`, d }))].slice(0, ACT_MAX);
+}
+function actRow(x) {
+  if (x.a) {
+    const a = x.a, inf = SH.activity.info(a.mod), p = SH.activity.pct(a);
+    return `<button class="pend act run${a.pct == null ? ' ind' : ''}" data-k="${x.k}" data-act-go="${a.mod}" style="--p:${a.pct == null ? 0 : a.pct.toFixed(3)}"><b class="ar">${ACT_RING}${ic(inf.icon)}</b>`
+      + `<span><em>${esc(inf.name)}</em><small><i class="at">${esc(a.text || a.label)}</i><i class="ap">${p}</i></small></span>${chev}</button>`;
+  }
+  const d = x.d, inf = SH.activity.info(d.mod);
+  const sub = d.ok ? (d.summary || t('Finished')) : (d.error || t('Needs a look'));
+  return `<button class="pend act ${d.ok ? 'ok' : 'err'}" data-k="${x.k}" data-act-go="${d.mod}" data-tab="${esc(d.go && d.go.tab || '')}"><b class="ar">${ic(inf.icon)}<i class="ab">${ic(d.ok ? 'check' : 'bang')}</i></b>`
+    + `<span><em>${esc(d.ok ? t('{name} finished', { name: inf.name }) : t('{name} did not finish', { name: inf.name }))}</em><small><i class="at">${esc(sub)}</i><i class="ap">${ago(d.at)}</i></small></span>${chev}</button>`;
+}
+function renderActs() {
+  const box = $('#actRows'); if (!box) return;
+  if (state.view !== 'home' && !SH.homeAnimating) return;   /* drawn again when Home comes back */
+  const items = actItems(), sig = items.map(x => x.k).join();
+  if (sig !== box.dataset.sig) {
+    const had = new Set((box.dataset.sig || '').split(','));
+    box.dataset.sig = sig; box.innerHTML = items.map(actRow).join('');
+    $$('.pend', box).forEach((el, i) => { if (!had.has(el.dataset.k)) anim(el, [{ opacity: 0, transform: 'translate3d(0,-6px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: i * 40, e: EASE.spring }); });
+    return;
+  }
+  for (const x of items) {
+    if (!x.a) continue;
+    const el = box.querySelector(`[data-k="${x.k}"]`); if (!el) continue;
+    const a = x.a, txt = a.text || a.label, p = SH.activity.pct(a), at = $('.at', el), ap = $('.ap', el);
+    if (at.textContent !== txt) at.textContent = txt;
+    if (ap.textContent !== p) ap.textContent = p;
+    el.classList.toggle('ind', a.pct == null); el.style.setProperty('--p', a.pct == null ? 0 : a.pct.toFixed(3));
+  }
+}
+SH.on('activity', renderActs);
 
 /* ---------- real health ---------- */
 async function loadHealth() {
@@ -247,7 +289,7 @@ function intro(back) {
   if (!back) rows.forEach(r => { r.s.set(0); r.drawn = false; });
   setTimeout(readVitals, (back ? 100 : 850) * motion());
 }
-SH.on('home:return', () => { fit(); refreshPC(); renderPending(); renderRecent(); renderNext(); intro(true); if (current && current.onReturn) try { current.onReturn(); } catch (e) { console.error(e); } });
+SH.on('home:return', () => { fit(); refreshPC(); renderPending(); renderActs(); renderRecent(); renderNext(); intro(true); if (current && current.onReturn) try { current.onReturn(); } catch (e) { console.error(e); } });
 SH.on('boot', () => {
   if (SH.PC.ts) pcAt = SH.PC.ts * 1000;                    /* what Python hands over may come from the saved copy */
   setTimeout(refreshPC, 20000);                            /* a saved copy older than 30 minutes: update it once started */

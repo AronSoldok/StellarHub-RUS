@@ -417,5 +417,10 @@
   "Play a sample": "サンプルを再生",
   "Hear how loud they are.": "音量を確認できます。",
   "Orbital, an original set made for StellarHub (CC0). The hover sound is “UI hover” by unfa on Freesound (CC0).": "Orbital（StellarHub のために作られたオリジナル、CC0）。ホバー音は Freesound の unfa による「UI hover」（CC0）です。",
-  "Change the sound volume": "サウンドの音量を変更"
+  "Change the sound volume": "サウンドの音量を変更",
+  "{name} finished: {summary}": "{name} が完了しました: {summary}",
+  "{name} could not finish: {error}": "{name} を完了できませんでした: {error}",
+  "Needs a look": "確認が必要です",
+  "{name} finished": "{name} が完了しました",
+  "{name} did not finish": "{name} は完了しませんでした"
 }

@@ -140,6 +140,46 @@ SH.on('view', () => { dotDirty = true; });
 addEventListener('resize', () => { dotDirty = true; });
 dock.addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) go(b.dataset.go); });
 
+/* a module busy with something the user started shows it on its dock icon while the user is elsewhere: a thin ring
+   around the icon (filled to the progress, or a short arc in a slow orbit while it cannot be measured) and the status
+   in the tooltip. When it ends there the ring closes and gives way to a small badge (a check, or ! when it failed)
+   that stays until the module is visited. It sits in .dka, which takes the same transform as the icon, so the
+   magnification (--dv) carries it along; everything in it moves by transform, opacity and stroke-dashoffset. */
+SH.icons.add({ bang: '<path d="M12 6.5v6.5M12 17.5h.01"/>' });
+const ACT_RING = '<span class="dka" aria-hidden="true"><svg viewBox="0 0 44 44"><circle class="tr" cx="22" cy="22" r="20"/><circle class="arc" cx="22" cy="22" r="20" pathLength="100" transform="rotate(-90 22 22)"/></svg><i class="dkb"></i></span>';
+const dkAct = new Map(); /* module -> what its icon shows: '', 'run', 'fin' (the ring closing), 'ok', 'err' */
+function dockStatus(run, done) {
+  if (run) return [run.text || run.label, SH.activity.pct(run)].filter(Boolean).join(' ');
+  if (done) return done.ok ? (done.summary || SH.t('Finished')) : SH.t('Needs a look');
+  return '';
+}
+function paintDockActs() {
+  for (const d of dks) {
+    const id = d.el.dataset.go; if (id === 'home') continue;
+    const run = SH.activity.of(id), done = !run && SH.activity.done(id), was = dkAct.get(id) || '';
+    let want = run ? 'run' : done ? (done.ok ? 'ok' : 'err') : '';
+    if (!want && !was) continue;
+    if (!d.ring) { d.el.insertAdjacentHTML('beforeend', ACT_RING); d.ring = $('.dka', d.el); }
+    const ring = d.ring, fin = want === 'ok' || want === 'err';
+    if (run) { ring.style.setProperty('--p', run.pct == null ? 0 : run.pct.toFixed(3)); d.el.classList.toggle('ind', run.pct == null); }
+    /* finished while away: the ring closes first, the badge follows a moment later */
+    if (fin && d.finT) want = 'fin';
+    else if (fin && was === 'run') {
+      d.el.classList.remove('ind'); d.el.dataset.res = want; ring.style.setProperty('--p', 1); want = 'fin';
+      d.finT = setTimeout(() => { d.finT = 0; paintDockActs(); }, 440 * motion());
+    } else if (d.finT) { clearTimeout(d.finT); d.finT = 0; }
+    if (fin && want !== 'fin' && want !== was) {
+      const b = $('.dkb', ring); b.innerHTML = ic(want === 'ok' ? 'check' : 'bang');
+      anim(b, [{ opacity: 0, transform: 'scale(.3)' }, { opacity: 1, transform: 'scale(1)' }], { d: 460, e: EASE.spring, fill: 'none' }); /* CSS holds the end state, so the badge can leave by itself */
+    }
+    if ((d.el.dataset.act || '') !== want) { if (want) d.el.dataset.act = want; else delete d.el.dataset.act; }
+    dkAct.set(id, want);
+    const name = modById(id).name, st = dockStatus(run, done), full = st ? `${name} · ${st}` : name, tip = $('.tip', d.el);
+    if (tip.textContent !== full) { tip.textContent = full; d.el.setAttribute('aria-label', full); }
+  }
+}
+SH.on('activity', paintDockActs);
+
 /* ================= modules: views and tabs ================= */
 const views = $('#views');
 const modState = {}; // id -> {tab, rendered:Set, ix, iw}
@@ -346,6 +386,13 @@ function paletteItems() {
   [...BUILTIN, ...registry.actions].forEach(a => { if (!a.when || a.when()) list.push({ ...a, g: 'Actions' }); }); /* an action may carry `when`: hidden while it is false */
   return list;
 }
+/* a module that is busy (or finished while the user was elsewhere) says so in its palette row, as on the dock */
+function palAct(id) {
+  const run = SH.activity.of(id), done = !run && SH.activity.done(id);
+  if (run) return `<small class="pa${run.pct == null ? ' ind' : ''}" style="--p:${run.pct == null ? 0 : run.pct.toFixed(3)}"><svg viewBox="0 0 16 16"><circle class="tr" cx="8" cy="8" r="6"/><circle class="arc" cx="8" cy="8" r="6" pathLength="100" transform="rotate(-90 8 8)"/></svg>${esc(SH.activity.pct(run) || run.text || run.label)}</small>`;
+  if (done) return `<small class="pa ${done.ok ? 'ok' : 'err'}"><i></i>${esc(done.ok ? SH.t('Finished') : SH.t('Needs a look'))}</small>`;
+  return '';
+}
 const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 let palList = [], palIdx = 0; const hlY = new Spring(0, 420, 30);
 function renderPal(q) {
@@ -355,7 +402,7 @@ function renderPal(q) {
   if (!palList.length) { res.innerHTML = SH.emptyState({ art: 'none', small: true, title: SH.t('Nothing matches “{q}”. Try “drivers”, “disk” or “clean”.', { q: esc(q) }) }); return; }
   let html = '<div class="hl" id="palHl"></div>', g = '';
   palList.forEach((it, i) => { if (it.g !== g) { g = it.g; html += `<div class="grp">${GROUP[g] || g}</div>`; }
-    html += `<button class="it" data-i="${i}"><span class="ic">${ic(it.ic)}</span>${it.path ? `<span class="path">${esc(it.path)}</span>` : ''}${esc(it.t)}<small>${it.g === 'Actions' ? SH.t('Run') : SH.t('Open')}</small></button>`; });
+    html += `<button class="it" data-i="${i}"><span class="ic">${ic(it.ic)}</span>${it.path ? `<span class="path">${esc(it.path)}</span>` : ''}${esc(it.t)}${(it.g === 'Modules' && palAct(it.go)) || `<small>${it.g === 'Actions' ? SH.t('Run') : SH.t('Open')}</small>`}</button>`; });
   res.innerHTML = html;
   $$('.it', res).forEach((el, i) => anim(el, [{ opacity: 0, transform: 'translate3d(0,6px,0)' }, { opacity: 1, transform: 'translate3d(0,0,0)' }], { d: 260, delay: Math.min(i, 8) * 22 }));
   setPalIdx(0, true);
@@ -761,7 +808,8 @@ function toast(text, o = {}) {
   const same = [...box.children].find(x => x.dataset.group === group && !x.dataset.dead);
   /* o.kind: 'success', 'warning', 'error', 'unavailable' (or another SH.sound event, e.g. 'update_installed'); none is a
      plain toast, whose sound keeps quiet right after another one */
-  SH.sound(o.kind || 'toast');
+  if (!o.silent) SH.sound(o.kind || 'toast');  /* o.silent: the moment already had its sound */
+  toast.lastAt = performance.now();
   if (same) {
     same.querySelector('span').textContent = text; clearTimeout(same._timer); same._timer = setTimeout(same._kill, o.ms || 3600);
     anim(same, [{ transform: 'scale(1)' }, { transform: 'scale(1.04)', offset: .4 }, { transform: 'scale(1)' }], { d: 320, keep: true });

@@ -1,5 +1,8 @@
-"""The main window: custom frame, zoom, close/hide in the tray, quit, show, administrator relaunch."""
+"""The main window: custom frame, zoom, close/hide in the tray, quit, show, administrator relaunch, and how long work
+the user started is followed from outside the page (taskbar button progress, tray notification when it ends)."""
 import ctypes
+import json
+import re
 import threading
 import time
 
@@ -148,6 +151,11 @@ class MainWindowApi:
     def show_main(self):
         self._visible = True
         self._tele_refresh()
+        tb = getattr(self, "_taskbar", None)
+        if tb is not None:  # the taskbar button was made again: it gets its progress back
+            t = threading.Timer(0.6, tb.reapply)
+            t.daemon = True
+            t.start()
         try:
             self._window.show()
             self._window.restore()
@@ -161,6 +169,50 @@ class MainWindowApi:
             form.BeginInvoke(Action(lambda: (form.Activate(), form.BringToFront())))
         except Exception:
             pass
+        return True
+
+    # ---------- long work the user started (SH.activity in core.js) ----------
+    def taskbar_progress(self, state, value=0):
+        """The aggregate of the user's running activities on StellarHub's taskbar button: state "none",
+        "indeterminate", "normal" (value 0..1) or "error". Returns at once; a worker thread talks to the taskbar."""
+        try:
+            tb = getattr(self, "_taskbar", None)
+            if tb is None:
+                from ..taskbar import TaskbarProgress
+                tb = self._taskbar = TaskbarProgress(self._taskbar_hwnd)
+            return tb.set(state, value)
+        except Exception as e:
+            print("taskbar progress:", e, flush=True)
+            return False
+
+    def _taskbar_hwnd(self):
+        """The main window's handle while it has a taskbar button (not while it is hidden in the tray). Read on the
+        worker thread; the handle exists since the window does, and is kept once known."""
+        if not self._visible or self._window is None:
+            return None
+        h = getattr(self, "_hwnd", None)
+        if not h:
+            try:
+                h = self._hwnd = int(self._window.native.Handle.ToInt64())
+            except Exception:
+                return None
+        return h
+
+    def notify_activity(self, text, mod, tab=""):
+        """Something the user started finished while the window was hidden or minimized: a Windows notification from
+        the tray icon; clicking it opens the window on that module (and tab)."""
+        if self._tray is None:
+            return False
+        mod = str(mod or "")
+        tab = str(tab or "")
+        mod = mod if re.fullmatch(r"[a-z]{2,24}", mod) else ""
+        tab = tab if re.fullmatch(r"[a-z]{1,24}", tab) else ""
+
+        def open_it():
+            self.show_main()
+            if mod:
+                self._js(f"window.SH && SH.activity && SH.activity.open({json.dumps(mod)}, {{tab: {json.dumps(tab)}}})")
+        self._tray.notify(str(text)[:200], "StellarHub", on_click=open_it)
         return True
 
     def _win_state(self, *_):

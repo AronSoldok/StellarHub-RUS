@@ -419,5 +419,10 @@
   "Play a sample": "试听",
   "Hear how loud they are.": "听听音量大小。",
   "Orbital, an original set made for StellarHub (CC0). The hover sound is “UI hover” by unfa on Freesound (CC0).": "Orbital，为 StellarHub 原创的音效（CC0）。悬停音效为 Freesound 上 unfa 的“UI hover”（CC0）。",
-  "Change the sound volume": "更改声音音量"
+  "Change the sound volume": "更改声音音量",
+  "{name} finished: {summary}": "{name} 已完成：{summary}",
+  "{name} could not finish: {error}": "{name} 未能完成：{error}",
+  "Needs a look": "需要查看",
+  "{name} finished": "{name} 已完成",
+  "{name} did not finish": "{name} 未完成"
 }

@@ -223,6 +223,16 @@ def _crisp_icon_class(base):
             except Exception:
                 pass
             super()._assert_icon_handle()
+
+        def _on_notify(self, wparam, lparam):
+            """A click on the notification balloon (NIN_BALLOONUSERCLICK) runs what the last notify() asked for (open
+            the window on the module that finished); everything else is pystray's own handling."""
+            if lparam == 0x405:
+                run = getattr(self, "_sh_click", None)
+                if run is not None:
+                    threading.Thread(target=run, daemon=True, name="tray-notify-click").start()
+                return
+            super()._on_notify(wparam, lparam)
     return CrispIcon
 
 
@@ -279,9 +289,12 @@ class Tray:
         self.icon = _crisp_icon_class(pystray.Icon)("StellarHub", icon_image(), "StellarHub", menu)
         threading.Thread(target=self.icon.run, daemon=True, name="tray").start()
 
-    def notify(self, text, title="StellarHub"):
+    def notify(self, text, title="StellarHub", on_click=None):
+        """on_click: what a click on this notification does (it replaces the previous one's; None: nothing)."""
         try:
-            self.icon and self.icon.notify(text, title)
+            if self.icon is not None:
+                self.icon._sh_click = on_click
+                self.icon.notify(text, title)
         except Exception:
             pass
 

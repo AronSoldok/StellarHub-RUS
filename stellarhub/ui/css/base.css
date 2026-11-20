@@ -322,7 +322,7 @@ html[data-int=min] .sk::after{animation:none}
   transform:scale(var(--dv));transition:background-color calc(200ms*var(--f))}
 .dk:hover{color:var(--ink)}
 .dk:hover::before,.dk.on::before{background:var(--raise2)}
-.dk svg{width:var(--ic-2xl);height:var(--ic-2xl);transform:translateY(calc((1 - var(--dv))*26px)) scale(calc(.85 + .15*var(--dv)))}
+.dk>svg{width:var(--ic-2xl);height:var(--ic-2xl);transform:translateY(calc((1 - var(--dv))*26px)) scale(calc(.85 + .15*var(--dv)))}
 .tip{position:absolute;bottom:calc(100% + 14px);left:50%;white-space:nowrap;padding:6px 11px;border-radius:var(--r-s);background:var(--ink);color:var(--void);
   font-size:var(--fs-sm);font-weight:500;opacity:0;pointer-events:none;transform:translate(-50%,6px) scale(.92);
   transition:opacity calc(140ms*var(--f)),transform calc(200ms*var(--f)) var(--e-snap)}
@@ -330,6 +330,33 @@ html[data-int=min] .sk::after{animation:none}
 .dk .tip{translate:0 calc((1 - var(--dv))*52px)}
 .dock .dot{position:absolute;bottom:5px;left:0;width:18px;height:3px;border-radius:var(--r-xs);background:var(--accent);will-change:transform}
 .dock .sep{width:1px;height:28px;background:var(--line);margin:0 6px 12px;flex:none;--dx:0;translate:calc(var(--dx)*1px) 0}
+/* activity on a dock icon (shell.js paintDockActs): a thin ring around the icon while the module works on something the
+   user started and they are elsewhere, then a small badge when it ends there. .dka follows the icon's own transform, so
+   the magnification carries it; only transform, opacity and stroke-dashoffset ever change. */
+.dka{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;transform:translateY(calc((1 - var(--dv))*26px)) scale(calc(.85 + .15*var(--dv)));--p:0}
+.dka svg{grid-area:1/1;width:44px;height:44px;overflow:visible;fill:none;opacity:0;transform:scale(.86);
+  transition:opacity calc(260ms*var(--f)) var(--e-out),transform calc(420ms*var(--f)) var(--e-out)}
+.dka .tr{stroke:var(--line2);stroke-width:1.6}
+.dka .arc{stroke:var(--accent2);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:100 100;stroke-dashoffset:calc(100 - var(--p)*100);
+  transition:stroke-dashoffset calc(520ms*var(--f)) var(--e-out),stroke calc(260ms*var(--f))}
+.dk:is([data-act=run],[data-act=fin]):not(.on) .dka svg{opacity:1;transform:none}
+/* not measurable yet: a short arc in a slow, steady orbit (still at intensity minimum and with reduced motion) */
+.dk.ind .dka .arc{stroke-dashoffset:78}
+.dk.ind:not(.on)[data-act=run] .dka svg{animation:dka-orbit calc(3200ms/max(var(--f),.5)) linear infinite}
+@keyframes dka-orbit{from{rotate:0deg}to{rotate:360deg}}
+.dk[data-act=fin] .dka .arc{stroke:var(--ok)}
+.dk[data-act=fin][data-res=err] .dka .arc{stroke:var(--warn)}
+/* the badge: a filled dot with a bold mark, on the ring's upper right; it stays until the module is visited */
+.dkb{grid-area:1/1;justify-self:end;align-self:start;margin:2px 3px 0 0;width:15px;height:15px;border-radius:50%;display:grid;place-items:center;
+  background:var(--ok);color:var(--void);box-shadow:0 0 0 2px var(--deep);opacity:0;transform:scale(.3);
+  transition:opacity calc(220ms*var(--f)),transform calc(260ms*var(--f)) var(--e-out)}
+.dkb svg.i{width:10px;height:10px;stroke-width:var(--ic-w-bold)}
+.dk[data-act=err] .dkb{background:var(--warn)}
+.dk:is([data-act=ok],[data-act=err]) .dkb{opacity:1;transform:none}
+.dk[data-act] .tip{max-width:min(380px,60vw);overflow:hidden;text-overflow:ellipsis}
+html[data-int=min] .dka svg,html[data-int=min] .dkb{transition-duration:1ms}
+html[data-int=min] .dk.ind .dka svg{animation:none!important}
+@media (prefers-reduced-motion:reduce){.dk.ind .dka svg{animation:none!important}}
 
 /* ---------- layers: palette, settings, toasts ---------- */
 .overlay{position:fixed;inset:0;z-index:60;visibility:hidden}
@@ -349,6 +376,17 @@ html[data-int=min] .sk::after{animation:none}
 .pal .it .ic svg{width:var(--ic-m);height:var(--ic-m)}
 .pal .it .path{color:var(--faint);font-size:var(--fs-sm)}
 .pal .it small{margin-left:auto;font-size:var(--fs-cap);color:var(--faint)}
+.pal .it small.pa{display:flex;align-items:center;gap:6px;color:var(--accent2);font-variant-numeric:tabular-nums}
+.pal .it small.pa svg{width:14px;height:14px;fill:none}
+.pal .pa .tr{stroke:var(--line2);stroke-width:1.6}
+.pal .pa .arc{stroke:var(--accent2);stroke-width:2;stroke-linecap:round;stroke-dasharray:100 100;stroke-dashoffset:calc(100 - var(--p,0)*100)}
+.pal .pa.ind .arc{stroke-dashoffset:75}
+.pal .pa.ind svg{animation:dka-orbit calc(3200ms/max(var(--f),.5)) linear infinite}
+html[data-int=min] .pal .pa.ind svg{animation:none}
+.pal .pa i{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 2px color-mix(in oklab,var(--ok) 22%,transparent)}
+.pal .pa.ok,.pal .pa.err{color:var(--mute)}
+.pal .pa.err i{background:var(--warn);box-shadow:0 0 0 2px color-mix(in oklab,var(--warn) 22%,transparent)}
+@media (prefers-reduced-motion:reduce){.pal .pa.ind svg{animation:none}}
 .pal .hl{position:absolute;left:8px;right:8px;top:0;height:42px;border-radius:var(--r-s);background:var(--raise2);box-shadow:inset 0 0 0 1px var(--line);z-index:0;will-change:transform}
 .pal .empty{padding:26px 12px}
 .pal .foot{display:flex;gap:var(--sp-md);padding:9px 18px;border-top:1px solid var(--line);font-size:var(--fs-cap);color:var(--faint)}

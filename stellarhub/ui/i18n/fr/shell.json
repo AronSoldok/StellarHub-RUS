@@ -419,5 +419,10 @@
   "Play a sample": "Écouter un exemple",
   "Hear how loud they are.": "Écoutez leur volume.",
   "Orbital, an original set made for StellarHub (CC0). The hover sound is “UI hover” by unfa on Freesound (CC0).": "Orbital, un ensemble original créé pour StellarHub (CC0). Le son au survol est « UI hover » de unfa sur Freesound (CC0).",
-  "Change the sound volume": "Changer le volume des sons"
+  "Change the sound volume": "Changer le volume des sons",
+  "{name} finished: {summary}": "{name} a terminé : {summary}",
+  "{name} could not finish: {error}": "{name} n’a pas pu terminer : {error}",
+  "Needs a look": "À vérifier",
+  "{name} finished": "{name} a terminé",
+  "{name} did not finish": "{name} n’a pas terminé"
 }

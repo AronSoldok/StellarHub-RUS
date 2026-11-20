@@ -76,6 +76,31 @@
 .pend.ok b svg{color:var(--ok)}
 .pend.unk>svg:last-child,.pend.ok>svg:last-child{width:18px;height:18px}
 .nx-empty{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:10px 10px;font-size:12.5px;color:var(--mute)}
+/* running now (home.js renderActs): the module's icon inside the same ring as its dock icon, its status and percentage
+   on one line; finished ones carry the dock's badge until they are looked at */
+.act-rows:empty{display:none}
+.act-rows{padding-bottom:2px;margin-bottom:2px;border-bottom:1px solid var(--line)}
+.pend.act b.ar{position:relative;flex:none;min-width:0;width:36px;height:36px;margin:0 8px 0 6px;display:grid;place-items:center;color:var(--accent2);font:inherit}
+.pend.act b.ar>svg.i{grid-area:1/1;width:var(--ic-m);height:var(--ic-m);color:var(--accent2);transform:none}
+.pend.act b.ar .ring{grid-area:1/1;width:36px;height:36px;fill:none;overflow:visible;transform:none}
+.pend.act .ring .tr{stroke:var(--raise3);stroke-width:2}
+.pend.act .ring .arc{stroke:var(--accent2);stroke-width:2.4;stroke-linecap:round;stroke-dasharray:100 100;stroke-dashoffset:calc(100 - var(--p,0)*100);
+  transition:stroke-dashoffset calc(520ms*var(--f)) var(--e-out)}
+.pend.act.ind .ring .arc{stroke-dashoffset:78}
+.pend.act.ind .ring{animation:dka-orbit calc(3200ms/max(var(--f),.5)) linear infinite}
+html[data-int=min] .pend.act.ind .ring{animation:none}
+@media (prefers-reduced-motion:reduce){.pend.act.ind .ring{animation:none}}
+.pend.act span{min-width:0}
+.pend.act span em{display:block;font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pend.act span small{display:flex;gap:6px;white-space:nowrap}
+.pend.act span small i{font-style:normal}
+.pend.act .at{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pend.act .ap{flex:none;color:var(--accent2)}
+.pend.act:is(.ok,.err) b.ar{background:var(--raise2);border-radius:50%}
+.pend.act .ab{position:absolute;right:-3px;top:-3px;width:15px;height:15px;border-radius:50%;display:grid;place-items:center;background:var(--ok);box-shadow:0 0 0 2px var(--deep)}
+.pend.act.err .ab{background:var(--warn)}
+.pend.act .ab svg.i{width:10px;height:10px;stroke-width:var(--ic-w-bold);color:var(--void);transform:none}
+.pend.act:is(.ok,.err) .ap{color:var(--faint)}
 
 .healthp{flex:none;padding:14px 18px}
 .healthp .hh{display:flex;align-items:center;gap:14px}
@@ -114,7 +139,10 @@
   .pend{padding:5px 10px;gap:10px}
   .pend b{font-size:18px;min-width:44px}
   .pend span{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-  .pend span small{display:none}
+  .pend:not(.act) span small{display:none}
+  .pend.act span{display:block}
+  .pend.act b.ar{width:30px;height:30px;margin:0 6px 0 4px}
+  .pend.act b.ar .ring{width:30px;height:30px}
   .healthp{padding:10px 14px}
   .healthp .hs{margin-top:8px;gap:6px 12px}
   .healthp .hs div:nth-child(n+3){display:none}
