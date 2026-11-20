@@ -12,9 +12,33 @@ NO_WINDOW = 0x08000000
 _PRE = ("$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Continue'; "
         "[Console]::OutputEncoding=[Text.Encoding]::UTF8; ")
 # At startup several modules query Windows at once; a dozen PowerShell processes in parallel starve each
-# other and hit their timeouts on a busy PC. At most 3 run at the same time; the rest wait their turn,
-# and a script's timeout only starts counting once it actually runs.
-_SLOTS = threading.BoundedSemaphore(3)
+# other and hit their timeouts on a busy PC. At most 5 run at the same time; the rest wait their turn,
+# and a script's timeout only starts counting once it actually runs. Slow reads (a timeout of 60 s or more:
+# the Store apps list, driver inventory...) may hold at most 2 of those slots, so they can never leave the quick
+# ones queueing behind them (seen as Super Optimizer and Privacy "loading" for minutes in administrator mode,
+# where those slow reads take longest). Nobody waits for a slot forever: after SLOT_WAIT seconds it gives up
+# with the usual "Windows took too long" error, so the screen shows a message instead of loading for good.
+_SLOTS = threading.BoundedSemaphore(5)
+_SLOW = threading.BoundedSemaphore(2)
+SLOT_WAIT = 150
+
+
+class _Slot:
+    def __init__(self, slow):
+        self.gates = (_SLOW, _SLOTS) if slow else (_SLOTS,)
+        self.held = []
+
+    def __enter__(self):
+        for g in self.gates:
+            if not g.acquire(timeout=SLOT_WAIT):
+                self.__exit__()
+                raise _timeout_error()
+            self.held.append(g)
+        return self
+
+    def __exit__(self, *a):
+        while self.held:
+            self.held.pop().release()
 
 
 class ToolError(RuntimeError):
@@ -47,10 +71,13 @@ def kill_tree(p):
         pass
 
 
-def ps(script, timeout=90):
+def ps(script, timeout=None):
     """Returns the output (text) of a PowerShell script. Raises ToolError (short, translated) if PowerShell is
-    missing or takes longer than `timeout`; on a timeout the whole process tree is killed."""
-    with _SLOTS:
+    missing or takes longer than `timeout` (90 s when not given); on a timeout the whole process tree is killed.
+    An explicit timeout of 60 s or more marks a slow read (see _SLOW)."""
+    slow = timeout is not None and timeout >= 60
+    timeout = timeout or 90
+    with _Slot(slow):
         try:
             p = subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                                   "-Command", _PRE + script], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -69,7 +96,7 @@ def ps(script, timeout=90):
     return out.decode("utf-8", "replace")
 
 
-def ps_json(script, timeout=90, as_list=False):
+def ps_json(script, timeout=None, as_list=False):
     """Runs `script | ConvertTo-Json` and returns the object. With as_list it always returns a list."""
     # strip(): in PowerShell 5 a line cannot start with "|"
     out = ps(f"{script.strip()} | ConvertTo-Json -Depth 6 -Compress", timeout=timeout).strip()
