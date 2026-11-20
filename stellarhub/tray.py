@@ -96,6 +96,9 @@ def make_icon_image(size=64, tile=True):
     ImageDraw.Draw(upper).rectangle((0, 0, s, cy), fill=255)
     ring = ring.rotate(tilt, resample=Image.BICUBIC, center=(cx, cy))
     upper = upper.rotate(tilt, resample=Image.NEAREST, center=(cx, cy))
+    big = size >= 200  # the start screen: no hard seam where the two halves meet, softer shadows
+    if big:
+        upper = upper.filter(ImageFilter.GaussianBlur(s * .035))
 
     def hint(m):
         """small sizes: snap each shape's edge pixels toward fully on or off, so lines stay crisp"""
@@ -143,8 +146,8 @@ def make_icon_image(size=64, tile=True):
     img.alpha_composite(pl)
     if tier == 2:
         # the ring's shadow falls on the planet just above where it passes in front
-        sh = front.transform((s, s), Image.AFFINE, (1, 0, 0, 0, 1, s * .028)).filter(ImageFilter.GaussianBlur(s * .008))
-        sh = ImageChops.multiply(sh, disc).point(lambda v: int(v * .5))
+        sh = front.transform((s, s), Image.AFFINE, (1, 0, 0, 0, 1, s * .028)).filter(ImageFilter.GaussianBlur(s * (.022 if big else .008)))
+        sh = ImageChops.multiply(sh, disc).point(lambda v: int(v * (.36 if big else .5)))
         img.alpha_composite(_layer(s, (90, 16, 34), sh))
         # a thin atmospheric rim on the lit edge
         edge = Image.new("L", (s, s), 0)
@@ -155,7 +158,9 @@ def make_icon_image(size=64, tile=True):
 
     # a sliver of navy between the planet and the front of the ring, so the ring clearly passes in front
     if tier:
-        gap = ImageChops.multiply(ImageChops.subtract(wide, front), disc).point(lambda v: int(v * .85))
+        gap = ImageChops.multiply(ImageChops.subtract(wide, front), disc).point(lambda v: int(v * (.45 if big else .85)))
+        if big:
+            gap = gap.filter(ImageFilter.GaussianBlur(s * .004))
         img.alpha_composite(_layer(s, (24, 20, 40), gap))
     f = ring_color(False) if tier else _layer(s, (196, 234, 255), front)
     f.putalpha(front)

@@ -104,19 +104,19 @@ class _Card:
 
     def __init__(self, scale):
         s = self.s = scale
-        W, H = int(620 * s), int(600 * s)
+        W, H = int(700 * s), int(640 * s)
         self.size = (W, H)
         cx = W // 2
         n = self.n = int(340 * s)                          # logo size
-        lx, ly = cx - n // 2, int(34 * s)
+        lx, ly = cx - n // 2, int(58 * s)
         self.logo_at = (lx, ly)
         base = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 
         # --- the patch of space: dark enough to read on a light wallpaper, no edges anywhere
         sky = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         sd = ImageDraw.Draw(sky)
-        sd.ellipse((cx - int(250 * s), int(10 * s), cx + int(250 * s), int(560 * s)), fill=(6, 9, 20, 150))
-        base.alpha_composite(sky.filter(ImageFilter.GaussianBlur(int(60 * s))))
+        sd.ellipse((cx - int(215 * s), int(70 * s), cx + int(215 * s), int(560 * s)), fill=(6, 9, 20, 246))  # near-opaque: text behind doesn't show
+        base.alpha_composite(sky.filter(ImageFilter.GaussianBlur(int(46 * s))))
         neb = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         nd = ImageDraw.Draw(neb)
         pcx, pcy = cx, ly + n * .53
@@ -132,8 +132,8 @@ class _Card:
         st = ImageDraw.Draw(stars)
         for _ in range(46):
             a, d = rnd.uniform(0, 6.283), rnd.uniform(.32, 1.0)
-            x = cx + math.cos(a) * d * 255 * s
-            y = H * .45 + math.sin(a) * d * 255 * s
+            x = cx + math.cos(a) * d * 215 * s
+            y = ly + n * .62 + math.sin(a) * d * 230 * s
             fade = (1 - d) ** .8
             rr = rnd.choice((.7, .9, 1.1, 1.5)) * s
             st.ellipse((2 * (x - rr), 2 * (y - rr), 2 * (x + rr), 2 * (y + rr)), fill=(225, 238, 255, int(40 + 170 * fade)))
@@ -156,7 +156,12 @@ class _Card:
         name = _brand_font(int(46 * s))
         self._shadowed(base, (cx, name_y), "StellarHub", name, (243, 246, 252, 255), dy=int(4 * s), blur=int(9 * s), a=235)
         self.small = _font("segoeui.ttf", int(17 * s))
-        self.status_xy = (cx, name_y + int(52 * s))
+        self.status_xy = (cx, name_y + int(40 * s))
+        # nothing may end in a hard edge: everything fades out before the window's border
+        fade = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(fade).ellipse((int(40 * s), int(30 * s), W - int(40 * s), H - int(30 * s)), fill=255)
+        self.fade = fade = fade.filter(ImageFilter.GaussianBlur(int(48 * s)))
+        base.putalpha(ImageChops.multiply(base.getchannel("A"), fade))
         self.base = base
 
     def _texture(self, logo):
@@ -226,58 +231,55 @@ class _Card:
         ImageDraw.Draw(tx).text(xy, text, font=font, fill=fill, anchor="mm")
         img.alpha_composite(tx)
 
-    LEVELS = 12
+    LEVELS = 16
 
     def _sprites(self):
         """Soft glow and crisp core dots, pre-rendered at several intensities (ice at the tail, coral near the head),
-        drawn 4x larger and scaled down so their edges are smooth."""
+        drawn 4x larger and scaled down in premultiplied color (no dark fringe), with room for the whole blur."""
         n = self.n
         rw = n * .064
+        self.margin = int(rw * 4)
         self._glow, self._core = [], []
+
+        def sprite(radius, color, blur):
+            size = int(2 * radius + 6 * blur + 4) | 1
+            im = Image.new("RGBA", (size * 4, size * 4), (0, 0, 0, 0))
+            c = size * 2
+            ImageDraw.Draw(im).ellipse((c - radius * 4, c - radius * 4, c + radius * 4, c + radius * 4), fill=color)
+            if blur:
+                im = im.filter(ImageFilter.GaussianBlur(blur * 4))
+            return im.convert("RGBa").resize((size, size), Image.LANCZOS).convert("RGBA")
+
         for i in range(self.LEVELS + 1):
             w = i / self.LEVELS
-            rg = rw * (.8 + 1.2 * w)
-            size = int(rg * 2 + rw * 2.4) | 1
-            g = Image.new("RGBA", (size * 4, size * 4), (0, 0, 0, 0))
-            col = (255, 140, 118, int(80 * w)) if w > .6 else (160, 214, 255, int(55 * w))
-            c = size * 2
-            ImageDraw.Draw(g).ellipse((c - rg * 4, c - rg * 4, c + rg * 4, c + rg * 4), fill=col)
-            g = g.filter(ImageFilter.GaussianBlur(rw * 3.6)).convert("RGBa").resize((size, size), Image.LANCZOS).convert("RGBA")  # premultiplied: no dark fringe
-            self._glow.append(g)
-            r = rw * (.34 + .16 * w)
-            cs = int(r * 2 + 3) | 1
-            k = Image.new("RGBA", (cs * 4, cs * 4), (0, 0, 0, 0))
-            cc = cs * 2
-            ccol = (int(205 + 50 * w), int(234 - 70 * w ** 3), int(255 - 110 * w ** 3), int(30 + 210 * w))
-            ImageDraw.Draw(k).ellipse((cc - r * 4, cc - r * 4, cc + r * 4, cc + r * 4), fill=ccol)
-            self._core.append(k.convert("RGBa").resize((cs, cs), Image.LANCZOS).convert("RGBA"))
-        r = rw * .5
-        hs = int(r * 2 + 3) | 1
-        h = Image.new("RGBA", (hs * 4, hs * 4), (0, 0, 0, 0))
-        hc = hs * 2
-        ImageDraw.Draw(h).ellipse((hc - r * 4, hc - r * 4, hc + r * 4, hc + r * 4), fill=(255, 248, 242, 255))
-        self._headspr = h.convert("RGBa").resize((hs, hs), Image.LANCZOS).convert("RGBA")
-        hole = Image.new("L", (n * 4, n * 4), 255)
-        cx, cy, pr = n * 2, n * 4 * .53, n * 4 * .2
+            gcol = (255, 140, 118, int(78 * w)) if w > .55 else (160, 214, 255, int(58 * w))
+            self._glow.append(sprite(rw * (.8 + 1.1 * w), gcol, rw * .9))
+            ccol = (int(205 + 50 * w), int(234 - 70 * w ** 3), int(255 - 110 * w ** 3), int(235 * w))
+            self._core.append(sprite(rw * (.3 + .2 * w), ccol, 0))
+        self._headspr = sprite(rw * .5, (255, 248, 242, 255), 0)
+        m = self.margin
+        hole = Image.new("L", ((n + 2 * m) * 4, (n + 2 * m) * 4), 255)
+        cx, cy, pr = (m + n * .5) * 4, (m + n * .53) * 4, n * .2 * 4
         ImageDraw.Draw(hole).ellipse((cx - pr, cy - pr, cx + pr, cy + pr), fill=0)
-        self._hole = hole.resize((n, n), Image.LANCZOS)
+        self._hole = hole.resize((n + 2 * m, n + 2 * m), Image.LANCZOS)
 
     def frame(self, t, status):
         """The ring's light: same geometry as tray.make_icon_image (center (.5, .53), radii .385 x .135 minus half
-        the ring width .064, tilted 20 degrees; the half above the center is the back, where the planet hides it,
-        glow included)."""
+        the ring width .064, tilted 20 degrees). Only the stretch of the back half that is behind the planet goes
+        on the masked layer, so there is no seam where the halves meet; the trail fades to nothing."""
         if not hasattr(self, "_glow"):
             self._sprites()
         im = self.base.copy()
-        n = self.n
-        cx, cy = n * .5, n * .53
+        n, m = self.n, self.margin
+        N = n + 2 * m
+        cx, cy, pr = m + n * .5, m + n * .53, n * .2
         rw = n * .064
         rx, ry = n * .385 - rw / 2, n * .135 - rw / 2
         ca, sa = math.cos(math.radians(20)), math.sin(math.radians(20))
-        head = (t * .95) % 1.0 * 2 * math.pi
-        trail, steps = 2.5, 120
-        back = Image.new("RGBA", (n, n), (0, 0, 0, 0))
-        front = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+        head = (t * .42) % 1.0 * 2 * math.pi
+        trail, steps = 2.6, 150
+        hidden = Image.new("RGBA", (N, N), (0, 0, 0, 0))   # what passes behind the planet
+        shown = Image.new("RGBA", (N, N), (0, 0, 0, 0))
 
         def put(layer, spr, x, y):
             layer.alpha_composite(spr, (int(round(x - spr.width / 2)), int(round(y - spr.height / 2))))
@@ -287,21 +289,28 @@ class _Card:
             f = 1 - i / steps
             a = head - trail * (1 - f)
             dx, dy = rx * math.cos(a), ry * math.sin(a)
-            x, y = cx + dx * ca + dy * sa, cy - dx * sa + dy * ca          # same rotation as Image.rotate(20)
-            pts.append((f, dy < 0, x, y))
-        for f, is_back, x, y in pts[::3]:                                   # glows first (every third point), then the cores
-            lvl = int(round(f ** 2.4 * self.LEVELS))
+            x, y = cx + dx * ca + dy * sa, cy - dx * sa + dy * ca      # same rotation as Image.rotate(20)
+            behind = dy < 0 and abs(dx) < pr * 1.15                    # only near the planet can it be hidden
+            pts.append((f, behind, x, y))
+        for f, behind, x, y in pts[::3]:
+            lvl = int(round(f ** 2.2 * self.LEVELS))
             if lvl:
-                put(back if is_back else front, self._glow[lvl], x, y)
-        for f, is_back, x, y in pts:
-            put(back if is_back else front, self._core[int(round(f ** 2.4 * self.LEVELS))], x, y)
-        f, is_back, x, y = pts[-1]
-        put(back if is_back else front, self._headspr, x, y)
-        back.putalpha(ImageChops.multiply(back.getchannel("A"), self._hole))
-        back.alpha_composite(front)
-        im.alpha_composite(back, self.logo_at)
+                put(hidden if behind else shown, self._glow[lvl], x, y)
+        for f, behind, x, y in pts:
+            lvl = int(round(f ** 2.2 * self.LEVELS))
+            if lvl:
+                put(hidden if behind else shown, self._core[lvl], x, y)
+        f, behind, x, y = pts[-1]
+        put(hidden if behind else shown, self._headspr, x, y)
+        hidden.putalpha(ImageChops.multiply(hidden.getchannel("A"), self._hole))
+        hidden.alpha_composite(shown)
+        lx, ly = self.logo_at
+        layer = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        layer.alpha_composite(hidden, (lx - m, ly - m))
+        layer.putalpha(ImageChops.multiply(layer.getchannel("A"), self.fade))
+        im.alpha_composite(layer)
         if status:
-            self._shadowed(im, self.status_xy, status, self.small, (236, 241, 249, 225), dy=int(2 * self.s), blur=int(5 * self.s), a=230)
+            self._shadowed(im, self.status_xy, status, self.small, (236, 241, 249, 228), dy=int(2 * self.s), blur=int(4 * self.s), a=235)
         return im
 
 
