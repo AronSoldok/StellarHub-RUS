@@ -231,84 +231,119 @@ class _Card:
         ImageDraw.Draw(tx).text(xy, text, font=font, fill=fill, anchor="mm")
         img.alpha_composite(tx)
 
-    LEVELS = 16
+    TURN = 3.1  # seconds per turn
 
-    def _sprites(self):
-        """Soft glow and crisp core dots, pre-rendered at several intensities (ice at the tail, coral near the head),
-        drawn 4x larger and scaled down in premultiplied color (no dark fringe), with room for the whole blur."""
+    def _ring_maps(self):
+        """The visible ring of make_icon_image (same geometry: center (.5, .53), outer radii .385 x .135, width .064,
+        tilted 20 degrees; the half above the center passes behind the planet of radius .2), drawn 4x and scaled
+        down; an angle map (0-255 along the orbit) for the ring and for a wider glow region around it."""
         n = self.n
-        rw = n * .064
-        self.margin = int(rw * 4)
-        self._glow, self._core = [], []
+        m = self.margin = int(n * .09)
+        N = n + 2 * m
+        S = N * 4
+        cx, cy = (m + n * .5) * 4, (m + n * .53) * 4
+        rx, ry, rw, pr = n * .385 * 4, n * .135 * 4, n * .064 * 4, n * .2 * 4
+        ring = Image.new("L", (S, S), 0)
+        ImageDraw.Draw(ring).ellipse((cx - rx, cy - ry, cx + rx, cy + ry), outline=255, width=round(rw))
+        ring = ring.rotate(20, resample=Image.BICUBIC, center=(cx, cy))
+        upper = Image.new("L", (S, S), 0)
+        ImageDraw.Draw(upper).rectangle((0, 0, S, cy), fill=255)
+        upper = upper.rotate(20, resample=Image.NEAREST, center=(cx, cy))
+        disc = Image.new("L", (S, S), 0)
+        ImageDraw.Draw(disc).ellipse((cx - pr, cy - pr, cx + pr, cy + pr), fill=255)
+        hidden = ImageChops.multiply(ImageChops.multiply(ring, upper), disc)     # back half behind the planet
+        vis = ImageChops.subtract(ring, hidden).resize((N, N), Image.LANCZOS)
+        self._hole = ImageChops.invert(disc).resize((N, N), Image.LANCZOS)
+        self._back = upper.resize((N, N), Image.BILINEAR)
+        self._vis = vis
+        glowreg = vis.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.GaussianBlur(n * .03))
+        # stop the glow where the planet hides the ring: the glow of the hidden stretch must not float over it
+        self._glowreg = ImageChops.multiply(glowreg, ImageChops.invert(ImageChops.multiply(
+            self._back, ImageChops.invert(self._hole))))
+        # angle along the orbit for every pixel that matters
+        ca, sa = math.cos(math.radians(20)), math.sin(math.radians(20))
+        c1, c2 = m + n * .5, m + n * .53
+        rxm, rym = n * .385 - n * .032, n * .135 - n * .032
+        ang = Image.new("L", (N, N), 0)
+        ap = ang.load()
+        gp = self._glowreg.load()
+        for y in range(N):
+            for x in range(N):
+                if gp[x, y] > 2:
+                    dx, dy = x - c1, y - c2
+                    ux, uy = dx * ca - dy * sa, dx * sa + dy * ca                # undo the 20 degree tilt
+                    a = math.atan2(uy / rym, ux / rxm) % (2 * math.pi)
+                    ap[x, y] = int(a / (2 * math.pi) * 256) % 256
+        self._ang = ang
+        self._geom = (c1, c2, rxm, rym, ca, sa, n * .2)
+        rwp = n * .064
+        hs = int(rwp * 5) | 1
+        h = Image.new("RGBA", (hs * 4, hs * 4), (0, 0, 0, 0))
+        hc = hs * 2
+        hd = ImageDraw.Draw(h)
+        hd.ellipse((hc - rwp * 5.5, hc - rwp * 5.5, hc + rwp * 5.5, hc + rwp * 5.5), fill=(255, 150, 125, 95))
+        h = h.filter(ImageFilter.GaussianBlur(rwp * 3.2))
+        ImageDraw.Draw(h).ellipse((hc - rwp * 2.4, hc - rwp * 2.4, hc + rwp * 2.4, hc + rwp * 2.4), fill=(255, 226, 214, 150))
+        h = h.filter(ImageFilter.GaussianBlur(rwp * 1.2))
+        ImageDraw.Draw(h).ellipse((hc - rwp * 1.25, hc - rwp * 1.25, hc + rwp * 1.25, hc + rwp * 1.25), fill=(255, 251, 247, 255))
+        self._star = h.convert("RGBa").resize((hs, hs), Image.LANCZOS).convert("RGBA")
 
-        def sprite(radius, color, blur):
-            size = int(2 * radius + 6 * blur + 4) | 1
-            im = Image.new("RGBA", (size * 4, size * 4), (0, 0, 0, 0))
-            c = size * 2
-            ImageDraw.Draw(im).ellipse((c - radius * 4, c - radius * 4, c + radius * 4, c + radius * 4), fill=color)
-            if blur:
-                im = im.filter(ImageFilter.GaussianBlur(blur * 4))
-            return im.convert("RGBa").resize((size, size), Image.LANCZOS).convert("RGBA")
-
-        for i in range(self.LEVELS + 1):
-            w = i / self.LEVELS
-            gcol = (255, 140, 118, int(78 * w)) if w > .55 else (160, 214, 255, int(58 * w))
-            self._glow.append(sprite(rw * (.8 + 1.1 * w), gcol, rw * .9))
-            ccol = (int(205 + 50 * w), int(234 - 70 * w ** 3), int(255 - 110 * w ** 3), int(235 * w))
-            self._core.append(sprite(rw * (.3 + .2 * w), ccol, 0))
-        self._headspr = sprite(rw * .5, (255, 248, 242, 255), 0)
-        m = self.margin
-        hole = Image.new("L", ((n + 2 * m) * 4, (n + 2 * m) * 4), 255)
-        cx, cy, pr = (m + n * .5) * 4, (m + n * .53) * 4, n * .2 * 4
-        ImageDraw.Draw(hole).ellipse((cx - pr, cy - pr, cx + pr, cy + pr), fill=0)
-        self._hole = hole.resize((n + 2 * m, n + 2 * m), Image.LANCZOS)
+    @staticmethod
+    def _lut(head, width, lead, gain):
+        """Brightness (0-255) for each angle step: a trail fading over `width` radians behind the head, a short
+        lead in front of it."""
+        out = []
+        for v in range(256):
+            a = (v + .5) / 256 * 2 * math.pi
+            d = (head - a) % (2 * math.pi)                 # how far behind the head
+            k = math.exp(-d / width) if d < 2 * math.pi - lead * 4 else 0
+            ahead = 2 * math.pi - d
+            k = max(k, math.exp(-ahead / lead) if ahead < lead * 4 else 0)
+            out.append(int(255 * gain * k))
+        return out
 
     def frame(self, t, status):
-        """The ring's light: same geometry as tray.make_icon_image (center (.5, .53), radii .385 x .135 minus half
-        the ring width .064, tilted 20 degrees). Only the stretch of the back half that is behind the planet goes
-        on the masked layer, so there is no seam where the halves meet; the trail fades to nothing."""
-        if not hasattr(self, "_glow"):
-            self._sprites()
+        if not hasattr(self, "_maps_thread"):
+            self._maps_thread = threading.Thread(target=self._ring_maps, daemon=True)
+            self._maps_thread.start()
+        if not hasattr(self, "_star"):            # still being prepared: the scene without the light
+            im = self.base.copy()
+            if status:
+                self._shadowed(im, self.status_xy, status, self.small, (236, 241, 249, 228), dy=int(2 * self.s), blur=int(4 * self.s), a=235)
+            return im
+        if not hasattr(self, "_light_t0"):
+            self._light_t0 = t
         im = self.base.copy()
         n, m = self.n, self.margin
         N = n + 2 * m
-        cx, cy, pr = m + n * .5, m + n * .53, n * .2
-        rw = n * .064
-        rx, ry = n * .385 - rw / 2, n * .135 - rw / 2
-        ca, sa = math.cos(math.radians(20)), math.sin(math.radians(20))
-        head = (t * .42) % 1.0 * 2 * math.pi
-        trail, steps = 2.6, 150
-        hidden = Image.new("RGBA", (N, N), (0, 0, 0, 0))   # what passes behind the planet
-        shown = Image.new("RGBA", (N, N), (0, 0, 0, 0))
-
-        def put(layer, spr, x, y):
-            layer.alpha_composite(spr, (int(round(x - spr.width / 2)), int(round(y - spr.height / 2))))
-
-        pts = []
-        for i in range(steps, -1, -1):
-            f = 1 - i / steps
-            a = head - trail * (1 - f)
-            dx, dy = rx * math.cos(a), ry * math.sin(a)
-            x, y = cx + dx * ca + dy * sa, cy - dx * sa + dy * ca      # same rotation as Image.rotate(20)
-            behind = dy < 0 and abs(dx) < pr * 1.15                    # only near the planet can it be hidden
-            pts.append((f, behind, x, y))
-        for f, behind, x, y in pts[::3]:
-            lvl = int(round(f ** 2.2 * self.LEVELS))
-            if lvl:
-                put(hidden if behind else shown, self._glow[lvl], x, y)
-        for f, behind, x, y in pts:
-            lvl = int(round(f ** 2.2 * self.LEVELS))
-            if lvl:
-                put(hidden if behind else shown, self._core[lvl], x, y)
-        f, behind, x, y = pts[-1]
-        put(hidden if behind else shown, self._headspr, x, y)
-        hidden.putalpha(ImageChops.multiply(hidden.getchannel("A"), self._hole))
-        hidden.alpha_composite(shown)
+        head = (t / self.TURN) % 1.0 * 2 * math.pi
+        # the ring lights up: ice-white along the trail, coral near the head, and a soft glow around it
+        ice = Image.new("RGBA", (N, N), (246, 251, 255, 0))
+        ice.putalpha(ImageChops.multiply(self._ang.point(self._lut(head, 1.05, .05, 1.0)), self._vis))
+        coral = Image.new("RGBA", (N, N), (255, 158, 132, 0))
+        coral.putalpha(ImageChops.multiply(self._ang.point(self._lut(head, .22, .04, .85)), self._vis))
+        glow = Image.new("RGBA", (N, N), (255, 140, 118, 0))
+        glow.putalpha(ImageChops.multiply(self._ang.point(self._lut(head, .5, .12, .7)), self._glowreg))
+        layer = glow
+        layer.alpha_composite(ice)
+        layer.alpha_composite(coral)
+        # the star at the head, hidden by the planet exactly at its edge
+        c1, c2, rxm, rym, ca, sa, pr = self._geom
+        dx, dy = rxm * math.cos(head), rym * math.sin(head)
+        x, y = c1 + dx * ca + dy * sa, c2 - dx * sa + dy * ca
+        star = Image.new("RGBA", (N, N), (0, 0, 0, 0))
+        sp = self._star
+        star.alpha_composite(sp, (int(round(x - sp.width / 2)), int(round(y - sp.height / 2))))
+        if dy < 0:
+            star.putalpha(ImageChops.multiply(star.getchannel("A"), self._hole))
+        layer.alpha_composite(star)
         lx, ly = self.logo_at
-        layer = Image.new("RGBA", im.size, (0, 0, 0, 0))
-        layer.alpha_composite(hidden, (lx - m, ly - m))
-        layer.putalpha(ImageChops.multiply(layer.getchannel("A"), self.fade))
-        im.alpha_composite(layer)
+        full = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        full.alpha_composite(layer, (lx - m, ly - m))
+        fade_in = min(1.0, (t - self._light_t0) / .5)
+        a = ImageChops.multiply(full.getchannel("A"), self.fade)
+        full.putalpha(a if fade_in >= 1 else a.point(lambda v: int(v * fade_in)))
+        im.alpha_composite(full)
         if status:
             self._shadowed(im, self.status_xy, status, self.small, (236, 241, 249, 228), dy=int(2 * self.s), blur=int(4 * self.s), a=235)
         return im
