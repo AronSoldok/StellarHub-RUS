@@ -79,15 +79,27 @@ async function engine(mod, fn, ...args) {
   return r.data;
 }
 const jobWaiters = new Map();
-on('job', m => {
-  const w = jobWaiters.get(m.id); if (!w) return;
+/* A job can send its updates (even its end) before the answer to "start it" reaches the page and the waiter exists:
+   a fast or cached job would otherwise never resolve. Updates for ids nobody waits for yet are kept for a moment. */
+const jobEarly = new Map();
+function jobDeliver(w, m) {
   if (m.kind === 'progress' || m.kind === 'end') { try { w.o.onProgress && w.o.onProgress(m); } catch (e) { console.error(e); } }
   if (m.log && w.o.onLog) { try { w.o.onLog(m.log); } catch (e) { console.error(e); } }
   if (m.kind === 'end') {
-    jobWaiters.delete(m.id);
     if (m.state === 'done') w.res(m.result); else if (m.state === 'cancelled') w.rej(Object.assign(new Error('cancelled'), { cancelled: true }));
     else w.rej(new Error((m.result && m.result.error) || t('the task failed')));
   }
+}
+on('job', m => {
+  const w = jobWaiters.get(m.id);
+  if (!w) {
+    let e = jobEarly.get(m.id);
+    if (!e) { e = []; jobEarly.set(m.id, e); setTimeout(() => jobEarly.delete(m.id), 20000); }
+    if (e.length < 200 || m.kind === 'end') e.push(m);
+    return;
+  }
+  if (m.kind === 'end') jobWaiters.delete(m.id);
+  jobDeliver(w, m);
 });
 function job(mod, fn, args = [], o = {}) {
   let id = null, cancelWanted = false;
@@ -95,7 +107,9 @@ function job(mod, fn, args = [], o = {}) {
     const r = await call('engine_job', mod, fn, args);
     if (r === undefined) { res(undefined); return; }
     if (!r.ok) { rej(new Error(r.error)); return; }
-    id = r.id; jobWaiters.set(id, { res, rej, o }); if (cancelWanted) call('job_cancel', id);
+    id = r.id; const w = { res, rej, o }; jobWaiters.set(id, w); if (cancelWanted) call('job_cancel', id);
+    const early = jobEarly.get(id);
+    if (early) { jobEarly.delete(id); for (const m of early) { if (m.kind === 'end') jobWaiters.delete(id); jobDeliver(w, m); } }
   });
   p.cancel = () => { cancelWanted = true; if (id) call('job_cancel', id); };
   return p;
