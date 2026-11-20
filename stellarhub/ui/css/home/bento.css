@@ -164,6 +164,16 @@ html[data-int=min] .hv-bento *{animation:none!important}
 @container (max-height:150px){
   .hv-bento .tilt{padding:9px 12px 10px!important}
   .hv-bento .art{display:none!important}
+  /* short tiles keep their drawing (it used to be hidden): on the right, behind the text, softened like a
+     watermark, so it never takes space from the text at any window size; it lights up on hover */
+  .hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .tilt{position:relative}
+  .hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .meta{position:relative;z-index:1}
+  .hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .art{display:flex!important;position:absolute;right:10px;top:50%;
+    flex:none;width:auto;height:62cqh;max-width:46cqw;max-height:none;padding:0;pointer-events:none;z-index:0;
+    transform:translate3d(0,-50%,0);opacity:.3;transition:opacity calc(260ms*var(--f)) var(--e-out)}
+  .hv-bento .bt:is(.hot,:focus-visible):is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .art{opacity:.6}
+  .hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .art svg{height:100%;width:100%;max-width:none;object-fit:contain}
+  .hv-bento .a-dsp .art{display:flex!important;flex:0 0 30%;height:100%;padding:6px 0}
   .hv-bento .meta .t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;font-size:12px}
   .hv-bento .live{margin-top:3px}
   .hv-bento .lbar{flex-wrap:nowrap;margin-bottom:0}
