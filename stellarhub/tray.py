@@ -169,7 +169,7 @@ def make_icon_image(size=64, tile=True):
     # the moon, with a faint glow at large sizes (at tray size there is no room for it next to the ring)
     if tier:
         mx, my, mr = (0, .785, .775)[tier] * s, (0, .185, .2)[tier] * s, (0, .065, .048)[tier] * s
-        if tier == 2:
+        if tier == 2 and not big:  # (large: the start screen draws it on its own, wider canvas)
             glow = Image.new("L", (s, s), 0)
             ImageDraw.Draw(glow).ellipse((mx - mr * 2.6, my - mr * 2.6, mx + mr * 2.6, my + mr * 2.6), fill=70)
             img.alpha_composite(_layer(s, _ICE, glow.filter(ImageFilter.GaussianBlur(mr * 1.2))))

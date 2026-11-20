@@ -104,7 +104,7 @@ class _Card:
 
     def __init__(self, scale):
         s = self.s = scale
-        W, H = int(700 * s), int(640 * s)
+        W, H = int(700 * s), int(580 * s)
         self.size = (W, H)
         cx = W // 2
         n = self.n = int(340 * s)                          # logo size
@@ -115,7 +115,7 @@ class _Card:
         # --- the patch of space: dark enough to read on a light wallpaper, no edges anywhere
         sky = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         sd = ImageDraw.Draw(sky)
-        sd.ellipse((cx - int(215 * s), int(70 * s), cx + int(215 * s), int(560 * s)), fill=(6, 9, 20, 246))  # near-opaque: text behind doesn't show
+        sd.ellipse((cx - int(215 * s), int(70 * s), cx + int(215 * s), int(505 * s)), fill=(6, 9, 20, 246))  # near-opaque: text behind doesn't show
         base.alpha_composite(sky.filter(ImageFilter.GaussianBlur(int(46 * s))))
         neb = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         nd = ImageDraw.Draw(neb)
@@ -126,6 +126,10 @@ class _Card:
         mx, my = cx + n * .30, ly + n * .16
         nd.ellipse((mx - r2, my - r2, mx + r2, my + r2), fill=(120, 190, 255, 40))               # cool, toward the moon
         base.alpha_composite(neb.filter(ImageFilter.GaussianBlur(int(55 * s))))
+        moon = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        mmx, mmy, mr = lx + n * .775, ly + n * .2, n * .048
+        ImageDraw.Draw(moon).ellipse((mmx - mr * 2.6, mmy - mr * 2.6, mmx + mr * 2.6, mmy + mr * 2.6), fill=(158, 214, 255, 75))
+        base.alpha_composite(moon.filter(ImageFilter.GaussianBlur(mr * 1.4)))
         import random
         rnd = random.Random(7)
         stars = Image.new("RGBA", (W * 2, H * 2), (0, 0, 0, 0))
@@ -152,7 +156,7 @@ class _Card:
             print("splash logo:", e)
 
         # --- the name, with a real shadow
-        self.name_y = name_y = ly + n + int(18 * s)
+        self.name_y = name_y = ly + int(n * .72) + int(44 * s)   # the ring's lowest point is at .713 of the logo
         name = _brand_font(int(46 * s))
         self._shadowed(base, (cx, name_y), "StellarHub", name, (243, 246, 252, 255), dy=int(4 * s), blur=int(9 * s), a=235)
         self.small = _font("segoeui.ttf", int(17 * s))
@@ -214,9 +218,9 @@ class _Card:
         eng = Image.new("RGBA", logo.size, (0, 0, 0, 0))
         ed = ImageDraw.Draw(eng)
         f1, f2 = _brand_font(max(8, int(n * .052))), _font("seguisb.ttf", max(8, int(n * .04)))
-        for (txt, f, yy) in ((CODENAME, f1, cy - pr * .46), (VERSION, f2, cy - pr * .17)):
-            ed.text((cx, yy + n * .004), txt, font=f, fill=(255, 210, 196, 90), anchor="mm")     # light edge
-            ed.text((cx, yy), txt, font=f, fill=(92, 24, 22, 150), anchor="mm")                 # the cut
+        for (txt, f, yy, ink) in ((VERSION, f2, cy - pr * .33, 108), (CODENAME, f1, cy - pr * .07, 150)):
+            ed.text((cx, yy + n * .004), txt, font=f, fill=(255, 210, 196, int(ink * .6)), anchor="mm")  # light edge
+            ed.text((cx, yy), txt, font=f, fill=(92, 24, 22, ink), anchor="mm")                        # the cut
         eng.putalpha(ImageChops.multiply(eng.getchannel("A"), warm))
         logo.alpha_composite(eng)
         self.planet_mask = warm
@@ -277,7 +281,7 @@ class _Card:
         self._ang = ang
         self._geom = (c1, c2, rxm, rym, ca, sa, n * .2)
         rwp = n * .064
-        hs = int(rwp * 5) | 1
+        hs = int(rwp * 14) | 1  # room for the whole halo: nothing may end in a square
         h = Image.new("RGBA", (hs * 4, hs * 4), (0, 0, 0, 0))
         hc = hs * 2
         hd = ImageDraw.Draw(h)
