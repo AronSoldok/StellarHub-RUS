@@ -20,6 +20,7 @@
 #v-remover .rv-scroll{flex:1;min-height:0;overflow:auto;padding-right:2px}
 #v-remover .pr{width:100%;text-align:left;padding:8px 12px;border-radius:var(--r-m);transition:background-color calc(140ms*var(--f))}
 #v-remover .pr:hover{background:var(--raise2)}
+#v-remover .pr{content-visibility:auto;contain-intrinsic-size:auto 52px}
 #v-remover .pr.sel{background:color-mix(in oklab,var(--accent) 9%,transparent)}
 #v-remover .pr .nm{display:flex;align-items:center;gap:var(--sp-md);min-width:0}
 #v-remover .pr .nm b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -201,6 +201,7 @@ html[data-int=min] #v-storage .st-scan.busy .st-co{animation:none;opacity:.6}
 #v-storage .st-bh span:nth-child(3){text-align:right}
 #v-storage .st-br{padding:8px 10px;border-radius:var(--r-m);transition:background-color calc(140ms*var(--f))}
 #v-storage .st-br:hover{background:var(--raise2)}
+#v-storage .st-br{content-visibility:auto;contain-intrinsic-size:auto 54px}
 #v-storage .st-bt{width:44px;height:34px;flex:none;border-radius:var(--r-s);display:grid;place-items:center;font-size:var(--fs-cap);font-weight:600;color:var(--c);background:color-mix(in oklab,var(--c) 14%,transparent);border:1px solid color-mix(in oklab,var(--c) 24%,transparent)}
 #v-storage .st-bn{min-width:0}
 #v-storage .st-bn b{font-weight:500}

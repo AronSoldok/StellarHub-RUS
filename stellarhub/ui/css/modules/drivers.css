@@ -83,6 +83,8 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .da-row{display:grid;grid-template-columns:minmax(0,1fr) 120px 112px 118px;gap:var(--sp-md);align-items:center;width:100%;text-align:left;padding:8px 10px;border-radius:var(--r-s);font-size:var(--fs-sm);
   transition:background-color calc(140ms*var(--f))}
 #v-drivers .da-row:hover{background:var(--raise2)}
+/* long lists: rows far outside the scroll area are not laid out or painted until they come near (about 50 px each) */
+#v-drivers .da-row{content-visibility:auto;contain-intrinsic-size:auto 50px}
 #v-drivers .da-row.sel{background:color-mix(in oklab,var(--accent) 9%,transparent)}
 #v-drivers .da-row .n1{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-drivers .da-row .n1 small{display:block;color:var(--faint);font-size:var(--fs-cap)}
