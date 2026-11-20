@@ -491,5 +491,8 @@
   "Some files leave at the next restart. Restore them after restarting the PC.": "部分文件将在下次重启时移除。请在重启电脑后再恢复。",
   "Restart pending": "等待重启",
   "{m} protected not listed": "另有 {m} 个受保护项未列出",
-  "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "受保护的组件不支持批量卸载，仍可在“程序”标签页中找到。"
+  "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "受保护的组件不支持批量卸载，仍可在“程序”标签页中找到。",
+  "Uninstalling {name}": "正在卸载 {name}",
+  "{name} uninstalled. {n} leftovers to review.": "已卸载 {name}。有 {n} 个残留项待检查。",
+  "{name} uninstalled. Nothing was left behind.": "已卸载 {name}。没有留下任何残留项。"
 }

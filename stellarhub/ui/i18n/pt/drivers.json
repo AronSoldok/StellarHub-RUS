@@ -355,5 +355,7 @@
   "{provider}, disabled": "{provider}, desativado",
   "{provider}, with an error": "{provider}, com erro",
   "{s} s": "{s} s",
-  "{version} ({date}), replaced by {newer} ({newerDate})": "{version} ({date}), substituída por {newer} ({newerDate})"
+  "{version} ({date}), replaced by {newer} ({newerDate})": "{version} ({date}), substituída por {newer} ({newerDate})",
+  "{n} driver update available": "{n} atualização de driver disponível",
+  "{n} driver updates available": "{n} atualizações de drivers disponíveis"
 }

@@ -648,6 +648,7 @@ function enqueue(apps, o) {
 function startQueue() {
   if (Q.running || !Q.list.some(q => q.st === 'queued')) { renderQueueHead(); return; }
   Q.running = true; Q.paused = false; Q.summaryShown = false;
+  Q.act = SH.activity.start(ID, { key: 'queue', label: t('Installing apps'), go: { tab: 'queue' } }); queueAct();
   if (REAL) runQueueReal(); else { clearInterval(Q.timer); Q.timer = setInterval(stepQueue, 60); }
   renderQueueHead();
 }
@@ -703,10 +704,12 @@ function queueEnded() {
 }
 function finishedToast() {
   const c = counts(); if (c.queued || c.run) return;
-  if (!c.done && !c.fail) return;
+  const act = Q.act; Q.act = null;
+  if (!c.done && !c.fail) { if (act) act.end({ cancelled: true }); return; }
   const msg = [c.done === 1 ? t('1 app installed.') : t('{n} apps installed.', { n: c.done })];
   if (c.fail) msg.push(c.fail === 1 ? t('1 failed.') : t('{n} failed.', { n: c.fail }));
   const kind = c.fail ? (c.done ? 'warning' : 'error') : 'success';
+  if (act && act.end({ ok: !!c.done, summary: msg.join(' '), error: c.done ? '' : msg.join(' '), kind })) return;
   SH.toast(msg.join(' '), c.fail ? { kind, action: { label: t('Retry'), run: retryFailed }, group: 'hg-done' } : { kind, group: 'hg-done' });
 }
 function counts() {
@@ -745,7 +748,16 @@ function qRowHTML(q, i) {
   return `<div class="hg-qrow st-${q.st}" data-q="${i}">${icon(q.a)}<div class="hg-qt"><div class="hg-qtl"><b>${esc(q.a.name)}</b><span class="hg-qmb">${q.mb ? mbTxt(q.mb) : ''}</span></div><span class="hg-qs">${qStateText(q)}</span>
     <div class="hg-qbar"><span></span></div></div><span class="hg-qi">${qIcon(q, i)}</span></div>`;
 }
+/* the queue's activity: overall progress (each app counts the same) and the app being installed */
+function queueAct() {
+  if (!Q.act || !Q.act.open) return;
+  const live = Q.list.filter(q => q.st !== 'cancel' && q.st !== 'skip'); if (!live.length) return;
+  const part = q => q.st === 'done' || q.st === 'fail' ? 1 : q.st === 'down' ? (q.p || 0) * .8 : q.st === 'inst' ? .8 + .2 * Math.min(1, q.ph || 0) : 0;
+  const cur = Q.list.find(q => q.st === 'down' || q.st === 'inst');
+  Q.act.progress(live.reduce((a, q) => a + part(q), 0) / live.length, cur ? cur.a.name : null);
+}
 function updQRow(q, light) {
+  queueAct();
   const i = Q.list.indexOf(q); const row = $(`#v-${ID} .hg-qrow[data-q="${i}"]`); Q.dirty = true; if (!row) return;
   const s = $('.hg-qs', row), txt = qStateText(q); if (s.innerHTML !== txt) s.innerHTML = txt;
   const mb = $('.hg-qmb', row), mt = q.mb ? mbTxt(q.mb) : ''; if (mb.textContent !== mt) mb.textContent = mt;

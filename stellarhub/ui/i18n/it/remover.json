@@ -491,5 +491,8 @@
   "Some files leave at the next restart. Restore them after restarting the PC.": "Alcuni file vengono rimossi al prossimo riavvio. Ripristinali dopo aver riavviato il PC.",
   "Restart pending": "Riavvio in sospeso",
   "{m} protected not listed": "{m} protetti non elencati",
-  "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "I componenti protetti non sono disponibili nella disinstallazione in blocco. Li trovi comunque nella scheda Programmi."
+  "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "I componenti protetti non sono disponibili nella disinstallazione in blocco. Li trovi comunque nella scheda Programmi.",
+  "Uninstalling {name}": "Disinstallazione di {name}",
+  "{name} uninstalled. {n} leftovers to review.": "{name} disinstallato. {n} residui da controllare.",
+  "{name} uninstalled. Nothing was left behind.": "{name} disinstallato. Non è rimasto nulla."
 }

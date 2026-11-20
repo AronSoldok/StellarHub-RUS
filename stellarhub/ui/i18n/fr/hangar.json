@@ -393,5 +393,6 @@
  "Queue": "File d'attente",
  "Windows is asking for permission: look for the flashing shield in the taskbar": "Windows demande une autorisation : cherchez le bouclier qui clignote dans la barre des tâches",
  "{state} · no news for {min} min": "{state} · rien de nouveau depuis {min} min",
- "winget isn't available on this PC. Install or update App Installer from the Microsoft Store.": "winget n'est pas disponible sur ce PC. Installez ou mettez à jour Programme d'installation d'application depuis le Microsoft Store."
+ "winget isn't available on this PC. Install or update App Installer from the Microsoft Store.": "winget n'est pas disponible sur ce PC. Installez ou mettez à jour Programme d'installation d'application depuis le Microsoft Store.",
+  "Installing apps": "Installation des applications"
 }

@@ -304,5 +304,6 @@
   "{n} app, {m} optional": "{n} app, {m} facoltativa",
   "{n} apps, {m} optional": "{n} app, {m} facoltative",
   "Couldn't check for updates (no internet?)": "Impossibile cercare aggiornamenti (nessuna connessione a internet?)",
-  "{name} could not be updated": "Impossibile aggiornare: {name}"
+  "{name} could not be updated": "Impossibile aggiornare: {name}",
+  "Installing updates": "Installazione degli aggiornamenti"
 }

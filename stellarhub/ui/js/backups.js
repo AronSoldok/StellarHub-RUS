@@ -185,27 +185,31 @@ function btnFree(b) { if (!b || b.dataset.html == null || !b.isConnected) return
    reports its last step (pct ≥ .9). o.btn: the button that started it. */
 async function runOp(fn, args, sample, o = {}) {
   if (busy) return null; busy = true; lock(true); message('');
+  /* followed from anywhere (SH.activity): a restore point can take minutes and the sheet may be closed meanwhile */
+  const act = SH.activity.start('backups', { key: 'op', label: o.label || o.btnText || t('Working…') });
   btnBusy(o.btn, o.btnText);
   progress(true, .04, o.start || t('Starting…'));
   const t0 = Date.now(); let lastPct = 0, iv = null;
   if (o.slow) { indet(true); const tick = () => { if (lastPct < .9) progress(true, null, o.slow((Date.now() - t0) / 1000)); }; tick(); iv = setInterval(tick, 1000); }
-  const onP = m => { lastPct = m.pct || 0; if (o.slow) { if (lastPct >= .9) { indet(false); progress(true, m.pct, m.text); } } else progress(true, m.pct, m.text); };
+  const onP = m => { lastPct = m.pct || 0; act.progress(m.pct > 0 ? m.pct : null, m.text || null); if (o.slow) { if (lastPct >= .9) { indet(false); progress(true, m.pct, m.text); } } else progress(true, m.pct, m.text); };
   let r;
   try {
-    r = !REAL ? await (async () => { const n = o.slow ? 12 : 5; for (let i = 1; i <= n; i++) { await wait(260); if (!o.slow) progress(true, i / n, o.start || t('Working…')); } return sample; })()
+    r = !REAL ? await (async () => { const n = o.slow ? 12 : 5; for (let i = 1; i <= n; i++) { await wait(260); act.progress(i / n); if (!o.slow) progress(true, i / n, o.start || t('Working…')); } return sample; })()
       : typeof fn === 'function' ? await fn(onP) : await job(fn, args, onP, 'task');
   } catch (e) { r = { ok: false, reason: 'failed', msg: e.message }; }
   finally {
     clearInterval(iv); busy = false;
     if (live()) { indet(false); progress(false); lock(false); btnFree(o.btn); }
   }
+  /* success: each caller says it in its own toast; a failure is told here when the sheet is not in front */
+  act.end(r && r.ok ? { ok: true, toast: false } : { ok: false, error: (r && (r.msg || REASON[r.reason])) || REASON.failed });
   return r || { ok: false, reason: 'failed' };
 }
 
 async function createPoint() {
   const name = (($('#bkName', root) || {}).value || '').trim();
   const r = await runOp('create_point', [name], { ok: true, reason: 'created', seq: 32 },
-    { btn: $('[data-bk="create-go"]', root), btnText: t('Creating…'), slow: s => t('Creating the restore point ({time}). This can take a few minutes.', { time: clock(s) }) });
+    { btn: $('[data-bk="create-go"]', root), btnText: t('Creating…'), label: t('Creating a restore point'), slow: s => t('Creating the restore point ({time}). This can take a few minutes.', { time: clock(s) }) });
   if (!r) return;
   if (r.ok) {
     createOpen = false; SH.toast(t('Restore point created.'), { kind: 'success' });

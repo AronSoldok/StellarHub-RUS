@@ -920,5 +920,9 @@
  "to create the restore point and change services. Without it, those steps are skipped.": "復元ポイントの作成とサービスの変更に必要です。管理者モードでない場合、これらの手順はスキップされます。",
  "Checking which programs have files open… {i} of {n}": "ファイルを開いているプログラムを確認中… {i} / {n}",
  "Reading {name}… {i} of {n} folders": "{name}を読み取り中… {i} / {n} フォルダー",
- "Measured {done} of {total} categories": "{done} / {total} カテゴリを測定済み"
+ "Measured {done} of {total} categories": "{done} / {total} カテゴリを測定済み",
+  "{size} can be freed": "{size} を解放できます",
+  "Analyzing your PC": "PC を分析中",
+  "Score: {n} out of 100": "スコア: {n}/100",
+  "Cleaning": "クリーンアップ中"
 }

@@ -684,6 +684,9 @@ function setArc(dial, p, instant) {
 /* user: the user started it (the caller already played scan_start in the click); the scan on entering the Map stays silent */
 async function runScan(user) {
   if (TM.scanning) return; TM.scanning = true; scanProg = null;
+  /* the scan the user started is followed from anywhere (dock ring, Home, taskbar); the one on entering the Map is not */
+  const what = !ST.real || !ST.target ? 'C:' : /^[A-Za-z]:\\?$/.test(ST.target) ? ST.target.slice(0, 2) : ST.target.split('\\').filter(Boolean).pop();
+  const act = user ? SH.activity.start(ID, { key: 'scan', label: T('Scanning {name}', { name: what }), go: { tab: 'map' }, cancel: () => API.cancel() }) : null;
   const el = $(`#v-${ID} .tab[data-tab="map"]`); const sc = el && $('.st-scan', el);
   if (sc) {
     sc.classList.remove('done'); sc.classList.add('busy');
@@ -699,6 +702,7 @@ async function runScan(user) {
   try {
     t = await API.scan(p => {
       scanProg = { files: p.files, frac: p.frac || 0, unit: p.unit }; paintScanWait();
+      if (act) act.progress(p.frac > 0 ? p.frac : null);
       if (!sc) return;
       SH.rollNumber($('.st-sn', sc), p.files, { tick: true }); setPathText(spEl, p.path || ' ');
       if (unitEl && p.unit) { const u = p.unit === 'entries' ? T('entries read') : T('files read'); if (unitEl.textContent !== u) unitEl.textContent = u; }
@@ -714,6 +718,7 @@ async function runScan(user) {
     });
   } catch (e) {
     TM.scanning = false; if (sc) sc.classList.remove('busy');
+    if (act) act.end(e && e.cancelled ? { cancelled: true } : { ok: false, error: (e && e.message) || '' });
     if (e && e.cancelled) {
       if (wasReady && TM.root) { TM.ready = true; relayout(); if (sc) anim(sc, [{ opacity: 1 }, { opacity: 0 }], { d: 260 }).finished.then(() => sc.classList.add('done')).catch(() => {}); }
       else if (sc) { setPathText($('.st-sp', sc), T('Scan cancelled.')); $('.st-ss', sc).textContent = T('Press Scan to start again.'); }
@@ -724,6 +729,7 @@ async function runScan(user) {
   }
   if (dial) { dial.classList.add('det'); setArc(dial, 1); }
   if (user) SH.sound('scan_complete');
+  if (act) act.end({ ok: true, summary: T('{size} in {n} files', { size: fmtB(t.size), n: fmtInt(t.fc) }) });
   TM.root = t; if (!TM.cur || !isAnc(t, TM.cur)) TM.cur = t;
   TM.scanning = false; TM.ready = true; TM.sel = null; TM.hover = TM.hoverTop = null; relayout();
   /* the map is drawn once, in pieces, before the ring leaves: the reveal below only moves finished layers */
@@ -1042,10 +1048,15 @@ function dupFindClick(e) {
   const m = e.target.closest('[data-min]'); if (m) { $$('.st-dmin button', el).forEach(x => x.classList.toggle('on', x === m)); SH.placeSeg($('.st-dmin', el)); DUPMIN.v = +m.dataset.min; return; }
   if (e.target.closest('[data-dstop]')) { if (ST.dupJob) ST.dupJob.cancel(); return; }
   if (!e.target.closest('[data-dfind]') || ST.dupJob) return;
-  ST.dupJob = SH.job('storage', 'duplicates', [DUPMIN.v], { sound: 'scan', onProgress: m => { ST.dupProg = m; paintDupProg(); } });
+  const act = SH.activity.start(ID, { key: 'dups', label: T('Looking for duplicates'), go: { tab: 'duplicates' }, cancel: () => ST.dupJob && ST.dupJob.cancel() });
+  ST.dupJob = SH.job('storage', 'duplicates', [DUPMIN.v], { sound: 'scan', activity: act, onProgress: m => { ST.dupProg = m; paintDupProg(); } });
   showDupProgress(el);
-  ST.dupJob.then(r => { ST.dups = r; ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (r.wasted) SH.toast(T('{size} in duplicate files.', { size: fmtB(r.wasted) })); })
-    .catch(err => { ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (!err.cancelled) SH.toast(T("Couldn't finish the search: {error}", { error: err.message }), { kind: 'error' }); });
+  ST.dupJob.then(r => { ST.dups = r; ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab);
+    const msg = r && r.wasted ? T('{size} in duplicate files.', { size: fmtB(r.wasted) }) : '';
+    if (!act.end({ ok: true, summary: msg || T('No duplicates found'), quiet: !r }) && msg) SH.toast(msg); })
+    .catch(err => { ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab);
+      if (act.end(err.cancelled ? { cancelled: true } : { ok: false, error: err.message })) return;
+      if (!err.cancelled) SH.toast(T("Couldn't finish the search: {error}", { error: err.message }), { kind: 'error' }); });
 }
 function showDupProgress(el) { const p = $('.st-dprog', el); if (!p) return; p.hidden = false; $('[data-dfind]', el).disabled = true; anim(p, [{ opacity: 0, transform: 'translate3d(0,6px,0)' }, { opacity: 1, transform: 'none' }], { d: 300 }); paintDupProg(); }
 function paintDupProg() {

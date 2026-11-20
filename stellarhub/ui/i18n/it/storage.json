@@ -204,5 +204,9 @@
   "Go to {tab}": "Vai a {tab}",
   "{n} files read": "{n} file letti",
   "{n} entries read": "{n} voci lette",
-  "{when}, in under 0.1 s": "{when}, in meno di 0,1 s"
+  "{when}, in under 0.1 s": "{when}, in meno di 0,1 s",
+  "Scanning {name}": "Analisi di {name}",
+  "{size} in {n} files": "{size} in {n} file",
+  "Looking for duplicates": "Ricerca dei duplicati",
+  "No duplicates found": "Nessun duplicato trovato"
 }

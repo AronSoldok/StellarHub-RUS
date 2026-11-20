@@ -491,5 +491,8 @@
   "Some files leave at the next restart. Restore them after restarting the PC.": "Alguns arquivos serão removidos na próxima reinicialização. Restaure-os depois de reiniciar o PC.",
   "Restart pending": "Reinicialização pendente",
   "{m} protected not listed": "{m} protegidos não listados",
-  "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "Os componentes protegidos não são oferecidos na desinstalação em lote. Você ainda os encontra na aba Programas."
+  "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "Os componentes protegidos não são oferecidos na desinstalação em lote. Você ainda os encontra na aba Programas.",
+  "Uninstalling {name}": "Desinstalando {name}",
+  "{name} uninstalled. {n} leftovers to review.": "{name} desinstalado. {n} resíduos para revisar.",
+  "{name} uninstalled. Nothing was left behind.": "{name} desinstalado. Nada ficou para trás."
 }

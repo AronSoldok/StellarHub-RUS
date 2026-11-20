@@ -586,17 +586,19 @@ async function quickScan() {
   if (scan && scan.on) return;
   SH.sound('scan_start');  /* the user pressed Quick scan */
   scan = { on: true, txt: t('Starting…'), t0: Date.now() }; paintProt();
+  const act = SH.activity.start('privacy', { key: 'quick', label: t('Quick scan with Microsoft Defender'), go: { tab: 'protection' } });
   const tick = setInterval(() => { const el = protEl && $('#pvScanT', protEl); if (el) el.textContent = `${scan.txt} · ${dur((Date.now() - scan.t0) / 1000)}`; }, 1000);
   try {
     let r;
-    if (REAL) { scan.p = SH.job('privacy', 'quick_scan', [], { onProgress: m => { if (m.text) scan.txt = m.text; }, onLog: l => { if (l.length) scan.txt = l[l.length - 1].slice(0, 80); } }); r = await scan.p; }
-    else { for (let i = 0; i < 8 && !scan.stop; i++) { scan.txt = [t('Memory'), t('Startup items'), t('System folders'), t('Downloads')][i % 4]; await wait(700); } r = { threats: 0, seconds: 6 }; if (scan.stop) throw Object.assign(new Error('cancelled'), { cancelled: true }); }
+    if (REAL) { scan.p = SH.job('privacy', 'quick_scan', [], { activity: act, onProgress: m => { if (m.text) scan.txt = m.text; }, onLog: l => { if (l.length) scan.txt = l[l.length - 1].slice(0, 80); } }); r = await scan.p; }
+    else { for (let i = 0; i < 8 && !scan.stop; i++) { scan.txt = [t('Memory'), t('Startup items'), t('System folders'), t('Downloads')][i % 4]; act.progress(i / 8, scan.txt); await wait(700); } r = { threats: 0, seconds: 6 }; if (scan.stop) throw Object.assign(new Error('cancelled'), { cancelled: true }); }
     if (!(r && r.threats)) SH.sound('scan_complete');
+    if (!act.end({ ok: true, summary: r && r.threats ? t('{n} threats', { n: r.threats }) : t('No threats'), kind: r && r.threats ? 'warning' : undefined }))
     SH.toast(r && r.threats ? t('Quick scan finished: {n} threats found. Open Windows Security to deal with them.', { n: r.threats }) : t('Quick scan finished: no threats found.'), r && r.threats ? { kind: 'warning' } : {});
     logAct(t('Quick scan with Microsoft Defender'), { sub: r && r.threats ? t('{n} threats', { n: r.threats }) : t('No threats'), ic: 'shield', go: 'privacy', tab: 'protection' });
     if (REAL) load('protection'); else D.protection.defender.quick = new Date().toISOString();
-  } catch (e) { if (!e.cancelled) SH.toast(e.message, { kind: 'error' }); else SH.toast(t('Scan cancelled.')); }
-  finally { clearInterval(tick); scan = null; paintProt(); }
+  } catch (e) { if (!act.end(e.cancelled ? { cancelled: true } : { ok: false, error: e.message })) { if (!e.cancelled) SH.toast(e.message, { kind: 'error' }); else SH.toast(t('Scan cancelled.')); } }
+  finally { clearInterval(tick); scan = null; paintProt(); act.end({ cancelled: true }); /* (already ended: nothing) */ }
 }
 
 /* ================= Network ================= */
@@ -831,7 +833,10 @@ SH.module({
   actions(el, ctx) {
     modCtx = ctx;
     el.innerHTML = `<button class="btn ghost" data-a="again">${ic('pvscan')}${t('Check again')}</button>`;
-    el.addEventListener('click', e => { if (!e.target.closest('[data-a="again"]')) return; SH.sound('scan_start'); Promise.all(AREAS.map(a => load(a))).then(() => { if (!AREAS.some(a => ERR[a])) SH.sound('scan_complete'); }); SH.toast(t('Checking again…')); });
+    el.addEventListener('click', e => { if (!e.target.closest('[data-a="again"]')) return; SH.sound('scan_start');
+      const act = SH.activity.start('privacy', { key: 'check', label: t('Checking again…'), go: { tab: 'overview' } }); let n = 0;
+      Promise.all(AREAS.map(a => load(a).finally(() => act.progress(++n / AREAS.length)))).then(() => { if (!AREAS.some(a => ERR[a])) SH.sound('scan_complete'); act.end({ ok: true }); }, err => act.end({ ok: false, error: err && err.message }));
+      SH.toast(t('Checking again…')); });
     on(a => { const b = $('[data-a="again"]', el); if (b && (a.endsWith(':busy') || a.endsWith(':idle'))) b.disabled = AREAS.some(loading); });
   },
   renderTab(tab, el, ctx) {

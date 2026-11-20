@@ -609,7 +609,7 @@ function actEnd(a, r) {
   if (a.user && !ok && !cancelled) actTbErr = Date.now() + 2600;
   emit('activity:end', { ...actView(a), ok, cancelled, told: tell });
   actFlush(true);
-  if (tell) {
+  if (tell && !(r.toast === false && !document.hidden)) {  /* toast: false: the module says it itself (the badge and the tray notification stay) */
     /* a job followed on its own: the module may still say how it went in its own toast, which then is enough */
     if (a.auto) { const t0 = performance.now(); setTimeout(() => { if (!((SH.toast.lastAt || 0) > t0)) actTell(a, ok, r, error, go); }, 350); }
     else actTell(a, ok, r, error, go);

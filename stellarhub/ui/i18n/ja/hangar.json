@@ -393,5 +393,6 @@
  "Queue": "キュー",
  "Windows is asking for permission: look for the flashing shield in the taskbar": "Windows がアクセス許可を求めています。タスク バーで点滅している盾のアイコンを確認してください",
  "{state} · no news for {min} min": "{state} · {min} 分間進展がありません",
- "winget isn't available on this PC. Install or update App Installer from the Microsoft Store.": "この PC では winget を利用できません。Microsoft Store からアプリ インストーラーをインストールまたは更新してください。"
+ "winget isn't available on this PC. Install or update App Installer from the Microsoft Store.": "この PC では winget を利用できません。Microsoft Store からアプリ インストーラーをインストールまたは更新してください。",
+  "Installing apps": "アプリをインストール中"
 }

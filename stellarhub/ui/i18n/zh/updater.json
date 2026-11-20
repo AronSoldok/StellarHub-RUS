@@ -304,5 +304,6 @@
   "{n} app, {m} optional": "{n} 个应用，{m} 个可选",
   "{n} apps, {m} optional": "{n} 个应用，{m} 个可选",
   "Couldn't check for updates (no internet?)": "无法检查更新（没有网络？）",
-  "{name} could not be updated": "无法更新：{name}"
+  "{name} could not be updated": "无法更新：{name}",
+  "Installing updates": "正在安装更新"
 }

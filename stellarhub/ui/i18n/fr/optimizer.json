@@ -920,5 +920,9 @@
  "to create the restore point and change services. Without it, those steps are skipped.": "pour créer le point de restauration et modifier les services. Sans lui, ces étapes sont ignorées.",
  "Checking which programs have files open… {i} of {n}": "Recherche des programmes qui ont des fichiers ouverts… {i} sur {n}",
  "Reading {name}… {i} of {n} folders": "Lecture de {name}… {i} dossiers sur {n}",
- "Measured {done} of {total} categories": "{done} catégories mesurées sur {total}"
+ "Measured {done} of {total} categories": "{done} catégories mesurées sur {total}",
+  "{size} can be freed": "{size} peuvent être libérés",
+  "Analyzing your PC": "Analyse de votre PC",
+  "Score: {n} out of 100": "Score : {n} sur 100",
+  "Cleaning": "Nettoyage"
 }

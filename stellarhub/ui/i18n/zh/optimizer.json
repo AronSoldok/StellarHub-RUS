@@ -920,5 +920,9 @@
  "to create the restore point and change services. Without it, those steps are skipped.": "以创建还原点并更改服务。没有它，这些步骤将被跳过。",
  "Checking which programs have files open… {i} of {n}": "正在检查哪些程序打开了文件… {i} / {n}",
  "Reading {name}… {i} of {n} folders": "正在读取{name}… {i} / {n} 个文件夹",
- "Measured {done} of {total} categories": "已测量 {done} / {total} 个类别"
+ "Measured {done} of {total} categories": "已测量 {done} / {total} 个类别",
+  "{size} can be freed": "可释放 {size}",
+  "Analyzing your PC": "正在分析你的电脑",
+  "Score: {n} out of 100": "得分：{n}/100",
+  "Cleaning": "正在清理"
 }

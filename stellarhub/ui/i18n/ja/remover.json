@@ -491,5 +491,8 @@
   "Some files leave at the next restart. Restore them after restarting the PC.": "一部のファイルは次回の再起動時に移動されます。PC を再起動してから復元してください。",
   "Restart pending": "再起動待ち",
   "{m} protected not listed": "保護された {m} 個は非表示",
-  "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "保護されたコンポーネントは一括アンインストールの対象外です。「プログラム」タブで確認できます。"
+  "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "保護されたコンポーネントは一括アンインストールの対象外です。「プログラム」タブで確認できます。",
+  "Uninstalling {name}": "{name} をアンインストール中",
+  "{name} uninstalled. {n} leftovers to review.": "{name} をアンインストールしました。確認する残存ファイルが {n} 件あります。",
+  "{name} uninstalled. Nothing was left behind.": "{name} をアンインストールしました。残存ファイルはありません。"
 }

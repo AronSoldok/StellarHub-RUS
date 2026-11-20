@@ -433,7 +433,15 @@ function glBench(canvas) {
 /* ============================================================ running tests */
 let RUN = null;     /* the test in progress: { kind, cancel(), label } (one at a time) */
 const busyFns = new Set();
-function setRun(r) { RUN = r; busyFns.forEach(fn => { try { fn(); } catch (e) { console.error(e); } }); actChip(); }
+function setRun(r) {
+  /* every test the user starts is followed from anywhere (SH.activity); it is ended where its result is told */
+  if (r && !RUN) { if (benchAct) benchAct.end({ cancelled: true }); benchAct = SH.activity.start('benchmark', { key: 'run', label: r.label, go: { tab: r.kind === 'full' ? 'overview' : r.kind }, cancel: r.cancel }); }
+  RUN = r; busyFns.forEach(fn => { try { fn(); } catch (e) { console.error(e); } }); actChip();
+}
+let benchAct = null;
+const benchProg = (p, text) => { if (benchAct) benchAct.progress(p, text); };
+/* the test's activity ends; true when the user was elsewhere and has been told (the module's own toast is then not needed) */
+const benchEnd = res => { const a = benchAct; benchAct = null; return a ? a.end(res) : false; };
 const KN = { sha256: 'SHA-256', blake2b: 'BLAKE2b', zlib_c: t('Compression (zlib)'), zlib_d: t('Decompression (zlib)') };
 const DT = [['seq_q8', 'SEQ1M Q8T1', t('Sequential, 8 requests in flight')], ['seq_q1', 'SEQ1M Q1T1', t('Sequential, one at a time')],
   ['rnd_q32', 'RND4K Q32T1', t('Random 4 KB, 32 in flight')], ['rnd_q1', 'RND4K Q1T1', t('Random 4 KB, one at a time')]];
@@ -611,7 +619,7 @@ async function runFull() {
   const sc = $('#bmScore', el); sc.textContent = '0%'; sc.dataset.v = 0; ringSet(0, false);
   const W8 = [.28, .08, .34, .30]; let rec = null;
   const stepEl = i => $(`.bm-st[data-i="${i}"]`, mid);
-  const setStep = (i, frac) => { const before = W8.slice(0, i).reduce((a, b) => a + b, 0); const p = before + W8[i] * clamp(frac, 0, 1); ringSet(p); SH.rollNumber(sc, fmtInt(p * 100) + '%');
+  const setStep = (i, frac) => { const before = W8.slice(0, i).reduce((a, b) => a + b, 0); const p = before + W8[i] * clamp(frac, 0, 1); ringSet(p); SH.rollNumber(sc, fmtInt(p * 100) + '%'); benchProg(p, FULL_STEPS[i].n);
     const u = $('.bm-sp u', stepEl(i)); if (u) u.style.transform = `scaleX(${clamp(frac, 0, 1)})`; };
   const live = (k, title, v, unit) => { $('#lvK', mid).textContent = k; if ($('#lvT', mid).textContent !== title) { $('#lvT', mid).textContent = title; sp.reset(); } if (!nil(v)) { $('#lvV', mid).textContent = fmtV(v); $('#lvU', mid).textContent = unit; sp.push(v); } };
   const res = {};
@@ -642,11 +650,13 @@ async function runFull() {
     setRun(null); mid.innerHTML = saved; ovPaint(true); SH.assemble(mid, 0, 50);
     anim($('#bmRing', el), [{ transform: 'scale(.94)' }, { transform: 'scale(1.03)', offset: .5 }, { transform: 'scale(1)' }], { d: 700, e: EASE.spring });
     /* beating the best full run so far (not the first one) is an achievement; the sound rides on the toast */
-    SH.toast(t('Your PC scored {n} points.', { n: fmtInt(run.score) }), { kind: isFinite(best) && !nil(run.score) && run.score > best ? 'achievement' : 'success' });
+    const kind = isFinite(best) && !nil(run.score) && run.score > best ? 'achievement' : 'success';
+    if (!benchEnd({ ok: true, summary: t('{n} points', { n: fmtInt(run.score) }), kind })) SH.toast(t('Your PC scored {n} points.', { n: fmtInt(run.score) }), { kind });
   } catch (e) {
     setRun(null); mid.innerHTML = saved; ovPaint(true);
-    if (e && e.cancelled) SH.toast(t('Benchmark cancelled. Nothing was saved.')); else { console.error(e); SH.toast(t('The benchmark stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000, kind: 'error' }); }
-  } finally { clearInterval(timer); if (rec) rec.stop(); setRun(null); }
+    if (benchEnd(e && e.cancelled ? { cancelled: true } : { ok: false, error: (e && e.message) || '' })) { /* told */ }
+    else if (e && e.cancelled) SH.toast(t('Benchmark cancelled. Nothing was saved.')); else { console.error(e); SH.toast(t('The benchmark stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000, kind: 'error' }); }
+  } finally { clearInterval(timer); if (rec) rec.stop(); setRun(null); benchEnd({ cancelled: true }); }
 }
 const MEMN = { copy: SH.tc('benchmark', 'Copy'), read: t('Read'), write: t('Write'), latency: t('Latency'), prepare: t('Preparing') };
 
@@ -726,13 +736,15 @@ async function runComp(id) {
     const run = await saveRun({ kind: id, score: res.score ?? null, [id]: res });
     setRun(null); c.paint(); c.chart.replay();
     const b = $('[data-body]', c.el); $$('.bm-tile, .bm-big', b).forEach((x, i) => anim(x, [{ opacity: 0, transform: 'translate3d(0,10px,0) scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 480, delay: i * 50, e: EASE.spring }));
-    if (!nil(run.score)) SH.toast(t('{name}: {n} points.', { name: cName(id), n: fmtInt(run.score) }), { kind: isFinite(best) && run.score > best ? 'achievement' : 'success' });
-    else SH.toast(t('Test finished.'), { kind: 'success' });
+    const kind = !nil(run.score) && isFinite(best) && run.score > best ? 'achievement' : 'success';
+    const msg = !nil(run.score) ? t('{name}: {n} points.', { name: cName(id), n: fmtInt(run.score) }) : t('Test finished.');
+    if (!benchEnd({ ok: true, summary: msg, kind })) SH.toast(msg, { kind });
     SH.logActivity(t('{name} benchmark finished', { name: cName(id) }), { sub: nil(run.score) ? '' : t('{n} points', { n: fmtInt(run.score) }), ic: 'benchmark', go: 'benchmark', tab: id });
   } catch (e) {
     setRun(null); c.paint();
-    if (e && e.cancelled) SH.toast(t('Test cancelled.')); else { console.error(e); SH.toast(t('The test stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000, kind: 'error' }); }
-  } finally { setRun(null); }
+    if (benchEnd(e && e.cancelled ? { cancelled: true } : { ok: false, error: (e && e.message) || '' })) { /* told */ }
+    else if (e && e.cancelled) SH.toast(t('Test cancelled.')); else { console.error(e); SH.toast(t('The test stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000, kind: 'error' }); }
+  } finally { setRun(null); benchEnd({ cancelled: true }); }
 }
 const tile = (lbl, v, unit, o = {}) => `<div class="bm-tile${o.cls ? ' ' + o.cls : ''}"${o.title ? ` title="${esc(o.title)}"` : ''}><span>${lbl}</span><b>${v}${unit ? `<small>${unit}</small>` : ''}</b>${o.sub ? `<em>${o.sub}</em>` : ''}</div>`;
 const bigScore = (v, sub) => `<div class="bm-big"><span>${t('Score')}</span><b>${fmtN(v)}</b><em>${esc(tier(v))}</em>${sub || ''}</div>`;
@@ -740,6 +752,7 @@ const lastLine = r => `<div class="bm-last faint">${ic('clock')}${t('Last run: {
 const idleHTML = (icn, title, txt, dur) => `<div class="bm-idle"><div class="bm-ii">${ic(icn)}</div><b>${title}</b><p>${txt}</p><span class="chip">${ic('clock')}${dur}</span></div>`;
 const liveHead = () => `<div class="bm-lvh"><div class="bm-lv"><b data-lv>${DASH}</b><span data-lu></span></div><div class="bm-lvk"><span data-lk>${t('Starting…')}</span><div class="bar"><span data-lp style="--v:0"></span></div></div></div>`;
 function liveSet(body, o) {
+  if (o.p != null) benchProg(clamp(o.p, 0, 1), o.k != null ? String(o.k) : null);
   if (o.k != null) $('[data-lk]', body).textContent = o.k;
   if (!nil(o.v)) { $('[data-lv]', body).textContent = fmtV(o.v); $('[data-lu]', body).textContent = o.u || ''; }
   if (o.p != null) $('[data-lp]', body).style.setProperty('--v', clamp(o.p, 0, 1));
@@ -1060,7 +1073,7 @@ async function runStress() {
     const nw = throttleCheck(D); if (nw.length || D.thr.length) { const x = $('[data-thr]', el); if (x) { x.textContent = D.thr.map(e => `${e.part === 'gpu' ? t('Graphics') : t('Processor')} −${e.drop}%`).join(', '); x.className = 'warn'; } }
     stDraw();
   });
-  const tick = setInterval(() => { const el2 = (performance.now() - D.t0) / 1000; const r = $('[data-rem]', el); if (r) r.textContent = fmtDur(total - el2); const p = $('[data-sp]', el); if (p) p.style.setProperty('--v', clamp(el2 / total, 0, 1));
+  const tick = setInterval(() => { const el2 = (performance.now() - D.t0) / 1000; const r = $('[data-rem]', el); if (r) r.textContent = fmtDur(total - el2); benchProg(clamp(el2 / total, 0, 1)); const p = $('[data-sp]', el); if (p) p.style.setProperty('--v', clamp(el2 / total, 0, 1));
     $('[data-elap]', el).textContent = `${fmtDur(el2)} / ${fmtDur(total)}`;
     if (el2 >= total + 1) stop(); }, 500);
   try {
@@ -1094,11 +1107,13 @@ async function runStress() {
     D.summary = S;
     if (S.elapsed >= 10) await saveRun({ kind: 'stress', score: null, stress: S });
     setRun(null); stIdle();
-    SH.toast(reason ? t('Stress test stopped for safety.') : t('Stress test finished.'), { kind: reason ? 'warning' : 'success' });
+    const msg = reason ? t('Stress test stopped for safety.') : t('Stress test finished.');
+    if (!benchEnd({ ok: true, summary: msg, kind: reason ? 'warning' : 'success' })) SH.toast(msg, { kind: reason ? 'warning' : 'success' });
     SH.logActivity(t('Stress test finished'), { sub: fmtDur(S.elapsed), ic: 'flame', go: 'benchmark', tab: 'stress' });
   } catch (e) {
-    console.error(e); stop(); setRun(null); stIdle(); SH.toast(t('The stress test stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000, kind: 'error' });
-  } finally { off(); clearInterval(tick); if (gl) gl.destroy(); if (glCv) glCv.remove(); glp.hidden = true; setRun(null); }
+    console.error(e); stop(); setRun(null); stIdle();
+    if (!benchEnd({ ok: false, error: (e && e.message) || '' })) SH.toast(t('The stress test stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000, kind: 'error' });
+  } finally { off(); clearInterval(tick); if (gl) gl.destroy(); if (glCv) glCv.remove(); glp.hidden = true; setRun(null); benchEnd({ cancelled: true }); }
 }
 
 /* ============================================================ History */

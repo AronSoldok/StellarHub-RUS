@@ -204,5 +204,9 @@
   "Go to {tab}": "{tab} に移動",
   "{n} files read": "{n} 個のファイルを読み取りました",
   "{n} entries read": "{n} 個のエントリを読み取りました",
-  "{when}, in under 0.1 s": "{when}、所要時間 0.1 s 未満"
+  "{when}, in under 0.1 s": "{when}、所要時間 0.1 s 未満",
+  "Scanning {name}": "{name} をスキャン中",
+  "{size} in {n} files": "{n} 個のファイルで {size}",
+  "Looking for duplicates": "重複ファイルを検索中",
+  "No duplicates found": "重複ファイルは見つかりませんでした"
 }

@@ -204,5 +204,9 @@
   "Go to {tab}": "Aller à {tab}",
   "{n} files read": "{n} fichiers lus",
   "{n} entries read": "{n} entrées lues",
-  "{when}, in under 0.1 s": "{when}, en moins de 0,1 s"
+  "{when}, in under 0.1 s": "{when}, en moins de 0,1 s",
+  "Scanning {name}": "Analyse de {name}",
+  "{size} in {n} files": "{size} dans {n} fichiers",
+  "Looking for duplicates": "Recherche des doublons",
+  "No duplicates found": "Aucun doublon trouvé"
 }

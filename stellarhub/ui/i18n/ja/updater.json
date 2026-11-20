@@ -304,5 +304,6 @@
   "{n} app, {m} optional": "{n} 個のアプリ、オプション {m} 個",
   "{n} apps, {m} optional": "{n} 個のアプリ、オプション {m} 個",
   "Couldn't check for updates (no internet?)": "更新を確認できませんでした (インターネットに接続されていない可能性があります)",
-  "{name} could not be updated": "{name} を更新できませんでした"
+  "{name} could not be updated": "{name} を更新できませんでした",
+  "Installing updates": "更新プログラムをインストール中"
 }

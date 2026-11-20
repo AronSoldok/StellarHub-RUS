@@ -362,11 +362,14 @@ function renderUpdates(el, ctx) {
     t0 = performance.now(); timer = setInterval(() => { $('#duTime', el).textContent = secsText(Math.floor((performance.now() - t0) / 1000)); }, 250);
     list.innerHTML = skRows(4); stagger($$('.sk-row', list));
     $('#duTitle', el).textContent = t('Looking for new drivers');
-    st.searching = DATA.search((txt, i) => { if (i === lastPhase || !txt) return; lastPhase = i; phaseText(txt); if (i >= 2) blips(radar); });
+    const act = SH.activity.start('drivers', { key: 'search', label: t('Looking for new drivers'), go: { tab: 'updates' }, cancel: () => st.searching && st.searching.cancel() });
+    st.searching = DATA.search((txt, i, m) => { if (txt) act.progress(m && m.pct > 0 ? m.pct : null, txt); if (i === lastPhase || !txt) return; lastPhase = i; phaseText(txt); if (i >= 2) blips(radar); });
     let res = null, err = null;
     try { res = await st.searching; } catch (e) { err = e; }
     st.searching = null; clearInterval(timer); $('#duTime', el).textContent = '';
     radar.classList.remove('on'); $('#duIndet', el).classList.remove('on'); setSearchBtn(false); st.busy = false;
+    act.end(err ? (err.cancelled ? { cancelled: true } : { ok: false, error: err.message }) : { ok: true,
+      summary: !(res || []).length ? t('Drivers up to date') : res.length === 1 ? t('{n} driver update available', { n: 1 }) : t('{n} driver updates available', { n: res.length }) });
     if (err) {
       if (err.cancelled) { const r = await DATA.lastSearch(); st.updates = r.updates; st.sel = new Set(st.updates.map(u => u.id)); head(st.updates.length, r.when); drawList(true, !r.at); SH.toast(t('Search cancelled.')); return; }
       SH.sound('error'); $('#duTitle', el).textContent = t('Windows Update did not respond'); $('#duPhase', el).textContent = err.message; list.innerHTML = errBox(t('Check your connection and try again. Sometimes Windows Update is busy installing something else.')); syncBar(); return;
@@ -389,6 +392,7 @@ function renderUpdates(el, ctx) {
       t('A restore point is created first so you can go back.') + (todo.some(u => u.reboot) ? ' ' + t('Some of them will ask to restart the PC when done.') : ''), t('Install'));
     if (!okGo) return;
     st.busy = true; syncBar(); sbtn.disabled = true;
+    const act = SH.activity.start('drivers', { key: 'install', label: n === 1 ? t('Installing {n} driver', { n }) : t('Installing {n} drivers', { n }), go: { tab: 'updates' } });
     $('#duTitle', el).textContent = n === 1 ? t('Installing {n} driver', { n }) : t('Installing {n} drivers', { n }); $('#duPhase', el).textContent = t('Do not turn off the PC. You can keep using StellarHub.');
     $('#duRadar', el).classList.add('on');
     /* elapsed time for the whole installation (restore point, asking Windows Update again, each driver) */
@@ -455,7 +459,10 @@ function renderUpdates(el, ctx) {
       else if (phase === 'error') { sp.t = 1; setRes(id, `<span class="chip bad">${t('Failed')}</span>`, 'ok'); const s = $(`.du-step[data-s="${id}"] .sub`, list); if (s) s.textContent = (d.result && (d.result.msg || (d.result.hresult ? t('Code 0x{code}', { code: d.result.hresult }) : ''))) || t('Windows Update could not install it.'); }
     };
     let out = null, err = null;
-    try { out = await DATA.install(todo, onStep); } catch (e) { err = e; }
+    /* the activity: steps finished out of all of them (the restore point is one) */
+    const onStepA = (id, phase, d = {}) => { onStep(id, phase, d);
+      act.progress(steps.filter(s => ['done', 'error', 'skip'].includes(seen[s.id])).length / steps.length, id === 'search' ? (d.text || null) : null); };
+    try { out = await DATA.install(todo, onStepA); } catch (e) { err = e; }
     finally { stopTime(); rpEnd(); $('#duIndet', el).classList.remove('on'); }
     await wait(400); tickers.delete(tk); $('#duTime', el).textContent = '';
     $('#duRadar', el).classList.remove('on'); st.busy = false; sbtn.disabled = false;
@@ -472,6 +479,7 @@ function renderUpdates(el, ctx) {
     const ttl = err ? t('The installation was interrupted') : !nOk ? t('No driver was installed')
       : failed ? (nOk === 1 ? t('{n} driver installed, {failed} with errors', { n: nOk, failed }) : t('{n} drivers installed, {failed} with errors', { n: nOk, failed }))
       : (nOk === 1 ? t('{n} driver installed', { n: nOk }) : t('{n} drivers installed', { n: nOk }));
+    act.end(err ? { ok: false, error: err.message } : !nOk ? { ok: false, error: ttl } : { ok: true, summary: ttl + (reboot ? '. ' + t('Restart the PC to finish.') : '') });
     done.innerHTML = `${okIds.size && !err ? ringSVG('ring') : warnSVG('ring')}<div><h3>${ttl}</h3><p>${err ? esc(err.message) : reboot ? t('Restart the PC to finish.') : nOk ? t('No restart needed.') : t('See the reason on each row.')} ${nOk && rpMade ? t('The restore point stays saved in case you want to go back.') : ''}</p></div>
       <div class="a">${reboot ? `<button class="btn ghost" data-x="later">${t('Later')}</button><button class="btn pri" data-x="reboot">${t('Restart in 1 minute')}</button>` : `<button class="btn sec" data-x="later">${t('Close')}</button>`}</div>`;
     list.before(done); anim(done, [{ opacity: 0, transform: 'translate3d(0,-10px,0) scale(.97)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 520, e: EASE.spring }); playRing($('svg', done), 150);

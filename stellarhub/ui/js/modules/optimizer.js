@@ -452,6 +452,7 @@ function paintRing(el) {
 async function analyze(el, again) {
   const sc = $('#optScore', el), lbl = $('#optScoreLbl', el), ring = $('.ring', el);
   if (again) SH.sound('scan_start');  /* "Analyze again": the user's scan (the first analysis on entry stays quiet) */
+  const act = again ? SH.activity.start('optimizer', { key: 'analyze', label: t('Analyzing your PC'), go: { tab: 'overview' } }) : null;
   $('#optAll', el).disabled = true; $('#optRescan', el).hidden = true; ring.classList.add('scanning');
   $('#optState', el).textContent = t('Checking your system'); $('#optSub', el).textContent = t('This is read-only; nothing changes.'); lbl.textContent = t('analyzing…'); SH.rollNumber(sc, 0);
   if (again) { ovMode = 'findings'; const r = $('#optRight', el); r.innerHTML = findingsHTML(); $$('.ov-row', r).forEach(x => { x.classList.add('pending'); $('button', x).disabled = true; });
@@ -466,6 +467,7 @@ async function analyze(el, again) {
       const ob = $('.ov-bar', row); ob.className = 'ov-bar ' + tone(a); anim($('i', ob), [{ transform: 'scaleX(0)' }, { transform: `scaleX(${areaFill(a)})` }], { d: 800 });
       anim(row, [{ transform: 'translate3d(10px,0,0)', opacity: .4 }, { transform: 'none', opacity: 1 }], { d: 420, e: EASE.spring }); }
     SH.rollNumber(sc, Math.round(score * done / AREAS.length));
+    if (act) act.progress(done / AREAS.length);
   });
   if (REAL) { score = calcScore(); const r = $('#optRight', el); if (r && ovMode === 'findings') r.innerHTML = findingsHTML(); paintRing(el); }
   ring.classList.remove('scanning'); SH.rollNumber(sc, score); lbl.textContent = t('out of 100');
@@ -476,6 +478,8 @@ async function analyze(el, again) {
   AREAS.forEach(a => refresh(a.id));
   $('#optAll', el).disabled = false; $('#optRescan', el).hidden = false;
   if (again) SH.sound('scan_complete');
+  if (act) { const junk = DB.clean.filter(c => c.def).reduce((a, c) => a + c.size, 0);
+    act.end({ ok: true, summary: junk >= 5e7 ? t('{size} can be freed', { size: gb(junk) }) : t('Score: {n} out of 100', { n: score }) }); }
   anim($('#optAll', el), [{ transform: 'scale(.94)' }, { transform: 'scale(1.04)', offset: .5 }, { transform: 'scale(1)' }], { d: 520 });
 }
 function planSteps() {
@@ -509,13 +513,15 @@ let lastRun = null;
 async function runPlan(el, steps) {
   running = true; ovMode = 'run'; const right = $('#optRight', el); $('#optAll', el).disabled = true; $('#optRescan', el).hidden = true;
   const before = { boot: bootSaved(), score };
+  const act = SH.activity.start('optimizer', { key: 'plan', label: t('Optimizing'), go: { tab: 'overview' } });
   swap(right, `<h4 class="pan-h">${t('Optimizing')} <em id="optFreed">${t('{size} freed', { size: '0 MB' })}</em></h4><div class="phases">${steps.map(s => `<div class="phase" data-ph="${s.id}"><span class="ph-dot"></span><div class="pt"><b>${esc(s.t)}</b><span class="ph-msg">${t('Waiting')}</span><div class="bar acc"><span style="transform:scaleX(0)"></span></div></div></div>`).join('')}</div>`);
   await wait(520);
   $('#optState', el).textContent = t('Working…'); $('#optSub', el).textContent = t('You can keep using your PC in the meantime.'); $('.ring', el).classList.add('scanning');
   let freed = 0; const log = [];
   for (const s of steps) {
     const ph = $(`.phase[data-ph="${s.id}"]`, right); if (!ph) continue; ph.classList.add('run');
-    const bar = $('.bar>span', ph), msg = $('.ph-msg', ph); const setP = p => { bar.style.transform = `scaleX(${p})`; };
+    const k = steps.indexOf(s); act.progress(k / steps.length, s.t);
+    const bar = $('.bar>span', ph), msg = $('.ph-msg', ph); const setP = p => { bar.style.transform = `scaleX(${p})`; act.progress((k + Math.max(0, Math.min(1, p))) / steps.length, s.t); };
     if (s.admin && !state.admin) { msg.textContent = t('Skipped: needs administrator mode'); ph.classList.remove('run'); ph.classList.add('skip'); log.push(['skip', s.t]); await wait(260); continue; }
     if (REAL) {
       try { const r = await realStep(s, msg, setP); if (r && r.freed !== undefined) { freed += r.freed; const f = $('#optFreed', el); if (f) f.textContent = t('{size} freed', { size: gb(freed) }); } log.push(['ok', r && r.log || s.t]); }
@@ -557,7 +563,8 @@ async function runPlan(el, steps) {
   $('#optAll', el).disabled = false; $('#optRescan', el).hidden = false; running = false;
   ['clean', 'startup', 'services', 'performance'].forEach(refresh);
   /* the score went up: the achievement sound rides on the final toast (one sound for the moment) */
-  SH.toast(t('Optimization finished: {size} freed.', { size: gb(freed) }), { kind: score > before.score ? 'achievement' : 'success' });
+  const kind = score > before.score ? 'achievement' : 'success';
+  if (!act.end({ ok: true, summary: t('{size} freed', { size: gb(freed) }), kind })) SH.toast(t('Optimization finished: {size} freed.', { size: gb(freed) }), { kind });
 }
 /* one real step of “Optimize everything” */
 async function realStep(s, msg, setP) {
@@ -766,6 +773,7 @@ function renderClean(el) {
     run.classList.add('indet'); bar.style.transform = ''; T.textContent = t('Checking which folders running programs are using…');
     F.textContent = R.textContent = K.textContent = C.textContent = E.textContent = '';
     const ctl = {};
+    const act = SH.activity.start('optimizer', { key: 'clean', label: t('Cleaning'), go: { tab: 'clean' }, cancel: () => ctl.cancel && ctl.cancel() });
     cancelBtn.onclick = () => { if (ctl.cancel) ctl.cancel(); cancelBtn.disabled = true; cancelBtn.textContent = t('Stopping…'); };
     ids.forEach(id => { delete DB.clean.find(c => c.id === id)._done; });
     mark();
@@ -773,7 +781,7 @@ function renderClean(el) {
       if (!d.total) return;
       run.classList.remove('indet');
       const pct = Math.min(1, (d.deleted + (d.skipped || 0)) / d.total);
-      bar.style.transform = `scaleX(${pct.toFixed(4)})`;
+      bar.style.transform = `scaleX(${pct.toFixed(4)})`; act.progress(pct);
       /* these change many times a second while cleaning: plain text (a roll would only show half-moved digits) */
       const P = { plain: true };
       SH.rollNumber(T, t('Deleted {n} of {total} files', { n: SH.fmtInt(d.deleted), total: SH.fmtInt(d.total) }), P);
@@ -792,11 +800,11 @@ function renderClean(el) {
     };
     let r = null;
     try { r = await API.clean(ids, onCat, status, ctl); }
-    catch (e) { SH.toast(t('Cleanup: {error}', { error: e.message }), { kind: 'error' }); }
+    catch (e) { if (!act.end(e.cancelled || e.needAdmin ? { cancelled: true } : { ok: false, error: e.message })) SH.toast(t('Cleanup: {error}', { error: e.message }), { kind: 'error' }); }
     busy = false; el.classList.remove('cl-busy'); $$('.cl-it.busyrun', el).forEach(x => x.classList.remove('busyrun', 'indet'));
     go.innerHTML = `${ic('broom')}${t('Clean selected')}`; sync(); refresh('overview');
     run.classList.remove('indet'); run.classList.add('done'); cancelBtn.disabled = false; cancelBtn.innerHTML = `${ic('x')}${t('Close')}`; cancelBtn.onclick = () => { run.hidden = true; };
-    if (!r) { T.textContent = t('Cleanup stopped'); return; }
+    if (!r) { act.end({ cancelled: true }); T.textContent = t('Cleanup stopped'); return; }
     const freed = r.freed || 0;
     const open = (r.busyCats || []).map(id => (DB.clean.find(c => c.id === id) || {}).label).filter(Boolean);
     T.textContent = r.cancelled ? t('Stopped. {size} freed before cancelling', { size: gb(freed) }) : t('Done. {size} freed', { size: gb(freed) });
@@ -804,7 +812,8 @@ function renderClean(el) {
     K.textContent = r.skipped ? t('{n} files in use were skipped', { n: SH.fmtInt(r.skipped) }) : '';
     C.textContent = open.length ? t("Skipped because they're open: {list}", { list: open.join(', ') }) : '';
     if (!r.cancelled) bar.style.transform = 'scaleX(1)';
-    SH.toast(r.cancelled ? t('Stopped. Freed {size}.', { size: gb(freed) }) : t('Freed {size}.', { size: gb(freed) }), r.cancelled ? {} : { kind: 'success' });
+    if (!act.end(r.cancelled ? { cancelled: true } : { ok: true, summary: t('{size} freed', { size: gb(freed) }) }))
+      SH.toast(r.cancelled ? t('Stopped. Freed {size}.', { size: gb(freed) }) : t('Freed {size}.', { size: gb(freed) }), r.cancelled ? {} : { kind: 'success' });
     if (REAL) SH.logActivity(r.cancelled ? t('Cleanup stopped') : t('Cleanup done'), { sub: t('{size} freed', { size: gb(freed) }), ic: 'broom', go: 'optimizer', tab: 'clean' });
   });
   rendered.clean = sync;

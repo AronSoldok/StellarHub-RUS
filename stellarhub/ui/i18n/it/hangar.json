@@ -393,5 +393,6 @@
  "Queue": "Coda",
  "Windows is asking for permission: look for the flashing shield in the taskbar": "Windows chiede l'autorizzazione: cerca lo scudo che lampeggia nella barra delle applicazioni",
  "{state} · no news for {min} min": "{state} · nessuna novità da {min} min",
- "winget isn't available on this PC. Install or update App Installer from the Microsoft Store.": "winget non è disponibile su questo PC. Installa o aggiorna Programma di installazione app da Microsoft Store."
+ "winget isn't available on this PC. Install or update App Installer from the Microsoft Store.": "winget non è disponibile su questo PC. Installa o aggiorna Programma di installazione app da Microsoft Store.",
+  "Installing apps": "Installazione delle app"
 }

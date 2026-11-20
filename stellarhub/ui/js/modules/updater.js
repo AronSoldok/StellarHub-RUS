@@ -112,7 +112,7 @@ function refreshBadge() { publishPending(); }
 
 /* ---------------- searches (real inside the app) ---------------- */
 let pA = null, pW = null, pD = null;
-function scanProgress(kind, m) { S.prog[kind] = m; const el = $(`#v-${ID} .u-sub`); if (el && (kind === 'apps' ? S.appsScanning : !S.scanned)) el.textContent = m.text || t('Searching…'); updateWinWait(); }
+function scanProgress(kind, m) { S.prog[kind] = m; if (S.checkAct && m && m.text) S.checkAct.progress(null, m.text); const el = $(`#v-${ID} .u-sub`); if (el && (kind === 'apps' ? S.appsScanning : !S.scanned)) el.textContent = m.text || t('Searching…'); updateWinWait(); }
 /* while the apps search runs again, the lists keep the previous results but look dimmed */
 function setAppsScanning(on) {
   S.appsScanning = on; const v = $(`#v-${ID}`); if (v) v.classList.toggle('u-rescan', on && S.scanned);
@@ -177,6 +177,7 @@ function enqueue(ids) {
 }
 function startQueue() {
   if (Q.running) return; Q.askedAdmin = false; Q.running = true; Q.paused = false;
+  Q.act = SH.activity.start(ID, { key: 'queue', label: t('Installing updates'), go: { tab: 'overview' } }); queueAct();
   if (REAL) runQueueReal(); else { clearInterval(Q.timer); Q.timer = setInterval(stepQueue, 60); }
   renderQueueHead();
 }
@@ -231,10 +232,12 @@ function stepQueue() {
 }
 function finishedToast() {
   const done = Q.list.filter(q => q.st === 'done').length, fail = Q.list.filter(q => q.st === 'fail').length, adm = Q.list.filter(q => q.st === 'admin').length;
-  if (!done && !fail && !adm) return;
+  const act = Q.act; Q.act = null;
+  if (!done && !fail && !adm) { if (act) act.end({ cancelled: true }); return; }
   const msg = [done === 1 ? t('{n} update installed.', { n: done }) : t('{n} updates installed.', { n: done })];
   if (fail) msg.push(t('{n} failed.', { n: fail })); if (adm) msg.push(t('{n} waiting for admin mode.', { n: adm }));
   const kind = fail && !done ? 'error' : fail || adm ? 'warning' : 'success';
+  if (act && act.end({ ok: !(fail && !done), summary: msg.join(' '), error: fail && !done ? msg.join(' ') : '', kind })) return;
   SH.toast(msg.join(' '), S.reboot ? { kind, action: { label: t('Restart now'), run: () => SH.toast(t('Save your work and restart from the Start menu when you can.')) }, group: 'upd-done' } : { kind, group: 'upd-done' });
 }
 function onItemDone(it) {
@@ -266,7 +269,14 @@ function qIcon(q) {
   if (q.st === 'down' || q.st === 'inst') return '<span class="u-spin"></span>';
   return '';
 }
+/* the queue's activity: the overall progress and what it is doing now */
+function queueAct() {
+  if (!Q.act || !Q.act.open) return;
+  const live = Q.list.filter(q => q.st !== 'cancel'), cur = Q.list.find(q => q.st === 'down' || q.st === 'inst');
+  Q.act.progress(qProgress(), cur ? `${dn(cur.it.name)} · ${t('{done} of {total} done', { done: live.filter(q => q.st === 'done').length, total: live.length })}` : null);
+}
 function updQRow(q, light) {
+  queueAct();
   const row = $(`#v-${ID} .u-qrow[data-q="${Q.list.indexOf(q)}"]`); if (!row) return;
   const s = $('.u-qs', row), txt = qStateText(q); if (s.innerHTML !== txt) s.innerHTML = txt;
   Q.dirty = true;
@@ -341,7 +351,7 @@ function queueClicks(e) {
       else if (q.st === 'inst') { q.cancelAfter = true; updQRow(q, true); }
       else if (!REAL && ['down', 'inst'].includes(q.st)) { q.st = 'cancel'; updQRow(q); }
     });
-    if (!REAL) { Q.running = false; clearInterval(Q.timer); }
+    if (!REAL) { Q.running = false; clearInterval(Q.timer); if (Q.act) { Q.act.end({ cancelled: true }); Q.act = null; } }
     renderQueueHead(); rerenderAll(); SH.toast(REAL && Q.list.some(q => q.cancelAfter) ? t('What is installing now will finish; the rest is cancelled.') : t('Queue cancelled. What was already installed stays.'), { group: 'upd-q' }); return true;
   }
   if (e.target.closest('[data-qclear]')) { Q.list = Q.list.filter(q => ['down', 'inst'].includes(q.st)); $(`#v-${ID} .u-qlist`).innerHTML = ''; renderQueue(); return true; }
@@ -955,10 +965,11 @@ SH.module({
         if (c.disabled) return;
         const html = c.innerHTML; c.disabled = true; c.classList.add('u-busy'); c.innerHTML = `${ic('refresh')}${t('Checking…')}`;
         SH.sound('scan_start');  /* one start and one end for the programs and Windows checks together (the toast below) */
-        try { await Promise.all([scanApps(true), scanWindows(true)]); } finally { c.disabled = false; c.classList.remove('u-busy'); c.innerHTML = html; }
-        if (S.noWinget) SH.toast(t("winget isn't available on this PC."), { group: 'upd-check', kind: 'error' });
-        else if (S.errs.apps) SH.toast(ERR_MSG.apps(S.errs.apps), { group: 'upd-check', kind: 'error' });
-        else SH.toast(t('{n} pending updates.', { n: pending().filter(i => !i.optional).length }), { group: 'upd-check', kind: 'scan_complete' });
+        const act = S.checkAct = SH.activity.start(ID, { key: 'check', label: t('Looking for updates…'), go: { tab: 'overview' } });
+        try { await Promise.all([scanApps(true), scanWindows(true)]); } finally { c.disabled = false; c.classList.remove('u-busy'); c.innerHTML = html; S.checkAct = null; }
+        const err = S.noWinget ? t("winget isn't available on this PC.") : S.errs.apps ? ERR_MSG.apps(S.errs.apps) : '';
+        const msg = err || t('{n} pending updates.', { n: pending().filter(i => !i.optional).length });
+        if (!act.end(err ? { ok: false, error: err } : { ok: true, summary: msg, kind: 'scan_complete' })) SH.toast(msg, { group: 'upd-check', kind: err ? 'error' : 'scan_complete' });
       }
     });
   },

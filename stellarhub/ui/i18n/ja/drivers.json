@@ -355,5 +355,7 @@
   "{provider}, disabled": "{provider}、無効",
   "{provider}, with an error": "{provider}、エラーあり",
   "{s} s": "{s} 秒",
-  "{version} ({date}), replaced by {newer} ({newerDate})": "{version} ({date})、{newer} ({newerDate}) に置き換え済み"
+  "{version} ({date}), replaced by {newer} ({newerDate})": "{version} ({date})、{newer} ({newerDate}) に置き換え済み",
+  "{n} driver update available": "{n} 件のドライバー更新があります",
+  "{n} driver updates available": "{n} 件のドライバー更新があります"
 }

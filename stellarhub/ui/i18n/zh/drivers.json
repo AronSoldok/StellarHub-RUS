@@ -355,5 +355,7 @@
   "{provider}, disabled": "{provider}，已禁用",
   "{provider}, with an error": "{provider}，有错误",
   "{s} s": "{s} 秒",
-  "{version} ({date}), replaced by {newer} ({newerDate})": "{version}（{date}），已被 {newer}（{newerDate}）取代"
+  "{version} ({date}), replaced by {newer} ({newerDate})": "{version}（{date}），已被 {newer}（{newerDate}）取代",
+  "{n} driver update available": "有 {n} 个驱动更新",
+  "{n} driver updates available": "有 {n} 个驱动更新"
 }

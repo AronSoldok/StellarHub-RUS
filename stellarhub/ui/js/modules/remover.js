@@ -449,7 +449,8 @@ function openFlow(progs, opts = {}) {
       const s = $('.t', foot); if (s) s.innerHTML = `${esc(T('Creating a restore point. This can take a few minutes…'))} <span class="faint rv-el">${esc(T('Elapsed {time}', { time: mmss(0) }))}</span>`;
       rpTimer = setInterval(() => { const e = $('.rv-el', foot); if (!e || closed) { rpStop(); return; } e.textContent = T('Elapsed {time}', { time: mmss((Date.now() - t0) / 1000) }); }, 1000);
     };
-    const job = SH.job('remover', 'uninstall', [one.eid, { mode: mode === 'silent' ? 'quiet' : mode, level, restore_point: true }], { sound: 'task', onProgress: m => {
+    const act = SH.activity.start('remover', { key: 'uninstall', label: T('Uninstalling {name}', { name: one.name }), go: { tab: 'programs' } });
+    const job = SH.job('remover', 'uninstall', [one.eid, { mode: mode === 'silent' ? 'quiet' : mode, level, restore_point: true }], { sound: 'task', activity: act, onProgress: m => {
       if (closed) { rpStop(); return; } const d = m.data || {};
       if (d.step === 'restore' && d.status === 'running') rpStart();
       else if (rpTimer) { rpStop(); const s = $('.t', foot); if (s && d.step === 'restore') s.textContent = T('Preparing. This takes a few seconds.'); }
@@ -481,16 +482,19 @@ function openFlow(progs, opts = {}) {
     wireCancel();
     let res;
     try { res = await job; } catch (e) {
+      act.end(e.cancelled ? { cancelled: true } : { ok: false, error: jobErr(e) });
       rpStop(); tickers.delete(t2); busy = false; if (closed) return;
       if (e.cancelled) { SH.toast(T('Cancelled. Nothing else was touched.')); close(); return; }
       swap(body, SH.emptyState({ art: 'error', small: true, title: T('Could not uninstall'), text: esc(jobErr(e)) })); setFoot(`<span class="t"></span><button class="btn pri" data-x>${T('Close')}</button>`); return;
     }
-    rpStop(); tickers.delete(t2); busy = false; if (closed) return;
-    if (res.cancelled) { SH.toast(T('Cancelled. The program is still installed.')); close(); return; }
+    rpStop(); tickers.delete(t2); busy = false;
+    if (closed) { act.end(res && res.cancelled ? { cancelled: true } : { ok: true, summary: T('{name} uninstalled', { name: one.name }) }); return; }
+    if (res.cancelled) { act.end({ cancelled: true }); SH.toast(T('Cancelled. The program is still installed.')); close(); return; }
     $$('.ck', body).forEach(c => { setCk(c.dataset.c, 'ok'); const s = $('.s', c); if (s) s.textContent = T('Checked'); });
     const sc = res.scan || { items: [], key: one.eid };
     items = sc.items.map(mapItem(sc.key, one.name)); sel = new Set(items.filter(l => l.selected).map(l => l.id));
     if (scanShown) SH.sound('scan_complete');
+    act.end({ ok: true, summary: items.length ? T('{name} uninstalled. {n} leftovers to review.', { name: one.name, n: items.length }) : T('{name} uninstalled. Nothing was left behind.', { name: one.name }) });
     if (res.still_registered && mode !== 'forced') SH.toast(T('The program is still registered: maybe you cancelled the uninstaller. Review the leftovers carefully.'), { ms: 6000, kind: 'warning' });
     SH.logActivity(T('{name} uninstalled', { name: one.name }), { sub: SMODE[mode], ic: 'remover', go: 'remover', tab: 'history' });
     await wait(400); if (!closed) stepReview();

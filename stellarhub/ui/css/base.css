@@ -334,15 +334,15 @@ html[data-int=min] .sk::after{animation:none}
    user started and they are elsewhere, then a small badge when it ends there. .dka follows the icon's own transform, so
    the magnification carries it; only transform, opacity and stroke-dashoffset ever change. */
 .dka{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;transform:translateY(calc((1 - var(--dv))*26px)) scale(calc(.85 + .15*var(--dv)));--p:0}
-.dka svg{grid-area:1/1;width:44px;height:44px;overflow:visible;fill:none;opacity:0;transform:scale(.86);
+.dka>svg{grid-area:1/1;width:44px;height:44px;overflow:visible;fill:none;opacity:0;transform:scale(.86);
   transition:opacity calc(260ms*var(--f)) var(--e-out),transform calc(420ms*var(--f)) var(--e-out)}
 .dka .tr{stroke:var(--line2);stroke-width:1.6}
 .dka .arc{stroke:var(--accent2);stroke-width:2.2;stroke-linecap:round;stroke-dasharray:100 100;stroke-dashoffset:calc(100 - var(--p)*100);
   transition:stroke-dashoffset calc(520ms*var(--f)) var(--e-out),stroke calc(260ms*var(--f))}
-.dk:is([data-act=run],[data-act=fin]):not(.on) .dka svg{opacity:1;transform:none}
+.dk:is([data-act=run],[data-act=fin]):not(.on) .dka>svg{opacity:1;transform:none}
 /* not measurable yet: a short arc in a slow, steady orbit (still at intensity minimum and with reduced motion) */
 .dk.ind .dka .arc{stroke-dashoffset:78}
-.dk.ind:not(.on)[data-act=run] .dka svg{animation:dka-orbit calc(3200ms/max(var(--f),.5)) linear infinite}
+.dk.ind:not(.on)[data-act=run] .dka>svg{animation:dka-orbit calc(3200ms/max(var(--f),.5)) linear infinite}
 @keyframes dka-orbit{from{rotate:0deg}to{rotate:360deg}}
 .dk[data-act=fin] .dka .arc{stroke:var(--ok)}
 .dk[data-act=fin][data-res=err] .dka .arc{stroke:var(--warn)}
@@ -354,9 +354,9 @@ html[data-int=min] .sk::after{animation:none}
 .dk[data-act=err] .dkb{background:var(--warn)}
 .dk:is([data-act=ok],[data-act=err]) .dkb{opacity:1;transform:none}
 .dk[data-act] .tip{max-width:min(380px,60vw);overflow:hidden;text-overflow:ellipsis}
-html[data-int=min] .dka svg,html[data-int=min] .dkb{transition-duration:1ms}
-html[data-int=min] .dk.ind .dka svg{animation:none!important}
-@media (prefers-reduced-motion:reduce){.dk.ind .dka svg{animation:none!important}}
+html[data-int=min] .dka>svg,html[data-int=min] .dkb{transition-duration:1ms}
+html[data-int=min] .dk.ind .dka>svg{animation:none!important}
+@media (prefers-reduced-motion:reduce){.dk.ind .dka>svg{animation:none!important}}
 
 /* ---------- layers: palette, settings, toasts ---------- */
 .overlay{position:fixed;inset:0;z-index:60;visibility:hidden}

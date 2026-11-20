@@ -867,20 +867,24 @@ function runBegin(id) {
   RUN[id] = { t0: Date.now(), btn: '', text: '', line: '' }; paintRun(id);
   if (!runTimer) runTimer = setInterval(() => { const ids = Object.keys(RUN); if (!ids.length) { clearInterval(runTimer); runTimer = 0; return; } ids.forEach(paintRun); }, 1000);
 }
-function runSet(id, o) { if (RUN[id]) { Object.assign(RUN[id], o); paintRun(id); } }
+function runSet(id, o) { if (RUN[id]) { Object.assign(RUN[id], o); paintRun(id); const a = APACT[id]; if (a && ('pct' in o || 'text' in o)) a.progress(RUN[id].pct ?? null, RUN[id].text || null); } }
+/* "Run now" is followed from anywhere (SH.activity); Autopilot's own toast (with View the log) says how it went */
+const APACT = {};
+function apEnd(id, res) { const a = APACT[id]; delete APACT[id]; if (a) a.end({ toast: false, ...res }); }
 function runEnd(id) { delete RUN[id]; paintRun(id); }
 
 async function runNow(r) {
   if (RUN[r.id]) return;                 // already running: a second click does nothing
   if (!r.acts.length) { SH.toast(tr('This routine doesn’t do anything yet. Add an action to it.'), { action: { label: tr('Add'), run: () => setStep('a') } }); return; }
   runBegin(r.id);
+  APACT[r.id] = SH.activity.start('autopilot', { key: 'run:' + r.id, label: r.name || tr('Routine'), go: { tab: 'log' } });
   let ended = false;
   try {
     if (REAL) { await runReal(r, () => { runEnd(r.id); ended = true; }); return; }
     const steps = []; let gb = 0, upd = 0;
     for (let i = 0; i < r.acts.length; i++) {
       const x = r.acts[i], d = byK.a[x.k];
-      runSet(r.id, { btn: tr('Step {n} of {total}', { n: i + 1, total: r.acts.length }), text: cap(sayOf('a', x)), line: '' });
+      runSet(r.id, { btn: tr('Step {n} of {total}', { n: i + 1, total: r.acts.length }), text: cap(sayOf('a', x)), line: '', pct: i / r.acts.length });
       await wait(x.k === 'wait' ? 500 : 520 + Math.random() * 700);
       const what = { say: ['a', x.k, clone(x.p)] };
       const addStep = (k, m) => steps.push([k, msgEn(m), m]);
@@ -898,9 +902,11 @@ async function runNow(r) {
     runEnd(r.id); ended = true;
     refreshCard(r); refreshMeta();
     if (lEl) drawLog(true); if (mctx) mctx.setBadge('log', LOG.filter(l => l.st === 'warn' || l.st === 'bad').length);
+    apEnd(r.id, st === 'bad' ? { ok: false, error: tr('“{name}” had a problem.', { name: r.name }) } : { ok: true, summary: tr('“{name}” finished.', { name: r.name }) });
     SH.toast(tr('“{name}” finished.', { name: r.name }), { kind: st === 'bad' ? 'error' : st === 'warn' ? 'warning' : 'success', action: { label: tr('View the log'), run: () => SH.go('autopilot', { tab: 'log' }) } });
   } finally {
     if (!ended) { runEnd(r.id); refreshCard(r); }      // the button always comes back, whatever happened
+    apEnd(r.id, { cancelled: true });                  // (already ended: nothing happens)
   }
 }
 
@@ -912,7 +918,7 @@ async function runReal(r, done) {
       sound: 'task',
       onProgress: m => {
         const d = m.data || {}, o = {};
-        if (d.total) o.btn = tr('Step {n} of {total}', { n: Math.min((d.step || 0) + 1, d.total), total: d.total });
+        if (d.total) { o.btn = tr('Step {n} of {total}', { n: Math.min((d.step || 0) + 1, d.total), total: d.total }); o.pct = Math.min(1, (d.step || 0) / d.total); }
         if (m.text) o.text = m.text;      // the engine's live text (already translated), sub-jobs included
         runSet(r.id, o);
       },
@@ -921,8 +927,9 @@ async function runReal(r, done) {
   } catch (e) { err = e; }
   done();
   await loadLog(true); refreshCard(r); refreshMeta();
-  if (err) { SH.toast(err.cancelled ? tr('“{name}” was cancelled.', { name: r.name }) : tr('“{name}” couldn’t run: {error}', { name: r.name, error: err.message }), err.cancelled ? {} : { kind: 'error' }); return; }
+  if (err) { apEnd(r.id, err.cancelled ? { cancelled: true } : { ok: false, error: err.message }); SH.toast(err.cancelled ? tr('“{name}” was cancelled.', { name: r.name }) : tr('“{name}” couldn’t run: {error}', { name: r.name, error: err.message }), err.cancelled ? {} : { kind: 'error' }); return; }
   const fin = { ok: '“{name}” finished.', warn: '“{name}” finished with warnings.', bad: '“{name}” had a problem.', skip: '“{name}” was skipped.' }[entry && entry.st] || '“{name}” finished.';
+  apEnd(r.id, entry && entry.st === 'bad' ? { ok: false, error: tr(fin, { name: r.name }) } : { ok: true, summary: tr(fin, { name: r.name }) });
   const kind = { ok: 'success', warn: 'warning', bad: 'error' }[entry && entry.st];
   SH.toast(tr(fin, { name: r.name }), { kind, action: { label: tr('View the log'), run: () => SH.go('autopilot', { tab: 'log' }) } });
 }
