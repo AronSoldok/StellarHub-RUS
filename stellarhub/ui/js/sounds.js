@@ -79,7 +79,7 @@ addEventListener('click', e => {
 }, true);
 addEventListener('click', e => {
   const p = pre.get(e);
-  if (!p || p.act.claimed || !p.el) { dialogChange(); return; }
+  if (!p || p.act.claimed || !p.el || performance.now() - deadAt < 800) { dialogChange(); return; }
   /* real input only: a pointer, a key (Enter or Space on a button), or the controller's A. A click made by code is not. */
   const pad = SH.sound.viaPad === true, trusted = e.isTrusted || pad, pointer = e.detail > 0 || pad;
   if (!trusted) return;  /* (the check after the gesture still hears a dialog it opened or closed: the controller's B) */
@@ -92,11 +92,15 @@ addEventListener('click', e => {
   if (pointer) sound('click');
 });
 
-/* ---------- a disabled button pressed ---------- */
+/* ---------- a disabled button pressed ----------
+   A disabled .btn has pointer-events:none (base.css), so the press lands on whatever is under it: look for one under
+   the pointer, and keep that press's click silent. */
+let deadAt = -1e9;
 addEventListener('pointerdown', e => {
   if (e.button !== 0 || !e.isTrusted) return;
-  const b = e.target.closest && e.target.closest('button, .btn, [role=button]');
-  if (b && (b.disabled || b.getAttribute('aria-disabled') === 'true') && !b.closest('.view:not(.is-on)')) sound('unavailable');
+  const hit = el => { const r = el.getBoundingClientRect(); return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; };
+  const b = $$('button[disabled], .btn[disabled], [role=button][aria-disabled="true"]').find(el => !el.closest('.view:not(.is-on), [inert]') && hit(el) && vis(el));
+  if (b) { deadAt = performance.now(); sound('unavailable'); }
 }, { capture: true, passive: true });
 
 /* ---------- hover ---------- */
