@@ -17,6 +17,7 @@ import psutil
 
 from ..i18n import tc, tr
 from . import wmi
+from . import fakepc
 from .ps import ps_json, gather
 
 EXPORTS = {"pc_info", "pc_info_fresh", "displays", "screen_thumb", "counts", "health"}
@@ -25,6 +26,8 @@ EXPORTS = {"pc_info", "pc_info_fresh", "displays", "screen_thumb", "counts", "he
 def health():
     """Real summary for Home: antivirus, devices with errors and the latest restore point. Asked to WMI inside this
     process; the PowerShell script below only runs if WMI (System.Management through pythonnet) is not available."""
+    if fakepc.active():
+        return fakepc.health()
     try:
         return _health_wmi()
     except Exception as e:
@@ -378,6 +381,8 @@ def _drivers_count():
 
 
 def counts():
+    if fakepc.active():
+        return fakepc.counts()
     du = psutil.disk_usage("C:\\")
     return {"programs": _programs_count(), "drivers": _drivers_count(), "freeC": round(du.free / GB)}
 
@@ -555,6 +560,8 @@ _refreshing = threading.Event()
 
 def pc_info_fresh():
     global _mem
+    if fakepc.active():  # developer-only test copy pretending to be a tower: nothing is measured or cached
+        return _localize(fakepc.pc_info())
     t0 = time.time()
     with _lock:
         if _mem and _mem.get("ts", 0) >= t0:  # another caller measured while this one waited for the lock
@@ -593,6 +600,8 @@ def pc_info():
     """What was measured last (instantly); older than STALE_AFTER it is measured again in the background, so the
     next call (the UI asks again when Home is shown after a while) has the new data. The first time it waits."""
     global _mem
+    if fakepc.active():
+        return _localize(fakepc.pc_info())
     if _mem:
         if time.time() - _mem.get("ts", 0) > STALE_AFTER:
             _refresh_async()

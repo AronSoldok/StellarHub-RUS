@@ -29,6 +29,8 @@ from ctypes import wintypes
 
 import psutil
 
+from . import fakepc
+
 NO_WINDOW = 0x08000000
 GB = 1024 ** 3
 _PDH_FMT_DOUBLE = 0x00000200
@@ -507,7 +509,7 @@ class Sampler:
         bat = psutil.sensors_battery()
         b = self._battery()
         g = self._gpu(on_battery=bool(bat and not bat.power_plugged))
-        return {
+        out = {
             "cpu": round(cpu, 1), "threads": [round(x / 100, 3) for x in per], "cpuFreq": round(freq, 2) if freq else None,
             **self._cpu_temp(),
             "ram": round((vm.total - vm.available) / GB, 2), "ramTotal": round(vm.total / GB, 1),
@@ -527,6 +529,7 @@ class Sampler:
             "igpu": g.get("igpu"), "gpuState": g.get("state"),
             "uptime": int(time.time() - psutil.boot_time()), "ts": time.time(),
         }
+        return fakepc.telemetry(out) if fakepc.active() else out  # developer-only: a test copy posing as a tower
 
     # ---------- GPU: PDH for usage/VRAM (never wakes it), NVML for sensors only while awake ----------
     def _gpu(self, on_battery):
