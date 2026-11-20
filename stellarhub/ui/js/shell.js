@@ -734,7 +734,9 @@ function toast(text, o = {}) {
   box.appendChild(t);
   anim(t, [{ opacity: 0, transform: 'translate3d(24px,0,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 440, e: EASE.spring });
   function kill() { if (t.dataset.dead) return; t.dataset.dead = '1'; clearTimeout(t._timer);
-    anim(t, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(24px,0,0) scale(.96)' }], { d: 220 }).finished.then(() => t.remove()).catch(() => t.remove()); }
+    anim(t, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(24px,0,0) scale(.96)' }], { d: 220 }).finished.then(() => flip(() => t.remove())).catch(() => t.remove()); }
+  /* the toasts left in the stack glide into the gap instead of jumping */
+  function flip(fn) { const before = new Map([...box.children].map(x => [x, x.getBoundingClientRect().top])); fn(); [...box.children].forEach(x => { const b = before.get(x); if (b == null) return; const d = b - x.getBoundingClientRect().top; if (Math.abs(d) > 1) anim(x, [{ transform: `translate3d(0,${d}px,0)` }, { transform: 'none' }], { d: 320, keep: true }); }); }
   t._kill = kill; t._timer = setTimeout(kill, o.ms || 3600);
   const live = [...box.children].filter(x => !x.dataset.dead); if (live.length > MAX_TOASTS) live.slice(0, live.length - MAX_TOASTS).forEach(x => x._kill && x._kill());
 }

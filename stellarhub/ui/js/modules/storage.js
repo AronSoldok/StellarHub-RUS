@@ -698,7 +698,7 @@ async function runScan() {
       if (now - lastT > 500) {
         /* 3 significant digits, so the speed line doesn't flicker on every update */
         const r = p.rate || (p.files - last) / ((now - lastT) / 1000), m = Math.pow(10, Math.max(0, Math.floor(Math.log10(Math.max(1, r))) - 2));
-        $('.st-ss', sc).textContent = p.method === 'mft' ? T('{n} entries per second · reading the NTFS file table', { n: fmtInt(Math.round(r / m) * m) }) : T('{n} files per second', { n: fmtInt(Math.round(r / m) * m) });
+        SH.rollNumber($('.st-ss', sc), p.method === 'mft' ? T('{n} entries per second · reading the NTFS file table', { n: fmtInt(Math.round(r / m) * m) }) : T('{n} files per second', { n: fmtInt(Math.round(r / m) * m) }));
         last = p.files; lastT = now;
       }
       shown = Math.max(shown, p.frac || 0); setArc(dial, shown);
@@ -744,7 +744,7 @@ function paintScanWait() {
   $$(`#v-${ID} .st-first.st-wait`).forEach(box => {
     const f = scanProg ? Math.max(0, Math.min(1, scanProg.frac)) : 0, bar = $('.bar>span', box), tx = $('.st-fp', box);
     if (bar) bar.style.setProperty('--v', f);
-    if (tx) tx.textContent = scanProg ? (scanProg.unit === 'entries' ? T('{n} entries read', { n: fmtInt(scanProg.files) }) : T('{n} files read', { n: fmtInt(scanProg.files) })) : T('Preparing the scan…');
+    if (tx) SH.rollNumber(tx, scanProg ? (scanProg.unit === 'entries' ? T('{n} entries read', { n: fmtInt(scanProg.files) }) : T('{n} files read', { n: fmtInt(scanProg.files) })) : T('Preparing the scan…'));
   });
 }
 function scanFirst(el, what) {
@@ -843,7 +843,7 @@ async function renderTypes(el) {
         <span class="st-tsz">${fmtB(b.size)}</span><span class="st-tn">${fmtInt(b.n)}</span>
         <span class="bar"><span style="--v:${(b.size / max).toFixed(4)};background:${T_(k).c}"></span></span></button>`).join('')}</div></div></div>`;
   SH.assemble(el, 40);
-  const sb = $('.st-sbar', el); anim(sb, [{ clipPath: 'inset(0 100% 0 0 round 8px)' }, { clipPath: 'inset(0 0 0 0 round 8px)' }], { d: 900, delay: 150 });
+  const sb = $('.st-sbar', el); anim(sb, [{ transform: 'scaleX(.02)', transformOrigin: '0 50%', opacity: 0 }, { transform: 'none', transformOrigin: '0 50%', opacity: 1 }], { d: 900, delay: 150 });
   requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
   if (el.dataset.b) return; el.dataset.b = 1;
   el.addEventListener('click', e => { const b = e.target.closest('[data-ty]'); if (!b) return; TM.hiLock = b.dataset.ty; TM.dirty = true; if (ctxRef) ctxRef.setTab('map'); setTimeout(markLegend, 50); SH.toast(T('{type} highlighted on the map.', { type: T_(b.dataset.ty).n }), { action: { label: T('Clear highlight'), run: () => { TM.hiLock = null; TM.dirty = true; markLegend(); } } }); });

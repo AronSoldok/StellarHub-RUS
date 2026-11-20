@@ -797,7 +797,7 @@ tickers.add(dt => {
   const el = $(`#v-${ID} .tab[data-tab="queue"]`); if (!el || !el.offsetParent || !$('.hg-ringv', el)) return;
   Q.total.t = qProgress(); Q.total.step(dt);
   let moving = !Q.total.idle; const v = Math.max(0, Math.min(1, Q.total.v));
-  const pct = String(Math.round(v * 100)); const pe = $('.hg-qpct', el); if (pe.textContent !== pct) pe.textContent = pct;
+  const pct = Math.round(v * 100); const pe = $('.hg-qpct', el); SH.rollNumber(pe, pct, { format: String });
   $('.hg-ringv', el).style.strokeDashoffset = (RING * (1 - v)).toFixed(2);
   Q.list.forEach(q => {
     q.sp.t = q.st === 'down' ? q.p : ['inst', 'done', 'fail', 'skip'].includes(q.st) ? 1 : 0; if (q.sp.idle && q.drawn === q.sp.t) return;

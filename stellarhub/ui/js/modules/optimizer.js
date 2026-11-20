@@ -761,10 +761,10 @@ function renderClean(el) {
       run.classList.remove('indet');
       const pct = Math.min(1, (d.deleted + (d.skipped || 0)) / d.total);
       bar.style.transform = `scaleX(${pct.toFixed(4)})`;
-      T.textContent = t('Deleted {n} of {total} files', { n: SH.fmtInt(d.deleted), total: SH.fmtInt(d.total) });
-      F.textContent = t('{freed} of {total} freed', { freed: gb(d.freed || 0), total: gb(d.totalBytes || 0) });
-      R.textContent = d.rate ? t('{n} files/s', { n: SH.fmtInt(d.rate) }) : '';
-      K.textContent = d.skipped ? t('{n} in use, skipped', { n: SH.fmtInt(d.skipped) }) : '';
+      SH.rollNumber(T, t('Deleted {n} of {total} files', { n: SH.fmtInt(d.deleted), total: SH.fmtInt(d.total) }));
+      SH.rollNumber(F, t('{freed} of {total} freed', { freed: gb(d.freed || 0), total: gb(d.totalBytes || 0) }));
+      SH.rollNumber(R, d.rate ? t('{n} files/s', { n: SH.fmtInt(d.rate) }) : '');
+      SH.rollNumber(K, d.skipped ? t('{n} in use, skipped', { n: SH.fmtInt(d.skipped) }) : '');
       E.textContent = d.eta != null && pct < 1 ? t('about {time} left', { time: dur(d.eta) }) : '';
       if (d.current) C.textContent = t('Now: {path}', { path: d.current });
       tot.textContent = fmt1(totalSel() / 1e9); tot.dataset.v = totalSel() / 1e9;

@@ -54,8 +54,8 @@ html[data-int=min] .su-moon{animation:none}
 .su-bar{margin-top:22px;height:6px;border-radius:var(--r-xs);background:var(--raise2);overflow:hidden;position:relative}
 .su-bar span{position:absolute;inset:0;background:linear-gradient(90deg,var(--accent2),color-mix(in oklab,var(--accent2) 60%,var(--accent)));transform:scaleX(0);transform-origin:left;transition:transform calc(300ms*var(--f)) linear;border-radius:inherit}
 .su-bar.indet span{width:34%;transform:none;animation:suIndet calc(1.3s*var(--f) + .4s) ease-in-out infinite}
-@keyframes suIndet{from{left:-34%}to{left:100%}}
-html[data-int=min] .su-bar.indet span{animation:none;left:0;width:100%;opacity:.45}
+@keyframes suIndet{from{transform:translateX(-100%)}to{transform:translateX(294%)}}
+html[data-int=min] .su-bar.indet span{animation:none;transform:none;width:100%;opacity:.45}
 .su-now{margin-top:10px;font-size:var(--fs-sm);color:var(--mute);min-height:18px}
 .su-fail{display:flex;gap:var(--sp-md);align-items:flex-start;padding:16px;border-radius:var(--r-m);background:color-mix(in oklab,var(--accent) 9%,transparent);margin-top:6px}
 .su-fail>svg{width:var(--ic-l);height:var(--ic-l);flex:none;color:var(--accent);margin-top:1px}

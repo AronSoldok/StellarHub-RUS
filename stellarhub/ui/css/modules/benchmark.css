@@ -19,8 +19,9 @@ html[data-int=min] #v-benchmark .bm-run svg{animation:none}
 #v-benchmark .bm-ring circle{fill:none}
 #v-benchmark .bm-ring .orb{stroke:var(--line);stroke-width:1;stroke-dasharray:1 5}
 #v-benchmark .bm-ring .trk{stroke:var(--raise3);stroke-width:9;stroke-linecap:round}
-#v-benchmark .bm-ring .val{stroke:url(#bmRg);stroke-width:9;stroke-linecap:round;filter:drop-shadow(0 0 10px color-mix(in oklab,var(--accent) 45%,transparent))}
-#v-benchmark .bm-ring .sat circle{fill:var(--accent2);filter:drop-shadow(0 0 6px var(--accent2))}
+#v-benchmark .bm-ring .val{stroke:url(#bmRg);stroke-width:9;stroke-linecap:round}
+#v-benchmark .bm-ring .sat{transform-origin:110px 110px}
+#v-benchmark .bm-ring .sat circle{fill:var(--accent2);stroke:color-mix(in oklab,var(--accent2) 24%,transparent);stroke-width:5}
 #v-benchmark .bm-rc{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--sp-xs);padding-bottom:6px}
 #v-benchmark .bm-rl{font-size:var(--fs-cap);color:var(--mute)}
 #v-benchmark #bmScore{font:500 var(--fs-n4)/1 var(--display);letter-spacing:-.045em}

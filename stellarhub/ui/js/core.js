@@ -191,7 +191,11 @@ function anim(el, kf, o = {}) {
   if (!o.keep) el.getAnimations().forEach(a => { if (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) return; try { a.commitStyles(); } catch {} a.cancel(); });
   const d = Math.max(1, (o.d ?? 400) * motion());
   /* blur() on a big animated layer costs a full-size shader pass every frame: on battery the same entrance runs without it */
-  if (state.lite && Array.isArray(kf) && kf.some(k => k.filter)) kf = kf.map(({ filter, ...k }) => k);
+  if (Array.isArray(kf) && kf.some(k => k.filter)) {
+    /* and on a big surface (a view, the settings sheet: more than about 280,000 px) the blur is never worth it, lite or not */
+    let big = state.lite; if (!big) { const r = el.getBoundingClientRect(); big = r.width * r.height > 280000; }
+    if (big) kf = kf.map(({ filter, ...k }) => k);
+  }
   return el.animate(kf, { duration: d, delay: (o.delay || 0) * motion(), easing: o.e || EASE.out, fill: o.fill || 'both' });
 }
 /* staggered entrance of everything marked [data-asm] inside a container */
@@ -280,7 +284,7 @@ function rollNumber(el, value, o = {}) {
   }
 }
 function build(el, txt) {
-  el.textContent = ''; el.setAttribute('aria-label', txt);
+  el.textContent = ''; el.setAttribute('aria-label', txt); el.style.whiteSpace = 'nowrap'; /* columns are atomic: never wrap between them */
   const cols = Array.from(txt).map(ch => {
     const e = document.createElement('rn-c'), cur = document.createElement('rn-n');
     e.dataset.c = ch; e.setAttribute('aria-hidden', 'true'); cur.textContent = ch; e.appendChild(cur); el.appendChild(e);

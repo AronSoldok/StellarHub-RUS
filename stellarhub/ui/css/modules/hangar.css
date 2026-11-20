@@ -241,7 +241,7 @@ html[data-int=min] #v-hangar .hg-qrow.st-inst .hg-qbar>span{animation:none}
 #v-hangar .hg-ring{width:168px;height:168px;overflow:visible}
 #v-hangar .hg-ringb{fill:none;stroke:var(--raise2);stroke-width:7}
 #v-hangar .hg-ringv{fill:none;stroke:var(--accent);stroke-width:7;stroke-linecap:round;transform:rotate(-90deg);transform-origin:60px 60px;
-  filter:drop-shadow(0 0 6px color-mix(in oklab,var(--accent) 55%,transparent));transition:stroke calc(300ms*var(--f))}
+  transition:stroke calc(300ms*var(--f))}
 #v-hangar .hg-ringc.is-paused .hg-ringv{stroke:var(--warn)}
 #v-hangar .hg-ringt{align-self:center;text-align:center;max-width:130px}
 #v-hangar .hg-ringt .big{font-size:var(--fs-n3)}

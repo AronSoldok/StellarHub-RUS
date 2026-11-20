@@ -26,7 +26,7 @@
   .vt b{display:block;font:500 16px/1.15 var(--display);margin-top:3px;white-space:nowrap}
   .vt b small{font:400 10px var(--text);color:var(--faint);margin-left:2px}
   .vt .bar{position:absolute;left:9px;right:9px;bottom:5px;height:2px;border-radius:2px;background:var(--line)}
-  .vt .bar u{position:absolute;inset:0 auto 0 0;width:0;border-radius:inherit;background:var(--accent2);transition:width calc(500ms*var(--f)) cubic-bezier(.2,.8,.2,1)}
+  .vt .bar u{position:absolute;inset:0;border-radius:inherit;background:var(--accent2);transform-origin:0 50%;transform:scaleX(var(--v,0));will-change:transform;transition:transform calc(500ms*var(--f)) cubic-bezier(.2,.8,.2,1)}
   .vt.hot .bar u{background:var(--warn)}
   /* modules */
   .cap{display:flex;align-items:center;justify-content:space-between;color:var(--faint);font-size:11px;height:14px}

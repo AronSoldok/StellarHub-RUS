@@ -37,7 +37,7 @@ function paint(v) {
   VITALS.forEach(([k, , val, frac, hot]) => {
     const el = $(`.vt[data-k="${k}"]`); if (!el) return;
     const [a, u] = val(v); el.querySelector('b').innerHTML = a === '—' ? '—' : `${a}<small>${u}</small>`;
-    el.querySelector('u').style.width = Math.max(0, Math.min(1, frac(v))) * 100 + '%';
+    el.querySelector('u').style.setProperty('--v', Math.max(0, Math.min(1, frac(v))).toFixed(4));
     el.classList.toggle('hot', !!hot(v));
   });
 }

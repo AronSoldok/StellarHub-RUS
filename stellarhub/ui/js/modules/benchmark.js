@@ -510,12 +510,17 @@ function ringHTML() {
   </svg><div class="bm-rc"><span class="bm-rl">StellarHub Score</span><b id="bmScore">${DASH}</b><span class="bm-rt" id="bmTier"></span></div></div>`;
 }
 const ring = { v: new Spring(0, 60, 14), sat: 0, el: null };
-function ringSet(frac, snap) { ring.v.t = clamp(frac, 0, 1); if (snap) ring.v.set(ring.v.t); }
+function ringSet(frac, snap) { ring.v.t = clamp(frac, 0, 1); ring.dirty = true; if (snap) ring.v.set(ring.v.t); }
 tickers.add((dt) => {
   if (state.view !== 'benchmark' || !ring.el || !ring.el.isConnected) return;
-  ring.v.step(dt); const arc = $('#bmArc', ring.el); if (arc) arc.style.strokeDashoffset = RING_L * (1 - ring.v.v);
-  if (!isMin()) ring.sat += dt * (RUN ? 70 : 9);
-  const sat = $('#bmSat', ring.el); if (sat) sat.setAttribute('transform', `rotate(${ring.sat % 360} 110 110)`);
+  if (!ring.v.idle || ring.dirty) { ring.v.step(dt); ring.dirty = false; const arc = $('#bmArc', ring.el); if (arc) arc.style.strokeDashoffset = RING_L * (1 - ring.v.v); }
+  /* the satellite turns by a CSS-transform animation (compositor); only its speed changes, without a jump (updatePlaybackRate) */
+  const sat = $('#bmSat', ring.el);
+  if (sat) {
+    if (!sat._a) { sat._a = sat.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 5140, iterations: Infinity }); sat._a.pause(); sat._r = -1; }
+    const rate = isMin() ? 0 : RUN ? 1 : .13;
+    if (sat._r !== rate) { sat._r = rate; if (rate) { sat._a.updatePlaybackRate(rate); sat._a.play(); } else sat._a.pause(); }
+  }
 });
 
 /* ============================================================ Overview */
@@ -605,7 +610,7 @@ async function runFull() {
   const sc = $('#bmScore', el); sc.textContent = '0%'; sc.dataset.v = 0; ringSet(0, false);
   const W8 = [.28, .08, .34, .30]; let rec = null;
   const stepEl = i => $(`.bm-st[data-i="${i}"]`, mid);
-  const setStep = (i, frac) => { const before = W8.slice(0, i).reduce((a, b) => a + b, 0); const p = before + W8[i] * clamp(frac, 0, 1); ringSet(p); sc.textContent = fmtInt(p * 100) + '%';
+  const setStep = (i, frac) => { const before = W8.slice(0, i).reduce((a, b) => a + b, 0); const p = before + W8[i] * clamp(frac, 0, 1); ringSet(p); SH.rollNumber(sc, fmtInt(p * 100) + '%');
     const u = $('.bm-sp u', stepEl(i)); if (u) u.style.transform = `scaleX(${clamp(frac, 0, 1)})`; };
   const live = (k, title, v, unit) => { $('#lvK', mid).textContent = k; if ($('#lvT', mid).textContent !== title) { $('#lvT', mid).textContent = title; sp.reset(); } if (!nil(v)) { $('#lvV', mid).textContent = fmtV(v); $('#lvU', mid).textContent = unit; sp.push(v); } };
   const res = {};
