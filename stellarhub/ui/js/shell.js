@@ -96,26 +96,40 @@ const DOCK = ['home', '|', 'monitor', 'drivers', 'remover', 'updater', 'hangar',
 const dock = $('#dock');
 dock.innerHTML = DOCK.map(id => id === '|' ? '<span class="sep"></span>' : (m => `<button class="dk${id === 'home' ? ' on' : ''}" data-go="${id}" aria-label="${m.name}">${ic(m.icon)}<span class="tip">${m.name}</span></button>`)(modById(id))).join('') + '<span class="dot" id="dockDot"></span>';
 const BASE = 52, GROW = .3;
-const dks = $$('.dk', dock).map(el => ({ el, s: new Spring(1, 320, 24) }));
-const dotX = new Spring(0, 260, 24); let dockMouse = null;
+/* Magnification without layout: every button keeps its 52 px box. Each frame only two custom properties change per
+   button (--dv the size factor, --dx the shift caused by the neighbours growing, see .dk in base.css), so the frame
+   costs a style update and a composite instead of a flex layout and a rect read per button. */
+const dks = $$('.dk', dock).map(el => ({ el, s: new Spring(1, 320, 24), cx: 0, dx: 0, pv: '', px: '' }));
+const dotX = new Spring(0, 260, 24); let dockMouse = null, dockCx = false, dockBusy = false, dockHot = false, dockPx = '';
 dock.addEventListener('pointermove', e => dockMouse = e.clientX);
-dock.addEventListener('pointerleave', () => dockMouse = null);
+dock.addEventListener('pointerleave', () => { dockMouse = null; dockCx = false; });
+const dotEl = $('#dockDot');
 tickers.add(dt => {
-  for (const d of dks) {
-    let t = 1;
-    if (dockMouse !== null && S().intensity !== 'min') {
-      const r = d.el.getBoundingClientRect(); const dist = Math.abs(dockMouse - (r.left + r.width / 2));
-      t = 1 + GROW * Math.max(0, 1 - dist / 140);
+  const hover = dockMouse !== null && S().intensity !== 'min';
+  if (hover || dockBusy || dockHot) {  /* dockHot: the first frame after the pointer left still has to start the springs back */
+    if (hover && !dockCx) { for (const d of dks) { const r = d.el.getBoundingClientRect(); d.cx = r.left + r.width / 2 - d.dx; } dockCx = true; } /* the resting centres, read once per visit */
+    let busy = false, extra = 0, top = 1;
+    for (const d of dks) {
+      const t = hover ? 1 + GROW * Math.max(0, 1 - Math.abs(dockMouse - (d.cx + d.dx)) / 140) : 1;
+      d.s.t = t; d.s.step(dt); if (!d.s.idle) busy = true;
+      extra += BASE * (d.s.v - 1); if (d.s.v > top) top = d.s.v;
     }
-    d.s.t = t; d.s.step(dt);
-    const px = (BASE * d.s.v).toFixed(2) + 'px';
-    if (d.el.style.width !== px) { d.el.style.width = px; d.el.style.height = px; d.el.firstElementChild.style.transform = `scale(${(.85 + .15 * d.s.v).toFixed(4)})`; }
+    dockBusy = busy; dockHot = hover;
+    const pw = extra.toFixed(2), ph = (BASE * (top - 1)).toFixed(2);  /* the pill grows with them: wider by the sum, taller by the tallest */
+    if (pw + ph !== dockPx) { dockPx = pw + ph; dock.style.setProperty('--dkw', pw); dock.style.setProperty('--dkh', ph); }
+    let run = 0;
+    for (const d of dks) {
+      const e = BASE * (d.s.v - 1); d.dx = run + e / 2 - extra / 2; run += e;  /* the row stays centred as it widens */
+      const pv = d.s.v.toFixed(4), px = d.dx.toFixed(2);
+      if (pv !== d.pv) { d.pv = pv; d.el.style.setProperty('--dv', pv); }
+      if (px !== d.px) { d.px = px; d.el.style.setProperty('--dx', px); }
+    }
   }
   /* the dock dot: measured only while the dock moves or the module changes (measuring every frame
      forces a full-page layout and drops the frame rate while scrolling) */
-  const dockMoving = dockMouse !== null || dks.some(d => !d.s.idle);
-  if (dockMoving || dotDirty) { const on = $('.dk.on', dock); if (on) dotX.t = on.offsetLeft + on.offsetWidth / 2 - 9; dotDirty = false; }
-  if (!dotX.idle || dockMoving) { dotX.step(dt); $('#dockDot').style.transform = `translateX(${dotX.v.toFixed(2)}px)`; }
+  const dockMoving = dockMouse !== null || dockBusy;
+  if (dockMoving || dotDirty) { const on = dks.find(d => d.el.classList.contains('on')); if (on) dotX.t = on.el.offsetLeft + on.el.offsetWidth / 2 - 9 + on.dx; dotDirty = false; }
+  if (!dotX.idle || dockMoving) { dotX.step(dt); dotEl.style.transform = `translateX(${dotX.v.toFixed(2)}px)`; }
 });
 let dotDirty = true;
 SH.on('view', () => { dotDirty = true; });
