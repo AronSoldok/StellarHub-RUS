@@ -199,18 +199,33 @@ const EASE = { out: 'cubic-bezier(.16,1,.3,1)', io: 'cubic-bezier(.62,0,.18,1)',
   glide: springEase(150, 22) /* settles without overshoot: smooth view and tab changes */ };
 
 /* WAAPI with the motion intensity applied. Cancels whatever the element was animating (interruptible). */
+/* The animations anim() made are remembered per element (el.getAnimations() would flush the page's styles on every call:
+   assemble() runs it for dozens of elements in a row, each right after the previous one's animate() dirtied them, which
+   cost 10-40 ms on the first visit of a tab). Another module's own el.animate() is its own business. */
+const liveAnims = new WeakMap(), bigBox = new WeakMap();
 function anim(el, kf, o = {}) {
   if (!el) return null;
   /* only animations made with anim() are interrupted; CSS transitions carry on */
-  if (!o.keep) el.getAnimations().forEach(a => { if (typeof CSSTransition !== 'undefined' && a instanceof CSSTransition) return; try { a.commitStyles(); } catch {} a.cancel(); });
+  let mine = liveAnims.get(el);
+  if (!o.keep && mine) { for (const a of mine) { if (a.playState === 'idle') continue; try { a.commitStyles(); } catch {} a.cancel(); } mine.length = 0; }
   const d = Math.max(1, (o.d ?? 400) * motion());
   /* blur() on a big animated layer costs a full-size shader pass every frame: on battery the same entrance runs without it */
   if (Array.isArray(kf) && kf.some(k => k.filter)) {
-    /* and on a big surface (a view, the settings sheet: more than about 280,000 px) the blur is never worth it, lite or not */
-    let big = state.lite; if (!big) { const r = el.getBoundingClientRect(); big = r.width * r.height > 280000; }
+    /* and on a big surface (a view, the settings sheet: more than about 280,000 px) the blur is never worth it, lite or not.
+       The size is read once per element and window size: a rect read right after another animate() forces a layout. */
+    let big = state.lite;
+    if (!big) {
+      const m = bigBox.get(el);
+      if (m && m.w === innerWidth && m.h === innerHeight) big = m.big;
+      else { const r = el.getBoundingClientRect(); big = r.width * r.height > 280000; bigBox.set(el, { w: innerWidth, h: innerHeight, big }); }
+    }
     if (big) kf = kf.map(({ filter, ...k }) => k);
   }
-  return el.animate(kf, { duration: d, delay: (o.delay || 0) * motion(), easing: o.e || EASE.out, fill: o.fill || 'both' });
+  const a = el.animate(kf, { duration: d, delay: (o.delay || 0) * motion(), easing: o.e || EASE.out, fill: o.fill || 'both' });
+  if (!mine) liveAnims.set(el, mine = []);
+  else if (mine.length > 6) { mine = mine.filter(x => x.playState !== 'idle'); liveAnims.set(el, mine); }
+  mine.push(a);
+  return a;
 }
 /* staggered entrance of everything marked [data-asm] inside a container */
 function assemble(root, base = 0, step = 40, sel = '[data-asm]') {
