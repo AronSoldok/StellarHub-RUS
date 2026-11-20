@@ -785,9 +785,11 @@ setTimeout(bootDone, 120000);  /* never leave it up for good, whatever happens *
 SH.boot = async () => {
   computeAutoZoom();
   SH.call('phase', 'boot begins');
+  /* the three answers are independent: ask for all of them at once instead of one round trip after another */
+  const infoP = SH.call('info'), pcP = SH.call('pc_info');
   await SH.loadSettings();
   SH.call('phase', 'settings loaded');
-  const [info, pc] = await Promise.all([SH.call('info'), SH.call('pc_info')]);
+  const [info, pc] = await Promise.all([infoP, pcP]);
   SH.call('phase', 'info + pc_info loaded');
   if (pc && pc.components) { Object.assign(SH.PC, pc); SH.PC.real = true; }
   if (info) { state.version = info.version; state.codename = info.codename || ''; state.portable = !!info.portable; const ver = $('#sheet nav .ver'); if (ver) ver.textContent = `StellarHub ${info.version}${state.codename ? ' · ' + state.codename : ''}`;

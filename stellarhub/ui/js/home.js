@@ -75,8 +75,15 @@ function render() {
 }
 
 /* the model name always on one line */
-const fit = () => { const el = $('#hModel'); if (!el) return; el.style.fontSize = '34px'; const room = innerWidth * .34; let s = 34; while (el.scrollWidth > room && s > 20) { s--; el.style.fontSize = s + 'px'; } };
-addEventListener('resize', fit);
+/* measured once at 34 px and scaled (the text width is linear in the size), then checked once more: the old
+   one-pixel-at-a-time loop forced a layout of the whole page on every step (up to 14 of them, 30-50 ms) */
+const fit = () => {
+  const el = $('#hModel'); if (!el) return;
+  const room = innerWidth * .34; el.style.fontSize = '34px'; const w = el.scrollWidth; let s = 34;
+  if (w > room) { s = Math.max(20, Math.floor(34 * room / w)); el.style.fontSize = s + 'px'; if (s > 20 && el.scrollWidth > room) el.style.fontSize = (s - 1) + 'px'; }
+};
+let fitRaf = 0;
+addEventListener('resize', () => { if (!fitRaf) fitRaf = requestAnimationFrame(() => { fitRaf = 0; if (state.view === 'home') fit(); }); }); /* once per frame while the window is dragged, and only when Home is shown (it fits again when it returns) */
 
 /* ---------- live status ---------- */
 const fmtUp = SH.fmtUptime;
@@ -240,7 +247,7 @@ function intro(back) {
   if (!back) rows.forEach(r => { r.s.set(0); r.drawn = false; });
   setTimeout(readVitals, (back ? 100 : 850) * motion());
 }
-SH.on('home:return', () => { refreshPC(); renderPending(); renderRecent(); renderNext(); intro(true); if (current && current.onReturn) try { current.onReturn(); } catch (e) { console.error(e); } });
+SH.on('home:return', () => { fit(); refreshPC(); renderPending(); renderRecent(); renderNext(); intro(true); if (current && current.onReturn) try { current.onReturn(); } catch (e) { console.error(e); } });
 SH.on('boot', () => {
   if (SH.PC.ts) pcAt = SH.PC.ts * 1000;                    /* what Python hands over may come from the saved copy */
   setTimeout(refreshPC, 20000);                            /* a saved copy older than 30 minutes: update it once started */

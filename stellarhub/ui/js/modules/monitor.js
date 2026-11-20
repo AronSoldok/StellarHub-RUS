@@ -26,7 +26,9 @@ function readColors() {
   const cs = getComputedStyle(document.documentElement);
   ['accent', 'accent2', 'ok', 'warn', 'bad', 'line', 'mute', 'faint', 'ink', 'deep'].forEach(k => C[k] = cs.getPropertyValue('--' + k).trim());
 }
-SH.on('look', () => setTimeout(readColors, 30));
+/* a look change re-reads the canvas colors only while Live Monitor is open; entering it reads them again (enter() / enterTab()).
+   Reading a computed style forces a full style + layout pass, which is wasted when nobody sees the charts. */
+SH.on('look', () => { if (SH.state.view === 'monitor') setTimeout(readColors, 30); });
 
 /* ---------- own histories (what SH.tele does not keep) ---------- */
 const LOC = { igpu: [], sysPower: [], cpuFreq: [], gpuClock: [], diskTemp: [], fanCpu: [] };
