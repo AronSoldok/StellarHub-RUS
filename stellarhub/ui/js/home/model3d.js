@@ -882,7 +882,7 @@ function buildTower(canvas) {
 
 /* ---------- surrounding UI ---------- */
 function listHTML(PC) {
-  return `<div class="pan m3-list"><h4>${SH.t('Components')}</h4>${PC.components.map(c => `<button class="m3-row" data-comp="${c.id}"><span class="ci">${ic(c.id === 'sys' ? 'windows' : c.id)}</span><span class="ct"><b>${esc(c.name)}</b><span>${esc(c.title)}</span></span></button>`).join('')}</div>`;
+  return `<div class="pan m3-list"><h4>${SH.t('Components')}</h4>${PC.components.map(c => `<button class="m3-row" data-comp="${c.id}"><span class="ci">${ic(SH.compIcon(c))}</span><span class="ct"><b>${esc(c.name)}</b><span>${esc(c.title)}</span></span></button>`).join('')}</div>`;
 }
 function fallbackTowerSVG() {
   return `<svg class="m3-fallback" viewBox="0 0 420 300" aria-label="${SH.t('Tower')}">

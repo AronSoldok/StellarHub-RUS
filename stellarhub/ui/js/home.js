@@ -39,7 +39,7 @@ function render() {
 
   <aside class="h-col">
     <div class="pan vitals" data-intro><h4>${t('Right now')} <em>${T.simulated ? t('sample data') : t('live')}</em></h4>
-      <div class="vit-list">${vit.map(x => `<button class="vit" data-comp="${x.comp}" data-vit="${x.id}"><span class="vi">${ic(x.ic)}</span><span class="vn">${x.n}</span><span class="vv">${dash}</span><span class="bar"><span></span></span></button>`).join('')}</div>
+      <div class="vit-list">${vit.map(x => `<button class="vit" data-comp="${x.comp}" data-vit="${x.id}"><span class="vi">${ic(x.id === 'net' ? (SH.compIcon(PC.components.find(c => c.id === 'wifi')) === 'ethernet' ? 'ethernet' : 'wifi') : x.ic)}</span><span class="vn">${x.n}</span><span class="vv">${dash}</span><span class="bar"><span></span></span></button>`).join('')}</div>
     </div>
   </aside>
 

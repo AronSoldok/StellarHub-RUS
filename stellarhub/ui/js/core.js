@@ -376,6 +376,7 @@ const P = {
   ssd: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M7 15h6"/><circle cx="16.5" cy="15" r="1"/><path d="M7 9h10"/>',
   display: '<rect x="2.5" y="4" width="19" height="12.5" rx="2"/><path d="M8.5 20.5h7M12 16.5v4"/>',
   battery: '<rect x="2.5" y="7" width="17" height="10" rx="2.2"/><path d="M21.5 10.5v3"/><path d="M6 10.5v3M9.5 10.5v3M13 10.5v3"/>',
+  ethernet: '<path d="M4.5 5.5h15v10h-3.5v3h-8v-3H4.5z"/><path d="M9 9.5v2M12 9.5v2M15 9.5v2"/>',
   wifi: '<path d="M2.5 9a14 14 0 0 1 19 0"/><path d="M5.5 12.5a9.5 9.5 0 0 1 13 0"/><path d="M8.7 16a5 5 0 0 1 6.6 0"/><circle cx="12" cy="19.2" r=".9"/>',
   sys: '<path d="m12 3 9 4.5-9 4.5-9-4.5z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>',
   audio: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
@@ -607,8 +608,12 @@ const chartKit = (() => {
 })();
 
 /* i18n.js ran first and already put SH.t and SH.i18n here: keep them */
+/* the icon of a PC component: the network adapter is drawn as a cable port when it is wired (Ethernet), Windows for
+   the system */
+const compIcon = c => !c ? 'cpu' : c.id === 'sys' ? 'windows'
+  : c.id === 'wifi' && /ethernet|gbe\b|gigabit|\blan\b|2\.5 ?g|10 ?g/i.test(`${c.title || ''} ${(c.rows || []).flat().join(' ')}`) && !/wi-?fi|wireless|802\.11/i.test(c.title || '') ? 'ethernet' : c.id;
 window.SH = Object.assign(window.SH || {}, {
-  $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, effInt, on, emit, call, apiReady, loadSettings, setSetting,
+  $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, effInt, on, emit, call, apiReady, loadSettings, setSetting, compIcon,
   engine, job, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, rollNumber, fitText, esc,
   ic, icons, emptyState, emptyArt, chartKit, PC, MODS, modById, registry, module, homeVariant, actions,
   go: () => {}, toast: () => {}, openComponent: () => {}, sfScan,
