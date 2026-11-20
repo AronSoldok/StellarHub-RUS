@@ -55,6 +55,29 @@ Tokens: `--void --deep --raise --raise2 --raise3 --line --line2 --ink --mute --f
 - Only `transform`, `opacity`, `filter`, `clip-path`, `stroke-dashoffset`. Quick ones: 83/167/250 ms; large ones ≤ 500 ms. Never `ease-in` on entry.
 - Respect the intensity (`max`, `normal`, `min`): at `min`, nothing loops. Read it with `SH.effInt()`, never `SH.state.settings.intensity` (see "Lighter effects on battery"); `SH.motion()` already applies it.
 
+## Sounds
+
+`SH.sound(event, opts)` (core.js) plays `ui/sounds/<event>.ogg`; the 35 events are the keys of `SOUND_EV`, each with
+its group, gain trim, minimum gap and priority. `js/sounds.js` already gives every module, with no code: a click on
+buttons, links, dock items and rows (pointer or controller A), `toggle_on/off` on `.toggle`, `tab_switch` on `.seg`
+and `.subnav`, `panel_open/close` for the dialogs in gamepad.js's `MODALS`, `dropdown`, `hover`, `unavailable` on a
+disabled button, `navigate`, `palette_open`, `toast` and the start/exit sounds. A module adds only what means
+something specific:
+
+- `SH.toast(text, { kind: 'success' | 'warning' | 'error' | 'unavailable' })` (no kind: a plain toast, which keeps
+  quiet right after another sound); an Undo action carries `sound: 'undo'`.
+- `SH.job(mod, fn, args, { sound: 'scan' })` for a scan the user started (scan_start, scan_complete, soft ticks at
+  25/50/75 % when it runs long); `sound: 'task'` for another long user task (ticks only). Background refreshes pass
+  nothing.
+- `SH.sound('delete' | 'undo' | 'refresh' | 'copy' | 'achievement')` at that moment.
+
+Rules: one sound per user action. Interface sounds need a click, key or controller press in the last 1.5 s, and the
+first one within 100 ms wins, so a sound that belongs to a click must be played synchronously in the click handler
+(before any `await`); if it can only come later, call `SH.sound.claim()` in the handler and play it when ready. A
+notification (success, error, a finished scan) replaces a click that began in the last 100 ms. Nothing plays while
+the window is hidden. Settings: `sounds`, `soundVolume`, `soundUi`, `soundAlerts`, `soundTasks`, `soundSystem`
+(Settings > Sound); lighter effects and intensity `min` mute nothing.
+
 ## Lighter effects
 
 The interface does less work when "Lighter effects" (setting `lightMode`) says so: `'auto'` (default: on battery, or when the page renders on an integrated GPU), `'always'` or `'never'`. The old boolean `batterySaver: false` maps to `'never'` (core.js does it when `lightMode` was never saved; `batterySaver` itself is kept in step for older readers). `js/telemetry.js` decides it (desktops, which report no charge state, are never on battery) and sets:

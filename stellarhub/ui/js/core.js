@@ -635,30 +635,32 @@ const chartKit = (() => {
      in the last 350 ms: the action already made its sound. At most 4 sounds at once.
    opts: gain (an extra trim), visible (the caller knows its window is on screen: the tray panel), preview (Settings >
    Sound "Play a sample": plays even with its group off).
-   Returns true when the sound plays (or will, once its file is decoded). */
+   Returns true when the sound plays (or will, once its file is decoded).
+   g: a trim per sound, set from the loudest 100 ms of each file so that the interface sits about 6 dB under the
+   notifications and the quiet ones (hover, focus moves, ticks, keys) about 6 dB under the interface. */
 const SOUND_EV = {
   /* interface */
   click: { c: 'ui', g: .5, gap: 40, tier: 1, user: 1 }, hover: { c: 'ui', g: .16, gap: 70, tier: 0 },
   tab_switch: { c: 'ui', g: .45, gap: 80, tier: 1, user: 1 }, navigate: { c: 'ui', g: .5, gap: 120, tier: 1, user: 1 },
-  dropdown: { c: 'ui', g: .45, gap: 80, tier: 1, user: 1 }, palette_open: { c: 'ui', g: .5, gap: 150, tier: 1, user: 1 },
+  dropdown: { c: 'ui', g: .45, gap: 80, tier: 1, user: 1 }, palette_open: { c: 'ui', g: .45, gap: 150, tier: 1, user: 1 },
   focus_move: { c: 'ui', g: .2, gap: 45, tier: 0 }, panel_open: { c: 'ui', g: .45, gap: 150, tier: 1, user: 1 },
   panel_close: { c: 'ui', g: .4, gap: 150, tier: 1, user: 1 }, toggle_on: { c: 'ui', g: .45, gap: 60, tier: 1, user: 1 },
-  toggle_off: { c: 'ui', g: .45, gap: 60, tier: 1, user: 1 },
+  toggle_off: { c: 'ui', g: .34, gap: 60, tier: 1, user: 1 },
   /* notifications */
   toast: { c: 'alerts', g: .4, gap: 400, tier: 1 }, success: { c: 'alerts', g: .5, gap: 300, tier: 2 },
-  warning: { c: 'alerts', g: .5, gap: 300, tier: 2 }, error: { c: 'alerts', g: .5, gap: 300, tier: 2 },
+  warning: { c: 'alerts', g: .5, gap: 300, tier: 2 }, error: { c: 'alerts', g: .45, gap: 300, tier: 2 },
   unavailable: { c: 'alerts', g: .45, gap: 400, tier: 2 }, achievement: { c: 'alerts', g: .55, gap: 1500, tier: 3 },
   /* tasks */
-  scan_start: { c: 'tasks', g: .45, gap: 500, tier: 1 }, scan_complete: { c: 'tasks', g: .5, gap: 500, tier: 2 },
+  scan_start: { c: 'tasks', g: .38, gap: 500, tier: 1 }, scan_complete: { c: 'tasks', g: .5, gap: 500, tier: 2 },
   progress_tick: { c: 'tasks', g: .25, gap: 400, tier: 0 }, refresh: { c: 'tasks', g: .45, gap: 300, tier: 1, user: 1 },
   delete: { c: 'tasks', g: .5, gap: 200, tier: 1, user: 1 }, undo: { c: 'tasks', g: .5, gap: 200, tier: 1, user: 1 },
   copy: { c: 'tasks', g: .45, gap: 200, tier: 1, user: 1 }, screenshot: { c: 'tasks', g: .5, gap: 300, tier: 2 },
   /* system */
   app_start: { c: 'system', g: .5, gap: 3000, tier: 3 }, app_exit: { c: 'system', g: .5, gap: 3000, tier: 3 },
-  admin_granted: { c: 'system', g: .55, gap: 3000, tier: 3 }, update_available: { c: 'system', g: .5, gap: 2000, tier: 2 },
+  admin_granted: { c: 'system', g: .47, gap: 3000, tier: 3 }, update_available: { c: 'system', g: .5, gap: 2000, tier: 2 },
   update_installed: { c: 'system', g: .55, gap: 2000, tier: 3 }, device_connected: { c: 'system', g: .5, gap: 1000, tier: 2 },
-  device_disconnected: { c: 'system', g: .5, gap: 1000, tier: 2 }, widget_on: { c: 'system', g: .45, gap: 150, tier: 1 },
-  widget_off: { c: 'system', g: .45, gap: 150, tier: 1 }, key_press: { c: 'system', g: .2, gap: 25, tier: 0 },
+  device_disconnected: { c: 'system', g: .46, gap: 1000, tier: 2 }, widget_on: { c: 'system', g: .45, gap: 150, tier: 1 },
+  widget_off: { c: 'system', g: .38, gap: 150, tier: 1 }, key_press: { c: 'system', g: .16, gap: 25, tier: 0 },
 };
 const SOUND_CAT = { ui: 'soundUi', alerts: 'soundAlerts', tasks: 'soundTasks', system: 'soundSystem' };
 const snd = { ctx: null, master: null, buf: new Map(), failed: new Map(), last: {}, lastAny: -1e9, hist: [], voices: [], gestureAt: -1e9, act: null };

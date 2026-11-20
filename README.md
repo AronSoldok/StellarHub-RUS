@@ -119,6 +119,8 @@ conditions and what to do.
 - **Optional administrator mode**, and a permanent one if you want it (no Windows prompt on every launch).
 - **Settings for almost everything**: theme, colors, interface size, density, corners, starfield, animation
   intensity and speed, shortcuts to Windows tools and more.
+- **Quiet interface sounds**: short, soft sounds for clicks, tabs, dialogs, notifications, scans and updates, never
+  more than one per action. Volume and four groups (interface, notifications, tasks, system) in *Settings > Sound*.
 - The **side buttons of your mouse** go back and forward, like in a browser.
 - **Lighter effects on battery**: unplugged, StellarHub switches to simpler effects, a calmer starfield and slower
   live data, so it stays smooth and saves power (*Settings > Animation*, on by default). Hidden in the tray it uses
@@ -396,3 +398,7 @@ Built with [pywebview](https://github.com/r0x0r/pywebview) (BSD-3), [psutil](htt
 (BSD-3), [pystray](https://github.com/moses-palmer/pystray) (LGPLv3), [Pillow](https://python-pillow.org/)
 (MIT-CMU), [three.js](https://threejs.org/) (MIT) and the [Unbounded](https://github.com/googlefonts/unbounded)
 and [Onest](https://github.com/simpals/onest) fonts (SIL Open Font License 1.1).
+
+Sounds: **Orbital**, an original set made for StellarHub (CC0), except the hover sound,
+["UI hover"](https://freesound.org/people/unfa/sounds/565131/) by unfa on Freesound (CC0). The list is in
+[`stellarhub/ui/sounds/CREDITS.json`](stellarhub/ui/sounds/CREDITS.json).
