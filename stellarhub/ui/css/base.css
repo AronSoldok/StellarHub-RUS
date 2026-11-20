@@ -518,6 +518,6 @@ html[data-lite="1"] .sheet,html[data-lite="1"] .pal{box-shadow:0 16px 40px -18px
 .ver-tag:empty{display:none}
 
 /* rolling numbers (SH.rollNumber): every character in its own column; the old one leaves up, the new one arrives from below */
-.rn-c{display:inline-block;position:relative;clip-path:inset(-.08em -.12em);white-space:pre}
-.rn-n{display:inline-block}
-.rn-g{position:absolute;left:0;top:0;pointer-events:none}
+rn-c{display:inline-block;position:relative;clip-path:inset(-.08em -.12em);white-space:pre}
+rn-n{display:inline-block}
+rn-g{position:absolute;left:0;top:0;pointer-events:none}

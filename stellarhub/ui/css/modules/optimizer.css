@@ -7,15 +7,19 @@
 #v-optimizer .ov{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:var(--sp-md);height:100%;min-height:0}
 #v-optimizer .ov-l{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 22px}
 #v-optimizer .ring-wrap{position:relative;width:min(240px,32vh);aspect-ratio:1}
-#v-optimizer .ring{width:100%;height:100%;overflow:visible}
+#v-optimizer .ring{position:relative;z-index:1;width:100%;height:100%;overflow:visible}
 #v-optimizer .ring .tick{fill:none;stroke:var(--line);stroke-width:1;stroke-dasharray:1.5 6}
-#v-optimizer .ring .bg{fill:none;stroke:var(--raise2);stroke-width:12;stroke-linecap:round}
-#v-optimizer .ring .fg{fill:none;stroke:var(--accent2);stroke-width:12;stroke-linecap:round;transition:stroke calc(400ms*var(--f))}
+#v-optimizer .ring .bg{fill:none;stroke:var(--raise2);stroke-width:10;stroke-linecap:round}
+#v-optimizer .ring .fg{fill:none;stroke:var(--accent2);stroke-width:10;stroke-linecap:round;transition:stroke calc(400ms*var(--f))}
 #v-optimizer .ring .fg.bad{stroke:var(--accent)}
 #v-optimizer .ring .core{fill:color-mix(in oklab,var(--accent2) 4%,transparent);stroke:var(--line)}
-#v-optimizer .ring .sweep{transform-origin:110px 110px;opacity:0;transition:opacity calc(400ms*var(--f))}
-#v-optimizer .ring.scanning .sweep{opacity:1;animation:optSpin calc(1800ms*var(--f) + 300ms) linear infinite}
-html[data-int=min] #v-optimizer .ring.scanning .sweep{animation:none}
+/* the scanning light: a conic gradient (a soft tail that fades out and a thin bright leading edge) seen through a ring mask,
+   turned by transform only, so it runs on the compositor; it sits under the segments and lights the track as it passes */
+#v-optimizer .ring-sw{position:absolute;inset:0;border-radius:50%;opacity:0;pointer-events:none;transition:opacity calc(500ms*var(--f));
+  background:conic-gradient(from 0deg,transparent 0 200deg,color-mix(in oklab,var(--accent2) 5%,transparent) 240deg,color-mix(in oklab,var(--accent2) 18%,transparent) 330deg,color-mix(in oklab,var(--accent2) 42%,var(--ink)) 358.4deg,transparent 360deg);
+  -webkit-mask:radial-gradient(closest-side,transparent 74.5%,#000 79%,#000 87.5%,transparent 92%);mask:radial-gradient(closest-side,transparent 74.5%,#000 79%,#000 87.5%,transparent 92%)}
+#v-optimizer .ring.scanning~.ring-sw{opacity:1;animation:optSpin calc(2200ms*var(--f) + 500ms) linear infinite;will-change:transform}
+html[data-int=min] #v-optimizer .ring.scanning~.ring-sw{animation:none;opacity:.5}
 @keyframes optSpin{to{transform:rotate(360deg)}}
 #v-optimizer .ring-c{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
 #v-optimizer .ring-c b{font:500 var(--fs-n4)/1 var(--display);letter-spacing:-.04em}

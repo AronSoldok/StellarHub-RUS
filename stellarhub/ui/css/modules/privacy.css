@@ -34,7 +34,7 @@ html[data-int=min] #v-privacy .pv-pulse{animation:none}
 #v-privacy .pv-th .seg button{height:26px;font-size:var(--fs-sm)}
 
 /* ---------- overview ---------- */
-#v-privacy .pv-ov{display:grid;grid-template-columns:minmax(300px,360px) 1fr;gap:var(--sp-md);height:100%;min-height:0}
+#v-privacy .pv-ov{display:grid;grid-template-columns:1fr minmax(300px,360px);gap:var(--sp-md);height:100%;min-height:0}
 #v-privacy .pv-ovl{display:flex;flex-direction:column;align-items:center;text-align:center;padding:14px 16px 14px;min-height:0;overflow:auto}
 #v-privacy .pv-ovl>*{flex:none}
 /* live sensors: three tiles across the top */
@@ -63,22 +63,32 @@ html[data-int=min] #v-privacy .pv-pulse{animation:none}
 #v-privacy .pv-radar .sec[data-t=pend]{fill:color-mix(in oklab,var(--ink) 3%,transparent)}
 #v-privacy .pv-radar .sec[data-t=warn]{fill:color-mix(in oklab,var(--warn) 9%,transparent)}
 #v-privacy .pv-radar .sec[data-t=bad]{fill:color-mix(in oklab,var(--accent) 12%,transparent)}
-#v-privacy .pv-radar .sweep{transform-origin:120px 120px}
-#v-privacy .pv-radar .edge{stroke:var(--accent2);stroke-width:1.2;stroke-opacity:.75}
 #v-privacy .pv-radar .hub{fill:var(--accent2)}
 #v-privacy .pv-radar .blip{cursor:pointer}
-#v-privacy .pv-radar .blip .dot{fill:var(--accent2);transition:transform calc(200ms*var(--f)) var(--e-snap);animation:pvBlipIn calc(500ms*var(--f) + 100ms) var(--e-snap) both;animation-delay:calc(var(--k) * 60ms * var(--f))}
+#v-privacy .pv-radar .blip .dot{fill:var(--accent2);transition:transform calc(200ms*var(--f)) var(--e-snap);animation:pvBlipIn calc(520ms*var(--f) + 100ms) var(--e-out) both;animation-delay:calc(var(--k) * 70ms * var(--f))}
+#v-privacy .pv-radar .blip .halo{fill:var(--accent2);opacity:.16;animation:pvBlipIn calc(520ms*var(--f) + 100ms) var(--e-out) both;animation-delay:calc(var(--k) * 70ms * var(--f))}
 #v-privacy .pv-radar .blip:hover .dot{transform:scale(1.5)}
-#v-privacy .pv-radar .blip.warn .dot{fill:var(--warn)}
-#v-privacy .pv-radar .blip.bad .dot{fill:var(--accent)}
-#v-privacy .pv-radar .blip .halo{fill:none;stroke:var(--accent2);stroke-width:1.5;opacity:0;animation-name:pvPing;animation-timing-function:linear;animation-iteration-count:infinite}
-#v-privacy .pv-radar .blip.warn .halo{stroke:var(--warn)}
-#v-privacy .pv-radar .blip.bad .halo{stroke:var(--accent)}
-html[data-int=min] #v-privacy .pv-radar .blip .halo{animation:none}
-html[data-int=min] #v-privacy .pv-radar .blip .dot{animation:none}
-@keyframes pvPing{0%{opacity:.9;transform:scale(.45)}22%{opacity:0;transform:scale(1.35)}100%{opacity:0;transform:scale(1.35)}}
-@keyframes pvBlipIn{from{transform:scale(0)}}
+#v-privacy .pv-radar .blip.warn .dot{fill:var(--warn)} #v-privacy .pv-radar .blip.warn .halo{fill:var(--warn)}
+#v-privacy .pv-radar .blip.bad .dot{fill:var(--accent)} #v-privacy .pv-radar .blip.bad .halo{fill:var(--accent)}
+html[data-int=min] #v-privacy .pv-radar .blip .dot,html[data-int=min] #v-privacy .pv-radar .blip .halo{animation:none}
+@keyframes pvBlipIn{from{transform:scale(0);opacity:0}}
 @keyframes pvSpin{to{transform:rotate(360deg)}}
+/* the light that turns while Windows is being read: a conic gradient with a long, soft tail and a thin head, seen through a
+   disc mask; only transform turns, on its own layer. It fades out when every area has answered. */
+#v-privacy .pv-radar{position:relative;z-index:1}
+#v-privacy .pv-sw,#v-privacy .pv-rest{position:absolute;left:3.33%;top:3.33%;width:93.34%;height:93.34%;border-radius:50%;pointer-events:none}
+#v-privacy .pv-sw{opacity:0;transition:opacity calc(600ms*var(--f));
+  background:conic-gradient(from 0deg,transparent 0 225deg,color-mix(in oklab,var(--accent2) 3%,transparent) 255deg,color-mix(in oklab,var(--accent2) 8%,transparent) 300deg,color-mix(in oklab,var(--accent2) 18%,transparent) 338deg,color-mix(in oklab,var(--accent2) 34%,transparent) 357deg,color-mix(in oklab,var(--accent2) 55%,var(--ink)) 359deg,transparent 360deg);
+  -webkit-mask:radial-gradient(closest-side,transparent 4%,#000 38%,#000 92%,transparent 100%);mask:radial-gradient(closest-side,transparent 4%,#000 38%,#000 92%,transparent 100%)}
+#v-privacy .pv-radar.scanning~.pv-sw{opacity:1;animation:pvSpin calc(4200ms*var(--f) + 1400ms) linear infinite;will-change:transform}
+html[data-int=min] #v-privacy .pv-radar.scanning~.pv-sw{animation:none;opacity:.4}
+#v-privacy .pv-rest{border:1px solid color-mix(in oklab,var(--accent2) 60%,transparent);opacity:0}
+#v-privacy .pv-cap{font-size:var(--fs-cap);margin:-14px 0 14px;max-width:260px}
+#v-privacy .pv-rl::after{content:attr(data-n);position:absolute;right:-5px;top:-5px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;font:600 9.5px/14px var(--text);text-align:center;
+  background:var(--raise3);color:var(--ink);display:none}
+#v-privacy .pv-rl[data-n]::after{display:block}
+#v-privacy .pv-rl[data-t=warn]::after{background:color-mix(in oklab,var(--warn) 30%,var(--deep))}
+#v-privacy .pv-rl[data-t=bad]::after{background:color-mix(in oklab,var(--accent) 35%,var(--deep))}
 #v-privacy .pv-rl{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:var(--r-s);display:grid;place-items:center;color:var(--faint);
   transition:color calc(200ms*var(--f)),background-color calc(200ms*var(--f))}
 #v-privacy .pv-rl:hover{background:var(--raise2);color:var(--ink)}
@@ -416,7 +426,7 @@ html[data-int=min] #v-privacy .pv-bspin{animation-duration:2.4s}
   #v-privacy .pv-hl{max-height:120px}
 }
 @media (max-width:1300px){
-  #v-privacy .pv-ov{grid-template-columns:290px 1fr}
+  #v-privacy .pv-ov{grid-template-columns:1fr 290px}
   #v-privacy .pv-pgrid{column-count:2}
   #v-privacy .pv-tr{grid-template-columns:minmax(0,1fr) 270px}
   #v-privacy .pv-pscols,#v-privacy .pv-pr0{grid-template-columns:minmax(0,1fr) 120px 96px 26px}
@@ -432,6 +442,7 @@ html[data-int=min] #v-privacy .pv-bspin{animation-duration:2.4s}
   #v-privacy .pv-lt{display:none}
   #v-privacy .pv-ovl>.pv-rw{margin:20px auto 20px;min-height:96px}
   #v-privacy .pv-sub{margin-bottom:8px}
+  #v-privacy .pv-cap{display:none}
   #v-privacy .pv-st{margin-top:10px}
 }
 #v-privacy [hidden]{display:none!important}

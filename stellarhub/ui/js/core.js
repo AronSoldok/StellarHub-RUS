@@ -233,9 +233,10 @@ function rollNumber(el, value, o = {}) {
   if (!el) return;
   const num = typeof value === 'number' && isFinite(value);
   const txt = num ? (o.format || fmtInt)(value) : String(value);
-  const rn = el._rn;
+  let rn = el._rn; if (num) el.dataset.v = value;
+  if (rn && rn.cols && (!rn.cols.length || rn.cols[0].el.parentNode !== el)) rn = el._rn = null; /* something else rewrote the element */
   const plain = state.lite || effInt() === 'min' || state.settings.countUp === false || o.plain || document.hidden;
-  if (rn && rn.txt === txt) return;
+  if (rn && rn.txt === txt && (rn.cols || el.textContent === txt)) return;
   const dir = num && rn && rn.num != null && value < rn.num ? -1 : 1;
   if (!rn || plain || !rn.cols) {
     if (plain) { el.textContent = txt; el._rn = { txt, num: num ? value : null, cols: null }; }
@@ -259,7 +260,7 @@ function rollNumber(el, value, o = {}) {
     const run = c.anim && c.anim.playState === 'running' && (+c.anim.currentTime || 0) < dur * .55;
     if (run) { c.cur.textContent = b; c.el.dataset.c = b; out.unshift(c); continue; }
     if (c.anim) { try { c.anim.cancel(); } catch {} } if (c.ghost) { c.ghost.remove(); c.ghost = null; }
-    const g = document.createElement('span'); g.className = 'rn-g'; g.textContent = a; c.el.appendChild(g); c.ghost = g;
+    const g = document.createElement('rn-g'); g.textContent = a; c.el.appendChild(g); c.ghost = g;
     c.cur.textContent = b; c.el.dataset.c = b;
     const ease = { duration: dur, easing: EASE.out };
     const ga = g.animate([{ opacity: 1, transform: 'translate3d(0,0,0)' }, { opacity: 0, transform: `translate3d(0,${-dy}%,0)` }], ease);
@@ -272,8 +273,8 @@ function rollNumber(el, value, o = {}) {
   /* only the columns' order in the array matters; the DOM already has them in place (new ones are inserted at the start) */
   rn.cols = out; rn.txt = txt; rn.num = num ? value : null;
   function mk(ch) {
-    const e = document.createElement('span'), cur = document.createElement('span');
-    e.className = 'rn-c'; e.dataset.c = ch; e.setAttribute('aria-hidden', 'true'); cur.className = 'rn-n'; cur.textContent = ch; e.appendChild(cur);
+    const e = document.createElement('rn-c'), cur = document.createElement('rn-n');
+    e.dataset.c = ch; e.setAttribute('aria-hidden', 'true'); cur.textContent = ch; e.appendChild(cur);
     const first = el.firstChild; el.insertBefore(e, first);
     return { el: e, cur, anim: null, ghost: null };
   }
@@ -281,8 +282,8 @@ function rollNumber(el, value, o = {}) {
 function build(el, txt) {
   el.textContent = ''; el.setAttribute('aria-label', txt);
   const cols = Array.from(txt).map(ch => {
-    const e = document.createElement('span'), cur = document.createElement('span');
-    e.className = 'rn-c'; e.dataset.c = ch; e.setAttribute('aria-hidden', 'true'); cur.className = 'rn-n'; cur.textContent = ch; e.appendChild(cur); el.appendChild(e);
+    const e = document.createElement('rn-c'), cur = document.createElement('rn-n');
+    e.dataset.c = ch; e.setAttribute('aria-hidden', 'true'); cur.textContent = ch; e.appendChild(cur); el.appendChild(e);
     return { el: e, cur, anim: null, ghost: null };
   });
   el._rn = { txt, num: null, cols };

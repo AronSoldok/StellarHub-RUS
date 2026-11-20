@@ -268,27 +268,25 @@ async function undo(r, area) {
 const undoToast = (label, r, area) => SH.toast(label, { action: { label: t('Undo'), run: () => undo(r, area) } });
 
 /* ================= Overview ================= */
-/* The overview's centerpiece is a radar (Super Optimizer has a score ring; this one must not look like it):
-   one sector per area, a slow sweep, and a blip per finding that pings when the sweep passes over it. The worse
-   the finding, the closer to the center. The score is a segmented gauge under it. */
+/* The overview's centerpiece is a small radar (Super Optimizer has a score ring; this one must not look like it). What it
+   shows is exactly this: one sector per area, one dot per finding inside its area's sector, and the more serious the
+   finding the closer to the center (the caption under it says so). The light that turns around it is only there while
+   Windows is being read; when every area has answered it fades out and the radar rests, with one soft ring that spreads
+   once. Nothing pings, nothing loops after that. */
 const RC = 120, RR = [38, 66, 94, 112];
 const SECT = 360 / AREAS.length;
 const polar = (deg, r) => { const a = (deg - 90) * Math.PI / 180; return [+(RC + r * Math.cos(a)).toFixed(2), +(RC + r * Math.sin(a)).toFixed(2)]; };
 const wedge = (a0, a1, r) => { const [x0, y0] = polar(a0, r), [x1, y1] = polar(a1, r); return `M${RC} ${RC}L${x0} ${y0}A${r} ${r} 0 0 1 ${x1} ${y1}Z`; };
-const sweepMs = () => { const f = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--f')) || 1; return 4200 * f + 1400; };
 function radarSVG() {
   return `<svg viewBox="0 0 240 240" class="pv-radar" aria-hidden="true">
-    <defs><linearGradient id="pvSw" gradientUnits="userSpaceOnUse" x1="${polar(0, 112)[0]}" y1="${polar(0, 112)[1]}" x2="${polar(48, 112)[0]}" y2="${polar(48, 112)[1]}">
-      <stop offset="0" style="stop-color:var(--accent2)" stop-opacity="0"/><stop offset="1" style="stop-color:var(--accent2)" stop-opacity=".34"/></linearGradient>
-      <radialGradient id="pvRg"><stop offset="0" style="stop-color:var(--accent2)" stop-opacity=".09"/><stop offset="1" style="stop-color:var(--accent2)" stop-opacity="0"/></radialGradient></defs>
+    <defs><radialGradient id="pvRg"><stop offset="0" style="stop-color:var(--accent2)" stop-opacity=".10"/><stop offset="1" style="stop-color:var(--accent2)" stop-opacity="0"/></radialGradient></defs>
     <circle cx="${RC}" cy="${RC}" r="${RR[3]}" fill="url(#pvRg)"/>
     ${AREAS.map((a, i) => `<path class="sec" data-sec="${a}" d="${wedge(i * SECT + 1.5, (i + 1) * SECT - 1.5, RR[3])}"/>`).join('')}
     ${RR.map((r, i) => `<circle cx="${RC}" cy="${RC}" r="${r}" class="rg${i === 3 ? ' out' : ''}"/>`).join('')}
     ${AREAS.map((a, i) => { const [x, y] = polar(i * SECT, RR[3]); return `<line x1="${RC}" y1="${RC}" x2="${x}" y2="${y}" class="sp"/>`; }).join('')}
     <circle cx="${RC}" cy="${RC}" r="117" class="tick"/>
-    <g class="sweep"><path d="${wedge(0, 48, 112)}" fill="url(#pvSw)"/><line x1="${RC}" y1="${RC}" x2="${polar(48, 112)[0]}" y2="${polar(48, 112)[1]}" class="edge"/></g>
     <g class="blips"></g>
-    <circle cx="${RC}" cy="${RC}" r="3" class="hub"/></svg>
+    <circle cx="${RC}" cy="${RC}" r="3" class="hub"/></svg><i class="pv-sw" aria-hidden="true"></i><i class="pv-rest" aria-hidden="true"></i>
     ${AREAS.map((a, i) => { const [x, y] = polar(i * SECT + SECT / 2, 129); return `<button class="pv-rl" data-sec="${a}" data-gotab="${a}" style="left:${(x / 240 * 100).toFixed(2)}%;top:${(y / 240 * 100).toFixed(2)}%" title="${esc(AREA_N[a])}" aria-label="${esc(AREA_N[a])}">${ic(AREA_IC[a])}</button>`; }).join('')}`;
 }
 /* where each finding sits: its area's sector, spread evenly; bad near the center, info near the edge */
@@ -302,18 +300,13 @@ function blipsFor() {
 function paintBlips() {
   const g = ovEl && $('.pv-radar .blips', ovEl); if (!g) return;
   const bl = blipsFor(), sig = bl.map(b => b.f.id + b.f.sev).join('|'); if (g.dataset.sig === sig) return; g.dataset.sig = sig;
-  /* each ping is timed so it fires when the sweep's edge reaches the blip */
-  const P = sweepMs(), sw = $('.pv-radar .sweep', ovEl), a0 = sw && sw.getAnimations()[0], cur = a0 ? (+a0.currentTime || 0) % P : 0;
-  g.innerHTML = bl.map((b, k) => { const [x, y] = polar(b.deg, b.r), hit = ((b.deg - 48 + 720) % 360) / 360 * P, d = ((hit - cur) % P + P) % P;
-    return `<g class="blip ${b.f.sev}" data-gotab="${b.f.tab || b.a}" style="--k:${k}"><title>${esc(b.f.title)}</title><circle cx="${x}" cy="${y}" r="10" class="halo" style="animation-delay:${Math.round(d)}ms;animation-duration:${Math.round(P)}ms;transform-origin:${x}px ${y}px"/><circle cx="${x}" cy="${y}" r="4.2" class="dot" style="transform-origin:${x}px ${y}px"/></g>`; }).join('');
+  g.innerHTML = bl.map((b, k) => { const [x, y] = polar(b.deg, b.r);
+    return `<g class="blip ${b.f.sev}" data-gotab="${b.f.tab || b.a}" style="--k:${k}"><title>${esc(b.f.title)}</title><circle cx="${x}" cy="${y}" r="9" class="halo" style="transform-origin:${x}px ${y}px"/><circle cx="${x}" cy="${y}" r="4.2" class="dot" style="transform-origin:${x}px ${y}px"/></g>`; }).join('');
+  /* how many findings each area has, on its label */
+  AREAS.forEach(a => { const n = bl.filter(b => b.a === a).length, l = $(`.pv-rl[data-sec="${a}"]`, ovEl); if (l) { if (n) l.dataset.n = n; else delete l.dataset.n; } });
 }
-function startSweep() {
-  const sw = ovEl && $('.pv-radar .sweep', ovEl); if (!sw) return;
-  sw.getAnimations().forEach(a => a.cancel());
-  if (SH.effInt() === 'min') return;
-  sw.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: sweepMs(), iterations: Infinity });
-  const g = $('.pv-radar .blips', ovEl); if (g) { delete g.dataset.sig; paintBlips(); }
-}
+/* the light is a CSS animation (a conic gradient turned by transform); it only runs while the radar has the class "scanning" */
+function startSweep() { paintBlips(); }
 /* the score as a gauge of 20 cells */
 const GAUGE_N = 20;
 const gaugeHTML = () => `<div class="pv-gauge" id="pvGauge">${Array.from({ length: GAUGE_N }, () => '<i></i>').join('')}</div>`;
@@ -344,14 +337,15 @@ function ovState() {
 function renderOverview(el, ctx) {
   ovEl = el; el.classList.add('fill');
   el.innerHTML = `<div class="pv-ov">
+    <div class="pan pv-ovr" data-asm><div id="pvRight"></div></div>
     <div class="pan pv-ovl" data-asm>
       <div class="pv-lives" id="pvLive">${liveHTML()}</div>
-      <div class="pv-rw">${radarSVG()}</div>
+      <div class="pv-rw" title="${esc(t('The closer to the center, the more serious.'))}">${radarSVG()}</div>
+      <div class="pv-cap faint">${t('The closer to the center, the more serious.')}</div>
       <div class="pv-sc"><b id="pvScore">0</b><span><em id="pvScoreL">${t('checking…')}</em>${gaugeHTML()}</span></div>
       <div class="pv-st" id="pvSt"></div><div class="pv-sub muted" id="pvSub"></div>
       <button class="btn pri lg pv-cta" id="pvFixAll" disabled>${ic('sparkle')}<span>${t('Fix what is safe')}</span></button>
-    </div>
-    <div class="pan pv-ovr" data-asm><div id="pvRight"></div></div></div>`;
+    </div></div>`;
   el.addEventListener('click', async e => {
     const tb = e.target.closest("[data-gotab]"); if (tb) { ctx.setTab(tb.dataset.gotab); return; }
     const cp = e.target.closest('[data-cap]'); if (cp) { selCap = cp.dataset.cap; ctx.setTab('permissions'); paintPerm(); return; }
@@ -370,7 +364,7 @@ function renderOverview(el, ctx) {
     const ck = e.target.closest('.pv-plan .check'); if (ck && !ck.disabled) ck.classList.toggle('on');
   });
   paintOverview(true); startSweep();
-  on(a => { if (AREAS.includes(a) || a === 'live') { if (ovMode === 'list') paintOverview(false); else paintRadar(); const lv = $('#pvLive', el); if (lv) lv.innerHTML = liveHTML(); } });
+  on(a => { if (AREAS.includes(a) || a === 'live' || /:idle$/.test(a)) { if (ovMode === 'list') paintOverview(false); else paintRadar(); const lv = $('#pvLive', el); if (lv) lv.innerHTML = liveHTML(); } });
   rendered.overview = () => paintOverview(false);
 }
 function paintRadar() {
@@ -378,10 +372,13 @@ function paintRadar() {
   AREAS.forEach(a => { const tn = has(a) ? tone(a) : 'pend';
     [$(`.pv-radar .sec[data-sec="${a}"]`, ovEl), $(`.pv-rl[data-sec="${a}"]`, ovEl)].forEach(el => { if (el) el.dataset.t = tn; }); });
   const done = AREAS.filter(has).length, rd = $('.pv-radar', ovEl);
-  rd.classList.toggle('scanning', AREAS.some(loading) || done < AREAS.length);
+  const wasScanning = rd.classList.contains('scanning'), scanning = AREAS.some(loading) || done < AREAS.length;
+  rd.classList.toggle('scanning', scanning);
+  /* when the last area answers, one soft ring spreads out from the center, once (opacity and scale only) */
+  if (wasScanning && !scanning && SH.effInt() !== 'min' && !SH.state.lite) { const r = $('.pv-rest', ovEl); if (r) anim(r, [{ opacity: .55, transform: 'scale(.25)' }, { opacity: 0, transform: 'scale(1)' }], { d: 1300, e: EASE.out }); }
   paintBlips();
   const sc = $('#pvScore', ovEl); const target = done ? score() : 0;
-  if (+sc.dataset.v !== target) SH.countUp(sc, target, 700);
+  if (+sc.dataset.v !== target || !sc._rn) SH.rollNumber(sc, target);
   $('#pvScoreL', ovEl).textContent = done === AREAS.length ? t('Protection level, out of 100') : t('checking…');
   const lit = done === AREAS.length ? Math.round(target / (100 / GAUGE_N)) : 0, tn = target >= 75 ? 'ok' : target >= 55 ? 'warn' : 'bad';
   $$('#pvGauge i', ovEl).forEach((c, k) => { const on = k < lit; if (c.classList.contains('on') !== on || c.dataset.t !== tn) { c.style.transitionDelay = `${(on ? k : GAUGE_N - k) * 22}ms`; c.classList.toggle('on', on); c.dataset.t = tn; } });

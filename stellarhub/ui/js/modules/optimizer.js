@@ -399,17 +399,17 @@ const valTxt = a => { const v = a.val(); return v == null ? tc('Good') : v; };
 const tone = a => a.bad() ? 'bad' : a.val() == null ? 'ok' : 'warn';
 const areaFill = a => a.bad() ? .45 : ((a.id === 'registry' && regCount()) || (a.id === 'startup' && reviewStartup().length) || (a.id === 'services' && servicePending('bal').length) || (a.id === 'performance' && DB.perf.ac !== 'best')) ? .7 : 1;
 function ringSVG() {
-  const R = 92, p = ang => [(110 + R * Math.cos(ang)).toFixed(2), (110 + R * Math.sin(ang)).toFixed(2)];
+  /* one arc per area, with a real gap between neighbours: the round caps (half the stroke) take 3.2 degrees at each end, so
+     a 15 degree gap leaves about 8 degrees of clear space and no cap ever touches the next segment */
+  const R = 92, GAP = 15, p = ang => [(110 + R * Math.cos(ang)).toFixed(2), (110 + R * Math.sin(ang)).toFixed(2)];
   const W = 360 / AREAS.length;
-  const segs = AREAS.map((a, i) => { const [x0, y0] = p((-90 + i * W + 3) * Math.PI / 180), [x1, y1] = p((-90 + (i + 1) * W - 3) * Math.PI / 180); return `M${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1}`; });
-  const L = (R * (W - 6) * Math.PI / 180).toFixed(1);
+  const segs = AREAS.map((a, i) => { const [x0, y0] = p((-90 + i * W + GAP / 2) * Math.PI / 180), [x1, y1] = p((-90 + (i + 1) * W - GAP / 2) * Math.PI / 180); return `M${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1}`; });
+  const L = (R * (W - GAP) * Math.PI / 180).toFixed(1);
   return `<svg viewBox="0 0 220 220" class="ring">
-    <defs><linearGradient id="optSweep" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style="stop-color:var(--accent2)" stop-opacity="0"/><stop offset="1" style="stop-color:var(--accent2)" stop-opacity=".32"/></linearGradient></defs>
     <circle cx="110" cy="110" r="104" class="tick"/>
-    <g class="sweep"><path d="M110 110 L110 12 A98 98 0 0 1 180 40 Z" fill="url(#optSweep)"/></g>
     ${segs.map(d => `<path d="${d}" class="bg"/>`).join('')}
-    ${segs.map((d, i) => `<path d="${d}" class="fg" data-seg="${AREAS[i].id}" style="stroke-dasharray:${L};stroke-dashoffset:${L}" data-l="${L}"/>`).join('')}
-    <circle cx="110" cy="110" r="70" class="core"/></svg>`;
+    ${segs.map((d, i) => `<path d="${d}" class="fg" data-seg="${AREAS[i].id}" style="stroke-dasharray:${L} ${L};stroke-dashoffset:${L}" data-l="${L}"/>`).join('')}
+    <circle cx="110" cy="110" r="70" class="core"/></svg><i class="ring-sw" aria-hidden="true"></i>`;
 }
 const ovFoot = () => `<div class="ov-foot"><div class="ov-fi"><span class="faint">${t('Last optimization')}</span><b>${lastRun ? t('Today, just now') : t('Never from StellarHub')}</b></div><div class="ov-fi"><span class="faint">${t('Free space on C:')}</span><b>${SH.fmtInt(freeC() + (lastRun && !REAL ? lastRun.freed / 1e9 : 0))} GB</b></div><div class="ov-fi"><span class="faint">${DB.boots.length ? t('Average boot') : t('BIOS time')}</span><b>${DB.boots.length ? fmt1(bootAvg() - bootSaved()) + ' s' : DB.bios ? fmt1(DB.bios) + ' s' : '—'}</b></div><button class="ov-auto" data-go-auto>${ic('autopilot')}<span><b>${t('Do it automatically every week')}</b>${t('Create an Autopilot routine')}</span>${ic('chev')}</button></div>`;
 const findingsHTML = () => `<h4 class="pan-h">${t('What we found')} <em>${t('just now')}</em></h4><div class="rows">${AREAS.map(a => `<div class="row ov-row" data-area="${a.id}"><span class="ri">${ic(a.ic)}</span><span class="rt"><b>${a.n}</b><span>${esc(a.txt())}</span></span><span class="ov-bar ${tone(a)}"><i style="transform:scaleX(${areaFill(a)})"></i></span><span class="ov-v ${tone(a)}">${valTxt(a)}</span><button class="btn sm ghost" data-tab="${a.tab}">${t('Review')}</button></div>`).join('')}</div>${ovFoot()}`;
@@ -443,7 +443,7 @@ function paintRing(el) {
 async function analyze(el, again) {
   const sc = $('#optScore', el), lbl = $('#optScoreLbl', el), ring = $('.ring', el);
   $('#optAll', el).disabled = true; $('#optRescan', el).hidden = true; ring.classList.add('scanning');
-  $('#optState', el).textContent = t('Checking your system'); $('#optSub', el).textContent = t('This is read-only; nothing changes.'); lbl.textContent = t('analyzing…');
+  $('#optState', el).textContent = t('Checking your system'); $('#optSub', el).textContent = t('This is read-only; nothing changes.'); lbl.textContent = t('analyzing…'); SH.rollNumber(sc, 0);
   if (again) { ovMode = 'findings'; const r = $('#optRight', el); r.innerHTML = findingsHTML(); $$('.ov-row', r).forEach(x => { x.classList.add('pending'); $('button', x).disabled = true; });
     $$('.fg', el).forEach(p => { anim(p, [{ strokeDashoffset: getComputedStyle(p).strokeDashoffset }, { strokeDashoffset: p.dataset.l }], { d: 300 }); p.style.strokeDashoffset = p.dataset.l; }); }
   let done = 0;
@@ -455,10 +455,10 @@ async function analyze(el, again) {
       const v = $('.ov-v', row); v.textContent = valTxt(a); v.className = 'ov-v ' + tone(a); $('button', row).disabled = false;
       const ob = $('.ov-bar', row); ob.className = 'ov-bar ' + tone(a); anim($('i', ob), [{ transform: 'scaleX(0)' }, { transform: `scaleX(${areaFill(a)})` }], { d: 800 });
       anim(row, [{ transform: 'translate3d(10px,0,0)', opacity: .4 }, { transform: 'none', opacity: 1 }], { d: 420, e: EASE.spring }); }
-    SH.countUp(sc, Math.round(score * done / AREAS.length), 500);
+    SH.rollNumber(sc, Math.round(score * done / AREAS.length));
   });
   if (REAL) { score = calcScore(); const r = $('#optRight', el); if (r && ovMode === 'findings') r.innerHTML = findingsHTML(); paintRing(el); }
-  ring.classList.remove('scanning'); SH.countUp(sc, score, 600); lbl.textContent = t('out of 100');
+  ring.classList.remove('scanning'); SH.rollNumber(sc, score); lbl.textContent = t('out of 100');
   const em = $('#optRight .pan-h em', el); if (em) em.textContent = t('just now');
   $('#optState', el).textContent = score >= 85 ? t('Your PC is in good shape') : t('There is room to improve');
   $('#optSub', el).textContent = score >= 85 ? t('Nothing urgent. Analyze again whenever you like.') : t('“Optimize everything” would get you to about {n} points.', { n: REAL ? projected() : 91 });
@@ -531,7 +531,7 @@ async function runPlan(el, steps) {
   score = REAL ? calcScore() : Math.min(96, 64 + Math.round(freed / 1e9 * 1.2) + Math.round(gained * 1.1) + (DB.perf.ac === 'best' ? 3 : 0) + (servicePending('bal').length ? 0 : 3));
   if (REAL) SH.logActivity(t('Optimization complete'), { sub: t('{size} freed', { size: gb(freed) }), ic: 'sparkle', go: 'optimizer', tab: 'overview' });
   lastRun = { freed, gained, log };
-  SH.countUp($('#optScore', el), score, 1200); paintRing(el);
+  SH.rollNumber($('#optScore', el), score); paintRing(el);
   await wait(450);
   ovMode = 'done';
   swap(right, `<h4 class="pan-h">${t('Done')} <em>${t('just now')}</em></h4>
@@ -602,7 +602,7 @@ async function undo(el, btn) {
         try { await engJob('services_undo_job', [last.svcBackup], { onProgress: m => { if (m.text && m.kind === 'progress') sub.textContent = m.text; } }); last.svcBackup = null; svc = true; } catch (e) { errs.push(t('services')); } }
       if (last.prevAc && last.prevAc !== DB.perf.ac) { try { Object.assign(DB.perf, await eng('perf_set', 'ac', last.prevAc)); } catch (e) { errs.push(t('power mode')); } }
       if (svc) { phase(t('Checking again…')); await load('services', true).catch(() => {}); }
-      score = calcScore(); SH.countUp($('#optScore', el), score, 900);
+      score = calcScore(); SH.rollNumber($('#optScore', el), score);
       ['startup', 'services', 'performance'].forEach(refresh); ovMode = 'findings'; swap(right, findingsHTML()); paintRing(el); ok = true;
       SH.toast(errs.length ? t('Undone, except: {list}.', { list: errs.join(', ') }) : t("Changes undone. Deleted files can't be recovered."));
       SH.logActivity(t('Optimization undone'), { ic: 'restore', go: 'optimizer', tab: 'overview' });
@@ -611,7 +611,7 @@ async function undo(el, btn) {
     /* sample mode: the same phases, slowed down so they can be seen */
     for (const p of [t('Putting startup apps back…'), t('Restoring services…'), t('Checking again…')]) { phase(p); await wait(650); }
     DB.startup.forEach(s => s.on = s.orig); DB.services.forEach(s => s.cur = s.orig); DB.perf.ac = 'balanced';
-    score = 64 + Math.round((lastRun ? lastRun.freed : 0) / 1e9 * 1.2); SH.countUp($('#optScore', el), score, 900);
+    score = 64 + Math.round((lastRun ? lastRun.freed : 0) / 1e9 * 1.2); SH.rollNumber($('#optScore', el), score);
     ['startup', 'services', 'performance'].forEach(refresh); ovMode = 'findings'; swap(right, findingsHTML()); paintRing(el); ok = true;
     SH.toast(t("Changes undone. Deleted files can't be recovered."));
   } catch (e) { console.error(e); SH.toast(e.message); }
