@@ -310,9 +310,9 @@ const API = {
   },
   async restore(session, item, onProgress) {
     if (REAL()) {
-      const r = await SH.job('remover', 'quarantine_restore', [session.id, item ? [item.idx] : null], { onProgress: m => { if (onProgress) onProgress(m); } });
-      if (r && r.failed) SH.toast(PL(r.failed, 'Could not restore {n} item: {error}', 'Could not restore {n} items: {error}', { error: (r.errors || [])[0] || '' }), { ms: 6000 });
-      if (r && r.needs_reboot) SH.toast(T('Some services or rules are fully restored after a restart.'), { ms: 5000 });
+      const r = await SH.job('remover', 'quarantine_restore', [session.id, item ? [item.idx] : null], { sound: 'task', onProgress: m => { if (onProgress) onProgress(m); } });
+      if (r && r.failed) SH.toast(PL(r.failed, 'Could not restore {n} item: {error}', 'Could not restore {n} items: {error}', { error: (r.errors || [])[0] || '' }), { ms: 6000, kind: 'error' });
+      if (r && r.needs_reboot) SH.toast(T('Some services or rules are fully restored after a restart.'), { ms: 5000, kind: 'warning' });
       SH.logActivity(item ? T('Restored an item from the quarantine') : T('{name}: put back in place', { name: session.prog }), { ic: 'restore', go: 'remover', tab: 'quarantine' });
       ensureReal(true).then(refresh).catch(() => {});
     } else await wait(350);
@@ -427,6 +427,7 @@ function openFlow(progs, opts = {}) {
         b.innerHTML = `${ic('alert')}${T('Click again: no official uninstaller')}`; anim(b, [{ transform: 'scale(.95)' }, { transform: 'none' }], { d: 300, e: EASE.spring }); return;
       }
       clearTimeout(armed);
+      SH.sound('delete');  /* the uninstall is confirmed */
       REAL() && one ? realRun() : stepPrep();
     };
   }
@@ -448,7 +449,7 @@ function openFlow(progs, opts = {}) {
       const s = $('.t', foot); if (s) s.innerHTML = `${esc(T('Creating a restore point. This can take a few minutes…'))} <span class="faint rv-el">${esc(T('Elapsed {time}', { time: mmss(0) }))}</span>`;
       rpTimer = setInterval(() => { const e = $('.rv-el', foot); if (!e || closed) { rpStop(); return; } e.textContent = T('Elapsed {time}', { time: mmss((Date.now() - t0) / 1000) }); }, 1000);
     };
-    const job = SH.job('remover', 'uninstall', [one.eid, { mode: mode === 'silent' ? 'quiet' : mode, level, restore_point: true }], { onProgress: m => {
+    const job = SH.job('remover', 'uninstall', [one.eid, { mode: mode === 'silent' ? 'quiet' : mode, level, restore_point: true }], { sound: 'task', onProgress: m => {
       if (closed) { rpStop(); return; } const d = m.data || {};
       if (d.step === 'restore' && d.status === 'running') rpStart();
       else if (rpTimer) { rpStop(); const s = $('.t', foot); if (s && d.step === 'restore') s.textContent = T('Preparing. This takes a few seconds.'); }
@@ -467,7 +468,7 @@ function openFlow(progs, opts = {}) {
       }
       if (d.step === 'scan') {
         if (!scanShown) {
-          scanShown = true; tickers.delete(t2); dir = setStep(3);
+          scanShown = true; tickers.delete(t2); dir = setStep(3); SH.sound('scan_start');
           const rows = level === 'safe' ? SCAN_STEPS.slice(0, 4) : SCAN_STEPS;
           swap(body, `<div class="scan-grid">${rows.map((t, i) => ckRow('s' + i, ['folder', 'link', 'reg', 'gear', 'file'][i], TC(t), T('Waiting'))).join('')}</div>`, dir, () => stagger($$('.ck', body), 30, 30));
           setFoot(`<span class="t">${T('Looking for leftovers. Each one has a confidence from 0 to 100 and the reason.')}</span>`);
@@ -489,7 +490,8 @@ function openFlow(progs, opts = {}) {
     $$('.ck', body).forEach(c => { setCk(c.dataset.c, 'ok'); const s = $('.s', c); if (s) s.textContent = T('Checked'); });
     const sc = res.scan || { items: [], key: one.eid };
     items = sc.items.map(mapItem(sc.key, one.name)); sel = new Set(items.filter(l => l.selected).map(l => l.id));
-    if (res.still_registered && mode !== 'forced') SH.toast(T('The program is still registered: maybe you cancelled the uninstaller. Review the leftovers carefully.'), { ms: 6000 });
+    if (scanShown) SH.sound('scan_complete');
+    if (res.still_registered && mode !== 'forced') SH.toast(T('The program is still registered: maybe you cancelled the uninstaller. Review the leftovers carefully.'), { ms: 6000, kind: 'warning' });
     SH.logActivity(T('{name} uninstalled', { name: one.name }), { sub: SMODE[mode], ic: 'remover', go: 'remover', tab: 'history' });
     await wait(400); if (!closed) stepReview();
   }
@@ -523,9 +525,11 @@ function openFlow(progs, opts = {}) {
     const cats = Object.keys(TYPES).filter(t => level !== 'safe' || ['folder', 'shortcut', 'reg'].includes(t));
     swap(body, `<div class="scan-grid">${cats.map(t => ckRow(t, TYPES[t][1], TYPES[t][0], T('Waiting'))).join('')}</div>`, dir, () => stagger($$('.ck', body), 30, 30));
     setFoot(`<span class="t">${T('Looking for leftovers. Each one has a confidence from 0 to 100 and the reason.')}</span>`);
+    if (!opts.items) SH.sound('scan_start');
     const found = opts.items ? opts.items : await API.scan(progs, t => { if (closed) return; $$('.ck.run', body).forEach(c => { setCk(c.dataset.c, 'ok'); $('.s', c).textContent = T('Checked'); }); setCk(t, 'run'); const c = $(`.ck[data-c="${t}"] .s`, body); if (c) c.textContent = T('Checking…'); });
     if (closed) return;
     $$('.ck', body).forEach(c => { const n = found.filter(l => l.type === c.dataset.c).length; setCk(c.dataset.c, 'ok', n ? PL(n, '{n} leftover', '{n} leftovers') : T('None')); $('.s', c).textContent = n ? T('Found') : TC('Clean'); });
+    if (!opts.items) SH.sound('scan_complete');
     items = found; sel = new Set(items.filter(l => l.conf >= 80 && !l.personal).map(l => l.id)); await wait(700);
     if (closed) return; busy = false; stepReview();
   }
@@ -556,7 +560,7 @@ function openFlow(progs, opts = {}) {
     }
     setFoot(`<span class="t"></span>${items.length ? `<button class="btn ghost" id="rfKeep">${T('Keep all')}</button><button class="btn pri lg" id="rfDel">${ic('trash')}${T('Remove selected')}</button>` : `<button class="btn pri lg" id="rfKeep">${T('Finish')}</button>`}`); sumFoot();
     $('#rfKeep', f).onclick = () => stepDone([]);
-    const del = $('#rfDel', f); if (del) del.onclick = async () => { busy = true; del.disabled = true; del.innerHTML = T('Moving to the quarantine…'); const chosen = items.filter(l => sel.has(l.id)); stepDone(chosen); };
+    const del = $('#rfDel', f); if (del) del.onclick = async () => { SH.sound('delete'); busy = true; del.disabled = true; del.innerHTML = T('Moving to the quarantine…'); const chosen = items.filter(l => sel.has(l.id)); stepDone(chosen); };
   }
   /* 6. done */
   async function realRemove(chosen) {
@@ -584,8 +588,8 @@ function openFlow(progs, opts = {}) {
         <div class="fin-stats"><div><b>${r.ok}</b><span>${T('leftovers removed')}</span></div><div><b>${fmtMB(r.freed / 1048576)}</b><span>${T('freed')}</span></div><div><b>${MODE_NAME[mode]}</b><span>${T('mode')}</span></div></div></div></div>`, dir, () => playRing($('svg.ring', body), 100));
       setFoot(`<span class="t">${r.sessions.length ? T('Everything is in the quarantine in case something stopped working.') : ''}</span>${r.sessions.length ? `<button class="btn ghost" id="rfUndo">${ic('restore')}${T('Undo')}</button>` : ''}<button class="btn pri" data-x>${T('Done')}</button>`);
       const u = $('#rfUndo', f); if (u) u.onclick = async () => {
-        u.disabled = true; u.textContent = T('Restoring…');
-        for (const sid of r.sessions) { try { await SH.job('remover', 'quarantine_restore', [sid]); } catch (e) { SH.toast(jobErr(e)); } }
+        SH.sound('undo'); u.disabled = true; u.textContent = T('Restoring…');
+        for (const sid of r.sessions) { try { await SH.job('remover', 'quarantine_restore', [sid]); } catch (e) { SH.toast(jobErr(e), { kind: 'error' }); } }
         SH.toast(T('Leftovers put back in place.')); SH.logActivity(T('Leftovers put back in place'), { sub: one ? one.name : T('{n} programs', { n: progs.length }), ic: 'restore', go: 'remover', tab: 'quarantine' });
         ensureReal(true).then(refresh); close();
       };
@@ -596,7 +600,7 @@ function openFlow(progs, opts = {}) {
     swap(body, `<div class="fin">${ring('ring')}<div><h3>${one ? T('{name} uninstalled', { name: esc(one.name) }) : T('{n} programs uninstalled', { n: progs.length })}</h3><p>${chosen.length ? `${PL(chosen.length, 'Moved to the quarantine: {n} leftover.', 'Moved to the quarantine: {n} leftovers.')} ${T('You can undo this for {days} days.', { days: qDays })}` : T('No leftovers were removed.')}</p>
       <div class="fin-stats"><div><b>${chosen.length}</b><span>${T('leftovers removed')}</span></div><div><b>${fmtMB(mb + progs.reduce((a, p) => a + p.mb, 0))}</b><span>${T('freed in total')}</span></div><div><b>${MODE_NAME[mode]}</b><span>${T('mode')}</span></div></div></div></div>`, dir, () => playRing($('svg.ring', body), 100));
     setFoot(`<span class="t">${T('A restore point is kept in case something stopped working.')}</span>${chosen.length ? `<button class="btn ghost" id="rfUndo">${ic('restore')}${T('Undo')}</button>` : ''}<button class="btn pri" data-x>${T('Done')}</button>`);
-    const u = $('#rfUndo', f); if (u) u.onclick = async () => { await API.restore(session); refresh(); SH.toast(T('Leftovers put back in place.')); close(); };
+    const u = $('#rfUndo', f); if (u) u.onclick = async () => { SH.sound('undo'); await API.restore(session); refresh(); SH.toast(T('Leftovers put back in place.')); close(); };
     refresh(); opts.onDone && opts.onDone();
   }
   if (opts.startAt === 'review') { items = opts.items; sel = new Set(items.filter(l => l.selected !== undefined ? l.selected : (l.conf >= 80 && !l.personal)).map(l => l.id)); step = 3; stepReview(); }
@@ -729,6 +733,7 @@ function renderBatch(el) {
   list.addEventListener('click', e => { if (running) return; const r = e.target.closest('.pr'); if (!r) return; const id = r.dataset.p; sel.has(id) ? sel.delete(id) : sel.add(id); const c = $('.check', r); c.classList.toggle('on', sel.has(id)); anim(c, [{ transform: 'scale(.75)' }, { transform: 'none' }], { d: 320, e: EASE.spring }); drawQueue(); });
   $('#rbGo', el).addEventListener('click', async () => {
     const ps = [...sel].map(id => PROGRAMS.find(p => p.id === id)).filter(Boolean); if (!ps.length || running) return;
+    SH.sound('delete');  /* the batch uninstall is confirmed */
     running = true; drawQueue();
     let all = [];
     const chipOf = p => { const it = $(`.qi[data-p="${p.id}"]`, queue); return it ? { chip: $('.chip', it), fill: $('.fill', it) } : null; };
@@ -743,12 +748,12 @@ function renderBatch(el) {
       const rpStop = () => { clearInterval(rpTimer); rpTimer = 0; };
       const rpSay = () => goSay(T('Creating a restore point. This can take a few minutes…') + (rpT0 ? ' ' + T('Elapsed {time}', { time: mmss((Date.now() - rpT0) / 1000) }) : ''));
       try {
-        const r = await SH.job('remover', 'batch_uninstall', [ps.map(p => p.eid), { quiet: mode === 'silent', level: 'moderate', restore_point: true }], { onProgress: m => {
+        const r = await SH.job('remover', 'batch_uninstall', [ps.map(p => p.eid), { quiet: mode === 'silent', level: 'moderate', restore_point: true }], { sound: 'task', onProgress: m => {
           const d = m.data || {};
           if (d.pid == null) {                     // no program yet: the restore point step
             if (d.step !== 'restore') return;
             if (d.status === 'running') { if (!rpTimer) { rpT0 = Date.now(); rpSay(); rpTimer = setInterval(() => { const b = $('#rbGo', el); if (!b) { rpStop(); return; } b.lastChild.textContent = T('Creating a restore point. This can take a few minutes…') + ' ' + T('Elapsed {time}', { time: mmss((Date.now() - rpT0) / 1000) }); }, 1000); } }
-            else { rpStop(); goSay(T('Uninstalling…'), 'remover'); if (d.status === 'warn' && !rpToast) { rpToast = true; SH.toast(T('The restore point could not be created: {why}', { why: d.detail || T('Windows did not say why') }), { ms: 7000 }); } }
+            else { rpStop(); goSay(T('Uninstalling…'), 'remover'); if (d.status === 'warn' && !rpToast) { rpToast = true; SH.toast(T('The restore point could not be created: {why}', { why: d.detail || T('Windows did not say why') }), { ms: 7000, kind: 'warning' }); } }
             return;
           }
           rpStop();
@@ -759,7 +764,7 @@ function renderBatch(el) {
         } });
         (r.results || []).forEach(x => { const p = byEid.get(x.program.id); if (x.scan) all = all.concat(x.scan.items.map(mapItem(x.scan.key, p ? p.name : x.program.name))); if (p && !x.error) setChip(p, PL(x.scan ? x.scan.items.length : 0, '{n} leftover', '{n} leftovers'), 'ok'); if (p && x.error) setChip(p, x.error.slice(0, 40), 'bad'); });
         SH.logActivity(T('{n} programs uninstalled in a batch', { n: ps.length }), { ic: 'remover', go: 'remover', tab: 'history' });
-      } catch (e) { SH.toast(jobErr(e)); } finally { rpStop(); }
+      } catch (e) { SH.toast(jobErr(e), { kind: 'error' }); } finally { rpStop(); }
       running = false;
       const done = document.createElement('div'); done.className = 'rd-acts'; done.style.marginTop = '8px';
       done.innerHTML = `<button class="btn sec lg" id="rbReview">${ic('eye')}${PL(all.length, 'Review {n} leftover', 'Review {n} leftovers')}</button>`;
@@ -819,20 +824,20 @@ function renderWatch(el) {
     }, 600);
     wb.onclick = async e => {
       if (e.target.closest('#wvCancel')) { clearInterval(timer); wb.onclick = null; idle(); return; }
-      if (!e.target.closest('#wvStop')) return; clearInterval(timer); wb.onclick = null; eye.classList.remove('on');
+      if (!e.target.closest('#wvStop')) return; clearInterval(timer); wb.onclick = null; eye.classList.remove('on'); SH.sound('scan_start');
       swap(wb, `<h3>${T('Comparing snapshots')}</h3><p>${T('Looking for everything that changed since you started.')}</p><div class="bar" style="margin-top:16px;max-width:420px"><span id="wvBar2" style="transform:scaleX(0)"></span></div>`);
       await wait(200); const b2 = $('#wvBar2', wb); if (b2) anim(b2, [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { d: 1600, e: EASE.io }); await wait(1700);
       const t = { id: 't' + Date.now(), name, date: new Date(TODAY), files: Math.max(c.f, 24), keys: Math.max(c.k, 6), mb: Math.round(c.f * 1.7 + 12) };
       traces.unshift(t); history.unshift({ type: 'watch', title: T('Watched install: {name}', { name }), sub: T('{files} files and {keys} keys recorded', { files: t.files, keys: t.keys }), date: new Date(TODAY) });
       flip(wl, () => wl.insertAdjacentHTML('afterbegin', trRow(t))); anim(wl.firstElementChild, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring }); $('#wvN', el).textContent = traces.length;
-      SH.toast(T('Recorded: {files} files and {keys} keys from {name}.', { files: t.files, keys: t.keys, name })); refresh(); idle();
+      SH.sound('scan_complete'); SH.toast(T('Recorded: {files} files and {keys} keys from {name}.', { files: t.files, keys: t.keys, name })); refresh(); idle();
     };
   }
   el.addEventListener('click', e => {
     if (e.target.closest('#wvStart')) { const n = ($('#wvName', el).value || '').trim(); if (!n) { const f = $('#wvName', el).closest('.field'); anim(f, [{ transform: 'translateX(0)' }, { transform: 'translateX(-6px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(-3px)' }, { transform: 'none' }], { d: 360 }); $('#wvName', el).focus(); return; } start(n); }
     const a = e.target.closest('[data-a]'); if (!a) return; const row = a.closest('.row'); const t = traces.find(x => x.id === row.dataset.t);
     if (a.dataset.a === 'undo') { openFlow([{ id: t.id, name: t.name, pub: T('Watched install'), mb: t.mb, h: 160, ini: t.name.slice(0, 2).toUpperCase(), silent: false, store: false, prot: false, loc: `C:\\Program Files\\${t.name}`, audio: false }], { startAt: 'review', items: leftoversFor({ name: t.name, pub: t.name.split(' ')[0], loc: `C:\\Program Files\\${t.name}`, mb: t.mb }).filter(l => !l.personal).map(l => ({ ...l, conf: 99, why: T('Created by this install (it is in the after snapshot but not in the before one)') })), mode: 'forced' }); }
-    if (a.dataset.a === 'del') { const i = traces.indexOf(t); traces.splice(i, 1); anim(row, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(28px)' }], { d: 220 }).finished.then(() => flip(wl, () => row.remove())).catch(() => row.remove()); $('#wvN', el).textContent = traces.length; SH.toast(T('Install forgotten.'), { action: { label: T('Undo'), run: () => { traces.splice(i, 0, t); wl.innerHTML = traces.map(trRow).join(''); $('#wvN', el).textContent = traces.length; } } }); }
+    if (a.dataset.a === 'del') { SH.sound('delete'); const i = traces.indexOf(t); traces.splice(i, 1); anim(row, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(28px)' }], { d: 220 }).finished.then(() => flip(wl, () => row.remove())).catch(() => row.remove()); $('#wvN', el).textContent = traces.length; SH.toast(T('Install forgotten.'), { action: { label: T('Undo'), sound: 'undo', run: () => { traces.splice(i, 0, t); wl.innerHTML = traces.map(trRow).join(''); $('#wvN', el).textContent = traces.length; } } }); }
   });
   if (REAL()) { realWatch(el, { eye, wb, wl, idle }); return; }
   idle(); setTimeout(() => stagger($$('.row', wl), 120, 50), 10);
@@ -860,10 +865,10 @@ function realWatch(el, { eye, wb, wl, idle }) {
       swap(wb, `<h3>${T('Comparing snapshots')}</h3><p>${T('Looking for everything that changed since you started. This may take a while.')}</p>${waitBar('wvBar2')}`);
       const stopT = elapsedIn(wb);
       try {
-        const r = await SH.job('remover', 'monitor_stop', [meta.id], { onProgress: m => waitProg(wb, 'wvBar2', m) });
+        const r = await SH.job('remover', 'monitor_stop', [meta.id], { sound: 'scan', onProgress: m => waitProg(wb, 'wvBar2', m) });
         SH.toast(PL(r.count || 0, 'Recorded: {n} item created by {name}.', 'Recorded: {n} items created by {name}.', { name: meta.name }));
         SH.logActivity(T('Watched install: {name}', { name: meta.name }), { sub: PL(r.count || 0, '{n} item recorded', '{n} items recorded'), ic: 'eye', go: 'remover', tab: 'watch' });
-      } catch (err) { SH.toast(jobErr(err)); } finally { stopT(); }
+      } catch (err) { SH.toast(jobErr(err), { kind: 'error' }); } finally { stopT(); }
       idle(); load(true);
     };
   }
@@ -883,7 +888,7 @@ function realWatch(el, { eye, wb, wl, idle }) {
     swap(wb, `<h3>${T('Taking the initial snapshot')}</h3><p>${T('Files, keys, services and tasks are recorded. This can take up to a minute.')}</p>${waitBar('wvBar')}`);
     const stopT = elapsedIn(wb);
     try { const meta = await SH.job('remover', 'monitor_start', [name], { onProgress: m => waitProg(wb, 'wvBar', m) }); stopT(); load(false); watching(meta); }
-    catch (e) { stopT(); SH.toast(jobErr(e)); idle(); }
+    catch (e) { stopT(); SH.toast(jobErr(e), { kind: 'error' }); idle(); }
   }
   el.addEventListener('click', async e => {
     if (e.target.closest('#wvStart')) { e.stopImmediatePropagation(); const n = ($('#wvName', el).value || '').trim(); if (!n) { $('#wvName', el).focus(); return; } start(n); return; }
@@ -893,16 +898,17 @@ function realWatch(el, { eye, wb, wl, idle }) {
     if (a.dataset.a === 'undo') {
       a.disabled = true; a.textContent = T('Searching…');
       try {
-        const r = await SH.job('remover', 'trace_scan', [t.id]);
+        const r = await SH.job('remover', 'trace_scan', [t.id], { sound: 'scan' });
         openFlow([{ id: 'w' + t.id, name: t.name, pub: T('Watched install'), mb: (r.total_size || 0) / 1048576, h: 160, ini: iniOf(t.name), silent: false, store: false, prot: false, loc: '', audio: false }],
           { startAt: 'review', items: r.items.map(mapItem(r.key, t.name)), mode: 'forced', onDone: () => load(false) });
-      } catch (err) { SH.toast(jobErr(err)); }
+      } catch (err) { SH.toast(jobErr(err), { kind: 'error' }); }
       a.disabled = false; a.textContent = T('Remove what it installed'); return;
     }
     if (a.dataset.a === 'del') {
+      SH.sound('delete');
       anim(rowEl, [{ opacity: 1 }, { opacity: 0, transform: 'translateX(28px)' }], { d: 220 }).finished.then(() => rowEl.remove()).catch(() => rowEl.remove());
       let undone = false; const timer = setTimeout(() => { if (!undone) SH.engine('remover', 'trace_delete', t.id).then(() => load(false)); }, 4200);
-      SH.toast(T('Install forgotten.'), { action: { label: T('Undo'), run: () => { undone = true; clearTimeout(timer); load(true); } }, ms: 4000 });
+      SH.toast(T('Install forgotten.'), { action: { label: T('Undo'), sound: 'undo', run: () => { undone = true; clearTimeout(timer); load(true); } }, ms: 4000 });
     }
   }, true);
   load(true).then(() => { const run = list.find(x => x.status === 'running'); run ? watching(run) : idle(); });
@@ -933,6 +939,7 @@ function renderQuarantine(el) {
     const busyBtn = (b, txt) => { b.disabled = true; b.classList.add('rv-busy'); b.innerHTML = `<span class="rv-spin"></span><span class="rv-bl">${esc(txt)}</span>`; };
     const onProg = b => m => { const l = String(m.text || '').split('\\').pop(); const x = $('.rv-bl', b); if (x) x.textContent = l ? T('Restoring… {label}', { label: l }) : T('Restoring…'); if (l) b.title = m.text; };
     if (a.dataset.a === 'all' || a.dataset.a === 'one') {
+      SH.sound('undo');  /* putting it back from the quarantine */
       const html = a.innerHTML; busyBtn(a, T('Restoring…'));
       $$('[data-a]', qs).forEach(x => { if (x !== a) x.disabled = true; });   // one restore per uninstall at a time
       let ok = false;
@@ -940,7 +947,7 @@ function renderQuarantine(el) {
         if (a.dataset.a === 'all') await API.restore(s, null, onProg(a));
         else { const row = a.closest('.qit'); await API.restore(s, s.items.find(l => l.id === row.dataset.l), onProg(a)); }
         ok = true;
-      } catch (err) { SH.toast(jobErr(err), { ms: 6000 }); }
+      } catch (err) { SH.toast(jobErr(err), { ms: 6000, kind: 'error' }); }
       finally { if (a.isConnected && !ok) { a.disabled = false; a.classList.remove('rv-busy'); a.innerHTML = html; a.title = ''; } $$('[data-a]', qs).forEach(x => { if (x !== a) x.disabled = false; }); }
       if (!ok) return;
     }
@@ -951,8 +958,8 @@ function renderQuarantine(el) {
   let armed = 0; $('#qzEmpty', el).addEventListener('click', e => {
     const b = e.currentTarget; if (!sessions.length) { SH.toast(T('The quarantine is already empty.')); return; }
     if (!armed) { armed = setTimeout(() => { armed = 0; b.innerHTML = `${ic('trash')}${T('Empty now')}`; }, 3000); b.innerHTML = `${ic('alert')}${T('Click again: this cannot be undone')}`; anim(b, [{ transform: 'scale(.95)' }, { transform: 'none' }], { d: 300, e: EASE.spring }); return; }
-    clearTimeout(armed); armed = 0; b.innerHTML = `${ic('trash')}${T('Empty now')}`;
-    const n = sessions.flatMap(s => s.items).length; if (REAL()) SH.engine('remover', 'quarantine_empty').catch(err => SH.toast(jobErr(err))); sessions.splice(0); history.unshift({ type: 'empty', title: T('Quarantine emptied'), sub: PL(n, '{n} item deleted permanently', '{n} items deleted permanently'), date: new Date(TODAY) });
+    clearTimeout(armed); armed = 0; b.innerHTML = `${ic('trash')}${T('Empty now')}`; SH.sound('delete');
+    const n = sessions.flatMap(s => s.items).length; if (REAL()) SH.engine('remover', 'quarantine_empty').catch(err => SH.toast(jobErr(err), { kind: 'error' })); sessions.splice(0); history.unshift({ type: 'empty', title: T('Quarantine emptied'), sub: PL(n, '{n} item deleted permanently', '{n} items deleted permanently'), date: new Date(TODAY) });
     $$('.qs', listEl).forEach((q, i) => anim(q, [{ opacity: 1 }, { opacity: 0, transform: 'translateY(-10px) scale(.97)' }], { d: 220, delay: i * 50 })); setTimeout(draw, 400); SH.toast(PL(n, '{n} item deleted permanently.', '{n} items deleted permanently.')); refresh();
   });
   if (REAL()) {
@@ -1002,9 +1009,9 @@ function renderHistory(el) {
         <div class="hv-legend"><span><i style="background:var(--accent)"></i>${T('uninstall')}</span><span><i style="background:var(--ok)"></i>${T('restore')}</span><span><i style="background:var(--accent2)"></i>${T('watched install')}</span><span><i style="background:var(--warn)"></i>${T('quarantine emptied')}</span></div></div></div>`;
     stagger($$('.he', el), 60, 40);
     $('#hvClear', el).addEventListener('click', () => {
-      const old = history.splice(0); draw(); let undone = false;
+      SH.sound('delete'); const old = history.splice(0); draw(); let undone = false;
       const t = REAL() ? setTimeout(() => { if (!undone) SH.engine('remover', 'clear_history'); }, 4200) : 0;
-      SH.toast(T('History cleared.'), { action: { label: T('Undo'), run: () => { undone = true; clearTimeout(t); history.push(...old); draw(); } }, ms: 4000 });
+      SH.toast(T('History cleared.'), { action: { label: T('Undo'), sound: 'undo', run: () => { undone = true; clearTimeout(t); history.push(...old); draw(); } }, ms: 4000 });
     });
   }
   if (REAL()) { el.innerHTML = `<div class="empty"><b>${T('Reading the history…')}</b></div>`; Promise.all([loadRealHistory(), loadRealSessions()]).then(draw); refreshers.add(() => { if (el.isConnected) Promise.all([loadRealHistory(), loadRealSessions()]).then(draw); }); return; }
@@ -1041,10 +1048,10 @@ function hunter() {
     if (REAL() && b.dataset.h === 'win') {
       b.disabled = true; const tip = $('.tip2 p', h);
       try { const r = await SH.job('remover', 'hunter_window', [], { onProgress: m => { if (m.data && m.data.count && tip) tip.textContent = T('Hover over the window… {n}', { n: m.data.count }); } }); showResult(r); }
-      catch (err) { SH.toast(jobErr(err)); }
+      catch (err) { SH.toast(jobErr(err), { kind: 'error' }); }
       b.disabled = false; if (tip) tip.textContent = HUNT_TIP; return;
     }
-    if (REAL() && b.dataset.h === 'file') { try { const r = await SH.engine('remover', 'hunter_file'); if (r) showResult(r); } catch (err) { SH.toast(jobErr(err)); } return; }
+    if (REAL() && b.dataset.h === 'file') { try { const r = await SH.engine('remover', 'hunter_file'); if (r) showResult(r); } catch (err) { SH.toast(jobErr(err), { kind: 'error' }); } return; }
     if (b.dataset.h === 'file') SH.toast(T('The Windows file picker will open here.'));
     if (b.dataset.h === 'demo' || b.dataset.h === 'go') {
       if (b.dataset.h === 'go') { close(); ctxRef && ctxRef.setTab('programs'); setTimeout(() => SH.remover && SH.remover.select('FL Studio 2025'), 300 * SH.motion()); return; }
@@ -1068,7 +1075,7 @@ SH.module({
     $('#rvHunt', el).addEventListener('click', hunter);
     $('#rvExport', el).addEventListener('click', async () => {
       if (!REAL()) { SH.toast(T('List of {n} programs saved to Documents (simulated).', { n: PROGRAMS.length })); return; }
-      try { const path = await SH.engine('remover', 'export_programs'); if (path) SH.toast(T('List saved to {file}.', { file: path.split('\\').pop() })); } catch (err) { SH.toast(jobErr(err)); }
+      try { const path = await SH.engine('remover', 'export_programs'); if (path) SH.toast(T('List saved to {file}.', { file: path.split('\\').pop() })); } catch (err) { SH.toast(jobErr(err), { kind: 'error' }); }
     });
   },
   renderTab(tab, el, ctx) {

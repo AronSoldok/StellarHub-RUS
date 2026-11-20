@@ -583,7 +583,7 @@ function updSide() {
 }
 function sideClick(e) {
   const rm = e.target.closest('[data-unsel]'); if (rm) { const a = S.sel.get(rm.dataset.unsel); if (a) toggleSel(a, false); return true; }
-  if (e.target.closest('[data-clear]')) { const old = [...S.sel.values()]; if (!old.length) return true; setMany(old, false); SH.toast(t('Selection cleared.'), { action: { label: t('Undo'), run: () => setMany(old, true) }, group: 'hg-clear' }); return true; }
+  if (e.target.closest('[data-clear]')) { const old = [...S.sel.values()]; if (!old.length) return true; setMany(old, false); SH.toast(t('Selection cleared.'), { action: { label: t('Undo'), sound: 'undo', run: () => setMany(old, true) }, group: 'hg-clear' }); return true; }
   const sb = e.target.closest('.hg-scope button'); if (sb && !sb.classList.contains('on')) { setOpt('scope', sb.dataset.s); placeScope(sb.closest('.hg-side')); return true; }
   const sk = e.target.closest('[data-skip]'); if (sk) { sk.classList.toggle('on'); setOpt('skip', sk.classList.contains('on')); updSide(); updSecCounts(); updHeader(); return true; }
   if (e.target.closest('[data-go]')) { startInstall(); return true; }
@@ -615,7 +615,7 @@ function startInstall(list) {
   const sel = list || [...S.sel.values()];
   const go = sel.filter(a => !(o.skip && S.inst.has(a.id))), skipped = sel.length - go.length;
   if (!go.length) { SH.toast(sel.length ? t('Everything you picked is already installed.') : t('Pick at least one app.')); return; }
-  if (!S.winget && !S.dry) { SH.toast(t("winget isn't available on this PC.")); return; }
+  if (!S.winget && !S.dry) { SH.toast(t("winget isn't available on this PC."), { kind: 'error' }); return; }
   const scopeTxt = o.scope === 'machine' ? t('For everyone on this PC.') : o.scope === 'user' ? t('Only for your account.') : t('Each app installs the way it prefers.');
   dialog(`<h3>${go.length === 1 ? t('Install 1 app?') : t('Install {n} apps?', { n: go.length })}</h3>
     <p class="muted">${t('They install silently, one after another, with winget. Some installers close the app they replace, and Windows may ask for permission on some of them.')} ${esc(scopeTxt)}${skipped ? ' ' + (skipped === 1 ? t('1 is already installed and will be skipped.') : t('{n} are already installed and will be skipped.', { n: skipped })) : ''}${S.dry ? ' ' + t('Dry run: nothing will really be installed.') : ''}</p>
@@ -656,7 +656,7 @@ async function runQueueReal() {
     if (Q.paused) break;
     const cur = Q.list.find(q => q.st === 'queued'); if (!cur) break;
     cur.st = 'down'; cur.p = 0; updQRow(cur); scrollQ(cur);
-    const job = SH.job(ID, 'install', [[plain(cur.a)], { scope: cur.o.scope, skipInstalled: cur.o.skip, run: cur.run }], { onProgress: m => {
+    const job = SH.job(ID, 'install', [[plain(cur.a)], { scope: cur.o.scope, skipInstalled: cur.o.skip, run: cur.run }], { sound: 'task', onProgress: m => {
       const s = m.data && m.data.items && m.data.items[0]; if (!s) return;
       const st = s.st === 'queued' ? 'down' : s.st; if (s.mb) cur.mb = s.mb; cur.p = s.p || 0;
       if ((s.note || null) !== (cur.note || null)) { cur.note = s.note || null; cur.noteAt = Date.now() - (s.quiet || 0) * 1000; cur.st = st; updQRow(cur); clearInterval(cur.noteTimer); if (cur.note) cur.noteTimer = setInterval(() => { if (cur.note) updQRow(cur, true); else clearInterval(cur.noteTimer); }, 20000); return; }
@@ -706,7 +706,8 @@ function finishedToast() {
   if (!c.done && !c.fail) return;
   const msg = [c.done === 1 ? t('1 app installed.') : t('{n} apps installed.', { n: c.done })];
   if (c.fail) msg.push(c.fail === 1 ? t('1 failed.') : t('{n} failed.', { n: c.fail }));
-  SH.toast(msg.join(' '), c.fail ? { action: { label: t('Retry'), run: retryFailed }, group: 'hg-done' } : { group: 'hg-done' });
+  const kind = c.fail ? (c.done ? 'warning' : 'error') : 'success';
+  SH.toast(msg.join(' '), c.fail ? { kind, action: { label: t('Retry'), run: retryFailed }, group: 'hg-done' } : { kind, group: 'hg-done' });
 }
 function counts() {
   const c = { done: 0, skip: 0, fail: 0, cancel: 0, queued: 0, run: 0 };
@@ -900,9 +901,10 @@ function kitsClick(e, el) {
   const add = e.target.closest('[data-kadd]'); if (add) { const k = findKit(add.dataset.kadd); if (k) addKit(k); return; }
   const cu = e.target.closest('[data-kcustom]'); if (cu) { const k = findKit(cu.dataset.kcustom); if (k) customizeKit(k); return; }
   const del = e.target.closest('[data-kdel]'); if (del) { const all = userKits(); const k = all.find(x => x.id === del.dataset.kdel); if (!k) return; const card = del.closest('.hg-kit');
+    SH.sound('delete');
     saveKits(all.filter(x => x !== k));
     anim(card, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.94)' }], { d: 220 }).finished.then(() => fillKits(el)).catch(() => fillKits(el));
-    SH.toast(t('Kit “{name}” deleted.', { name: k.name }), { action: { label: t('Undo'), run: () => { saveKits([k, ...userKits()]); fillKits(el, true); } } }); return; }
+    SH.toast(t('Kit “{name}” deleted.', { name: k.name }), { action: { label: t('Undo'), sound: 'undo', run: () => { saveKits([k, ...userKits()]); fillKits(el, true); } } }); return; }
   const sh = e.target.closest('[data-kshare]'); if (sh) { const k = findKit(sh.dataset.kshare); if (k) shareDialog(k); return; }
   const ex = e.target.closest('[data-kexport]'); if (ex) { const k = findKit(ex.dataset.kexport); if (k) exportKit(k); return; }
   if (e.target.closest('[data-ksave]')) { saveKitDialog([...S.sel.values()]); return; }
@@ -966,9 +968,10 @@ function shareDialog(k) {
     <div class="hg-code"><code>${esc(code)}</code><button class="btn sm sec" data-copy>${ic('copy')}${t('Copy')}</button></div>
     <div class="hg-dbtns"><button class="btn ghost" data-kexp>${ic('download')}${t('Export as a file')}</button><span class="sp"></span><button class="btn sec" data-no>${t('Done')}</button></div>`,
   async (e, close) => {
-    if (e.target.closest('[data-copy]')) { let ok = false; try { await navigator.clipboard.writeText(code); ok = true; } catch { ok = false; }
+    if (e.target.closest('[data-copy]')) { SH.sound.claim(); let ok = false; try { await navigator.clipboard.writeText(code); ok = true; } catch { ok = false; }
       if (!ok) { const r = document.createRange(); r.selectNodeContents($('code', d.el)); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); ok = document.execCommand && document.execCommand('copy'); }
-      SH.toast(ok ? t('Code copied.') : t('Select the code and copy it with Ctrl+C.'), { group: 'hg-copy' }); return; }
+      if (ok) SH.sound('copy');
+      SH.toast(ok ? t('Code copied.') : t('Select the code and copy it with Ctrl+C.'), ok ? { group: 'hg-copy' } : { group: 'hg-copy', kind: 'warning' }); return; }
     if (e.target.closest('[data-kexp]')) { close(); exportKit(k); }
   });
   return d;
@@ -976,8 +979,8 @@ function shareDialog(k) {
 async function exportKit(k) {
   const payload = { name: k.name, apps: kitApps(k).map(plain) };
   if (REAL) {
-    let r; try { r = await SH.engine(ID, 'export_kit', payload); } catch (e) { SH.toast(t("Couldn't save the file: {error}", { error: e.message })); return; }
-    if (r && r.path) SH.toast(t('Kit saved to {path}', { path: r.path }), { group: 'hg-exp' }); else if (r && r.error) SH.toast(r.error);
+    let r; try { r = await SH.engine(ID, 'export_kit', payload); } catch (e) { SH.toast(t("Couldn't save the file: {error}", { error: e.message }), { kind: 'error' }); return; }
+    if (r && r.path) SH.toast(t('Kit saved to {path}', { path: r.path }), { group: 'hg-exp' }); else if (r && r.error) SH.toast(r.error, { kind: 'error' });
     return;
   }
   const blob = new Blob([JSON.stringify({ format: 'stellarhub-hangar-kit', version: 1, ...payload }, null, 2)], { type: 'application/json' });
@@ -1017,7 +1020,7 @@ function renderHistory(el) {
   el.addEventListener('click', e => {
     const rr = e.target.closest('[data-rretry]'); if (rr) { const run = (S.hist || []).find(r => r.run === rr.dataset.rretry); if (!run) return; const f = run.items.filter(x => x.st === 'fail').map(appOf); startInstall(f.length ? f : run.items.map(appOf)); return; }
     const rk = e.target.closest('[data-rkit]'); if (rk) { const run = (S.hist || []).find(r => r.run === rk.dataset.rkit); if (run) saveKitDialog(run.items.filter(x => x.st !== 'fail').map(appOf)); return; }
-    if (e.target.closest('[data-hclear]')) { clearHistory(el); return; }
+    if (e.target.closest('[data-hclear]')) { SH.sound('delete'); clearHistory(el); return; }
     if (e.target.closest('[data-gocat]')) { ctxRef && ctxRef.setTab('catalog'); }
   });
 }
@@ -1049,9 +1052,9 @@ function fillHistory(el, animate) {
 }
 async function clearHistory(el) {
   const old = S.hist || [];
-  if (REAL) { try { await SH.engine(ID, 'history_clear'); } catch (e) { SH.toast(t("Couldn't do it: {error}", { error: e.message })); return; } }
+  if (REAL) { try { await SH.engine(ID, 'history_clear'); } catch (e) { SH.toast(t("Couldn't do it: {error}", { error: e.message }), { kind: 'error' }); return; } }
   S.hist = []; fillHistory(el, true);
-  SH.toast(t('History cleared.'), { action: { label: t('Undo'), run: async () => { if (REAL) { try { await SH.engine(ID, 'history_restore', old); } catch { return; } } S.hist = old; fillHistory(el, true); } } });
+  SH.toast(t('History cleared.'), { action: { label: t('Undo'), sound: 'undo', run: async () => { if (REAL) { try { await SH.engine(ID, 'history_restore', old); } catch { return; } } S.hist = old; fillHistory(el, true); } } });
 }
 
 /* ---------------- registration ---------------- */
@@ -1062,7 +1065,7 @@ SH.module({
     el.innerHTML = `<button class="btn sec" data-rescan>${ic('refresh')}${t('Check again')}</button><button class="btn pri" data-hgo disabled>${ic('hg-rocket')}<span>${t('Install')}</span></button>`;
     el.addEventListener('click', e => {
       if (e.target.closest('[data-hgo]')) { startInstall(); return; }
-      const r = e.target.closest('[data-rescan]'); if (r) { anim($('svg', r), [{ transform: 'rotate(0)' }, { transform: 'rotate(360deg)' }], { d: 900, e: EASE.io });
+      const r = e.target.closest('[data-rescan]'); if (r) { SH.sound('refresh'); anim($('svg', r), [{ transform: 'rotate(0)' }, { transform: 'rotate(360deg)' }], { d: 900, e: EASE.io });
         scanInstalled(true).then(() => SH.toast(t('{n} apps from the catalog are installed.', { n: APPS.filter(a => S.inst.has(a.id)).length }), { group: 'hg-scan' })); }
     });
   },

@@ -533,7 +533,7 @@ R.network = (el, t) => {
   seg.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return;
     if (!SH.requireAdmin(_t('to change the DNS server.'))) return;
-    if (!adapter) { SH.toast(_t('There is no active network adapter.')); return; }
+    if (!adapter) { SH.toast(_t('There is no active network adapter.'), { kind: 'warning' }); return; }
     const name = DNSN[b.dataset.v];
     if (seg.classList.contains('pending')) return;
     confirmDlg({ title: _t('Change the DNS to {name}', { name }), text: _t('It applies to the "{adapter}" adapter. You can switch back to {auto} at any time.', { adapter: adapter.alias, auto: DNSN.auto }), yes: _t('Change DNS'), danger: false }, async () => {
@@ -546,8 +546,8 @@ R.network = (el, t) => {
       if (!(r && r.ok)) { btns.forEach(x => x.classList.toggle('on', x === prevOn)); SH.placeSeg(seg); txt.textContent = prevTxt; }
       if (r && r.ok) { setSeg(b.dataset.v);
         const bid = r.backup, g = { group: 'dnsUndo', ms: 120000 };
-        SH.toast(_t('DNS changed to {name}.', { name }), bid ? { group: 'dnsUndo', ms: 10000, action: { label: _t('Undo'), run: async () => {
-          if (seg.classList.contains('pending')) { SH.toast(_t('Wait until the current change finishes.'), g); return; }
+        SH.toast(_t('DNS changed to {name}.', { name }), bid ? { group: 'dnsUndo', ms: 10000, action: { label: _t('Undo'), sound: 'undo', run: async () => {
+          if (seg.classList.contains('pending')) { SH.toast(_t('Wait until the current change finishes.'), { ...g, kind: 'unavailable' }); return; }
           if (!SH.requireAdmin(_t('to change the DNS server.'))) return;
           const bs = $$('button', seg), tx = S(el, 'nDnsTxt'), curTxt = tx ? tx.textContent : '';
           bs.forEach(x => { x.disabled = true; }); seg.classList.add('pending');
@@ -557,11 +557,11 @@ R.network = (el, t) => {
           try { u = REAL() ? await eng('dns_undo', bid) : (await new Promise(res => setTimeout(res, 800)), { ok: true }); }
           finally { bs.forEach(x => { x.disabled = false; }); seg.classList.remove('pending'); }
           if (u && u.ok) { delete cache.net; if (prevOn && prevOn.isConnected) { bs.forEach(x => x.classList.toggle('on', x === prevOn)); SH.placeSeg(seg); } if (tx) tx.textContent = prevTxt; SH.toast(_t('DNS restored.'), { group: 'dnsUndo' }); }
-          else { if (tx) tx.textContent = curTxt; if (u && u.needAdmin) SH.requireAdmin(_t('to change the DNS server.')); else SH.toast(u && u.error ? _t('Could not restore the DNS: {msg}', { msg: u.error }) : _t('Could not restore the DNS.'), { group: 'dnsUndo' }); }
+          else { if (tx) tx.textContent = curTxt; if (u && u.needAdmin) SH.requireAdmin(_t('to change the DNS server.')); else SH.toast(u && u.error ? _t('Could not restore the DNS: {msg}', { msg: u.error }) : _t('Could not restore the DNS.'), { group: 'dnsUndo', kind: 'error' }); }
         } } } : {});
         SH.logActivity && SH.logActivity(_t('DNS changed to {name}', { name }), { sub: adapter.alias, ic: 'globe', go: 'monitor', tab: 'network' }); delete cache.net; }
       else if (r && r.needAdmin) SH.requireAdmin(_t('to change the DNS server.'));
-      else SH.toast(r && r.error ? _t('Could not change the DNS: {msg}', { msg: r.error }) : _t('Could not change the DNS.'));
+      else SH.toast(r && r.error ? _t('Could not change the DNS: {msg}', { msg: r.error }) : _t('Could not change the DNS.'), { kind: 'error' });
     });
   });
 };
@@ -713,9 +713,10 @@ function renderProcs(reorder, force) {
 }
 function askEnd(p) {
   confirmDlg({ title: _t('End {name}', { name: p.n }), text: p.k > 1 ? _t('It will close along with its {n} processes without saving. Anything unsaved in that program will be lost.', { n: p.k }) : _t('It will close without saving. Anything unsaved in that program will be lost.'), yes: _t('End task') }, async () => {
+    SH.sound('delete');  /* the confirmation's click: the program is about to be closed */
     const row = rowEls.get(p.id);
     const r = REAL() ? await eng('end_process', p.exe) : { killed: 1 };
-    if (!r || !r.killed) { SH.toast(r && r.denied ? (SH.state.admin ? _t('Windows did not allow closing {name}.', { name: p.n }) : _t('Windows did not allow closing {name}: try administrator mode.', { name: p.n })) : _t('Could not close {name}.', { name: p.n })); return; }
+    if (!r || !r.killed) { SH.toast(r && r.denied ? (SH.state.admin ? _t('Windows did not allow closing {name}.', { name: p.n }) : _t('Windows did not allow closing {name}: try administrator mode.', { name: p.n })) : _t('Could not close {name}.', { name: p.n }), { kind: 'error' }); return; }
     const done = () => { p.alive = false; if (REAL()) RP.delete(p.id); if (row) row.remove(); renderProcs(true, true); SH.toast(_t('{name} ended.', { name: p.n }));
       if (SH.logActivity) SH.logActivity(_t('{name} ended', { name: p.n }), { sub: _t('from Live Monitor'), ic: 'x', go: 'monitor', tab: 'processes' }); };
     if (row && row.parentNode) anim(row, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(24px,0,0)' }], { d: 220 }).finished.then(done).catch(done); else done();

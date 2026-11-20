@@ -107,7 +107,7 @@ const onHistory = fn => { H.subs.add(fn); return fn; };
 const histChanged = () => H.subs.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
 async function saveRun(run) {
   run = { ...run, at: Date.now(), pc: run.pc || pcSnap() };
-  if (REAL) { try { run = await SH.engine('benchmark', 'save_run', run) || run; } catch (e) { console.error(e); SH.toast(t('The result could not be saved: {msg}', { msg: e.message })); } }
+  if (REAL) { try { run = await SH.engine('benchmark', 'save_run', run) || run; } catch (e) { console.error(e); SH.toast(t('The result could not be saved: {msg}', { msg: e.message }), { kind: 'error' }); } }
   if (!run.id) run.id = 's' + run.at;
   await loadHistory(); H.runs.unshift(run); histChanged(); return run;
 }
@@ -463,7 +463,8 @@ function simJob(kind, args, onProgress) {
 }
 function engineJob(kind, args, onProgress) {
   if (!REAL) return simJob(kind, args, onProgress);
-  return SH.job('benchmark', kind, args, { onProgress: m => { if (m.kind === 'progress') onProgress(m); } });
+  /* a single test the user started ticks at 25/50/75 %; the steps of a full run stay quiet (it has four of them) */
+  return SH.job('benchmark', kind, args, { sound: RUN && RUN.kind !== 'full' ? 'task' : undefined, onProgress: m => { if (m.kind === 'progress') onProgress(m); } });
 }
 
 /* ============================================================ plain-language reading */
@@ -542,7 +543,7 @@ function renderOverview(el, ctx) {
   ring.el = $('#bmRing', el);
   $('#bmFull', el).addEventListener('click', () => RUN && RUN.kind === 'full' ? RUN.cancel() : runFull());
   el.addEventListener('click', e => {
-    const b = e.target.closest('[data-test]'); if (b) { if (RUN) { SH.toast(t('Another test is running. Wait for it to finish or cancel it.')); return; } ctx.setTab(b.dataset.test); setTimeout(() => runComp(b.dataset.test), 380); return; }
+    const b = e.target.closest('[data-test]'); if (b) { if (RUN) { SH.toast(t('Another test is running. Wait for it to finish or cancel it.'), { kind: 'unavailable' }); return; } ctx.setTab(b.dataset.test); setTimeout(() => runComp(b.dataset.test), 380); return; }
     const tb = e.target.closest('button[data-tab]'); if (tb) ctx.setTab(tb.dataset.tab);
   });
   busyFns.add(() => ovBusy());
@@ -634,14 +635,17 @@ async function runFull() {
     }
     const scores = { cpu: res.cpu.score, gpu: res.gpu.score, memory: res.memory.score, disk: res.disk.score };
     const score = await overallScore(scores);
+    await loadHistory();
+    const best = Math.max(-Infinity, ...(H.runs || []).filter(r => r.kind === 'full' && !nil(r.score)).map(r => r.score));
     const run = await saveRun({ kind: 'full', score, scores, ...res });
     SH.logActivity(t('Benchmark finished: {n} points', { n: fmtInt(score) }), { sub: tier(score), ic: 'benchmark', go: 'benchmark', tab: 'overview' });
     setRun(null); mid.innerHTML = saved; ovPaint(true); SH.assemble(mid, 0, 50);
     anim($('#bmRing', el), [{ transform: 'scale(.94)' }, { transform: 'scale(1.03)', offset: .5 }, { transform: 'scale(1)' }], { d: 700, e: EASE.spring });
-    SH.toast(t('Your PC scored {n} points.', { n: fmtInt(run.score) }));
+    /* beating the best full run so far (not the first one) is an achievement; the sound rides on the toast */
+    SH.toast(t('Your PC scored {n} points.', { n: fmtInt(run.score) }), { kind: isFinite(best) && !nil(run.score) && run.score > best ? 'achievement' : 'success' });
   } catch (e) {
     setRun(null); mid.innerHTML = saved; ovPaint(true);
-    if (e && e.cancelled) SH.toast(t('Benchmark cancelled. Nothing was saved.')); else { console.error(e); SH.toast(t('The benchmark stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000 }); }
+    if (e && e.cancelled) SH.toast(t('Benchmark cancelled. Nothing was saved.')); else { console.error(e); SH.toast(t('The benchmark stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000, kind: 'error' }); }
   } finally { clearInterval(timer); if (rec) rec.stop(); setRun(null); }
 }
 const MEMN = { copy: SH.tc('benchmark', 'Copy'), read: t('Read'), write: t('Write'), latency: t('Latency'), prepare: t('Preparing') };
@@ -708,7 +712,7 @@ function histSide(id) {
   c.chart.draw();
 }
 async function runComp(id) {
-  if (RUN) { if (RUN.kind !== id) SH.toast(t('Another test is running. Wait for it to finish or cancel it.')); return; }
+  if (RUN) { if (RUN.kind !== id) SH.toast(t('Another test is running. Wait for it to finish or cancel it.'), { kind: 'unavailable' }); return; }
   const c = CT[id]; if (!c) return; const cfg = c.cfg; const body = $('[data-body]', c.el);
   let cur = null, cancelled = false;
   setRun({ kind: id, label: cName(id) || cfg.title, cancel: () => { cancelled = true; if (cur && cur.cancel) cur.cancel(); } });
@@ -717,15 +721,17 @@ async function runComp(id) {
   try {
     const res = await cfg.exec(body, L, x => { cur = x; });
     if (cancelled || !res) throw Object.assign(new Error('cancelled'), { cancelled: true });
+    await loadHistory();
+    const best = Math.max(-Infinity, ...runsOf(id).map(r => r[id] && r[id].score).filter(v => !nil(v)));
     const run = await saveRun({ kind: id, score: res.score ?? null, [id]: res });
     setRun(null); c.paint(); c.chart.replay();
     const b = $('[data-body]', c.el); $$('.bm-tile, .bm-big', b).forEach((x, i) => anim(x, [{ opacity: 0, transform: 'translate3d(0,10px,0) scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 480, delay: i * 50, e: EASE.spring }));
-    if (!nil(run.score)) SH.toast(t('{name}: {n} points.', { name: cName(id), n: fmtInt(run.score) }));
-    else SH.toast(t('Test finished.'));
+    if (!nil(run.score)) SH.toast(t('{name}: {n} points.', { name: cName(id), n: fmtInt(run.score) }), { kind: isFinite(best) && run.score > best ? 'achievement' : 'success' });
+    else SH.toast(t('Test finished.'), { kind: 'success' });
     SH.logActivity(t('{name} benchmark finished', { name: cName(id) }), { sub: nil(run.score) ? '' : t('{n} points', { n: fmtInt(run.score) }), ic: 'benchmark', go: 'benchmark', tab: id });
   } catch (e) {
     setRun(null); c.paint();
-    if (e && e.cancelled) SH.toast(t('Test cancelled.')); else { console.error(e); SH.toast(t('The test stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000 }); }
+    if (e && e.cancelled) SH.toast(t('Test cancelled.')); else { console.error(e); SH.toast(t('The test stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000, kind: 'error' }); }
   } finally { setRun(null); }
 }
 const tile = (lbl, v, unit, o = {}) => `<div class="bm-tile${o.cls ? ' ' + o.cls : ''}"${o.title ? ` title="${esc(o.title)}"` : ''}><span>${lbl}</span><b>${v}${unit ? `<small>${unit}</small>` : ''}</b>${o.sub ? `<em>${o.sub}</em>` : ''}</div>`;
@@ -1031,7 +1037,7 @@ function throttleCheck(D) {
   return out;
 }
 async function runStress() {
-  if (RUN) { SH.toast(t('Another test is running. Wait for it to finish or cancel it.')); return; }
+  if (RUN) { SH.toast(t('Another test is running. Wait for it to finish or cancel it.'), { kind: 'unavailable' }); return; }
   const el = ST.el; const target = ST.target, min = ST.min, total = min * 60;
   const useC = target !== 'gpu', useG = target !== 'cpu';
   const D = ST.data = { target, min, s: [], thr: [], fps: [], perf: [], t0: performance.now() };
@@ -1060,7 +1066,7 @@ async function runStress() {
   try {
     const tasks = [];
     if (useC) {
-      job = REAL ? SH.job('benchmark', 'stress_cpu', [total], { onProgress: m => { const d = m.data || {}; if (m.kind !== 'progress') return; errors = d.errors || 0; const x = $('[data-err]', el); if (x) { x.textContent = fmtInt(errors); x.className = errors ? 'bad' : ''; } if (!nil(d.rate)) D.perf.push(d.rate); } })
+      job = REAL ? SH.job('benchmark', 'stress_cpu', [total], { sound: 'task', onProgress: m => { const d = m.data || {}; if (m.kind !== 'progress') return; errors = d.errors || 0; const x = $('[data-err]', el); if (x) { x.textContent = fmtInt(errors); x.className = errors ? 'bad' : ''; } if (!nil(d.rate)) D.perf.push(d.rate); } })
         : (() => { let s = false; const p = (async () => { const t1 = performance.now(); while (!s && performance.now() - t1 < total * 1000) { D.perf.push(13400 - (performance.now() - t1) / 1000 * 2); await wait(500); } return { elapsed: (performance.now() - t1) / 1000, errors: 0 }; })(); p.cancel = () => { s = true; }; return p; })();
       tasks.push(job.then(r => { if (r && r.reason && r.reason.part === 'cpu') stop(r.reason); return r; }).catch(e => { if (!e.cancelled) throw e; return null; }));
     }
@@ -1088,10 +1094,10 @@ async function runStress() {
     D.summary = S;
     if (S.elapsed >= 10) await saveRun({ kind: 'stress', score: null, stress: S });
     setRun(null); stIdle();
-    SH.toast(reason ? t('Stress test stopped for safety.') : t('Stress test finished.'));
+    SH.toast(reason ? t('Stress test stopped for safety.') : t('Stress test finished.'), { kind: reason ? 'warning' : 'success' });
     SH.logActivity(t('Stress test finished'), { sub: fmtDur(S.elapsed), ic: 'flame', go: 'benchmark', tab: 'stress' });
   } catch (e) {
-    console.error(e); stop(); setRun(null); stIdle(); SH.toast(t('The stress test stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000 });
+    console.error(e); stop(); setRun(null); stIdle(); SH.toast(t('The stress test stopped: {msg}', { msg: (e && e.message) || '' }), { ms: 7000, kind: 'error' });
   } finally { off(); clearInterval(tick); if (gl) gl.destroy(); if (glCv) glCv.remove(); glp.hidden = true; setRun(null); }
 }
 
@@ -1114,8 +1120,9 @@ function renderHistory(el, ctx) {
   seg.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return; $$('button', seg).forEach(x => x.classList.toggle('on', x === b)); SH.placeSeg(seg); HI.metric = b.dataset.v; chart.replay(); });
   $('[data-list]', el).addEventListener('click', async e => {
     const d = e.target.closest('[data-del]'); if (!d) return; const id = d.dataset.del; const r = (H.runs || []).find(x => x.id === id); if (!r) return;
+    SH.sound('delete');
     const row2 = d.closest('.bm-hrow'); await anim(row2, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(16px,0,0)' }], { d: 220 }).finished.catch(() => {});
-    if (await deleteRun(id)) SH.toast(t('Result deleted.'), { action: { label: t('Undo'), run: async () => { const { id: _x, ...rest } = r; if (REAL) { try { const s = await SH.engine('benchmark', 'save_run', rest); H.runs.push(s); } catch (er) { console.error(er); } } else H.runs.push(r); H.runs.sort((a, b) => b.at - a.at); histChanged(); } } });
+    if (await deleteRun(id)) SH.toast(t('Result deleted.'), { action: { label: t('Undo'), sound: 'undo', run: async () => { const { id: _x, ...rest } = r; if (REAL) { try { const s = await SH.engine('benchmark', 'save_run', rest); H.runs.push(s); } catch (er) { console.error(er); } } else H.runs.push(r); H.runs.sort((a, b) => b.at - a.at); histChanged(); } } });
   });
   HI.chart = chart;
   onHistory(() => { hiPaint(); chart.draw(); });

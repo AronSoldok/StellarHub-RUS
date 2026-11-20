@@ -287,7 +287,7 @@ const API = {
       onCat && onCat(c); };
     ids.forEach(id => { const c = DB.clean.find(x => x.id === id); if (c) delete c._done; });
     if (REAL) {
-      const p = SH.job('optimizer', 'clean', [ids, cleanOpts()], { onProgress: m => { const d = m.data || {}; try { onStatus && onStatus(d); } catch (e) { console.error(e); }
+      const p = SH.job('optimizer', 'clean', [ids, cleanOpts()], { sound: 'task', onProgress: m => { const d = m.data || {}; try { onStatus && onStatus(d); } catch (e) { console.error(e); }
         if (d.id && d.catFreed !== undefined && start[d.id] !== undefined) finish(d.id, d.catFreed); } });
       ctl.cancel = () => p.cancel();
       const r = await p;
@@ -451,6 +451,7 @@ function paintRing(el) {
 }
 async function analyze(el, again) {
   const sc = $('#optScore', el), lbl = $('#optScoreLbl', el), ring = $('.ring', el);
+  if (again) SH.sound('scan_start');  /* "Analyze again": the user's scan (the first analysis on entry stays quiet) */
   $('#optAll', el).disabled = true; $('#optRescan', el).hidden = true; ring.classList.add('scanning');
   $('#optState', el).textContent = t('Checking your system'); $('#optSub', el).textContent = t('This is read-only; nothing changes.'); lbl.textContent = t('analyzing…'); SH.rollNumber(sc, 0);
   if (again) { ovMode = 'findings'; const r = $('#optRight', el); r.innerHTML = findingsHTML(); $$('.ov-row', r).forEach(x => { x.classList.add('pending'); $('button', x).disabled = true; });
@@ -474,6 +475,7 @@ async function analyze(el, again) {
   if (modCtx) { modCtx.setBadge('clean', DB.clean.filter(c => c.size > 1e7).length); if (regOn()) modCtx.setBadge('registry', regCount()); }
   AREAS.forEach(a => refresh(a.id));
   $('#optAll', el).disabled = false; $('#optRescan', el).hidden = false;
+  if (again) SH.sound('scan_complete');
   anim($('#optAll', el), [{ transform: 'scale(.94)' }, { transform: 'scale(1.04)', offset: .5 }, { transform: 'scale(1)' }], { d: 520 });
 }
 function planSteps() {
@@ -506,7 +508,7 @@ function showPlan(el) {
 let lastRun = null;
 async function runPlan(el, steps) {
   running = true; ovMode = 'run'; const right = $('#optRight', el); $('#optAll', el).disabled = true; $('#optRescan', el).hidden = true;
-  const before = { boot: bootSaved() };
+  const before = { boot: bootSaved(), score };
   swap(right, `<h4 class="pan-h">${t('Optimizing')} <em id="optFreed">${t('{size} freed', { size: '0 MB' })}</em></h4><div class="phases">${steps.map(s => `<div class="phase" data-ph="${s.id}"><span class="ph-dot"></span><div class="pt"><b>${esc(s.t)}</b><span class="ph-msg">${t('Waiting')}</span><div class="bar acc"><span style="transform:scaleX(0)"></span></div></div></div>`).join('')}</div>`);
   await wait(520);
   $('#optState', el).textContent = t('Working…'); $('#optSub', el).textContent = t('You can keep using your PC in the meantime.'); $('.ring', el).classList.add('scanning');
@@ -554,7 +556,8 @@ async function runPlan(el, steps) {
   $('#optState', el).textContent = t('Your PC is in good shape'); $('#optSub', el).textContent = t('Changes can be undone from here or with the restore point.');
   $('#optAll', el).disabled = false; $('#optRescan', el).hidden = false; running = false;
   ['clean', 'startup', 'services', 'performance'].forEach(refresh);
-  SH.toast(t('Optimization finished: {size} freed.', { size: gb(freed) }));
+  /* the score went up: the achievement sound rides on the final toast (one sound for the moment) */
+  SH.toast(t('Optimization finished: {size} freed.', { size: gb(freed) }), { kind: score > before.score ? 'achievement' : 'success' });
 }
 /* one real step of “Optimize everything” */
 async function realStep(s, msg, setP) {
@@ -594,7 +597,7 @@ async function realStep(s, msg, setP) {
    with the button locked until it ends (it can take up to a minute: about a second per service). */
 let undoing = false;
 async function undo(el, btn) {
-  if (undoing || running) return; undoing = true;
+  if (undoing || running) return; undoing = true; SH.sound('undo');
   const right = $('#optRight', el), back = $('#optBack', right), all = $('#optAll', el), again = $('#optRescan', el);
   const st = $('#optState', el), sub = $('#optSub', el), ring = $('.ring', el);
   const phase = txt => { busyBtn(btn, txt); sub.textContent = txt; };
@@ -623,7 +626,7 @@ async function undo(el, btn) {
     score = 64 + Math.round((lastRun ? lastRun.freed : 0) / 1e9 * 1.2); SH.rollNumber($('#optScore', el), score);
     ['startup', 'services', 'performance'].forEach(refresh); ovMode = 'findings'; swap(right, findingsHTML()); paintRing(el); ok = true;
     SH.toast(t("Changes undone. Deleted files can't be recovered."));
-  } catch (e) { console.error(e); SH.toast(e.message); }
+  } catch (e) { console.error(e); SH.toast(e.message, { kind: 'error' }); }
   finally {
     undoing = false; ring.classList.remove('scanning'); all.disabled = false; again.hidden = false;
     if (ok) { st.textContent = score >= 85 ? t('Your PC is in good shape') : t('There is room to improve');
@@ -698,7 +701,7 @@ function renderClean(el) {
   async function rescan() {
     if (!REAL) { renderClean(el); SH.assemble(el, 0, 30); return; }
     el.innerHTML = skelHTML('clean');
-    try { await load('clean', true); } catch (e) { SH.toast(t("Couldn't measure: {error}", { error: e.message })); }
+    try { await load('clean', true); } catch (e) { SH.toast(t("Couldn't measure: {error}", { error: e.message }), { kind: 'error' }); }
     el.innerHTML = ''; renderClean(el); SH.assemble(el, 0, 30);
   }
   sync();
@@ -747,6 +750,7 @@ function renderClean(el) {
       setTimeout(() => { if (go.dataset.sure) { delete go.dataset.sure; go.innerHTML = `${ic('broom')}${t('Clean selected')}`; } }, 4000); return;
     }
     delete go.dataset.sure;
+    SH.sound('delete');  /* files are about to be deleted (the Recycle Bin's second click is the confirmation) */
     busy = true; el.classList.add('cl-busy'); go.disabled = true; go.innerHTML = `${ic('broom')}${t('Cleaning…')}`;
     /* the engine goes through the categories in this order, skipping the apps that are open */
     const queue = ids.filter(id => !DB.clean.find(c => c.id === id).busy);
@@ -788,7 +792,7 @@ function renderClean(el) {
     };
     let r = null;
     try { r = await API.clean(ids, onCat, status, ctl); }
-    catch (e) { SH.toast(t('Cleanup: {error}', { error: e.message })); }
+    catch (e) { SH.toast(t('Cleanup: {error}', { error: e.message }), { kind: 'error' }); }
     busy = false; el.classList.remove('cl-busy'); $$('.cl-it.busyrun', el).forEach(x => x.classList.remove('busyrun', 'indet'));
     go.innerHTML = `${ic('broom')}${t('Clean selected')}`; sync(); refresh('overview');
     run.classList.remove('indet'); run.classList.add('done'); cancelBtn.disabled = false; cancelBtn.innerHTML = `${ic('x')}${t('Close')}`; cancelBtn.onclick = () => { run.hidden = true; };
@@ -800,7 +804,7 @@ function renderClean(el) {
     K.textContent = r.skipped ? t('{n} files in use were skipped', { n: SH.fmtInt(r.skipped) }) : '';
     C.textContent = open.length ? t("Skipped because they're open: {list}", { list: open.join(', ') }) : '';
     if (!r.cancelled) bar.style.transform = 'scaleX(1)';
-    SH.toast(r.cancelled ? t('Stopped. Freed {size}.', { size: gb(freed) }) : t('Freed {size}.', { size: gb(freed) }));
+    SH.toast(r.cancelled ? t('Stopped. Freed {size}.', { size: gb(freed) }) : t('Freed {size}.', { size: gb(freed) }), r.cancelled ? {} : { kind: 'success' });
     if (REAL) SH.logActivity(r.cancelled ? t('Cleanup stopped') : t('Cleanup done'), { sub: t('{size} freed', { size: gb(freed) }), ic: 'broom', go: 'optimizer', tab: 'clean' });
   });
   rendered.clean = sync;
@@ -893,15 +897,15 @@ function renderStartup(el) {
     const tg = e.target.closest('.toggle');
     if (!tg) { if (e.target.closest('.st-r')) { row.classList.toggle('open'); open.has(s.id) ? open.delete(s.id) : open.add(s.id); } return; }
     if ((s.origin === 'service' || s.hklm || s.path.startsWith('HKLM')) && !state.admin && !SH.requireAdmin(t('to change what starts for all users.'))) return;
-    if (s.locked) { SH.toast(t("A Windows policy controls this app; it can't be changed from here.")); return; }
+    if (s.locked) { SH.toast(t("A Windows policy controls this app; it can't be changed from here."), { kind: 'unavailable' }); return; }
     const flip = async want => {
-      if (REAL) { try { await eng('startup_set', s.ids || [s.id], want); } catch (err) { SH.toast(`${s.name}: ${err.message}`); return false; } }
+      if (REAL) { try { await eng('startup_set', s.ids || [s.id], want); } catch (err) { SH.toast(`${s.name}: ${err.message}`, { kind: 'error' }); return false; } }
       s.on = want; draw(false); upd(); refresh('overview'); return true;
     };
     flip(!s.on).then(ok => {
       if (!ok) return;
       if (REAL) SH.logActivity(s.on ? t('{name} starts with Windows', { name: s.name }) : t('{name} no longer starts with Windows', { name: s.name }), { ic: 'bolt', go: 'optimizer', tab: 'startup' });
-      SH.toast(s.on ? t('{name} starts with Windows again.', { name: s.name }) : t('{name} no longer starts with Windows.', { name: s.name }), { action: { label: t('Undo'), run: () => flip(!s.on) } });
+      SH.toast(s.on ? t('{name} starts with Windows again.', { name: s.name }) : t('{name} no longer starts with Windows.', { name: s.name }), { action: { label: t('Undo'), sound: 'undo', run: () => flip(!s.on) } });
     });
   });
   const adm = $('#stAdm', el); if (adm) adm.addEventListener('click', () => SH.requireAdmin(t('to read the boot times Windows records.')));
@@ -953,7 +957,7 @@ function renderServices(el) {
   const lockSv = on => { busy = on; el.classList.toggle('sv-busy', on); $('#svReset', el).disabled = on; if (on) $('#svApply', el).disabled = true; };
   /* the toast's Undo: a “Restoring services…” toast that follows each service, then a fresh read */
   const undoToast = async bid => {
-    if (busy) { SH.toast(t('Wait until the current change finishes.')); return; }
+    if (busy) { SH.toast(t('Wait until the current change finishes.'), { kind: 'unavailable' }); return; }
     lockSv(true); const g = { group: 'svUndo', ms: 120000 };
     SH.toast(t('Restoring services…'), g);
     try {
@@ -963,7 +967,7 @@ function renderServices(el) {
         await load('services', true);
       } else { await wait(900); DB.services.forEach(s => s.cur = s.orig); }
       SH.toast(t('Services restored.'), { group: 'svUndo' });
-    } catch (e) { SH.toast(e.message, { group: 'svUndo' }); }
+    } catch (e) { SH.toast(e.message, { group: 'svUndo', kind: 'error' }); }
     finally { lockSv(false); draw(false); refresh('overview'); }
   };
   $('#svApply', el).addEventListener('click', async () => {
@@ -973,17 +977,17 @@ function renderServices(el) {
     lockSv(true); busyBtn(ap, t('Applying…'));
     try {
       if (REAL) {
-        let r; try { r = await eng('services_apply', { ...want }); } catch (e) { SH.toast(e.message); return; }
-        if (r && r.ok === false && !r.backup) { SH.toast(r.error || t("Nothing was changed: the backup of the services couldn't be saved."), { ms: 9000 }); return; }
+        let r; try { r = await eng('services_apply', { ...want }); } catch (e) { SH.toast(e.message, { kind: 'error' }); return; }
+        if (r && r.ok === false && !r.backup) { SH.toast(r.error || t("Nothing was changed: the backup of the services couldn't be saved."), { ms: 9000, kind: 'error' }); return; }
         Object.keys(want).forEach(k => delete want[k]); const bid = r.backup;
         busyBtn(ap, t('Checking again…'));
-        try { await load('services', true); } catch (e) { SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message })); }
+        try { await load('services', true); } catch (e) { SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message }), { kind: 'error' }); }
         SH.logActivity(t('{n} services adjusted', { n: ids.length }), { ic: 'service', go: 'optimizer', tab: 'services' });
-        SH.toast(r.ok ? t('{n} services changed.', { n: ids.length }) : t("A service didn't accept the change."), { action: { label: t('Undo'), run: () => undoToast(bid) }, ms: 8000 });
+        SH.toast(r.ok ? t('{n} services changed.', { n: ids.length }) : t("A service didn't accept the change."), { kind: r.ok ? 'success' : 'warning', action: { label: t('Undo'), sound: 'undo', run: () => undoToast(bid) }, ms: 8000 });
         return;
       }
       for (const id of ids) { const s = DB.services.find(x => x.id === id); await wait(220); s.cur = want[id]; if (s.cur === 'disabled') s.run = false; delete want[id]; }
-      SH.toast(t('{n} services changed.', { n: ids.length }), { action: { label: t('Undo'), run: () => undoToast(null) } });
+      SH.toast(t('{n} services changed.', { n: ids.length }), { kind: 'success', action: { label: t('Undo'), sound: 'undo', run: () => undoToast(null) } });
     } finally { delete ap.dataset.html; lockSv(false); draw(false); refresh('overview'); }
   });
   $('#svReset', el).addEventListener('click', async () => {
@@ -994,11 +998,12 @@ function renderServices(el) {
     if (changed.length && REAL && !state.admin && !SH.requireAdmin(t('to change how Windows services start.'))) { draw(false); return; }
     let ok = true;
     if (changed.length) {
+      SH.sound('undo');
       lockSv(true); busyBtn(rb, t('Restoring…'));
       try {
         if (REAL) {
           const ch = {}; changed.forEach(s => ch[s.id] = s.orig);
-          try { const rr = await eng('services_apply', ch); if (rr && rr.ok === false && !rr.backup) throw new Error(rr.error || t("Nothing was changed: the backup of the services couldn't be saved.")); busyBtn(rb, t('Checking again…')); await load('services', true); } catch (e) { ok = false; SH.toast(e.message); }
+          try { const rr = await eng('services_apply', ch); if (rr && rr.ok === false && !rr.backup) throw new Error(rr.error || t("Nothing was changed: the backup of the services couldn't be saved.")); busyBtn(rb, t('Checking again…')); await load('services', true); } catch (e) { ok = false; SH.toast(e.message, { kind: 'error' }); }
         } else { await wait(900); DB.services.forEach(s => s.cur = s.orig); }
       } finally { lockSv(false); freeBtn(rb); }
     }
@@ -1017,13 +1022,13 @@ function renderRegistry(el) {
   /* the registry read again after a change: the tab shows its loading state, with the engine's steps */
   const rescan = async () => {
     scanning = true; el.innerHTML = skelHTML('registry');
-    try { await load('registry', true); } catch (e) { SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message })); }
+    try { await load('registry', true); } catch (e) { SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message }), { kind: 'error' }); }
     finally { scanning = false; }
     sel = new Set(DB.registry.flatMap(g => g.items.map(kid)));
   };
   /* puts a .reg backup back (the tab's button or the toast's Undo); say(text) shows each step */
   const restore = async (bid, say) => {
-    if (regBusy) { SH.toast(t('Wait until the current change finishes.')); return false; }
+    if (regBusy) { SH.toast(t('Wait until the current change finishes.'), { kind: 'unavailable' }); return false; }
     regBusy = true; let ok = false;
     try {
       if (REAL) {
@@ -1032,7 +1037,7 @@ function renderRegistry(el) {
         say(t('Checking again…')); await rescan();
       } else { await wait(900); say(t('Checking again…')); await wait(500); }
       regDone = false; ok = true;
-    } catch (e) { SH.toast(e.message); }
+    } catch (e) { SH.toast(e.message, { kind: 'error' }); }
     finally { regBusy = false; draw(); refresh('overview'); }
     return ok;
   };
@@ -1041,7 +1046,7 @@ function renderRegistry(el) {
       el.innerHTML = `<div class="pan rg-empty">${SH.emptyState({ art: 'ok', cls: 'rg-ok', title: t('No broken entries'), text: last.regBackup ? t('The backup of what was fixed is in {path}.', { path: 'ProgramData\\StellarHub\\optimizer\\registry\\' + esc(last.regBackup) }) : t('Nothing points to files that no longer exist.'), action: last.regBackup ? { label: t('Restore the backup'), id: 'rgUndo', icon: 'undo' } : null })}</div>`;
       const u = $('#rgUndo', el); if (u) u.addEventListener('click', async () => {
         if (u.disabled) return;
-        busyBtn(u, t('Restoring registry entries…'));
+        SH.sound('undo'); busyBtn(u, t('Restoring registry entries…'));
         if (await restore(last.regBackup, txt => { if (u.isConnected) busyBtn(u, txt); })) SH.toast(t('Registry restored from the backup.'));
         else if (u.isConnected) freeBtn(u);
       });
@@ -1064,7 +1069,7 @@ function renderRegistry(el) {
       const r = e.target.closest('.rg-it'); if (!r) return; const k = r.dataset.k; sel.has(k) ? sel.delete(k) : sel.add(k); syncSel(); });
     $('#rgGo', el).addEventListener('click', async () => {
       if (fixing) return;
-      if (regBusy) { SH.toast(t('Wait until the current change finishes.')); return; }
+      if (regBusy) { SH.toast(t('Wait until the current change finishes.'), { kind: 'unavailable' }); return; }
       const needA = REAL ? DB.registry.some(g => g.items.some(i => sel.has(kid(i)) && /^HKLM/i.test(i[0]) || /^HKCU\Software\Policies/i.test(i[0]))) : true;
       if (needA && !state.admin && !SH.requireAdmin(t('to fix system registry entries.'))) return;
       const b = $('#rgGo', el); fixing = true; regBusy = true; busyBtn(b, t('Saving the backup…'));
@@ -1072,7 +1077,7 @@ function renderRegistry(el) {
         if (REAL) {
           const ids = [...sel]; let r;
           try { r = await engJob('registry_fix', [ids], { onProgress: m => { if (m.pct > .02) busyBtn(b, t('Fixing… {pct}%', { pct: Math.round(m.pct * 100) })); } }); }
-          catch (e) { SH.toast(e.message); return; }
+          catch (e) { SH.toast(e.message, { kind: 'error' }); return; }
           last.regBackup = r.backup || null;
           for (const row of $$('.rg-it', el).filter(x => sel.has(x.dataset.k))) { anim(row, [{ opacity: 1, transform: 'none' }, { opacity: .25, transform: 'translate3d(18px,0,0)' }], { d: 260 }); }
           busyBtn(b, t('Checking again…')); await wait(260);
@@ -1081,17 +1086,17 @@ function renderRegistry(el) {
           const g = { group: 'rgUndo', ms: 120000 };
           const nf = (r.failed || []).length, first = nf ? String(r.failed[0]) : '';
           const msg = !nf ? t('{n} entries fixed.', { n: r.fixed }) : !r.fixed ? t("Nothing was fixed: {error}", { error: first }) : t("{n} fixed; {failed} couldn't be fixed. First one: {error}", { n: r.fixed, failed: nf, error: first });
-          const undo = r.backup && r.fixed ? { action: { label: t('Undo'), run: async () => {
+          const undo = r.backup && r.fixed ? { action: { label: t('Undo'), sound: 'undo', run: async () => {
             SH.toast(t('Restoring registry entries…'), g);
             if (await restore(r.backup, txt => SH.toast(txt, g))) SH.toast(t('Registry restored from the backup.'), { group: 'rgUndo' });
           } } } : {};
-          SH.toast(msg, { ...undo, ms: nf ? 12000 : 8000 });
+          SH.toast(msg, { ...undo, ms: nf ? 12000 : 8000, kind: !nf ? 'success' : r.fixed ? 'warning' : 'error' });
           return;
         }
         await wait(700); busyBtn(b, t('Fixing…'));
         for (const r of $$('.rg-it', el).filter(r => sel.has(r.dataset.k))) { anim(r, [{ opacity: 1, transform: 'none' }, { opacity: .25, transform: 'translate3d(18px,0,0)' }], { d: 260 }); await wait(60); }
         busyBtn(b, t('Checking again…')); await wait(500); const n = sel.size; regDone = true;
-        SH.toast(t('{n} entries fixed.', { n }), { action: { label: t('Undo'), run: async () => {
+        SH.toast(t('{n} entries fixed.', { n }), { kind: 'success', action: { label: t('Undo'), sound: 'undo', run: async () => {
           const g = { group: 'rgUndo', ms: 60000 }; SH.toast(t('Restoring registry entries…'), g);
           if (await restore(null, txt => SH.toast(txt, g))) SH.toast(t('Registry restored from the backup.'), { group: 'rgUndo' });
         } } });
@@ -1164,14 +1169,14 @@ function renderRepair(el) {
   $('.rp-list', el).addEventListener('click', e => { const b = e.target.closest('.rp-it'); if (!b || b.dataset.r === cur) return; $$('.rp-it', el).forEach(x => x.classList.toggle('on', x === b)); cur = b.dataset.r; paint(true); });
   right.addEventListener('click', async e => {
     if (!e.target.closest('.rp-go')) return; const r = REPAIRS.find(x => x.id === cur);
-    if (busy) { SH.toast(t('Wait for the current repair to finish.')); return; }
+    if (busy) { SH.toast(t('Wait for the current repair to finish.'), { kind: 'unavailable' }); return; }
     if (r.admin && !state.admin && !SH.requireAdmin(r.need)) return;
     if (r.warn) {   /* a second click confirms: it erases settings */
       const go = e.target.closest('.rp-go');
       if (!go.dataset.sure) {
         go.dataset.sure = '1'; go.innerHTML = `${ic('alert')}${t('Click again: static IP and DNS settings will be reset')}`;
         anim(go, [{ transform: 'translateX(0)' }, { transform: 'translateX(-5px)' }, { transform: 'translateX(5px)' }, { transform: 'translateX(0)' }], { d: 320, keep: true });
-        SH.toast(r.warn);
+        SH.toast(r.warn, { kind: 'warning' });
         setTimeout(() => { if (go.isConnected && go.dataset.sure && !busy) paint(false); }, 5000); return;
       }
     }
@@ -1195,7 +1200,7 @@ function renderRepair(el) {
       /* live output: lines go to the console; the % being rewritten (SFC, DISM, chkdsk) drives the bar */
       let res = null, err = null;
       try {
-        res = await engJob('repair', [r.id], {
+        res = await engJob('repair', [r.id], { sound: 'task',
           onLog: lines => { I.lastOut = Date.now(); I.quiet = 0; lines.forEach(l => push(l)); },
           onProgress: m => { const d = m.data || {};
             if (d.hasPct || !STREAMED.has(r.id)) { I.pct = m.pct || I.pct; I.hasPct = !!d.hasPct; }
@@ -1210,8 +1215,9 @@ function renderRepair(el) {
       if (!err && res && res.msg) push(res.msg, 'ok');
       const failed = err || (res && res.error);
       finish(failed);
-      if (res && res.error && !err) { SH.toast(res.error, { ms: 9000 }); return; }
-      if (!err) { SH.logActivity(t('{name}: done', { name: r.t }), { ic: r.ic, go: 'optimizer', tab: 'repair' }); SH.toast(r.reboot ? t('{name}: done. Restart to finish.', { name: r.t }) : t('{name}: done.', { name: r.t })); }
+      if (res && res.error && !err) { SH.toast(res.error, { ms: 9000, kind: 'error' }); return; }
+      if (!err) { SH.logActivity(t('{name}: done', { name: r.t }), { ic: r.ic, go: 'optimizer', tab: 'repair' }); SH.toast(r.reboot ? t('{name}: done. Restart to finish.', { name: r.t }) : t('{name}: done.', { name: r.t }), { kind: res && res.code ? 'warning' : 'success' }); }
+      else if (!err.needAdmin) SH.sound('error');
       return;
     }
     /* sample mode: the same output, slowed down; lines with a % rewrite the live line like the real tools do */
@@ -1222,7 +1228,7 @@ function renderRepair(el) {
       if (cur === r.id) { const log = $('.rp-log', right); const ph = $('.ln.faint', log); if (ph) ph.remove(); const d = document.createElement('div'); d.className = 'ln' + (k ? ' ' + k : ''); d.textContent = line; log.appendChild(d); log.scrollTop = log.scrollHeight;
         anim(d, [{ opacity: 0, transform: 'translate3d(0,4px,0)' }, { opacity: 1, transform: 'none' }], { d: 220 }); paintStat(); } }
     finish(null);
-    SH.toast(r.reboot ? t('{name}: done. Restart to finish.', { name: r.t }) : t('{name}: done.', { name: r.t }));
+    SH.toast(r.reboot ? t('{name}: done. Restart to finish.', { name: r.t }) : t('{name}: done.', { name: r.t }), { kind: 'success' });
   });
 }
 
@@ -1271,12 +1277,12 @@ function renderPerformance(el) {
   const realSet = async (k, v, revert) => {
     if (!REAL) return true;
     try { const r = k.startsWith('bg:') ? await eng('bg_set', k.slice(3), v) : await eng('perf_set', k, v); if (r && r.plans) Object.assign(P, r); return true; }
-    catch (err) { SH.toast(err.message); revert && revert(); return false; }
+    catch (err) { SH.toast(err.message, { kind: 'error' }); revert && revert(); return false; }
   };
   if (el._pfClick) el.removeEventListener('click', el._pfClick);
   el.addEventListener('click', el._pfClick = async e => {
     const o = e.target.closest('[data-open]'); if (o) { const u = o.dataset.open; if (u === 'sysperf') SH.call('run_tool', 'perf').then(r => { if (r === undefined) SH.toast(t('Open Performance Options from inside the app.')); }); else SH.call('open_url', u).then(r => { if (r === undefined) SH.toast(t('This opens Windows Settings from inside the app.')); }); return; }
-    const pl = e.target.closest('[data-plan]'); if (pl && REAL && !pl.classList.contains('on')) { try { Object.assign(P, await eng('power_plan_set', pl.dataset.plan)); $$('.pf-plan', el).forEach(x => { const on = x.dataset.plan === pl.dataset.plan; x.classList.toggle('on', on); }); SH.toast(t('Power plan changed.')); } catch (err) { SH.toast(err.message); } return; }
+    const pl = e.target.closest('[data-plan]'); if (pl && REAL && !pl.classList.contains('on')) { try { Object.assign(P, await eng('power_plan_set', pl.dataset.plan)); $$('.pf-plan', el).forEach(x => { const on = x.dataset.plan === pl.dataset.plan; x.classList.toggle('on', on); }); SH.toast(t('Power plan changed.')); } catch (err) { SH.toast(err.message, { kind: 'error' }); } return; }
     const sb = e.target.closest('.seg button'); if (sb) { const s = sb.parentElement; if (sb.classList.contains('on')) return; const prevB = $('button.on', s); $$('button', s).forEach(x => x.classList.toggle('on', x === sb)); SH.placeSeg(s);
       const k = s.dataset.k, v = sb.dataset.v;
       const revert = () => { $$('button', s).forEach(x => x.classList.toggle('on', x === prevB)); SH.placeSeg(s); };
@@ -1398,8 +1404,8 @@ function renderDebloat(el, ctx) {
     if (tu) {
       const x = twBy(tu.dataset.tu); if (!x) return;
       if (x.admin && !state.admin && !SH.requireAdmin(t('to change settings for all users.'))) return;
-      busyBtn(tu, t('Undoing…'));
-      if (REAL) { try { await engD('tweak_undo', x.id); } catch (err) { freeBtn(tu); if (!err.needAdmin) SH.toast(err.message); return; } await reload('dbTweaks'); }
+      SH.sound('undo'); busyBtn(tu, t('Undoing…'));
+      if (REAL) { try { await engD('tweak_undo', x.id); } catch (err) { freeBtn(tu); if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); return; } await reload('dbTweaks'); }
       else { await wait(400); x.state = 'on'; x.ours = false; x.vals.forEach(v => { v.now = null; }); draw(); }
       SH.toast(t('{name}: back as it was.', { name: x.t }));
       if (REAL) SH.logActivity(t('Debloat setting undone'), { sub: x.t, ic: 'undo', go: 'optimizer', tab: 'debloat' });
@@ -1417,12 +1423,12 @@ function renderDebloat(el, ctx) {
     const a = (DBX.removed || []).find(x => x.name === name); if (!a) return;
     busyBtn(btn, t('Reinstalling…'));
     let r;
-    if (REAL) { try { r = await jobD('reinstall', [name]); } catch (err) { freeBtn(btn); SH.toast(t("Couldn't reinstall {name}: {error}", { name: a.label, error: err.message })); return; } }
+    if (REAL) { try { r = await jobD('reinstall', [name]); } catch (err) { freeBtn(btn); SH.toast(t("Couldn't reinstall {name}: {error}", { name: a.label, error: err.message }), { kind: 'error' }); return; } }
     else { await wait(900); r = a.restore === 'none' ? { ok: false, gone: true } : { ok: true }; if (r.ok) DBX.removed = DBX.removed.filter(x => x !== a); }
-    if (r && r.ok) { SH.toast(t('{name} is back.', { name: a.label })); if (REAL) SH.logActivity(t('{name} reinstalled', { name: a.label }), { ic: 'download', go: 'optimizer', tab: 'debloat' }); }
+    if (r && r.ok) { SH.toast(t('{name} is back.', { name: a.label }), { kind: 'success' }); if (REAL) SH.logActivity(t('{name} reinstalled', { name: a.label }), { ic: 'download', go: 'optimizer', tab: 'debloat' }); }
     else if (r && r.store) SH.toast(t('The Microsoft Store page of {name} is open: install it from there.', { name: a.label }), { ms: 8000 });
-    else if (r && r.gone) SH.toast(t("Microsoft no longer offers {name}: it can't be reinstalled.", { name: a.label }), { ms: 8000 });
-    else SH.toast(t("Couldn't reinstall {name}: {error}", { name: a.label, error: (r && r.msg) || t('Windows refused') }), { ms: 8000 });
+    else if (r && r.gone) SH.toast(t("Microsoft no longer offers {name}: it can't be reinstalled.", { name: a.label }), { ms: 8000, kind: 'warning' });
+    else SH.toast(t("Couldn't reinstall {name}: {error}", { name: a.label, error: (r && r.msg) || t('Windows refused') }), { ms: 8000, kind: 'error' });
     await reload('dbApps');
   }
 
@@ -1434,12 +1440,13 @@ function renderDebloat(el, ctx) {
       setTimeout(() => { if (btn.dataset.sure) { delete btn.dataset.sure; btn.innerHTML = `${ic('undo')}${t('Undo all debloat')}`; } }, 4000); return;
     }
     delete btn.dataset.sure;
+    SH.sound('undo');
     if (DBX.tweaks.some(x => x.ours && x.admin) && !state.admin) SH.requireAdmin(t('to undo the settings that apply to all users. The rest is undone anyway.'));
     btn.disabled = true; btn.innerHTML = `<span class="opt-spin sm"></span>${t('Undoing…')}`;
     let r;
     if (REAL) {
       try { r = await jobD('undo_all', [], { onProgress: m => { if (m.text) btn.innerHTML = `<span class="opt-spin sm"></span>${esc(m.text)}`; } }); }
-      catch (err) { SH.toast(err.message); btn.innerHTML = `${ic('undo')}${t('Undo all debloat')}`; sync(); return; }
+      catch (err) { SH.toast(err.message, { kind: 'error' }); btn.innerHTML = `${ic('undo')}${t('Undo all debloat')}`; sync(); return; }
       await reload('dbTweaks', 'dbApps');
     } else {
       await wait(1200);
@@ -1481,6 +1488,7 @@ function renderDebloat(el, ctx) {
     $$('.db-step', ov).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(14px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: 80 + i * 60, e: EASE.spring }));
     $('#dbBack', ov).addEventListener('click', closeOv);
     $('#dbGo', ov).addEventListener('click', () => {
+      if (apps.length) SH.sound('delete');  /* apps are about to be removed */
       if (!state.admin && (adminTw.length || deprov || REAL)) SH.requireAdmin(t('to create the restore point and change settings for all users. Without it, those steps are skipped.'));
       run(apps, tws, expl);
     });
@@ -1502,7 +1510,7 @@ function renderDebloat(el, ctx) {
     } else { const stop = rpWait(rp.msg); try { await wait(2600); } finally { stop(); } rp.msg.textContent = t('Restore point created'); rpOk = true; rp.done(true); }
     const ap = begin('apply'); let res;
     if (REAL) {
-      try { res = await jobD('apply', [plan], { onProgress: m => { ap.setP(m.pct); if (m.text) ap.msg.textContent = m.text; } }); }
+      try { res = await jobD('apply', [plan], { sound: 'task', onProgress: m => { ap.setP(m.pct); if (m.text) ap.msg.textContent = m.text; } }); }
       catch (err) { ap.msg.textContent = t("Couldn't do it: {error}", { error: err.message }); ap.done(false); res = { removed: [], failed: [], tweaks: [], tweakFailed: [], skippedAdmin: [], error: err.message }; }
     } else {
       res = { removed: [], failed: [], tweaks: [], tweakFailed: [], skippedAdmin: [], explorer: false }; const total = apps.length + tws.length; let i = 0;
@@ -1539,11 +1547,11 @@ function renderDebloat(el, ctx) {
     $('#dbClose', ov).addEventListener('click', closeOv);
     const ex = $('#dbExpl', ov); if (ex) ex.addEventListener('click', async () => {
       busyBtn(ex, t('Restarting…'));
-      if (REAL) { try { await engJob('repair', ['explorer']); } catch (err) { SH.toast(err.message); } } else await wait(800);
+      if (REAL) { try { await engJob('repair', ['explorer']); } catch (err) { SH.toast(err.message, { kind: 'error' }); } } else await wait(800);
       freeBtn(ex); ex.disabled = true; SH.toast(t('File Explorer restarted.'));
     });
     const un = $('#dbUndoRun', ov); if (un) un.addEventListener('click', async () => {
-      busyBtn(un, t('Undoing…')); const errs = [];
+      SH.sound('undo'); busyBtn(un, t('Undoing…')); const errs = [];
       for (const id of ranTw) { const x = twBy(id) || { t: id };
         if (REAL) { try { await engD('tweak_undo', id); } catch (err) { errs.push(x.t); } } else { x.state = 'on'; x.ours = false; } }
       for (const a of ranApps) {
@@ -1568,7 +1576,7 @@ SH.module({
   actions(el, ctx) {
     modCtx = ctx;
     el.innerHTML = `<button class="btn ghost" data-a="rescan">${ic('scan')}${t('Analyze')}</button><button class="btn pri" data-a="all">${ic('sparkle')}${t('Optimize everything')}</button>`;
-    el.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b) return; ctx.setTab('overview');
+    el.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b) return; if (b.dataset.a === 'rescan') SH.sound.claim(); ctx.setTab('overview');
       setTimeout(() => { const t = ctx.tabEl('overview'); const btn = t && $(b.dataset.a === 'all' ? '#optAll' : '#optRescan', t); if (btn && !btn.disabled && !btn.hidden) btn.click(); }, 300); });
   },
   real: true,
@@ -1586,7 +1594,7 @@ SH.module({
     let changed = false;
     try { changed = (await Promise.all(need.map(n => load(n)))).some(Boolean); }
     catch (e) {
-      if (cached) { setUpd(el, false); SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message })); return; }
+      if (cached) { setUpd(el, false); SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message }), { kind: 'error' }); return; }
       el.innerHTML = SH.emptyState({ art: 'error', title: t("Couldn't read from Windows"), text: esc(e.message), action: { label: t('Try again'), id: 'optRetry', icon: 'restore' } });
       $('#optRetry', el).addEventListener('click', () => { el.innerHTML = ''; this.renderTab(tab, el, ctx); }); return;
     }

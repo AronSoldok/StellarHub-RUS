@@ -224,9 +224,9 @@ const fill = a => Math.max(.05, 1 - Math.min(1, lost(a) / 30));
 const tone = a => lost(a) >= 15 ? 'bad' : lost(a) >= 4 ? 'warn' : 'ok';
 const avatar = (name, icon, cls = 'pv-av') => icon ? `<span class="${cls}"><img src="${esc(icon)}" alt=""></span>` : `<span class="${cls} l">${esc((String(name || '?').replace(/[^\p{L}\p{N}]/gu, '')[0] || '?').toUpperCase())}</span>`;
 const skelRows = (n, cls = '') => `<div class="sk-rows pv-sk ${cls}">${Array.from({ length: n }, (_, i) => `<div class="sk-row"><div class="sk a" style="--dl:${i * .08}s"></div><div class="sk b" style="--w:${[46, 34, 52, 30, 41, 38, 49][i % 7]}%;--dl:${i * .08 + .04}s"></div><div class="sk c" style="--dl:${i * .08 + .08}s"></div></div>`).join('')}</div>`;
-const openUri = u => { if (!u) return; (REAL ? SH.engine('privacy', 'open_uri', u) : Promise.resolve(undefined)).then(r => { if (r === undefined || r === false) SH.toast(t('This opens Windows Settings from inside the app.')); }).catch(e => SH.toast(e.message)); };
+const openUri = u => { if (!u) return; (REAL ? SH.engine('privacy', 'open_uri', u) : Promise.resolve(undefined)).then(r => { if (r === undefined || r === false) SH.toast(t('This opens Windows Settings from inside the app.')); }).catch(e => SH.toast(e.message, { kind: 'error' })); };
 const logAct = (txt, o) => { if (REAL) SH.logActivity(txt, o); };
-const openLoc = p => { if (!p) return; if (!REAL) { SH.toast(t('This opens File Explorer from inside the app.')); return; } SH.engine('privacy', 'open_location', p).then(ok => { if (!ok) SH.toast(t('That file is no longer there.')); }).catch(e => SH.toast(e.message)); };
+const openLoc = p => { if (!p) return; if (!REAL) { SH.toast(t('This opens File Explorer from inside the app.')); return; } SH.engine('privacy', 'open_location', p).then(ok => { if (!ok) SH.toast(t('That file is no longer there.')); }).catch(e => SH.toast(e.message, { kind: 'error' })); };
 /* fade the content in when the data changes from skeleton to real; a quiet refresh otherwise */
 function paintInto(el, html, fresh) {
   el.innerHTML = html;
@@ -235,7 +235,7 @@ function paintInto(el, html, fresh) {
 const stamp = a => TS[a] ? (D[a] && D[a]._stale ? t('from {when}, updating…', { when: ago(TS[a]) }) : t('updated {when}', { when: ago(TS[a]) })) : t('checking…');
 let modCtx = null;
 const errBox = a => SH.emptyState({ art: 'error', title: t("Couldn't read from Windows"), text: esc(ERR[a] || ''), action: { label: t('Try again'), data: `data-retry="${a}"`, icon: 'restore' } });
-document.addEventListener('click', e => { const b = e.target.closest('#v-privacy [data-retry]'); if (b) load(b.dataset.retry); });
+document.addEventListener('click', e => { const b = e.target.closest('#v-privacy [data-retry]'); if (b) { SH.sound('refresh'); load(b.dataset.retry); } });
 
 /* ================= actions: fixes and undo ================= */
 async function applyFix(f) {
@@ -263,9 +263,9 @@ async function undo(r, area) {
     SH.toast(t('Undone.')); return;
   }
   try { const u = await eng('undo', r.backup); if (u.tracking) setData('tracking', u.tracking); else if (area || u.area) load(area || u.area); SH.toast(t('Undone: {what}', { what: u.label || '' })); }
-  catch (e) { SH.toast(e.message); }
+  catch (e) { SH.toast(e.message, { kind: 'error' }); }
 }
-const undoToast = (label, r, area) => SH.toast(label, { action: { label: t('Undo'), run: () => undo(r, area) } });
+const undoToast = (label, r, area) => SH.toast(label, { kind: 'success', action: { label: t('Undo'), sound: 'undo', run: () => undo(r, area) } });
 
 /* ================= Overview ================= */
 /* The overview's centerpiece is a small radar (Super Optimizer has a score ring; this one must not look like it). What it
@@ -355,7 +355,7 @@ function renderOverview(el, ctx) {
       if (fb.disabled) return;
       const f = findings().find(x => x.id === fb.dataset.fix); if (!f) return; const back = fixBusy(fb);
       try { const r = await applyFix(f); if (r) { undoToast(r.label || t('Fixed'), r, f.area); logAct(r.label || f.title, { ic: 'privacy', go: 'privacy', tab: 'overview' }); } }
-      catch (err) { if (!err.needAdmin) SH.toast(err.message); } finally { back(); }
+      catch (err) { if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); } finally { back(); }
       return;
     }
     if (e.target.closest('#pvFixAll')) { showPlan(); return; }
@@ -418,11 +418,11 @@ async function runPlan() {
   const fs = findings().filter(f => ids.includes(f.id)); const done = [];
   $('#pvPlanGo', right).disabled = true;
   for (const f of fs) { const row = $(`.pv-ps[data-f="${CSS.escape(f.id)}"]`, right); row && row.classList.add('run');
-    try { const r = await applyFix(f); if (r) { done.push([r, f.area]); row && row.classList.add('done'); } } catch (e) { row && row.classList.add('fail'); if (!e.needAdmin) SH.toast(e.message); }
+    try { const r = await applyFix(f); if (r) { done.push([r, f.area]); row && row.classList.add('done'); } } catch (e) { row && row.classList.add('fail'); if (!e.needAdmin) SH.toast(e.message, { kind: 'error' }); }
     row && row.classList.remove('run'); }
   ovMode = 'list'; paintOverview(true);
   if (done.length) {
-    SH.toast(done.length === 1 ? t('1 change applied.') : t('{n} changes applied.', { n: done.length }), { action: { label: t('Undo'), run: async () => { for (const [r, a] of done.reverse()) await undo(r, a); } } });
+    SH.toast(done.length === 1 ? t('1 change applied.') : t('{n} changes applied.', { n: done.length }), { kind: 'success', action: { label: t('Undo'), sound: 'undo', run: async () => { for (const [r, a] of done.reverse()) await undo(r, a); } } });
     logAct(t('Privacy fixes applied'), { sub: done.map(([r]) => r.label).join(', '), ic: 'privacy', go: 'privacy', tab: 'overview' });
   }
 }
@@ -527,7 +527,7 @@ function renderProtection(el) {
     const u = e.target.closest('[data-uri]'); if (u) { openUri(u.dataset.uri); return; }
     if (e.target.closest('#pvScan')) { quickScan(); return; }
     if (e.target.closest('#pvScanX')) { scan && scan.p && scan.p.cancel && scan.p.cancel(); scan && (scan.stop = true); return; }
-    const fb = e.target.closest('[data-fixk]'); if (fb) { const f = ((D.protection || {}).findings || []).find(x => x.fix && x.fix.kind === fb.dataset.fixk); if (f && !fb.disabled) { const back = fixBusy(fb); applyFix(f).then(r => { if (r) undoToast(r.label, r, 'protection'); }).catch(err => { if (!err.needAdmin) SH.toast(err.message); }).finally(back); } }
+    const fb = e.target.closest('[data-fixk]'); if (fb) { const f = ((D.protection || {}).findings || []).find(x => x.fix && x.fix.kind === fb.dataset.fixk); if (f && !fb.disabled) { const back = fixBusy(fb); applyFix(f).then(r => { if (r) undoToast(r.label, r, 'protection'); }).catch(err => { if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); }).finally(back); } }
   });
   paintProt(true);
   on(a => { if (a === 'protection') paintProt(); });
@@ -584,16 +584,18 @@ function paintProt(first) {
 }
 async function quickScan() {
   if (scan && scan.on) return;
+  SH.sound('scan_start');  /* the user pressed Quick scan */
   scan = { on: true, txt: t('Starting…'), t0: Date.now() }; paintProt();
   const tick = setInterval(() => { const el = protEl && $('#pvScanT', protEl); if (el) el.textContent = `${scan.txt} · ${dur((Date.now() - scan.t0) / 1000)}`; }, 1000);
   try {
     let r;
     if (REAL) { scan.p = SH.job('privacy', 'quick_scan', [], { onProgress: m => { if (m.text) scan.txt = m.text; }, onLog: l => { if (l.length) scan.txt = l[l.length - 1].slice(0, 80); } }); r = await scan.p; }
     else { for (let i = 0; i < 8 && !scan.stop; i++) { scan.txt = [t('Memory'), t('Startup items'), t('System folders'), t('Downloads')][i % 4]; await wait(700); } r = { threats: 0, seconds: 6 }; if (scan.stop) throw Object.assign(new Error('cancelled'), { cancelled: true }); }
-    SH.toast(r && r.threats ? t('Quick scan finished: {n} threats found. Open Windows Security to deal with them.', { n: r.threats }) : t('Quick scan finished: no threats found.'));
+    if (!(r && r.threats)) SH.sound('scan_complete');
+    SH.toast(r && r.threats ? t('Quick scan finished: {n} threats found. Open Windows Security to deal with them.', { n: r.threats }) : t('Quick scan finished: no threats found.'), r && r.threats ? { kind: 'warning' } : {});
     logAct(t('Quick scan with Microsoft Defender'), { sub: r && r.threats ? t('{n} threats', { n: r.threats }) : t('No threats'), ic: 'shield', go: 'privacy', tab: 'protection' });
     if (REAL) load('protection'); else D.protection.defender.quick = new Date().toISOString();
-  } catch (e) { if (!e.cancelled) SH.toast(e.message); else SH.toast(t('Scan cancelled.')); }
+  } catch (e) { if (!e.cancelled) SH.toast(e.message, { kind: 'error' }); else SH.toast(t('Scan cancelled.')); }
   finally { clearInterval(tick); scan = null; paintProt(); }
 }
 
@@ -611,7 +613,7 @@ function renderNetwork(el) {
   el.addEventListener('click', e => {
     const sb = e.target.closest('#pvNetF button'); if (sb) { if (sb.dataset.v === netFilter) return; netFilter = sb.dataset.v; $$('#pvNetF button', el).forEach(b => b.classList.toggle('on', b === sb)); SH.placeSeg($('#pvNetF', el)); paintNet(true); return; }
     const ap = e.target.closest('.pv-napp'); if (ap) { openApp = openApp === ap.dataset.app ? null : ap.dataset.app; $$('.pv-napp', el).forEach(x => x.classList.toggle('open', x.dataset.app === openApp)); return; }
-    if (e.target.closest('#pvNetRef')) { load('network'); return; }
+    if (e.target.closest('#pvNetRef')) { SH.sound('refresh'); load('network'); return; }
     const l = e.target.closest('[data-loc]'); if (l) openLoc(l.dataset.loc);
   });
   paintNet();
@@ -685,10 +687,10 @@ function renderTracking(el) {
   el.addEventListener('click', async e => {
     const tg = e.target.closest('.toggle[data-tr]'); if (tg) { toggleTrack(tg); return; }
     const u = e.target.closest('[data-uri]'); if (u) { openUri(u.dataset.uri); return; }
-    const hu = e.target.closest('[data-undo]'); if (hu) { hu.disabled = true; if (!REAL) { const h = D.tracking.history.find(x => x.id === hu.dataset.undo); if (h) { h.undone = true; (SAMPLE_UNDO[h.id] || (() => { D.tracking.items.find(i => i.id === 'adid').on = true; }))(); } recalcTracking(D.tracking); setData('tracking', D.tracking); SH.toast(t('Undone.')); return; }
-      try { const r = await eng('undo', hu.dataset.undo); if (r.tracking) setData('tracking', r.tracking); else { if (r.area) load(r.area); load('tracking'); } SH.toast(t('Undone: {what}', { what: r.label || '' })); } catch (err) { hu.disabled = false; if (!err.needAdmin) SH.toast(err.message); } return; }
+    const hu = e.target.closest('[data-undo]'); if (hu) { SH.sound('undo'); hu.disabled = true; if (!REAL) { const h = D.tracking.history.find(x => x.id === hu.dataset.undo); if (h) { h.undone = true; (SAMPLE_UNDO[h.id] || (() => { D.tracking.items.find(i => i.id === 'adid').on = true; }))(); } recalcTracking(D.tracking); setData('tracking', D.tracking); SH.toast(t('Undone.')); return; }
+      try { const r = await eng('undo', hu.dataset.undo); if (r.tracking) setData('tracking', r.tracking); else { if (r.area) load(r.area); load('tracking'); } SH.toast(t('Undone: {what}', { what: r.label || '' })); } catch (err) { hu.disabled = false; if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); } return; }
     if (e.target.closest('#pvTrAll')) { const f = (D.tracking.findings || []).find(x => x.fix); if (!f) return; const b = e.target.closest('#pvTrAll'); b.disabled = true;
-      try { const r = await applyFix(f); if (r) { undoToast(r.label, r, 'tracking'); logAct(r.label, { ic: 'privacy', go: 'privacy', tab: 'tracking' }); } } catch (err) { if (!err.needAdmin) SH.toast(err.message); } finally { b.disabled = false; } }
+      try { const r = await applyFix(f); if (r) { undoToast(r.label, r, 'tracking'); logAct(r.label, { ic: 'privacy', go: 'privacy', tab: 'tracking' }); } } catch (err) { if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); } finally { b.disabled = false; } }
   });
   paintTrack(true);
   on(a => { if (a === 'tracking') paintTrack(); });
@@ -703,8 +705,8 @@ async function toggleTrack(tg) {
     else { await wait(220); it.on = want; const h = { id: 's' + Date.now(), t: NOW(), label: want ? t('{name}: turned on', { name: it.name }) : t('{name}: turned off', { name: it.name }), kind: 'reg', area: 'tracking', undone: false };
       D.tracking.history.unshift(h); recalcTracking(D.tracking); setData('tracking', D.tracking); r = { label: h.label, backup: h.id, sample: null };
       r.sampleUndo = () => { it.on = !want; h.undone = true; recalcTracking(D.tracking); setData('tracking', D.tracking); }; SAMPLE_UNDO[h.id] = () => { it.on = !want; }; }
-    SH.toast(r.label, { action: { label: t('Undo'), run: async () => { if (!REAL) { r.sampleUndo(); SH.toast(t('Undone.')); return; } await undo(r, 'tracking'); } } });
-  } catch (e) { tg.classList.toggle('on', !want); if (!e.needAdmin) SH.toast(e.message); }
+    SH.toast(r.label, { action: { label: t('Undo'), sound: 'undo', run: async () => { if (!REAL) { r.sampleUndo(); SH.toast(t('Undone.')); return; } await undo(r, 'tracking'); } } });
+  } catch (e) { tg.classList.toggle('on', !want); if (!e.needAdmin) SH.toast(e.message, { kind: 'error' }); }
   finally { tg.disabled = false; }
 }
 function paintTrack(first) {
@@ -773,9 +775,9 @@ async function psAct(id, btn) {
     if (REAL) r = await eng('persist_set', e.sid || e.id, want, e.name);
     else { await wait(300); r = { label: want ? t('{name}: enabled', { name: e.name }) : t('{name}: disabled', { name: e.name }), backup: 'sample' }; }
     e.on = want; psConfirm = null; paintPs();
-    SH.toast(r.label, { action: { label: t('Undo'), run: async () => { if (REAL) { try { await eng('undo', r.backup); } catch (err) { if (!err.needAdmin) SH.toast(err.message); return; } } e.on = !want; paintPs(); SH.toast(t('Undone.')); } } });
+    SH.toast(r.label, { action: { label: t('Undo'), sound: 'undo', run: async () => { if (REAL) { try { await eng('undo', r.backup); } catch (err) { if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); return; } } e.on = !want; paintPs(); SH.toast(t('Undone.')); } } });
     logAct(r.label, { ic: 'privacy', go: 'privacy', tab: 'persistence' });
-  } catch (err) { btn.disabled = false; if (!err.needAdmin) SH.toast(err.message); }
+  } catch (err) { btn.disabled = false; if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); }
 }
 function paintPs(animate) {
   if (!psEl) return;
@@ -829,7 +831,7 @@ SH.module({
   actions(el, ctx) {
     modCtx = ctx;
     el.innerHTML = `<button class="btn ghost" data-a="again">${ic('pvscan')}${t('Check again')}</button>`;
-    el.addEventListener('click', e => { if (!e.target.closest('[data-a="again"]')) return; AREAS.forEach(a => load(a)); SH.toast(t('Checking again…')); });
+    el.addEventListener('click', e => { if (!e.target.closest('[data-a="again"]')) return; SH.sound('scan_start'); Promise.all(AREAS.map(a => load(a))).then(() => { if (!AREAS.some(a => ERR[a])) SH.sound('scan_complete'); }); SH.toast(t('Checking again…')); });
     on(a => { const b = $('[data-a="again"]', el); if (b && (a.endsWith(':busy') || a.endsWith(':idle'))) b.disabled = AREAS.some(loading); });
   },
   renderTab(tab, el, ctx) {

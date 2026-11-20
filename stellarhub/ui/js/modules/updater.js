@@ -194,7 +194,7 @@ async function runQueueReal() {
     const it = cur.it;
     if (it.admin && !state.admin) { cur.st = 'admin'; if (!Q.askedAdmin) { Q.askedAdmin = true; SH.requireAdmin(t('to install Windows updates.')); } updQRow(cur); continue; }
     cur.st = 'down'; cur.p = 0; updQRow(cur); scrollQ(cur);
-    const job = SH.job(ID, 'install', [[payload(it)]], { onProgress: m => {
+    const job = SH.job(ID, 'install', [[payload(it)]], { sound: 'task', onProgress: m => {
       const s = m.data && m.data.items && m.data.items[0]; if (!s) return;
       const st = s.st === 'queued' ? 'down' : s.st; if (s.mb) cur.mb = s.mb; cur.p = s.p || 0;
       if (st !== cur.st && ['down', 'inst'].includes(st)) { cur.st = st; updQRow(cur); } else updQRow(cur, true);
@@ -234,7 +234,8 @@ function finishedToast() {
   if (!done && !fail && !adm) return;
   const msg = [done === 1 ? t('{n} update installed.', { n: done }) : t('{n} updates installed.', { n: done })];
   if (fail) msg.push(t('{n} failed.', { n: fail })); if (adm) msg.push(t('{n} waiting for admin mode.', { n: adm }));
-  SH.toast(msg.join(' '), S.reboot ? { action: { label: t('Restart now'), run: () => SH.toast(t('Save your work and restart from the Start menu when you can.')) }, group: 'upd-done' } : { group: 'upd-done' });
+  const kind = fail && !done ? 'error' : fail || adm ? 'warning' : 'success';
+  SH.toast(msg.join(' '), S.reboot ? { kind, action: { label: t('Restart now'), run: () => SH.toast(t('Save your work and restart from the Start menu when you can.')) }, group: 'upd-done' } : { kind, group: 'upd-done' });
 }
 function onItemDone(it) {
   S.sel.delete(it.id);
@@ -459,7 +460,7 @@ async function hideItem(id, how) {
   const it = S.byId[id];
   if (how === 'pin' && REAL) {
     const back = rowBusy(id, t('Pinning…'));
-    let r; try { r = await SH.engine(ID, 'pin', it.wid); } catch (e) { back(); SH.toast(t("winget couldn't pin the version: {error}", { error: e.message })); return; }
+    let r; try { r = await SH.engine(ID, 'pin', it.wid); } catch (e) { back(); SH.toast(t("winget couldn't pin the version: {error}", { error: e.message }), { kind: 'error' }); return; }
     if (S.apps) S.apps.pins = { ...(S.apps.pins || {}), [it.id]: it.from };
   }
   if (how === 'ignore') { const ig = ignoredMap(); ig[id] = it.to; SH.setSetting('updIgnored', ig); }
@@ -467,7 +468,7 @@ async function hideItem(id, how) {
   $$(`#v-${ID} .u-row[data-item="${CSS.escape(id)}"]`).forEach(row => collapseRow(row));
   refreshBadge(); updateOverviewCounts();
   setTimeout(() => refreshAppsFilter(false), 440);
-  SH.toast(how === 'ignore' ? t('{name}: version {v} is ignored.', { name: it.name, v: it.to }) : t('{name} stays on {v}.', { name: it.name, v: it.from }), { action: { label: t('Undo'), run: () => unhide(id) } });
+  SH.toast(how === 'ignore' ? t('{name}: version {v} is ignored.', { name: it.name, v: it.to }) : t('{name} stays on {v}.', { name: it.name, v: it.from }), { action: { label: t('Undo'), sound: 'undo', run: () => unhide(id) } });
 }
 async function unhide(id) {
   const it = S.byId[id];
@@ -658,7 +659,7 @@ function pauseLabel() { return pauseWeeks === 1 ? t('Pause for 1 week') : t('Pau
 async function doPause(weeks, el) {
   if (!REAL) { S.paused = weeks ? Date.now() + weeks * 7 * 864e5 : null; renderPause($('.u-pbody', el)); return true; }
   if (!SH.requireAdmin(t('to pause Windows Update.'))) return false;
-  let r; try { r = await SH.engine(ID, 'set_pause', weeks); } catch (e) { SH.toast(t("Couldn't do it: {error}", { error: e.message })); return false; }
+  let r; try { r = await SH.engine(ID, 'set_pause', weeks); } catch (e) { SH.toast(t("Couldn't do it: {error}", { error: e.message }), { kind: 'error' }); return false; }
   if (r && r.needAdmin) { SH.requireAdmin(t('to pause Windows Update.')); return false; }
   S.paused = r && r.pause ? Date.parse(r.pause) : null; renderPause($('.u-pbody', el)); return true;
 }
@@ -682,10 +683,11 @@ function renderStore(el) {
   ensureScan().then(() => fillStore(el));
   el.addEventListener('click', async e => {
     const tg = e.target.closest('[data-storeauto]'); if (!tg) return; const on = !tg.classList.contains('on');
+    SH.sound(on ? 'toggle_on' : 'toggle_off');  /* the switch flips only after the engine answers */
     if (REAL) { if (!SH.requireAdmin(t('to change Store automatic updates.'))) return;
-      let r; try { r = await SH.engine(ID, 'set_store_auto', on); } catch (er) { SH.toast(t("Couldn't do it: {error}", { error: er.message })); return; } if (r && r.needAdmin) return; }
+      let r; try { r = await SH.engine(ID, 'set_store_auto', on); } catch (er) { SH.toast(t("Couldn't do it: {error}", { error: er.message }), { kind: 'error' }); return; } if (r && r.needAdmin) return; }
     tg.classList.toggle('on', on); $('.u-sab', el).textContent = on ? t('On in Windows') : t('Off in Windows');
-    SH.toast(on ? t('The Store updates on its own again.') : t('The Store no longer updates on its own.'), { action: { label: t('Undo'), run: () => tg.click() } });
+    SH.toast(on ? t('The Store updates on its own again.') : t('The Store no longer updates on its own.'), { action: { label: t('Undo'), sound: 'undo', run: () => tg.click() } });
   });
 }
 function fillStore(el) {
@@ -924,12 +926,12 @@ function bindCommon(el) {
     const gt = e.target.closest('[data-gotab]'); if (gt) { ctxRef.setTab(gt.dataset.gotab); return; }
     const un = e.target.closest('[data-unhide]'); if (un) { const row = un.closest('.u-row'); await unhide(un.dataset.unhide); if (row && row.isConnected) collapseRow(row); return; }
     const url = e.target.closest('[data-url]'); if (url) { const r = await SH.call('open_url', url.dataset.url); if (r === undefined) SH.toast(t("The publisher's website would open here.")); return; }
-    const rs = e.target.closest('[data-rescan]'); if (rs) { const k = rs.dataset.rescan; if (k === 'apps') scanApps(true); else if (k === 'win') scanWindows(true); else scanDev(true); return; }
+    const rs = e.target.closest('[data-rescan]'); if (rs) { SH.sound('refresh'); const k = rs.dataset.rescan; if (k === 'apps') scanApps(true); else if (k === 'win') scanWindows(true); else scanDev(true); return; }
     const pw = e.target.closest('.u-pw button'); if (pw && !pw.classList.contains('on')) { $$('.u-pw button', el).forEach(x => x.classList.toggle('on', x === pw)); SH.placeSeg($('.u-pw', el)); pauseWeeks = +pw.dataset.w;
       const b = $('[data-pause]', el); b.innerHTML = `${ic('pause')}${pauseLabel()}`; return; }
-    if (e.target.closest('[data-pause]')) { if (await doPause(pauseWeeks, el)) SH.toast(t('Windows updates paused.'), { action: { label: t('Undo'), run: () => doPause(0, el) } }); return; }
+    if (e.target.closest('[data-pause]')) { if (await doPause(pauseWeeks, el)) SH.toast(t('Windows updates paused.'), { action: { label: t('Undo'), sound: 'undo', run: () => doPause(0, el) } }); return; }
     if (e.target.closest('[data-resume]')) { if (await doPause(0, el)) SH.toast(t('Updates resumed.')); return; }
-    const wc = e.target.closest('[data-wcheck]'); if (wc) { if (wc.disabled || S.winScanning) return; scanWindows(true).then(() => SH.toast(S.errs.win ? ERR_MSG.win(S.errs.win) : S.items.some(i => i.kind === 'wu' || i.id === 'kb-cu') ? t('There are pending Windows updates.') : t('Windows is up to date.'))); }
+    const wc = e.target.closest('[data-wcheck]'); if (wc) { if (wc.disabled || S.winScanning) return; SH.sound('scan_start'); scanWindows(true).then(() => SH.toast(S.errs.win ? ERR_MSG.win(S.errs.win) : S.items.some(i => i.kind === 'wu' || i.id === 'kb-cu') ? t('There are pending Windows updates.') : t('Windows is up to date.'), { kind: S.errs.win ? 'error' : 'scan_complete' })); }
   });
 }
 SH.module({
@@ -945,17 +947,18 @@ SH.module({
           const html = all.innerHTML; all.disabled = true; all.innerHTML = `<span class="u-spin"></span>${t('Looking for updates…')}`;
           try { await ensureScan(); } finally { all.disabled = false; all.innerHTML = html; }
         }
-        if (S.noWinget || S.errs.apps) { SH.toast(S.noWinget ? t("winget isn't available on this PC.") : ERR_MSG.apps(S.errs.apps)); return; }
+        if (S.noWinget || S.errs.apps) { SH.toast(S.noWinget ? t("winget isn't available on this PC.") : ERR_MSG.apps(S.errs.apps), { kind: 'error' }); return; }
         updateAll(); return;
       }
       const c = e.target.closest('[data-check]');
       if (c) {
         if (c.disabled) return;
         const html = c.innerHTML; c.disabled = true; c.classList.add('u-busy'); c.innerHTML = `${ic('refresh')}${t('Checking…')}`;
+        SH.sound('scan_start');  /* one start and one end for the programs and Windows checks together (the toast below) */
         try { await Promise.all([scanApps(true), scanWindows(true)]); } finally { c.disabled = false; c.classList.remove('u-busy'); c.innerHTML = html; }
-        if (S.noWinget) SH.toast(t("winget isn't available on this PC."), { group: 'upd-check' });
-        else if (S.errs.apps) SH.toast(ERR_MSG.apps(S.errs.apps), { group: 'upd-check' });
-        else SH.toast(t('{n} pending updates.', { n: pending().filter(i => !i.optional).length }), { group: 'upd-check' });
+        if (S.noWinget) SH.toast(t("winget isn't available on this PC."), { group: 'upd-check', kind: 'error' });
+        else if (S.errs.apps) SH.toast(ERR_MSG.apps(S.errs.apps), { group: 'upd-check', kind: 'error' });
+        else SH.toast(t('{n} pending updates.', { n: pending().filter(i => !i.optional).length }), { group: 'upd-check', kind: 'scan_complete' });
       }
     });
   },

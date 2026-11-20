@@ -260,6 +260,7 @@ addEventListener('keydown', e => {
   if (!kb.capturing || !active('keyboard')) return;
   e.preventDefault(); e.stopImmediatePropagation();
   const code = e.code || e.key; if (e.repeat) return;
+  if (!au.voices.size && !au.sweep) SH.sound('key_press');  /* a soft tick per press, never over the Speakers test's own tones */
   const now = performance.now(), ts = e.timeStamp || now, pv = kb.ev[code];
   if (pv && pv.up && ts - pv.up < 30 && pv.up - pv.down < 40 && kb.down.size < 2 && !kb.chatter.has(code)) {
     kb.chatN[code] = (kb.chatN[code] || 0) + 1; if (kb.chatN[code] >= 2) kb.chatter.add(code);
@@ -401,7 +402,7 @@ function stopVoice(v, fade) {
 }
 function stopNotes() { [...au.voices].forEach(v => stopVoice(v, true)); coneSync(); }
 function playSide(side) {
-  const c = audioCtx(); if (!c) { SH.toast(t("This PC can't play audio here.")); return; }
+  const c = audioCtx(); if (!c) { SH.toast(t("This PC can't play audio here."), { kind: 'error' }); return; }
   stopNotes();    // a new click replaces the notes still playing
   const pan = c.createStereoPanner ? c.createStereoPanner() : null; if (pan) pan.pan.value = side === 'L' ? -1 : side === 'R' ? 1 : 0;
   const out = c.createGain(); out.gain.value = au.vol * .35; (pan ? (out.connect(pan), pan) : out).connect(c.destination);
@@ -764,7 +765,7 @@ function renderController(el) {
   R.vib.addEventListener('input', e => { const r = e.target.closest('input[data-m]'); if (r) { pd[r.dataset.m] = +r.value; $(`[data-mv="${r.dataset.m}"]`, R.vib).textContent = r.value + '%'; } });
   R.vib.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; const gp = pdPad(); const a = gp && gp.vibrationActuator; if (!a) return;
     if (b.dataset.v === 'stop') { try { a.reset && a.reset(); } catch {} return; }
-    try { a.playEffect('dual-rumble', { startDelay: 0, duration: 700, weakMagnitude: pd.weak / 100, strongMagnitude: pd.strong / 100 }); } catch (err) { SH.toast(t('This controller did not accept the vibration.')); } });
+    try { a.playEffect('dual-rumble', { startDelay: 0, duration: 700, weakMagnitude: pd.weak / 100, strongMagnitude: pd.strong / 100 }); } catch (err) { SH.toast(t('This controller did not accept the vibration.'), { kind: 'error' }); } });
   pdChecklist(); pdDz(); pdNavUI();
 }
 const pdPad = () => { const l = pdPads(); return l.find(g => g.index === pd.sel) || l[0] || null; };

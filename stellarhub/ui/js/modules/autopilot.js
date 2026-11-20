@@ -768,9 +768,10 @@ function closeMenu() {
 }
 document.addEventListener('pointerdown', ev => { if (rEl && !ev.target.closest('.ap-more')) closeMenu(); });
 function delRoutine(x) {
+  SH.sound('delete');  /* from the routine's menu: no confirmation, the toast has Undo */
   const i = R.indexOf(x); const card = $(`.ap-card[data-id="${x.id}"]`, rEl);
   const go = () => { R.splice(i, 1); sel = R[0] && R[0].id; save(); drawRoutines(); if (calDirty) calDirty();
-    SH.toast(tr('“{name}” deleted.', { name: x.name }), { action: { label: tr('Undo'), run: () => { R.splice(i, 0, x); sel = x.id; save(); drawRoutines(); if (calDirty) calDirty(); } } }); };
+    SH.toast(tr('“{name}” deleted.', { name: x.name }), { action: { label: tr('Undo'), sound: 'undo', run: () => { R.splice(i, 0, x); sel = x.id; save(); drawRoutines(); if (calDirty) calDirty(); } } }); };
   card ? anim(card, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(-20px,0,0) scale(.96)' }], { d: 220 }).finished.then(go).catch(go) : go();
 }
 
@@ -802,7 +803,7 @@ async function dryRun(r) {
   let ev, ok, notes;
   if (REAL) {                      // the engine checks the conditions on this PC right now; nothing runs
     let d;
-    try { d = await SH.engine('autopilot', 'dry_run', clone(r)); } catch (e) { SH.toast(tr('The dry run failed: {error}', { error: e.message })); return; }
+    try { d = await SH.engine('autopilot', 'dry_run', clone(r)); } catch (e) { SH.toast(tr('The dry run failed: {error}', { error: e.message }), { kind: 'error' }); return; }
     /* each condition: [met, text in the engine's language, message] — the message is shown in the interface's language */
     ev = r.conds.map((x, i) => { const c = (d.conds || [])[i] || [true, '']; return [x, c[0], c[2] ? msgText(c[2]) : c[1]]; }); ok = d.ok;
     notes = r.acts.map((x, i) => { const a = (d.acts || [])[i] || {}; return { text: a.noteM ? msgText(a.noteM) : a.note || '', admin: !!a.needAdmin }; });
@@ -897,7 +898,7 @@ async function runNow(r) {
     runEnd(r.id); ended = true;
     refreshCard(r); refreshMeta();
     if (lEl) drawLog(true); if (mctx) mctx.setBadge('log', LOG.filter(l => l.st === 'warn' || l.st === 'bad').length);
-    SH.toast(tr('“{name}” finished.', { name: r.name }), { action: { label: tr('View the log'), run: () => SH.go('autopilot', { tab: 'log' }) } });
+    SH.toast(tr('“{name}” finished.', { name: r.name }), { kind: st === 'bad' ? 'error' : st === 'warn' ? 'warning' : 'success', action: { label: tr('View the log'), run: () => SH.go('autopilot', { tab: 'log' }) } });
   } finally {
     if (!ended) { runEnd(r.id); refreshCard(r); }      // the button always comes back, whatever happened
   }
@@ -908,6 +909,7 @@ async function runReal(r, done) {
   let entry = null, err = null;
   try {
     entry = await SH.job('autopilot', 'run', [r.id, true, clone(r), ''], {
+      sound: 'task',
       onProgress: m => {
         const d = m.data || {}, o = {};
         if (d.total) o.btn = tr('Step {n} of {total}', { n: Math.min((d.step || 0) + 1, d.total), total: d.total });
@@ -919,9 +921,10 @@ async function runReal(r, done) {
   } catch (e) { err = e; }
   done();
   await loadLog(true); refreshCard(r); refreshMeta();
-  if (err) { SH.toast(err.cancelled ? tr('“{name}” was cancelled.', { name: r.name }) : tr('“{name}” couldn’t run: {error}', { name: r.name, error: err.message })); return; }
+  if (err) { SH.toast(err.cancelled ? tr('“{name}” was cancelled.', { name: r.name }) : tr('“{name}” couldn’t run: {error}', { name: r.name, error: err.message }), err.cancelled ? {} : { kind: 'error' }); return; }
   const fin = { ok: '“{name}” finished.', warn: '“{name}” finished with warnings.', bad: '“{name}” had a problem.', skip: '“{name}” was skipped.' }[entry && entry.st] || '“{name}” finished.';
-  SH.toast(tr(fin, { name: r.name }), { action: { label: tr('View the log'), run: () => SH.go('autopilot', { tab: 'log' }) } });
+  const kind = { ok: 'success', warn: 'warning', bad: 'error' }[entry && entry.st];
+  SH.toast(tr(fin, { name: r.name }), { kind, action: { label: tr('View the log'), run: () => SH.go('autopilot', { tab: 'log' }) } });
 }
 /* the engine's log (real runs, scheduled or manual) */
 async function loadLog(animate) {
@@ -1054,8 +1057,8 @@ function renderLog(el) {
   s.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return; $$('button', s).forEach(x => x.classList.toggle('on', x === b)); SH.placeSeg(s); logFilter = b.dataset.v; drawLog(true); });
   el.addEventListener('click', e => { const b = e.target.closest('[data-autostart]'); if (!b) return;
     SH.call('set_autostart', true).then(v => {
-      if (v === undefined) { SH.toast(tr('This only works inside the app.')); return; }
-      if (v === false) { SH.toast(tr('Windows did not allow changing automatic startup.')); return; }
+      if (v === undefined) { SH.toast(tr('This only works inside the app.'), { kind: 'unavailable' }); return; }
+      if (v === false) { SH.toast(tr('Windows did not allow changing automatic startup.'), { kind: 'error' }); return; }
       SH.setSetting('startWithWindows', true); b.outerHTML = `<span class="chip ok">${ic('check')}${tr('Opens with Windows')}</span>`;
       SH.toast(tr('StellarHub will open hidden in the tray when Windows starts.')); }); });
   $('#lgList', el).addEventListener('click', e => { if (e.target.closest('[data-goto]')) { SH.go('autopilot', { tab: 'routines' }); return; } const h = e.target.closest('.lg-hd'); if (h) h.parentElement.classList.toggle('open'); });

@@ -208,7 +208,7 @@ const DATA = {
   },
   search(onPhase) {
     if (!REAL) { let stop = false; const p = API.search((t, i) => !stop && onPhase(t, i)).then(r => { if (stop) throw Object.assign(new Error('cancelled'), { cancelled: true }); return r; }); p.cancel = () => { stop = true; }; return p; }
-    const j = SH.job('drivers', 'search', [], { onProgress: m => { if (m.kind === 'progress') onPhase(m.text, (m.data || {}).phase, m); } });
+    const j = SH.job('drivers', 'search', [], { sound: 'task', onProgress: m => { if (m.kind === 'progress') onPhase(m.text, (m.data || {}).phase, m); } });
     const p = j.then(r => (r.updates || []).map(mapUpd)); p.cancel = j.cancel; return p;
   },
   /* onStep(id, phase, data): id = 'rp' or the update id; phase = run|download|install|done|error|skip */
@@ -219,7 +219,7 @@ const DATA = {
       for (const u of todo) { const r = await API.install(u, (ph, p) => onStep(u.id, ph === 'done' ? 'done' : ph, { p })); reboot = reboot || r.reboot; onStep(u.id, 'done', { result: { ok: true, reboot: r.reboot } }); }
       return { results: todo.map(u => ({ id: u.id, ok: true, reboot: u.reboot })), reboot, restorePoint: rp };
     }
-    return SH.job('drivers', 'install', [todo.map(u => u.id), true], { onProgress: m => { const d = m.data || {}; if (m.kind === 'progress' && d.step) onStep(d.step, d.phase, { ...d, text: m.text }); } });
+    return SH.job('drivers', 'install', [todo.map(u => u.id), true], { sound: 'task', onProgress: m => { const d = m.data || {}; if (m.kind === 'progress' && d.step) onStep(d.step, d.phase, { ...d, text: m.text }); } });
   },
   async problems() {
     if (!REAL) return { errors: [], disabled: [], ghosts: API.ghosts.map(g => ({ ...g, lastText: g.last })) };
@@ -356,6 +356,7 @@ function renderUpdates(el, ctx) {
   async function search() {
     if (st.searching) { st.searching.cancel(); return; }
     if (st.busy) return; st.busy = true; syncBar(); setSearchBtn(true); lastPhase = -1;
+    SH.sound('scan_start');  /* every search is the user's: the button, the header, "Search" on the Problems tab */
     const radar = $('#duRadar', el); radar.classList.add('on'); $$('.blip', radar).forEach(b => b.remove());
     $('#duIndet', el).classList.add('on');
     t0 = performance.now(); timer = setInterval(() => { $('#duTime', el).textContent = secsText(Math.floor((performance.now() - t0) / 1000)); }, 250);
@@ -368,9 +369,10 @@ function renderUpdates(el, ctx) {
     radar.classList.remove('on'); $('#duIndet', el).classList.remove('on'); setSearchBtn(false); st.busy = false;
     if (err) {
       if (err.cancelled) { const r = await DATA.lastSearch(); st.updates = r.updates; st.sel = new Set(st.updates.map(u => u.id)); head(st.updates.length, r.when); drawList(true, !r.at); SH.toast(t('Search cancelled.')); return; }
-      $('#duTitle', el).textContent = t('Windows Update did not respond'); $('#duPhase', el).textContent = err.message; list.innerHTML = errBox(t('Check your connection and try again. Sometimes Windows Update is busy installing something else.')); syncBar(); return;
+      SH.sound('error'); $('#duTitle', el).textContent = t('Windows Update did not respond'); $('#duPhase', el).textContent = err.message; list.innerHTML = errBox(t('Check your connection and try again. Sometimes Windows Update is busy installing something else.')); syncBar(); return;
     }
     st.updates = res || []; st.sel = new Set(st.updates.map(u => u.id)); head(st.updates.length, t('just now'));
+    SH.sound('scan_complete');
     SH.setPending('drivers', st.updates.length);
     anim($('#duTitle', el), [{ opacity: 0, transform: 'translate3d(0,8px,0)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 420, e: EASE.spring });
     drawList(true);
@@ -464,6 +466,7 @@ function renderUpdates(el, ctx) {
     st.updates = st.updates.filter(u => !okIds.has(u.id)); st.sel.clear(); head(st.updates.length, t('just now')); drvCache = null;
     if (REAL) SH.setPending('drivers', st.updates.length);
     const nOk = okIds.size;
+    SH.sound(err || !nOk ? 'error' : failed ? 'warning' : 'success');
     if (nOk) SH.logActivity(nOk === 1 ? t('{n} driver installed', { n: nOk }) : t('{n} drivers installed', { n: nOk }), { sub: todo.filter(u => okIds.has(u.id)).map(u => u.d.name).slice(0, 2).join(', '), ic: 'drivers', go: 'drivers', tab: 'history' });
     const done = document.createElement('div'); done.className = 'pan du-done';
     const ttl = err ? t('The installation was interrupted') : !nOk ? t('No driver was installed')
@@ -547,11 +550,11 @@ async function renderAll(el) {
   }
   $('#daDetail', el).addEventListener('click', async e => {
     const b = e.target.closest('[data-a],[data-rb]'); if (!b || !selected) return; const d = selected;
-    if (b.dataset.a === 'devmgmt') { if (await SH.call('run_tool', 'devmgmt') === undefined) SH.toast(t('This only works inside the app.')); return; }
+    if (b.dataset.a === 'devmgmt') { if (await SH.call('run_tool', 'devmgmt') === undefined) SH.toast(t('This only works inside the app.'), { kind: 'unavailable' }); return; }
     if (b.dataset.rb) {
       if (REAL && !SH.state.admin) { SH.requireAdmin(t('to go back to a previous driver version.')); return; }
       if (!await ask(t('Go back to the previous version'), t('{name} will switch to the <b>{pkg}</b> package. A restore point is created first. It may ask for a restart.', { name: esc(d.name), pkg: esc(b.dataset.rb) }), t('Go back to this one'))) return;
-      if (busyOp) { SH.toast(t('Another change is still running. Wait for it to finish.')); return; } busyOp = true;
+      if (busyOp) { SH.toast(t('Another change is still running. Wait for it to finish.'), { kind: 'unavailable' }); return; } busyOp = true;
       /* a restore point (1 to 3 min), the install and reading the drivers again: a status line with the step and the time */
       const box = $('#ddVers', el); $$('[data-rb],[data-a="toggle"]', $('#daDetail', el)).forEach(x => { x.disabled = true; });
       busyBtn(b, t('Installing…'));
@@ -564,16 +567,16 @@ async function renderAll(el) {
       try {
         const onProgress = m => { if (m.kind === 'progress' && m.text) say(m.text); };
         let r;
-        if (REAL) r = await SH.job('drivers', 'rollback', [d.instance, b.dataset.rb, d.hw], { onProgress });
+        if (REAL) r = await SH.job('drivers', 'rollback', [d.instance, b.dataset.rb, d.hw], { sound: 'task', onProgress });
         else { await fakeJob([[t('Creating a restore point'), 2200], [t('Installing the previous version'), 1400]], onProgress); r = { ok: true }; }
         if (needAdmin(r, t('to roll back a driver.'))) return;
-        SH.toast(r.ok ? (r.reboot ? t('{name}: previous version installed. Restart to finish.', { name: d.name }) : t('{name}: previous version installed.', { name: d.name })) : t('It did not work: {msg}', { msg: r.msg }));
+        SH.toast(r.ok ? (r.reboot ? t('{name}: previous version installed. Restart to finish.', { name: d.name }) : t('{name}: previous version installed.', { name: d.name })) : t('It did not work: {msg}', { msg: r.msg }), { kind: r.ok ? 'success' : 'error' });
         if (r.ok) {
           ok = true; SH.logActivity(t('Driver rolled back'), { sub: d.name, ic: 'restore', go: 'drivers', tab: 'all' });
           say(t('Reading drivers again')); $('#daCnt', el).textContent = t('Reading…'); drvCache = null;
           await load(true);
         }
-      } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message })); }
+      } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message }), { kind: 'error' }); }
       finally {
         stop(); line.remove(); busyOp = false; freeBtn(b);
         $$('[data-rb],[data-a="toggle"]', $('#daDetail', el)).forEach(x => { if (!x.classList.contains('busy')) x.disabled = false; });
@@ -587,17 +590,17 @@ async function renderAll(el) {
       if (REAL && !SH.state.admin) { SH.requireAdmin(t('to disable or enable devices.')); return; }
       if (!enable && !await ask(t('Disable the device'), t('{name} will stop working until you enable it again here or from Device Manager.', { name: esc(d.name) }), t('Disable'), true)) return;
       const apply = async en => {
-        if (busyOp) { SH.toast(t('Another change is still running. Wait for it to finish.')); return false; } busyOp = true;
+        if (busyOp) { SH.toast(t('Another change is still running. Wait for it to finish.'), { kind: 'unavailable' }); return false; } busyOp = true;
         const tb = selected === d ? $('#daDetail [data-a="toggle"]', el) : null; busyBtn(tb, en ? t('Enabling…') : t('Disabling…'));
         try {
           const r = REAL ? await SH.job('drivers', 'set_enabled', [d.instance, en]) : (await wait(700), { ok: true });
           if (needAdmin(r, t('to disable devices.'))) return false;
-          if (!r.ok) { SH.toast(t('Windows did not allow it: {msg}', { msg: r.msg || '' })); return false; }
+          if (!r.ok) { SH.toast(t('Windows did not allow it: {msg}', { msg: r.msg || '' }), { kind: 'error' }); return false; }
           d.status = en ? 'ok' : 'off'; const row = $(`.da-row[data-d="${d.id}"]`, scroll); if (row && selected === d) swap($('#daDetail', el), detailHTML(d)); return true;
-        } catch (er) { SH.toast(t('Windows did not allow it: {msg}', { msg: er.message })); return false; }
+        } catch (er) { SH.toast(t('Windows did not allow it: {msg}', { msg: er.message }), { kind: 'error' }); return false; }
         finally { busyOp = false; if (tb && tb.isConnected) freeBtn(tb); }
       };
-      if (await apply(enable)) SH.toast(enable ? t('Device enabled.') : t('Device disabled.'), { action: { label: t('Undo'), run: () => apply(!enable) } });
+      if (await apply(enable)) SH.toast(enable ? t('Device enabled.') : t('Device disabled.'), { action: { label: t('Undo'), sound: 'undo', run: () => apply(!enable) } });
     }
   });
   load(false);
@@ -627,7 +630,7 @@ async function renderProblems(el) {
   setTimeout(() => playRing($('.dp-hero svg', el)), 300 * SH.motion());
   /* one listener per render, on the wrapper this render created: "Check again" replaces it, so actions never run twice */
   const wrap = $('.du-wrap', el); let running = 0;
-  $('#dpRe', el).addEventListener('click', () => { if (running) { SH.toast(t('Another change is still running. Wait for it to finish.')); return; } renderProblems(el); });
+  $('#dpRe', el).addEventListener('click', () => { SH.sound('refresh'); if (running) { SH.toast(t('Another change is still running. Wait for it to finish.'), { kind: 'unavailable' }); return; } renderProblems(el); });
   const box = $('#dpG', el); let ghostsLeft = P.ghosts.length;
   /* -> true (removed), false (Windows refused or it failed) or 'admin' (needs administrator rights) */
   const rmOne = async row => {
@@ -635,26 +638,27 @@ async function renderProblems(el) {
     try {
       const r = REAL ? await SH.job('drivers', 'remove_device', [row.dataset.id]) : (await wait(500), { ok: true });
       if (needAdmin(r, t('to remove devices from Windows.'))) return 'admin';
-      if (!r.ok) { SH.toast(t('Windows did not remove it: {msg}', { msg: r.msg || '' })); return false; }
+      if (!r.ok) { SH.toast(t('Windows did not remove it: {msg}', { msg: r.msg || '' }), { kind: 'error' }); return false; }
       ok = true; removeRow(row, box); ghostsLeft = Math.max(0, ghostsLeft - 1); $('#dpGn', el).textContent = ghostsLeft; return true;
-    } catch (er) { SH.toast(t('Windows did not remove it: {msg}', { msg: er.message })); return false; }
+    } catch (er) { SH.toast(t('Windows did not remove it: {msg}', { msg: er.message }), { kind: 'error' }); return false; }
     finally { if (!ok) freeBtn(b); }
   };
   wrap.addEventListener('click', async e => {
     const b = e.target.closest('[data-act]'); if (!b || b.disabled) return; const row = b.closest('.row');
-    if (b.dataset.act === 'devmgmt') { if (await SH.call('run_tool', 'devmgmt') === undefined) SH.toast(t('This only works inside the app.')); }
-    else if (b.dataset.act === 'search') { SH.go('drivers', { tab: 'updates' }); setTimeout(() => { const v = $('#v-drivers'); v && v._searchDrivers && v._searchDrivers(); }, 400); }
+    if (b.dataset.act === 'devmgmt') { if (await SH.call('run_tool', 'devmgmt') === undefined) SH.toast(t('This only works inside the app.'), { kind: 'unavailable' }); }
+    else if (b.dataset.act === 'search') { SH.sound('scan_start'); SH.go('drivers', { tab: 'updates' }); setTimeout(() => { const v = $('#v-drivers'); v && v._searchDrivers && v._searchDrivers(); }, 400); }
     else if (b.dataset.act === 'enable') {
       if (REAL && !SH.state.admin) { SH.requireAdmin(t('to enable devices.')); return; }
       busyBtn(b, t('Enabling…')); running++; let ok = false;
       try {
         const r = REAL ? await SH.job('drivers', 'set_enabled', [row.dataset.id, true]) : (await wait(600), { ok: true }); if (needAdmin(r, t('to enable devices.'))) return;
-        if (r.ok) { ok = true; SH.toast(t('Device enabled.')); removeRow(row, row.parentElement); } else SH.toast(t('Windows did not allow it: {msg}', { msg: r.msg || '' }));
-      } catch (er) { SH.toast(t('Windows did not allow it: {msg}', { msg: er.message })); }
+        if (r.ok) { ok = true; SH.toast(t('Device enabled.')); removeRow(row, row.parentElement); } else SH.toast(t('Windows did not allow it: {msg}', { msg: r.msg || '' }), { kind: 'error' });
+      } catch (er) { SH.toast(t('Windows did not allow it: {msg}', { msg: er.message }), { kind: 'error' }); }
       finally { running--; if (!ok) freeBtn(b); }
     } else if (b.dataset.act === 'rm') {
       if (REAL && !SH.state.admin) { SH.requireAdmin(t('to remove devices from Windows.')); return; }
       if (!await ask(t('Remove the device'), t('Windows will forget <b>{name}</b>. If you connect it again, it installs again by itself.', { name: esc($('b', row).textContent) }), t('Remove'))) return;
+      SH.sound('delete');
       running++; try { if (await rmOne(row) === true) SH.toast(t('Device removed.')); } finally { running--; }
     }
   });
@@ -664,6 +668,7 @@ async function renderProblems(el) {
     if (REAL && !SH.state.admin) { SH.requireAdmin(t('to remove devices from Windows.')); return; }
     const rows = $$('.row', box).filter(r => !$('[data-act="rm"].busy', r)); if (!rows.length) return;
     if (!await ask(rows.length === 1 ? t('Remove {n} disconnected device', { n: rows.length }) : t('Remove {n} disconnected devices', { n: rows.length }), t('Windows will forget them. Any you connect again reinstall by themselves.'), t('Remove all'))) return;
+    SH.sound('delete');
     const total = rows.length; let n = 0, k = 0; running++;
     busyBtn(all, t('Removing {n} of {total}…', { n: 1, total }));
     /* the rows still waiting cannot be removed one by one at the same time */
@@ -731,22 +736,22 @@ async function renderBackup(el) {
       async end() { stop(); await wait(400); tickers.delete(tk); anim(prog, [{ opacity: 1 }, { opacity: 0 }], { d: 200 }).finished.then(() => { if (!op) prog.classList.remove('on'); }).catch(() => {}); },
     };
   }
-  $('#dbPick', el).addEventListener('click', async () => { if (!REAL) { SH.toast(t('The folder picker only works inside the app.')); return; } const p = await SH.engine('drivers', 'pick_folder', $('#dbPath', el).value); if (p) $('#dbPath', el).value = p; });
+  $('#dbPick', el).addEventListener('click', async () => { if (!REAL) { SH.toast(t('The folder picker only works inside the app.'), { kind: 'unavailable' }); return; } const p = await SH.engine('drivers', 'pick_folder', $('#dbPath', el).value); if (p) $('#dbPath', el).value = p; });
   $('#dbGo', el).addEventListener('click', async e => {
     const btn = e.currentTarget; if (btn.disabled || op) return;
     if (REAL && !SH.state.admin) { SH.requireAdmin(t('to copy the system drivers (Windows requires it).')); return; }
     lock('create'); const pg = progress(third);
     let r = null;
     try {
-      if (REAL) r = await SH.job('drivers', 'export', [$('#dbPath', el).value.trim() || null], { onProgress: m => { if (m.kind !== 'progress') return; const d = m.data || {}; pg.set(d.n, d.total, m.text, m.pct || 0); } });
+      if (REAL) r = await SH.job('drivers', 'export', [$('#dbPath', el).value.trim() || null], { sound: 'task', onProgress: m => { if (m.kind !== 'progress') return; const d = m.data || {}; pg.set(d.n, d.total, m.text, m.pct || 0); } });
       else { const x = await API.exportDrivers(true, (i, tot, f) => pg.set(i, tot, f)); r = { ok: true, count: x.count, gb: x.gb }; API.backups.unshift({ id: 'b' + Date.now(), date: new Date().toISOString().slice(0, 10), count: x.count, gb: x.gb, path: $('#dbPath', el).value + '\\' + new Date().toISOString().slice(0, 10) }); }
     } catch (er) { r = { ok: false, msg: er.message }; }
     finally { lock(null); await pg.end(); }
     if (needAdmin(r, t('to copy the drivers.'))) return;
-    if (!r || !r.ok) { SH.toast(t('The backup could not be created: {msg}', { msg: (r && r.msg) || t('unknown error') })); return; }
+    if (!r || !r.ok) { SH.toast(t('The backup could not be created: {msg}', { msg: (r && r.msg) || t('unknown error') }), { kind: 'error' }); return; }
     await loadList(false); const nr = rows.firstElementChild; if (nr) { nr.classList.add('fresh'); anim(nr, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring }); setTimeout(() => nr.classList.remove('fresh'), 2400); }
     SH.logActivity(t('Driver backup'), { sub: t('{n} drivers saved', { n: r.count }), ic: 'download', go: 'drivers', tab: 'backup' });
-    SH.toast(t('Backup created: {n} drivers, {gb} GB.', { n: r.count, gb: fmt1(r.gb) }), { action: { label: t('Open folder'), run: () => REAL ? SH.engine('drivers', 'open_folder', r.path) : SH.toast(t('Only inside the app.')) } });
+    SH.toast(t('Backup created: {n} drivers, {gb} GB.', { n: r.count, gb: fmt1(r.gb) }), { kind: 'success', action: { label: t('Open folder'), run: () => REAL ? SH.engine('drivers', 'open_folder', r.path) : SH.toast(t('Only inside the app.')) } });
   });
   /* ---- old copies in the DriverStore (read-only scan; removal re-checked by the engine and refused by Windows if in use) ---- */
   const ds = $('#dsRows', el), dsSel = new Set(); let OLD = [];
@@ -791,6 +796,7 @@ async function renderBackup(el) {
       ? t('{n} old copy ({mb} MB) will be removed from the driver store. The current versions stay installed. Removed copies cannot be used to roll a driver back, so create a backup above first if you might want them.', { n: pick.length, mb: fmt1(mb) })
       : t('{n} old copies ({mb} MB) will be removed from the driver store. The current versions stay installed. Removed copies cannot be used to roll a driver back, so create a backup above first if you might want them.', { n: pick.length, mb: fmt1(mb) });
     if (!await ask(t('Remove old driver copies'), askTxt, t('Remove'), true)) return;
+    SH.sound('delete');
     busyBtn(btn, t('Removing…'));
     let r;
     try { r = REAL ? await SH.job('drivers', 'delete_packages', [pick.map(o => o.inf)], { onProgress: m => { if (m.text) $('#dsSum', el).textContent = m.text; } }) : { ok: true, results: pick.map(o => ({ inf: o.inf, ok: true })), freedMb: mb }; }
@@ -810,7 +816,7 @@ async function renderBackup(el) {
   rows.addEventListener('click', async e => {
     const b = e.target.closest('[data-a]'); if (!b || b.disabled) return; const row = b.closest('.db-row'); if (!row || row.classList.contains('busy')) return;
     const i = +row.dataset.i, bk = LIST[i]; if (!bk) return;
-    if (b.dataset.a === 'open') { if (!REAL || !await SH.engine('drivers', 'open_folder', bk.path)) SH.toast(REAL ? t('That folder no longer exists.') : t('Only inside the app.')); }
+    if (b.dataset.a === 'open') { if (!REAL || !await SH.engine('drivers', 'open_folder', bk.path)) SH.toast(REAL ? t('That folder no longer exists.') : t('Only inside the app.'), { kind: REAL ? 'error' : 'unavailable' }); }
     if (b.dataset.a === 'restore') {
       if (op) return;
       if (REAL && !SH.state.admin) { SH.requireAdmin(t('to reinstall drivers from a backup.')); return; }
@@ -820,18 +826,19 @@ async function renderBackup(el) {
       busyBtn(b, t('Reinstalling…')); lock('restore'); const pg = progress(bk.count || null);
       try {
         let r;
-        if (REAL) r = await SH.job('drivers', 'restore_backup', [bk.path], { onProgress: m => { if (m.kind !== 'progress') return; const d = m.data || {}; pg.set(d.n, d.total, m.text, m.pct); } });
+        if (REAL) r = await SH.job('drivers', 'restore_backup', [bk.path], { sound: 'task', onProgress: m => { if (m.kind !== 'progress') return; const d = m.data || {}; pg.set(d.n, d.total, m.text, m.pct); } });
         else { const list = DRIVERS.filter(d => !d.inbox), tot = bk.count || 120; for (let k = 1; k <= tot; k++) { const d = list[k % list.length]; pg.set(k, tot, `${d.inf}  ${d.name}`); await wait(12 + rnd() * 14); } r = { ok: true }; }
         if (needAdmin(r, t('to reinstall drivers.'))) return;
-        SH.toast(r.ok ? (r.reboot ? t('Backup reinstalled. Restart to finish.') : t('Backup reinstalled.')) : t('It did not work: {msg}', { msg: r.msg }));
+        SH.toast(r.ok ? (r.reboot ? t('Backup reinstalled. Restart to finish.') : t('Backup reinstalled.')) : t('It did not work: {msg}', { msg: r.msg }), { kind: r.ok ? 'success' : 'error' });
         if (r.ok) { drvCache = null; SH.logActivity(t('Drivers reinstalled from a backup'), { sub: fmtDateS(bk.date), ic: 'restore', go: 'drivers', tab: 'backup' }); }
-      } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message })); }
+      } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message }), { kind: 'error' }); }
       finally { freeBtn(b); lock(null); await pg.end(); }
     }
     if (b.dataset.a === 'del') {
       if (op) return;
       if (!await ask(t('Send the backup to the Recycle Bin'), t('The {date} backup ({gb} GB) will go to the Recycle Bin. You can recover it from there.', { date: fmtDateS(bk.date), gb: fmt1(bk.gb) }), t('Send to the Recycle Bin'), true)) return;
       if (op || row.classList.contains('busy')) return;
+      SH.sound('delete');
       /* a big folder takes a while to move (5 to 60 s): the row says so and its buttons wait */
       row.classList.add('busy'); const btns = $$('.a .btn', row); btns.forEach(x => { x.disabled = true; });
       busyBtn(b, ''); const p = $('.p', row), pHTML = p.innerHTML; p.innerHTML = `${SPIN}<span>${esc(t('Moving to the Recycle Bin…'))}</span>`;
@@ -839,8 +846,8 @@ async function renderBackup(el) {
       try {
         const r = REAL ? await SH.job('drivers', 'delete_backup', [bk.path]) : (await wait(1200), { ok: true });
         if (r && r.ok) { ok = true; if (!REAL) API.backups.splice(API.backups.indexOf(bk), 1); LIST[i] = null; removeRow(row, rows); $('#dbCount', el).textContent = LIST.filter(Boolean).length; SH.toast(t('Backup sent to the Recycle Bin.')); }
-        else SH.toast(t('It did not work: {msg}', { msg: (r && r.msg) || '' }));
-      } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message })); }
+        else SH.toast(t('It did not work: {msg}', { msg: (r && r.msg) || '' }), { kind: 'error' });
+      } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message }), { kind: 'error' }); }
       finally { if (!ok) { row.classList.remove('busy'); p.innerHTML = pHTML; freeBtn(b); btns.forEach(x => { x.disabled = !!op && x.dataset.a !== 'open'; }); } }
     }
   });
@@ -874,8 +881,8 @@ SH.module({
   enter() { if (REAL) updateDesc(); },
   actions(el, ctx) {
     el.innerHTML = `<button class="btn ghost" id="duRestore">${ic('restore')}${t('Restore points')}</button><button class="btn pri" id="duHeadSearch">${ic('search')}${t('Check for updates')}</button>`;
-    $('#duHeadSearch', el).addEventListener('click', () => { ctx.setTab('updates'); setTimeout(() => { const v = $('#v-drivers'); v && v._searchDrivers && v._searchDrivers(); }, 260 * SH.motion()); });
-    $('#duRestore', el).addEventListener('click', async () => { if (await SH.call('run_tool', 'rstrui') === undefined) SH.toast(t('This only works inside the app.')); });
+    $('#duHeadSearch', el).addEventListener('click', () => { SH.sound('scan_start'); ctx.setTab('updates'); setTimeout(() => { const v = $('#v-drivers'); v && v._searchDrivers && v._searchDrivers(); }, 260 * SH.motion()); });
+    $('#duRestore', el).addEventListener('click', async () => { if (await SH.call('run_tool', 'rstrui') === undefined) SH.toast(t('This only works inside the app.'), { kind: 'unavailable' }); });
   },
   renderTab(tab, el, ctx) {
     if (tab === 'updates') renderUpdates(el, ctx);

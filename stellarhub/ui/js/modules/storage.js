@@ -636,7 +636,7 @@ function renderInfo() {
   anim(box.children[1] || box, [{ opacity: .4, transform: 'translate3d(0,3px,0)' }, { opacity: 1, transform: 'none' }], { d: 200 });
 }
 async function reveal(path) {
-  if (ST.real) { try { if (await SH.engine('storage', 'reveal', path)) return; } catch (e) { console.error(e); } SH.toast(T('Not found: it may no longer exist.')); return; }
+  if (ST.real) { try { if (await SH.engine('storage', 'reveal', path)) return; } catch (e) { console.error(e); } SH.toast(T('Not found: it may no longer exist.'), { kind: 'error' }); return; }
   SH.toast(T('Would show {path} in Explorer.', { path }));
 }
 function infoAction(a) {
@@ -681,7 +681,8 @@ function setArc(dial, p, instant) {
   hs[0].style.transform = `rotate(${(-180 + 360 * Math.min(p, .5)).toFixed(2)}deg)`; hs[1].style.transform = `rotate(${(360 * Math.max(0, p - .5)).toFixed(2)}deg)`;
   if (instant) { void dial.offsetWidth; hs.forEach(e => e.style.transition = ''); }
 }
-async function runScan() {
+/* user: the user started it (the caller already played scan_start in the click); the scan on entering the Map stays silent */
+async function runScan(user) {
   if (TM.scanning) return; TM.scanning = true; scanProg = null;
   const el = $(`#v-${ID} .tab[data-tab="map"]`); const sc = el && $('.st-scan', el);
   if (sc) {
@@ -722,6 +723,7 @@ async function runScan() {
     console.error(e); return;
   }
   if (dial) { dial.classList.add('det'); setArc(dial, 1); }
+  if (user) SH.sound('scan_complete');
   TM.root = t; if (!TM.cur || !isAnc(t, TM.cur)) TM.cur = t;
   TM.scanning = false; TM.ready = true; TM.sel = null; TM.hover = TM.hoverTop = null; relayout();
   /* the map is drawn once, in pieces, before the ring leaves: the reveal below only moves finished layers */
@@ -762,12 +764,12 @@ function scanFirst(el, what) {
     el.innerHTML = `<div class="pan st-first st-wait" data-asm><span class="st-fi">${ic('storage')}</span><b>${T('Scanning… (see {tab})', { tab: T('Map') })}</b><span class="muted st-fp"></span><div class="bar st-fbar"><span></span></div>
       <button class="btn sec" data-gomap>${ic('storage')}${T('Go to {tab}', { tab: T('Map') })}</button></div>`;
     paintScanWait();
-    if (!el.dataset.b) { el.dataset.b = 1; el.addEventListener('click', e => { if (e.target.closest('[data-goscan]') && ctxRef) { ctxRef.setTab('map'); setTimeout(() => runScan(), 260); } else if (e.target.closest('[data-gomap]') && ctxRef) ctxRef.setTab('map'); }); }
+    if (!el.dataset.b) { el.dataset.b = 1; el.addEventListener('click', e => { if (e.target.closest('[data-goscan]') && ctxRef) { SH.sound('scan_start'); ctxRef.setTab('map'); setTimeout(() => runScan(true), 260); } else if (e.target.closest('[data-gomap]') && ctxRef) ctxRef.setTab('map'); }); }
     return;
   }
   el.innerHTML = `<div class="pan st-first" data-asm><span class="st-fi">${ic('storage')}</span><b>${T('Scan a drive first')}</b><span class="muted">${what}</span>
     <button class="btn pri" data-goscan>${ic('search')}${T('Scan {target}', { target: esc((ST.target || 'C:\\').replace(/\\$/, '')) })}</button></div>`;
-  if (!el.dataset.b) { el.dataset.b = 1; el.addEventListener('click', e => { if (e.target.closest('[data-goscan]') && ctxRef) { ctxRef.setTab('map'); setTimeout(() => runScan(), 260); } else if (e.target.closest('[data-gomap]') && ctxRef) ctxRef.setTab('map'); }); }
+  if (!el.dataset.b) { el.dataset.b = 1; el.addEventListener('click', e => { if (e.target.closest('[data-goscan]') && ctxRef) { SH.sound('scan_start'); ctxRef.setTab('map'); setTimeout(() => runScan(true), 260); } else if (e.target.closest('[data-gomap]') && ctxRef) ctxRef.setTab('map'); }); }
 }
 function trow(n, depth, base) {
   const t = typeOf(n); const frac = base ? n.size / base : 0;
@@ -835,7 +837,7 @@ async function typesData() {
 /* a view whose data didn't arrive: say so and offer to try again (instead of a skeleton forever) */
 function loadErr(box, e, retry) {
   box.innerHTML = `<div class="st-lerr" role="alert">${ic('alert')}<div><b>${T("Couldn't load this view.")}</b><span class="muted">${esc((e && e.message) || T('The engine did not answer.'))}</span></div><button class="btn sec sm" data-retry>${T('Try again')}</button></div>`;
-  $('[data-retry]', box).addEventListener('click', ev => { ev.stopPropagation(); retry(); }, { once: true });
+  $('[data-retry]', box).addEventListener('click', ev => { ev.stopPropagation(); SH.sound('refresh'); retry(); }, { once: true });
   console.error(e);
 }
 async function renderTypes(el) {
@@ -892,7 +894,7 @@ function askInRow(row, text, yesLabel) {
     box.innerHTML = `<span class="st-ask"><span>${esc(text)}</span><button class="btn sm danger" data-yes>${esc(yesLabel)}</button><button class="btn sm ghost" data-no>${T('No')}</button></span>`;
     anim($('.st-ask', box), [{ opacity: 0, transform: 'translate3d(10px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 260, e: EASE.spring });
     const done = v => { box.removeEventListener('click', on, true); if (!v) box.innerHTML = prev; res(v); };
-    const on = e => { if (e.target.closest('[data-yes]')) { e.stopPropagation(); done(true); } else if (e.target.closest('[data-no]')) { e.stopPropagation(); done(false); } };
+    const on = e => { if (e.target.closest('[data-yes]')) { e.stopPropagation(); SH.sound('delete'); done(true); } else if (e.target.closest('[data-no]')) { e.stopPropagation(); SH.sound('click'); done(false); } };
     box.addEventListener('click', on, true);
     setTimeout(() => { if (box.isConnected && $('.st-ask', box)) done(false); }, 7000);
   });
@@ -938,7 +940,7 @@ async function renderBig(el) {
       if (!await askInRow(row, T('This drive has no Recycle Bin. Delete permanently?'), T('Delete permanently'))) return;
       r = await toTrash(path, true); perm = true;
     }
-    if (!r || !r.ok) { SH.toast((r && r.error) || T("Couldn't send it to the Recycle Bin.")); resetRow(); return; }
+    if (!r || !r.ok) { SH.toast((r && r.error) || T("Couldn't send it to the Recycle Bin."), { kind: 'error' }); resetRow(); return; }
     BIG.removed.add(id); const h = row.offsetHeight;
     anim(row, [{ opacity: 1, transform: 'none', height: h + 'px' }, { opacity: 0, transform: 'translate3d(30px,0,0)', height: h + 'px', offset: .5 }, { opacity: 0, transform: 'translate3d(30px,0,0)', height: '0px', paddingTop: '0px', paddingBottom: '0px' }], { d: 440 })
       .finished.then(() => { row.remove(); total2(); }).catch(() => {});
@@ -947,8 +949,8 @@ async function renderBig(el) {
       SH.toast(T('{name} deleted permanently.', { name: n.name })); return;
     }
     SH.logActivity(T('{name} sent to the Recycle Bin', { name: n.name }), { sub: T('{size} freed', { size: fmtB(n.size) }), ic: 'trash', go: ID, tab: 'largest' });
-    SH.toast(T('{name} sent to the Recycle Bin.', { name: n.name }), { action: { label: T('Undo'), run: async () => {
-      const rr = await fromTrash(path); if (!rr || !rr.ok) { SH.toast((rr && rr.error) || T("Couldn't restore it.")); return; }
+    SH.toast(T('{name} sent to the Recycle Bin.', { name: n.name }), { action: { label: T('Undo'), sound: 'undo', run: async () => {
+      const rr = await fromTrash(path); if (!rr || !rr.ok) { SH.toast((rr && rr.error) || T("Couldn't restore it."), { kind: 'error' }); return; }
       BIG.removed.delete(id); const l = $('.st-blist', el); const before = new Map($$('.st-br', l).map(r => [r.dataset.big, r.getBoundingClientRect().top])); el._paint();
       const nr = $(`.st-br[data-big="${id}"]`, l); $$('.st-br', l).forEach(r => { const b = before.get(r.dataset.big); if (b !== undefined) { const dy = b - r.getBoundingClientRect().top; if (dy) anim(r, [{ transform: `translate3d(0,${dy}px,0)` }, { transform: 'none' }], { d: 420, e: EASE.spring }); } });
       if (nr) anim(nr, [{ opacity: 0, transform: 'scale(.96)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 420, delay: 120, e: EASE.spring }); } } });
@@ -1021,7 +1023,7 @@ function updDups(el, d = 900) {
 function bindDups(el) {
   if (el.dataset.bd) return; el.dataset.bd = 1;
   el.addEventListener('click', async e => {
-    if (e.target.closest('[data-dagain]')) { ST.dups = null; renderDups(el); return; }
+    if (e.target.closest('[data-dagain]')) { SH.sound('refresh'); ST.dups = null; renderDups(el); return; }
     const go = e.target.closest('[data-dgo]'); if (go) { const g = $(`[data-dg="${go.dataset.dgo}"]`, el); if (!g || g.style.display === 'none') return;
       if (!g.classList.contains('open')) $('[data-dt]', g).click();
       g.scrollIntoView({ block: 'nearest', behavior: SH.effInt() === 'min' ? 'auto' : 'smooth' }); g.classList.add('flash'); setTimeout(() => g.classList.remove('flash'), 1400); return; }
@@ -1029,10 +1031,10 @@ function bindDups(el) {
     const k = e.target.closest('[data-dk]'); if (k) { const [gid, j] = k.dataset.dk.split(':').map(Number); const d = DUPS[gid]; d.keep = j;
       $$(`[data-dk^="${gid}:"]`, el).forEach(b => { const on = b.dataset.dk === `${gid}:${j}`; b.classList.toggle('keep', on); $('.st-dkl', b).textContent = on ? T('Keep') : T('Delete'); });
       anim($('.st-radio', k), [{ transform: 'scale(.6)' }, { transform: 'scale(1)' }], { d: 320, e: EASE.spring }); return; }
-    const c = e.target.closest('[data-dclean]'); if (c) { const btn = c; btn.disabled = true; await cleanGroups([DUPS[+c.dataset.dclean]], el); btn.disabled = false; return; }
+    const c = e.target.closest('[data-dclean]'); if (c) { SH.sound('delete'); const btn = c; btn.disabled = true; await cleanGroups([DUPS[+c.dataset.dclean]], el); btn.disabled = false; return; }
     const all = e.target.closest('[data-dall]'); if (all) {
       if (all.dataset.sure !== '1') { all.dataset.sure = '1'; const old = all.innerHTML; all.innerHTML = `${ic('alert')}${T('Press again to confirm')}`; setTimeout(() => { all.dataset.sure = ''; all.innerHTML = old; }, 4000); return; }
-      all.dataset.sure = ''; all.disabled = true; await cleanGroups(DUPS.filter(d => !d.done), el); }
+      all.dataset.sure = ''; all.disabled = true; SH.sound('delete'); await cleanGroups(DUPS.filter(d => !d.done), el); }
   });
 }
 function dupFindClick(e) {
@@ -1040,10 +1042,10 @@ function dupFindClick(e) {
   const m = e.target.closest('[data-min]'); if (m) { $$('.st-dmin button', el).forEach(x => x.classList.toggle('on', x === m)); SH.placeSeg($('.st-dmin', el)); DUPMIN.v = +m.dataset.min; return; }
   if (e.target.closest('[data-dstop]')) { if (ST.dupJob) ST.dupJob.cancel(); return; }
   if (!e.target.closest('[data-dfind]') || ST.dupJob) return;
-  ST.dupJob = SH.job('storage', 'duplicates', [DUPMIN.v], { onProgress: m => { ST.dupProg = m; paintDupProg(); } });
+  ST.dupJob = SH.job('storage', 'duplicates', [DUPMIN.v], { sound: 'scan', onProgress: m => { ST.dupProg = m; paintDupProg(); } });
   showDupProgress(el);
   ST.dupJob.then(r => { ST.dups = r; ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (r.wasted) SH.toast(T('{size} in duplicate files.', { size: fmtB(r.wasted) })); })
-    .catch(err => { ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (!err.cancelled) SH.toast(T("Couldn't finish the search: {error}", { error: err.message })); });
+    .catch(err => { ST.dupJob = null; const tab = $(`#v-${ID} .tab[data-tab="duplicates"]`); if (tab) renderDups(tab); if (!err.cancelled) SH.toast(T("Couldn't finish the search: {error}", { error: err.message }), { kind: 'error' }); });
 }
 function showDupProgress(el) { const p = $('.st-dprog', el); if (!p) return; p.hidden = false; $('[data-dfind]', el).disabled = true; anim(p, [{ opacity: 0, transform: 'translate3d(0,6px,0)' }, { opacity: 1, transform: 'none' }], { d: 300 }); paintDupProg(); }
 function paintDupProg() {
@@ -1063,15 +1065,15 @@ async function cleanGroups(groups, el) {
   updDups(el, 500);
   if (nobin.length) {          // nothing was deleted from those: ask before deleting for good
     SH.toast(nobin.length > 1 ? T('{n} copies are on a drive without a Recycle Bin, so they were not deleted.', { n: nobin.length }) : T('1 copy is on a drive without a Recycle Bin, so it was not deleted.'),
-      { ms: 12000, action: { label: T('Delete permanently'), run: () => deleteForGood(nobin, el) } });
+      { ms: 12000, kind: 'warning', action: { label: T('Delete permanently'), sound: 'delete', run: () => deleteForGood(nobin, el) } });
   }
-  if (failed.length) { const why = failed.find(Boolean) || T('in use'); SH.toast(failed.length > 1 ? T("{n} copies couldn't be moved: {why}", { n: failed.length, why }) : T("1 copy couldn't be moved: {why}", { why })); }
+  if (failed.length) { const why = failed.find(Boolean) || T('in use'); SH.toast(failed.length > 1 ? T("{n} copies couldn't be moved: {why}", { n: failed.length, why }) : T("1 copy couldn't be moved: {why}", { why }), { kind: 'warning' }); }
   if (!moved.length) return;
   SH.logActivity(T('Duplicate copies sent to the Recycle Bin'), { sub: T('{size} freed', { size: fmtB(freed) }), ic: 'copy', go: ID, tab: 'duplicates' });
-  SH.toast(T('{size} sent to the Recycle Bin.', { size: fmtB(freed) }), { ms: 7000, action: { label: T('Undo'), run: async () => {
+  SH.toast(T('{size} sent to the Recycle Bin.', { size: fmtB(freed) }), { ms: 7000, action: { label: T('Undo'), sound: 'undo', run: async () => {
     let back = 0; for (const p of moved) { const r = await fromTrash(p); if (r && r.ok) back++; }
     groups.forEach(d => { moved.forEach(p => d.gone && d.gone.delete(p)); d.done = false; const b = $(`[data-dgo="${d.id}"]`, el); if (b) b.classList.remove('done'); const g = $(`[data-dg="${d.id}"]`, el); if (g) { g.style.display = ''; g.getAnimations().forEach(a => a.cancel()); anim(g, [{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 400, e: EASE.spring }); } });
-    updDups(el, 500); if (back < moved.length) SH.toast(T('Restored {n} of {total}. The rest are in the Recycle Bin.', { n: back, total: moved.length }));
+    updDups(el, 500); if (back < moved.length) SH.toast(T('Restored {n} of {total}. The rest are in the Recycle Bin.', { n: back, total: moved.length }), { kind: 'warning' });
   } } });
 }
 
@@ -1091,7 +1093,7 @@ async function deleteForGood(items, el) {
   }
   hit.forEach(d => { if (dupPaths(d).every(p => d.gone.has(p))) finishGroup(d, el); });
   updDups(el, 500);
-  if (failed.length) SH.toast(T("{n} copies couldn't be deleted: {why}", { n: failed.length, why: failed.find(Boolean) || T('in use') }));
+  if (failed.length) SH.toast(T("{n} copies couldn't be deleted: {why}", { n: failed.length, why: failed.find(Boolean) || T('in use') }), { kind: 'warning' });
   if (!n) return;
   SH.logActivity(T('Duplicate copies deleted permanently'), { sub: T('{size} freed', { size: fmtB(freed) }), ic: 'copy', go: ID, tab: 'duplicates' });
   SH.toast(T('{size} deleted permanently.', { size: fmtB(freed) }), { ms: 7000 });
@@ -1176,7 +1178,7 @@ SH.module({
     ctxRef = ctx; actEl = el; paintActions();
     isReal().then(r => { if (r) paintActions(); });
     el.addEventListener('click', async e => {
-      if (e.target.closest('[data-scan]')) { if (TM.scanning) return; if (curTab !== 'map') ctx.setTab('map'); setTimeout(() => runScan().then(() => { if (ST.real) rerenderOthers(); }), curTab === 'map' ? 0 : 260); return; }
+      if (e.target.closest('[data-scan]')) { if (TM.scanning) return; SH.sound('scan_start'); if (curTab !== 'map') ctx.setTab('map'); setTimeout(() => runScan(true).then(() => { if (ST.real) rerenderOthers(); }), curTab === 'map' ? 0 : 260); return; }
       const b = e.target.closest('[data-drv]'); if (!b || TM.scanning) return;
       if (b.dataset.drv === 'pick') {
         if (!await isReal()) { SH.toast(T('Choosing a folder only works inside the app.')); return; }
@@ -1184,7 +1186,7 @@ SH.module({
         ST.target = p;
       } else { if (ST.target === b.dataset.drv && b.classList.contains('on')) return; ST.target = b.dataset.drv; }
       paintActions(); anim($('[data-scan]', el), [{ transform: 'scale(1)' }, { transform: 'scale(1.06)', offset: .4 }, { transform: 'scale(1)' }], { d: 420, keep: true });
-      if (ST.real) { if (curTab !== 'map') ctx.setTab('map'); setTimeout(() => runScan().then(() => rerenderOthers()), curTab === 'map' ? 0 : 260); }
+      if (ST.real) { SH.sound('scan_start'); if (curTab !== 'map') ctx.setTab('map'); setTimeout(() => runScan(true).then(() => rerenderOthers()), curTab === 'map' ? 0 : 260); }
     });
   },
   renderTab(tab, el) { RENDERED[tab] = el; RENDER[tab](el); },
