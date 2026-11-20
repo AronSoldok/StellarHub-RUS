@@ -699,7 +699,7 @@ async function runScan() {
     t = await API.scan(p => {
       scanProg = { files: p.files, frac: p.frac || 0, unit: p.unit }; paintScanWait();
       if (!sc) return;
-      SH.rollNumber($('.st-sn', sc), p.files); setPathText(spEl, p.path || ' ');
+      SH.rollNumber($('.st-sn', sc), p.files, { tick: true }); setPathText(spEl, p.path || ' ');
       if (unitEl && p.unit) { const u = p.unit === 'entries' ? T('entries read') : T('files read'); if (unitEl.textContent !== u) unitEl.textContent = u; }
       if (dial && p.frac > 0) { shown = Math.max(shown, p.frac); dial.classList.add('det'); setArc(dial, shown); }
       const now = performance.now();
@@ -752,7 +752,8 @@ function paintScanWait() {
   $$(`#v-${ID} .st-first.st-wait`).forEach(box => {
     const f = scanProg ? Math.max(0, Math.min(1, scanProg.frac)) : 0, bar = $('.bar>span', box), tx = $('.st-fp', box);
     if (bar) bar.style.setProperty('--v', f);
-    if (tx) SH.rollNumber(tx, scanProg ? (scanProg.unit === 'entries' ? T('{n} entries read', { n: fmtInt(scanProg.files) }) : T('{n} files read', { n: fmtInt(scanProg.files) })) : T('Preparing the scan…'));
+    /* fed on every progress update: plain text (a roll at this rate would only show half-moved digits) */
+    if (tx) SH.rollNumber(tx, scanProg ? (scanProg.unit === 'entries' ? T('{n} entries read', { n: fmtInt(scanProg.files) }) : T('{n} files read', { n: fmtInt(scanProg.files) })) : T('Preparing the scan…'), { plain: true });
   });
 }
 function scanFirst(el, what) {

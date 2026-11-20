@@ -236,9 +236,32 @@ function countUp(el, to, d = 900, dec = 0) {
    never stack and no stale glyph is left behind. Plain text while the lighter mode is on, at intensity "minimum" or when
    the count-up setting is off.   SH.rollNumber(el, 77390, { format: SH.fmtInt }); a string is shown as it is. */
 const ROLL_GAP = 240;
+/* a counter fed many times a second (files read during a scan) does not roll: every digit changes on every update,
+   so a roll would only ever show half-moved glyphs. It counts up instead, frame by frame, easing toward the latest
+   value: it never jumps and only one value is ever on screen.   SH.rollNumber(el, n, { tick: true }) */
+function tickTo(el, value, o) {
+  const f = o.format || fmtInt;
+  if (el._rn) { if (el._rn.timer) clearTimeout(el._rn.timer); el._rn = null; el.textContent = f(+(el.dataset.v || 0)); }
+  let tk = el._tk;
+  if (!tk) { tk = el._tk = { cur: value, to: value, raf: 0 }; el.textContent = f(value); return; }
+  tk.to = value; tk.f = f;
+  if (tk.raf) return;
+  let prev = performance.now();
+  const step = now => {
+    const dt = Math.min(.1, (now - prev) / 1000); prev = now;
+    const gap = tk.to - tk.cur;
+    tk.cur = Math.abs(gap) < 1 ? tk.to : tk.cur + gap * (1 - Math.exp(-dt * 9));   /* ~90% of the way in a quarter second */
+    el.textContent = tk.f(Math.round(tk.cur));
+    tk.raf = tk.cur === tk.to || el._tk !== tk ? 0 : requestAnimationFrame(step);
+  };
+  tk.raf = requestAnimationFrame(step);
+}
 function rollNumber(el, value, o = {}) {
   if (!el) return;
   const num = typeof value === 'number' && isFinite(value);
+  const fast = num && o.tick && !(state.lite || effInt() === 'min' || state.settings.countUp === false || o.plain || document.hidden);
+  if (fast) { el.dataset.v = value; tickTo(el, value, o); return; }
+  if (el._tk) { if (el._tk.raf) cancelAnimationFrame(el._tk.raf); el._tk = null; }
   const txt = num ? (o.format || fmtInt)(value) : String(value);
   if (num) el.dataset.v = value;
   let rn = el._rn;
