@@ -8,6 +8,7 @@ A plain Win32 layered window with per-pixel alpha (rounded corners, soft shadow)
 its own thread with its own message loop, so it never waits on the main window.
 """
 import ctypes
+import math
 import ctypes.wintypes as wt
 import os
 import threading
@@ -92,75 +93,110 @@ def _brand_font(size):
 
 
 class _Card:
-    """Draws the card: everything static once, then the moving bar and the status line per frame."""
+    """The start screen: the StellarHub logo floating on the desktop (no card behind it), its name, a comet sweeping
+    a thin track and the status line. A soft shadow under everything keeps it readable on light wallpapers too.
+    The version and its codename hide on the planet, small. Everything static is drawn once; per frame only the
+    comet and the status line. ImageDraw REPLACES pixels, alpha included, so every translucent thing is drawn on
+    its own transparent layer and composited."""
 
     def __init__(self, scale):
         s = self.s = scale
-        self.cw, self.ch, self.pad = int(400 * s), int(250 * s), int(36 * s)
-        W, H = self.cw + 2 * self.pad, self.ch + 2 * self.pad
+        W, H = int(380 * s), int(340 * s)
         self.size = (W, H)
         base = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        # soft shadow
-        sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        ImageDraw.Draw(sh).rounded_rectangle((self.pad, self.pad + int(8 * s), self.pad + self.cw, self.pad + self.ch + int(8 * s)),
-                                             radius=int(24 * s), fill=(0, 0, 0, 150))
-        base.alpha_composite(sh.filter(ImageFilter.GaussianBlur(int(16 * s))))
-        # the card: deep space gradient, a warm glow behind the logo, a hairline border
-        card = Image.new("RGBA", (self.cw, self.ch))
-        top, bottom = (17, 27, 52), (6, 10, 20)
-        d = ImageDraw.Draw(card)
-        for y in range(self.ch):
-            f = y / max(1, self.ch - 1)
-            d.line((0, y, self.cw, y), fill=tuple(int(top[i] + (bottom[i] - top[i]) * f) for i in range(3)) + (255,))
-        glow = Image.new("RGBA", card.size, (0, 0, 0, 0))
-        gx, gy, gr = self.cw // 2, int(92 * s), int(70 * s)
-        ImageDraw.Draw(glow).ellipse((gx - gr, gy - gr, gx + gr, gy + gr), fill=(255, 122, 102, 60))
-        card.alpha_composite(glow.filter(ImageFilter.GaussianBlur(int(34 * s))))
-        mask = Image.new("L", card.size, 0)
-        ImageDraw.Draw(mask).rounded_rectangle((0, 0, self.cw - 1, self.ch - 1), radius=int(22 * s), fill=255)
-        card.putalpha(mask)
-        # ImageDraw REPLACES pixels (alpha included): anything translucent is drawn on its own transparent layer and
-        # composited, or it would punch see-through holes in the card
-        edge = Image.new("RGBA", card.size, (0, 0, 0, 0))
-        ImageDraw.Draw(edge).rounded_rectangle((0, 0, self.cw - 1, self.ch - 1), radius=int(22 * s),
-                                               outline=(158, 214, 255, 38), width=max(1, int(s)))
-        card.alpha_composite(edge)
-        # logo, name, version
+        cx = W // 2
+        logo_size = int(176 * s)
+        ly = int(26 * s)
+        # a dark halo, very soft: no edge, no shape, only enough to separate the logo and the text from the desktop
+        halo = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        hd = ImageDraw.Draw(halo)
+        hd.ellipse((cx - int(110 * s), int(24 * s), cx + int(110 * s), int(214 * s)), fill=(5, 8, 18, 135))   # the logo
+        hd.rounded_rectangle((cx - int(135 * s), int(222 * s), cx + int(135 * s), int(312 * s)), radius=int(40 * s), fill=(5, 8, 18, 120))  # name, bar, status
+        base.alpha_composite(halo.filter(ImageFilter.GaussianBlur(int(26 * s))))
+        # a warm glow behind the planet
+        glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        gy, gr = ly + int(logo_size * .53), int(58 * s)
+        ImageDraw.Draw(glow).ellipse((cx - gr, gy - gr, cx + gr, gy + gr), fill=(255, 122, 102, 70))
+        base.alpha_composite(glow.filter(ImageFilter.GaussianBlur(int(30 * s))))
+        # the logo, with the version on the planet
         try:
             from .tray import make_icon_image
-            logo = make_icon_image(int(86 * s), tile=False).convert("RGBA")
-            card.alpha_composite(logo, (self.cw // 2 - logo.width // 2, gy - logo.height // 2))
+            logo = make_icon_image(logo_size, tile=False).convert("RGBA")
+            shadow = Image.new("RGBA", logo.size, (0, 0, 0, 0))
+            shadow.putalpha(logo.getchannel("A").point(lambda a: a * 90 // 255))
+            base.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(int(8 * s))), (cx - logo.width // 2, ly + int(6 * s)))
+            tag = Image.new("RGBA", logo.size, (0, 0, 0, 0))
+            td = ImageDraw.Draw(tag)
+            pcx, pcy, pr = logo.width / 2, logo.height * .53, logo.width * .2   # make_icon_image's planet (large tier)
+            try:
+                from . import CODENAME
+            except ImportError:
+                CODENAME = ""
+            td.text((pcx, pcy - pr * .42), CODENAME, font=_brand_font(max(7, int(9 * s))), fill=(70, 22, 18, 150), anchor="mm")
+            td.text((pcx, pcy - pr * .1), VERSION, font=_font("seguisb.ttf", max(7, int(8 * s))), fill=(70, 22, 18, 120), anchor="mm")
+            logo.alpha_composite(tag)
+            base.alpha_composite(logo, (cx - logo.width // 2, ly))
+            self.logo_at = (cx - logo.width // 2, ly, logo.width)
         except Exception:
             pass
-        txt = Image.new("RGBA", card.size, (0, 0, 0, 0))
-        d = ImageDraw.Draw(txt)
-        name = _brand_font(int(22 * s))
-        d.text((self.cw // 2, int(160 * s)), "StellarHub", font=name, fill=(233, 238, 247, 255), anchor="mm")
-        d.text((self.cw - int(16 * s), self.ch - int(14 * s)), VERSION, font=_font("segoeui.ttf", int(11 * s)),
-               fill=(232, 238, 248, 90), anchor="rs")
-        card.alpha_composite(txt)
-        base.alpha_composite(card, (self.pad, self.pad))
+        # the name, with its own soft shadow
+        name_y = ly + logo_size + int(14 * s)
+        name = _brand_font(int(26 * s))
+        sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(sh).text((cx, name_y + int(2 * s)), "StellarHub", font=name, fill=(0, 0, 0, 200), anchor="mm")
+        base.alpha_composite(sh.filter(ImageFilter.GaussianBlur(int(5 * s))))
+        txt = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(txt).text((cx, name_y), "StellarHub", font=name, fill=(240, 244, 251, 255), anchor="mm")
+        base.alpha_composite(txt)
         self.base = base
         self.small = _font("segoeui.ttf", int(12 * s))
-        self.bar = (self.pad + self.cw // 2 - int(80 * s), self.pad + int(186 * s), int(160 * s), max(2, int(3 * s)))
+        self.status_x, self.status_y = cx, name_y + int(34 * s)
 
     def frame(self, t, status):
+        """The loading indicator is the planet's ring: a light runs around it with a glowing trail, hidden by the
+        planet while it passes behind. Same geometry as tray.make_icon_image (large tier): center (.5, .53), radii
+        .385 x .135 of the logo minus half the ring width (.064), tilted 20 degrees; the half above the center is
+        the back of the ring."""
         im = self.base.copy()
-        layer = Image.new("RGBA", im.size, (0, 0, 0, 0))  # drawn apart and composited: see _Card.__init__
-        d = ImageDraw.Draw(layer)
-        x, y, w, h = self.bar
-        d.rounded_rectangle((x, y, x + w, y + h), radius=h, fill=(232, 238, 248, 22))
-        seg = int(w * .36)
-        pos = int((t * .9 % 1.6 - .3) * w)  # an indeterminate sweep, like the app's loading bars
-        a, b = max(x, x + pos), min(x + w, x + pos + seg)
-        if b > a:
-            for i in range(a, b):  # ice blue to coral
-                f = (i - (x + pos)) / max(1, seg)
-                col = (int(158 + (255 - 158) * f), int(214 + (122 - 214) * f), int(255 + (102 - 255) * f), 235)
-                d.line((i, y, i, y + h - 1), fill=col)
+        if getattr(self, "logo_at", None):
+            lx, ly, n = self.logo_at
+            cx, cy, pr = n * .5, n * .53, n * .2
+            rw = n * .064
+            rx, ry = n * .385 - rw / 2, n * .135 - rw / 2
+            head = (t * 1.15) % 1.0 * 2 * math.pi           # one turn every ~0.87 s
+            trail = 2.3                                      # radians of glowing trail behind the head
+            glow = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+            core = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+            gd, cd = ImageDraw.Draw(glow), ImageDraw.Draw(core)
+            steps = 64
+            for i in range(steps, -1, -1):                   # from the end of the trail to the head
+                f = 1 - i / steps                            # 0 at the end of the trail, 1 at the head
+                a = head - trail * (1 - f)
+                x, y = cx + rx * math.cos(a), cy + ry * math.sin(a)
+                if y < cy and math.hypot(x - cx, y - cy) < pr * .98:
+                    continue                                 # behind the planet
+                w = f ** 2.2
+                r = rw * (.38 + .2 * w)
+                col = (int(200 + 55 * w), int(232 - 60 * w ** 3), int(255 - 100 * w ** 3))
+                cd.ellipse((x - r, y - r, x + r, y + r), fill=col + (int(40 + 200 * w),))
+                rg = rw * (.9 + 1.1 * w)
+                gd.ellipse((x - rg, y - rg, x + rg, y + rg), fill=(255, 150, 125, int(70 * w)) if w > .7 else (170, 220, 255, int(60 * w)))
+            hx, hy = cx + rx * math.cos(head), cy + ry * math.sin(head)
+            if not (hy < cy and math.hypot(hx - cx, hy - cy) < pr * .98):
+                r = rw * .55
+                cd.ellipse((hx - r, hy - r, hx + r, hy + r), fill=(255, 246, 240, 255))
+            glow = glow.filter(ImageFilter.GaussianBlur(max(2, rw * .9)))
+            glow.alpha_composite(core)
+            glow = glow.rotate(20, resample=Image.BICUBIC, center=(cx, cy))
+            im.alpha_composite(glow, (lx, ly))
         if status:
-            d.text((x + w // 2, y + int(24 * self.s)), status, font=self.small, fill=(232, 238, 248, 140), anchor="mm")
-        im.alpha_composite(layer)
+            s = self.s
+            st = Image.new("RGBA", im.size, (0, 0, 0, 0))
+            ImageDraw.Draw(st).text((self.status_x, self.status_y + 1), status, font=self.small, fill=(0, 0, 0, 210), anchor="mm")
+            im.alpha_composite(st.filter(ImageFilter.GaussianBlur(int(3 * s))))
+            tx = Image.new("RGBA", im.size, (0, 0, 0, 0))
+            ImageDraw.Draw(tx).text((self.status_x, self.status_y), status, font=self.small, fill=(232, 238, 248, 200), anchor="mm")
+            im.alpha_composite(tx)
         return im
 
 
