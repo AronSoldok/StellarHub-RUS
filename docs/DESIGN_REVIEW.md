@@ -76,3 +76,36 @@ Thesis: **observatory glass**. The sky stays alive around the work; the work sit
    ring). Indeterminate progress sweeps stay.
 6. Cover every screen: shared pieces in `base.css` first (they reach all 12 modules), then each module's own CSS
    for the flagged items, Home, Settings, palette, component sheet, toasts, widget, tray and the start screen.
+
+## Result (what changed)
+
+- **Surfaces** (`base.css`): one glass recipe for panels, sheet, palette, dock, toasts, menus, notes and dialogs:
+  `--sheen` (faint ice light from above) over the deep tint, `--rim` (1 px top highlight), `--lift`/`--lift-hi`
+  (soft offset shadows). "Solid panels" maps to a denser tint (default 1.75 now ~78 % deep instead of ~64 %), so the
+  stars recede behind content and stay bright in the gutters. Toasts are dark glass with a small planet signifier
+  instead of the inverted light pill. Tab and segmented indicators are lit glass.
+- **Type**: role tokens (`--fs-*`). Unbounded only from 15 px up: tile names, kit titles, backup and release-note
+  headings and small values moved to Onest 600. Panel titles, settings labels, palette groups and table heads gained
+  weight so each group has an anchor. `text-wrap: balance/pretty` on headings, empty states and descriptions.
+- **Colour**: coral and ice unchanged. `--faint` `#5B6781` -> `#7683A0` (now >= 4.5:1 on panels), `--mute` one step
+  lighter, hairlines a touch cooler; dusk theme adjusted the same way. Derived `--acc-soft/--acc-line/--ice-soft/
+  --ice-line`. Nebula: one extra coral core and a faint ice horizon under the dock (static gradients, no filter).
+  Text selection and caret themed.
+- **Motion**: 73 overshoot curves -> `--e-snap`/`--e-out`; `SH.EASE.spring/soft/snappy` damped from ~0.71-0.78 to
+  ~0.84-0.87 (the dock, camera and 3D springs keep their own constants). Hover no longer moves the hovered box on
+  settings cards, tools, Home vitals and pending rows.
+- **Decoration replaced**: zero-offset glows -> rings or offset neutral shadows (admin dot, radar, next run, driver
+  age, routine dot, pressed key, UAC level, RAM sticks, widget and tray dots, primary buttons, controller ring);
+  Autopilot calendar events -> full tinted border plus a leading colour dot; changed services -> tinted, outlined row;
+  estimate bar -> hollow outlined bar; live dots -> steady dot with a ring ("in use now" calls twice when it
+  appears, then rests). Indeterminate progress sweeps unchanged.
+- **Signature**: the dock marks the active module with the brand mark in miniature (a coral planet on an ice orbit).
+- **Start screen**: the name is set in Unbounded 500 (bundled woff2, like the installer art), Segoe UI fallback.
+
+## Detector (after)
+
+`impeccable detect stellarhub/ui --no-design-system` (same rule set as before): 13 findings, down from 87:
+12 indeterminate progress sweeps (kept on purpose) and 1 repeating gradient that draws the gold contacts of the RAM
+stick illustration in Live Monitor > Memory (an illustration, kept). With the new DESIGN.md the detector also checks
+conformance to the documented scale and reports ~500 advisories (off-scale radii, colours and sizes in module CSS):
+a follow-up token cleanup, not part of this pass.
