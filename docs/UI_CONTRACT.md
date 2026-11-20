@@ -78,6 +78,34 @@ notification (success, error, a finished scan) replaces a click that began in th
 the window is hidden. Settings: `sounds`, `soundVolume`, `soundUi`, `soundAlerts`, `soundTasks`, `soundSystem`
 (Settings > Sound); lighter effects and intensity `min` mute nothing.
 
+## Long work the user started (activities)
+
+Anything long the user started (a scan, an analysis, a cleanup, a queue of installs, a test, a routine, a backup) is
+an activity, so it can be followed from anywhere (`SH.activity`, core.js):
+
+```js
+const h = SH.activity.start('storage', { key: 'scan', label: SH.t('Scanning {name}', { name }), go: { tab: 'map' } });
+h.progress(.38);                 // 0..1, or null while it cannot be measured; a second argument replaces the status text
+if (!h.end({ ok: true, summary: SH.t('{size} in {n} files', { size, n }) })) SH.toast(/* the module's own result */);
+// h.end({ ok: false, error }) / h.end({ cancelled: true })
+```
+
+- While it runs and the user is elsewhere, the module's dock icon wears a thin ring (filled to the progress, a short
+  arc in a slow orbit when there is none) and its tooltip says the status; Home's To review panel shows it as a live
+  row; the palette's module row shows the percentage; the taskbar button shows the progress of every running activity
+  together (indeterminate if any has none, red for a moment when one fails; `stellarhub/taskbar.py`).
+- When it ends while the user is elsewhere, `end()` shows a toast with **View** (the window hidden in the tray or
+  minimized gets a Windows notification instead, whose click opens the module), leaves a badge on the dock icon until
+  the module is visited, and returns `true`: the module then skips its own result toast. Looking at the module, it
+  returns `false` and says nothing (the module's own result UI answers). Cancelled: nothing at all.
+- Several per module (`key`); the newest is shown. The same `key` while one is open returns that one.
+- Exactly one sound: a toast after a sound played in the last 0.7 s (the job's `scan_complete`) stays silent. `kind`
+  sets the toast's kind (`'achievement'`, `'warning'`); `toast: false` keeps the badge and the notification but leaves
+  the toast to the module (Autopilot's own has View the log).
+- Only what the user started: a refresh on entering a view passes nothing. `SH.job(..., { sound: 'scan' | 'task' })`
+  opens one by itself (its progress and text, a generic summary) unless the module already has one open;
+  `{ activity: h }` sends a job's progress to the module's own, `{ activity: false }` opts out.
+
 ## Lighter effects
 
 The interface does less work when "Lighter effects" (setting `lightMode`) says so: `'auto'` (default: on battery, or when the page renders on an integrated GPU), `'always'` or `'never'`. The old boolean `batterySaver: false` maps to `'never'` (core.js does it when `lightMode` was never saved; `batterySaver` itself is kept in step for older readers). `js/telemetry.js` decides it (desktops, which report no charge state, are never on battery) and sets:

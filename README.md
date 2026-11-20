@@ -121,6 +121,9 @@ conditions and what to do.
   intensity and speed, shortcuts to Windows tools and more.
 - **Quiet interface sounds**: short, soft sounds for clicks, tabs, dialogs, notifications, scans and updates, never
   more than one per action. Volume and four groups (interface, notifications, tasks, system) in *Settings > Sound*.
+- **Follow long work from anywhere**: while a scan, cleanup, update queue or test runs, the module's dock icon wears a
+  thin progress ring, Home lists it live, and the taskbar button shows the progress; when it ends elsewhere you get a
+  notice with *View* (a Windows notification if StellarHub is in the tray) and a small badge on the icon.
 - The **side buttons of your mouse** go back and forward, like in a browser.
 - **Lighter effects on battery**: unplugged, StellarHub switches to simpler effects, a calmer starfield and slower
   live data, so it stays smooth and saves power (*Settings > Animation*, on by default). Hidden in the tray it uses
@@ -376,6 +379,7 @@ designs/                   the early design explorations
 - [x] Updates signed by the author, verified before installing (2.0.0)
 - [x] Controller navigation and a controller tester (2.0.0)
 - [x] Desktop-tower 3D view, lighter mode for battery and integrated graphics (2.0.0)
+- [x] Long work followed from anywhere: dock rings, Home, taskbar progress and completion notices (2.0.0)
 - [ ] Code-signed releases (SignPath Foundation)
 
 ## 🤝 Contributing
