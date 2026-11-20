@@ -16,7 +16,7 @@ html.pad-mode #padRing.on.has{opacity:1}
 html.pad-mode #padRing.on.has .pr-fr b{animation-play-state:running}
 #padRing .pr-in::after{content:"";position:absolute;inset:-5px;border-radius:calc(var(--rr) + 5px);
   background:color-mix(in oklab,var(--accent2) 7%,transparent);
-  box-shadow:0 0 26px -3px color-mix(in oklab,var(--accent2) 60%,transparent),0 0 0 1px color-mix(in oklab,var(--void) 70%,transparent)}
+  box-shadow:0 0 0 1px color-mix(in oklab,var(--accent2) 45%,transparent),0 0 0 3px color-mix(in oklab,var(--void) 70%,transparent),0 12px 28px -12px rgba(0,0,0,.8)}
 #padRing i{position:absolute;inset:-5px;border-radius:calc(var(--rr) + 5px);border:2px solid var(--accent);opacity:0}
 @keyframes padSpin{from{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}
 html[data-int=min] #padRing .pr-fr b{animation:none}
@@ -28,11 +28,11 @@ html.pad-mode :focus-visible,html.pad-mode :focus{outline:none}
 /* the hint bar sits just above the dock; while it is up the page keeps that strip free (html.pad-hints) */
 html.pad-hints{--dockspace:138px}
 #padHints{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:120;display:none;align-items:center;gap:16px;
-  max-width:calc(100vw - 32px);padding:4px 18px;border-radius:99px;pointer-events:none;white-space:nowrap;
+  max-width:calc(100vw - 32px);padding:4px 18px;border-radius:var(--r-pill);pointer-events:none;white-space:nowrap;
   background:color-mix(in oklab,var(--deep) 86%,transparent);border:1px solid var(--line2);backdrop-filter:blur(12px);
   box-shadow:0 14px 40px -16px rgba(0,0,0,.7)}
 html.pad-mode #padHints.on{display:flex}
-#padHints .ph{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--mute)}
+#padHints .ph{display:flex;align-items:center;gap:5px;font-size:var(--fs-sm);color:var(--mute)}
 #padHints .ph b{font-weight:500}
 #padHints .ph .pg+.pg{margin-left:-1px}
 .pg{flex:none;overflow:visible}

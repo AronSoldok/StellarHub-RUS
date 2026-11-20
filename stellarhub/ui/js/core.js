@@ -180,7 +180,8 @@ function springEase(k = 180, c = 19) {
   for (let i = 0; i <= 60; i++) { pts.push(+x.toFixed(4)); for (let j = 0; j < 4; j++) { const a = -k * (x - 1) - c * v; v += a * h / 4; x += v * h / 4; } }
   pts[pts.length - 1] = 1; return `linear(${pts.join(',')})`;
 }
-const EASE = { out: 'cubic-bezier(.16,1,.3,1)', io: 'cubic-bezier(.62,0,.18,1)', spring: springEase(), soft: springEase(120, 17), snappy: springEase(300, 26),
+/* springs keep the orbital, living feel but are damped (about 0.85) so they settle instead of wobbling */
+const EASE = { out: 'cubic-bezier(.16,1,.3,1)', io: 'cubic-bezier(.62,0,.18,1)', spring: springEase(180, 22.5), soft: springEase(120, 19), snappy: springEase(300, 30),
   glide: springEase(150, 22) /* settles without overshoot: smooth view and tab changes */ };
 
 /* WAAPI with the motion intensity applied. Cancels whatever the element was animating (interruptible). */
@@ -294,6 +295,26 @@ const P = {
 };
 const ic = (n, cls = 'i') => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[n] || P.dots}</svg>`;
 const icons = { add(o) { Object.assign(P, o); }, has: n => n in P };
+
+/* ---------- empty states: one component for "all done", "nothing found", "nothing yet" and "could not read" ----------
+   SH.emptyState({ art, title, text, action, small }) returns the HTML (title and text are ready-made HTML: escape what is not yours).
+   art: 'ok' (all done / clean: a planet with a check), 'none' (nothing matches: an orbit with its moon missing),
+        'first' (first use / nothing yet: a lone star in its orbit), 'error' (could not read: a planet off its orbit).
+   action: { label, id?, data? ('data-retry="x"'), go? ('module/tab': opens it by itself), click? (a selector: clicks that element, e.g. the header button), icon?, pri? } renders a button; listen to it yourself unless it has go.
+   cls: an extra class for the module's own sizing.
+   small: tighter version for lists and side panels. */
+const ES_ART = {
+  ok: '<path class="o" d="M16 44a44 12 0 0 1 88 0" transform="rotate(-16 60 44)"/><circle class="p" cx="60" cy="40" r="17"/><path class="c" d="m52.5 40.5 5.5 5.5 10-11"/><path class="o" d="M16 44a44 12 0 0 0 88 0" transform="rotate(-16 60 44)"/><circle class="m" cx="101" cy="33" r="3"/>',
+  none: '<path class="o d" d="M16 44a44 12 0 0 1 88 0" transform="rotate(-16 60 44)"/><circle class="p" cx="60" cy="40" r="17"/><path class="o d" d="M16 44a44 12 0 0 0 88 0" transform="rotate(-16 60 44)"/><path class="c" d="M55.4 36.2a4.8 4.8 0 1 1 6.7 4.4c-1.4.7-2.1 1.5-2.1 3M60 47.8v.01"/><circle class="m e" cx="101" cy="33" r="3"/>',
+  first: '<ellipse class="o d" cx="60" cy="40" rx="44" ry="13" transform="rotate(-16 60 40)"/><path class="p s" d="M60 22.5 63.6 36.4 77.5 40 63.6 43.6 60 57.5 56.4 43.6 42.5 40 56.4 36.4z"/><circle class="m" cx="96" cy="49" r="3"/>',
+  error: '<path class="o d" d="M16 44a44 12 0 0 1 88 0" transform="rotate(-16 60 44)"/><circle class="p" cx="52" cy="44" r="16"/><path class="c" d="m46 36 4 5.5-4 4 5 5"/><path class="o d" d="M18 58a44 12 0 0 0 70 5" transform="rotate(-16 60 44)"/><circle class="m e" cx="100" cy="23" r="3"/>',
+};
+const ES_STARS = '<path class="t" d="M14 14v6M11 17h6M104 58v5M101.5 60.5h5"/><circle class="t f" cx="27" cy="62" r="1.2"/><circle class="t f" cx="94" cy="12" r="1.2"/><circle class="t f" cx="8" cy="40" r="1"/><circle class="t f" cx="113" cy="38" r="1"/>';
+const emptyArt = (art = 'none') => `<svg class="es-art" viewBox="0 0 120 76" aria-hidden="true">${ES_STARS}${ES_ART[art] || ES_ART.none}</svg>`;
+const emptyState = ({ art = 'none', title = '', text = '', action, small = false, cls = '' } = {}) => {
+  const a = action && action.label ? `<div class="es-act"><button class="btn ${action.pri ? 'pri' : 'sec'} sm"${action.id ? ` id="${action.id}"` : ''}${action.go ? ` data-es-go="${action.go}"` : ''}${action.click ? ` data-es-click="${action.click}"` : ''}${action.data ? ' ' + action.data : ''}>${action.icon ? ic(action.icon) : ''}${esc(action.label)}</button></div>` : '';
+  return `<div class="empty es es-${art}${small ? ' es-sm' : ''}${cls ? ' ' + cls : ''}">${emptyArt(art)}${title ? `<b>${title}</b>` : ''}${text ? `<p>${text}</p>` : ''}${a}</div>`;
+};
 
 /* ---------- the PC (sample data; inside the app it is replaced by the real data from Python) ----------
    Component names, titles, values and typeName arrive translated; the row LABELS (rows[i][0]) stay in English because
@@ -422,11 +443,51 @@ setInterval(() => {
   const v = document.querySelector('.view.is-on'); if (v) sfScan(v); const s = document.querySelector('.overlay.on .sheet .body'); if (s) sfScan(s);
 }, 1200);
 
+/* the next-step button of an empty state can open a module tab by itself: data-es-go="module/tab" */
+addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-es-go],[data-es-click]'); if (!b) return;
+  if (b.dataset.esGo) { const [m, tab] = b.dataset.esGo.split('/'); SH.go(m, tab ? { tab } : {}); } else { const t = document.querySelector(b.dataset.esClick); if (t) t.click(); }
+});
+
+/* ---------- charts: one look for every canvas chart (Live Monitor, Benchmark) ----------
+   Gridlines: n-1 inner hairlines (--line). Y labels: 11.5 px --faint, sitting on their gridline at the left edge (only when
+   the plot is at least 96 px tall). X labels: the same style in the bottom corners. Tooltip: a deep glass box with a
+   hairline, 8 px corners, 11.5 px text, one line per series and the time last, placed beside the cursor line.
+   Charts reserve CHART.xpad px under the plot for the x labels. */
+const chartKit = (() => {
+  let cc = null;
+  const col = () => cc || (cc = (() => { const cs = getComputedStyle(document.documentElement), o = {}; ['line', 'faint', 'mute', 'ink', 'deep'].forEach(k => { o[k] = cs.getPropertyValue('--' + k).trim(); }); return o; })());
+  on('look', () => { cc = null; setTimeout(() => { cc = null; }, 60); });
+  const FONT = '11.5px Onest, "Microsoft YaHei UI", system-ui, sans-serif';
+  const alpha = (c, a) => `color-mix(in srgb, ${c} ${Math.round(a * 100)}%, transparent)`;
+  return {
+    FONT, xpad: 17,
+    grid(x, L, R, T, B, n = 4) { x.strokeStyle = col().line; x.lineWidth = 1; for (let i = 1; i < n; i++) { const y = Math.round(T + (B - T) * i / n) + .5; x.beginPath(); x.moveTo(L, y); x.lineTo(R, y); x.stroke(); } },
+    /* y labels from hi (top) to lo (bottom), one per gridline plus the top one */
+    ticks(x, L, T, B, n, hi, lo, fmt) {
+      if (B - T < 96) return; x.save(); x.font = FONT; x.fillStyle = col().faint; x.textAlign = 'left'; x.textBaseline = 'alphabetic';
+      x.lineJoin = 'round'; x.lineWidth = 3; x.strokeStyle = col().deep;
+      for (let i = 0; i < n; i++) { const tx = fmt(hi - (hi - lo) * i / n), ty = i ? Math.round(T + (B - T) * i / n) - 4 : T + 12; x.globalAlpha = .85; x.strokeText(tx, L + 3, ty); x.globalAlpha = 1; x.fillText(tx, L + 3, ty); }
+      x.restore();
+    },
+    xlabels(x, L, R, h, a, b) { x.save(); x.font = FONT; x.fillStyle = col().faint; x.textBaseline = 'alphabetic'; x.textAlign = 'left'; if (a) x.fillText(a, L + 3, h - 4); x.textAlign = 'right'; if (b) x.fillText(b, R - 3, h - 4); x.restore(); },
+    /* lines: [[color, text], ...]; px: the cursor x; returns nothing */
+    tip(x, px, W, T, lines) {
+      x.save(); x.font = '500 ' + FONT; const c = col();
+      const tw = Math.max(...lines.map(l => x.measureText(l[1]).width)) + 20, bh = lines.length * 17 + 10, bx = px + 14 + tw > W ? px - 14 - tw : px + 14;
+      x.fillStyle = c.deep; x.globalAlpha = .95; x.beginPath(); x.roundRect(bx, T, tw, bh, 8); x.fill(); x.globalAlpha = .16; x.strokeStyle = c.ink; x.lineWidth = 1; x.stroke(); x.globalAlpha = 1;
+      x.textAlign = 'left'; x.textBaseline = 'alphabetic'; lines.forEach((l, i) => { x.fillStyle = l[0]; x.fillText(l[1], bx + 10, T + 18 + i * 17); });
+      x.restore();
+    },
+    cursor(x, px, T, B) { x.save(); x.strokeStyle = col().ink; x.globalAlpha = .22; x.lineWidth = 1; x.beginPath(); x.moveTo(Math.round(px) + .5, T); x.lineTo(Math.round(px) + .5, B); x.stroke(); x.restore(); },
+  };
+})();
+
 /* i18n.js ran first and already put SH.t and SH.i18n here: keep them */
 window.SH = Object.assign(window.SH || {}, {
   $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, effInt, on, emit, call, apiReady, loadSettings, setSetting,
   engine, job, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, fitText, esc,
-  ic, icons, PC, MODS, modById, registry, module, homeVariant, actions,
+  ic, icons, emptyState, emptyArt, chartKit, PC, MODS, modById, registry, module, homeVariant, actions,
   go: () => {}, toast: () => {}, openComponent: () => {}, sfScan,
   /* the window coming in after the start screen, and going away when StellarHub closes, updates or reopens as
      administrator (app.py calls these): a short fade instead of a cut */

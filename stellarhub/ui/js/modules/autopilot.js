@@ -511,7 +511,7 @@ function addRoutine(r, quiet) {
 /* ---------- editor ---------- */
 function drawEditor(soft) {
   const ed = $('#apEd', rEl); const r = cur(); if (!ed) return;
-  if (!r) { ed.innerHTML = `<div class="empty"><b>${tr('Choose a routine')}</b>${tr('Or create a new one at the top right.')}</div>`; return; }
+  if (!r) { ed.innerHTML = SH.emptyState({ art: 'first', title: tr('Choose a routine'), text: tr('Or create a new one at the top right.') }); return; }
   const html = `
     <div class="ape-head">
       <button class="ap-sw" style="--c:${colorOf(r)}" title="${esc(tr('Change the color'))}" aria-label="${esc(tr('Change the color'))}"></button>
@@ -579,7 +579,7 @@ function catH(s) {
       <div class="cg-b"><div>${f.map(d => { const na = NA[s][d.k];
         return `<button class="cg-it${na ? ' na' : ''}" data-add="${d.k}"${na ? ` aria-disabled="true" title="${esc(na)}"` : ''}><span class="cg-ic">${ic(d.ic)}</span><span class="cg-t">${esc(d.t)}${na ? `<i>${tr('not available')}</i>` : d.admin ? `<i>${tr('administrator')}</i>` : ''}</span>${used.has(d.k) ? `<em>${tr('added')}</em>` : ''}${ic(na ? 'info' : 'plus')}</button>`; }).join('')}</div></div></div>`;
   }).join('');
-  return html || `<div class="empty cg-none"><b>${esc(tr('Nothing matches “{q}”', { q: query[s] }))}</b>${tr('Try another word.')}</div>`;
+  return html || SH.emptyState({ art: 'none', small: true, title: esc(tr('Nothing matches “{q}”', { q: query[s] })), text: tr('Try another word.') });
 }
 function stageCatalogH(s) {
   const r = cur(), list = listOf(r, s), meta = STEPS.find(x => x.id === s);

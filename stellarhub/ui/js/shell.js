@@ -16,7 +16,12 @@ const mouse = { x: new Spring(0, 40, 12), y: new Spring(0, 40, 12) };
 function sizeStars() { DPR = Math.min(state.lite ? 1 : 1.5, devicePixelRatio || 1); SW = innerWidth; SH_ = innerHeight; cv.width = SW * DPR; cv.height = SH_ * DPR; starDirty = true; }
 let starDirty = true, starAcc = 0, starCleared = false;
 sizeStars(); addEventListener('resize', sizeStars); SH.on('power', sizeStars);
-addEventListener('pointermove', e => { mouse.x.t = (e.clientX / innerWidth - .5) * 2; mouse.y.t = (e.clientY / innerHeight - .5) * 2; });
+addEventListener('pointermove', e => { if (!(innerWidth > 0 && innerHeight > 0)) return; mouse.x.t = (e.clientX / innerWidth - .5) * 2; mouse.y.t = (e.clientY / innerHeight - .5) * 2; });
+/* The window coming back (shown from the tray, restored, un-occluded, focused) can leave the canvas empty or at the wrong size
+   (innerWidth is 0 while it is minimized, and a hidden WebView can drop the canvas): measure again and redraw at once. */
+const starWake = () => { starDirty = true; starAcc = 1; };
+document.addEventListener('visibilitychange', () => { if (!document.hidden) starWake(); });
+addEventListener('focus', starWake); addEventListener('pageshow', starWake);
 /* Nothing touched for a few seconds: decoration that only moves for show (the stars, the GPU fans) drops to a few frames a
    second, and goes back to full the moment the mouse, keyboard, wheel or controller is used. Every redraw of a full-window canvas
    is a composite for the GPU, so a calm screen should cost it almost nothing. */
@@ -28,7 +33,12 @@ SH.poke = poke; SH.idleFor = () => performance.now() - lastInput; SH.isIdle = ()
 setInterval(() => { const v = SH.isIdle() ? '1' : '0'; if (ROOT.dataset.idle !== v) ROOT.dataset.idle = v; }, 1000);
 const starAlpha = new Spring(0, 40, 12); starAlpha.t = 1;
 SH.on('look', () => { starDirty = true; }); SH.on('setting', () => { starDirty = true; });
-tickers.add((dt, t) => {
+tickers.add((dt, t) => { try { drawStars(dt, t); } catch (e) { console.error(e); starDirty = true; } }); /* a throw would make the loop drop the ticker for good: the sky would stay empty */
+function drawStars(dt, t) {
+  if (!(innerWidth > 0 && innerHeight > 0)) { starDirty = true; return; } /* minimized or not laid out yet: nothing to draw on */
+  if (innerWidth !== SW || innerHeight !== SH_ || cv.width !== Math.round(SW * DPR)) sizeStars(); /* a resize event can be missed while hidden */
+  for (const k of ['x', 'y']) if (!Number.isFinite(mouse[k].v) || !Number.isFinite(mouse[k].t)) { mouse[k].set(0); }
+  if (!Number.isFinite(warp.v)) warp.set(0);
   mouse.x.step(dt); mouse.y.step(dt); warp.step(dt); starAlpha.t = S().stars ? 1 : 0; starAlpha.step(dt);
   if (starAlpha.v < .01) { if (!starCleared) { cx.setTransform(DPR, 0, 0, DPR, 0, 0); cx.clearRect(0, 0, SW, SH_); starCleared = true; } return; }
   /* The stars drift less than 10 px per second and twinkle slowly: redrawing the whole canvas every frame buys
@@ -39,9 +49,9 @@ tickers.add((dt, t) => {
   const fast = Math.abs(warp.v) > .02 || (par && (!mouse.x.idle || !mouse.y.idle)) || shooters.length > 0 || starAlpha.v < .99;
   starAcc += dt; t > nextShot && st.shooting && moving && (starDirty = true);
   if (!starDirty && starAcc < (fast ? (lite ? .033 : 0) : SH.isIdle() ? (lite ? .25 : .125) : (lite ? .1 : .04))) return;
-  const d = starAcc; starAcc = 0; starDirty = false; starCleared = false;
+  const d = Math.min(starAcc, .25); starAcc = 0; starDirty = false; starCleared = false;
   cx.setTransform(DPR, 0, 0, DPR, 0, 0); cx.clearRect(0, 0, SW, SH_);
-  const drift = moving ? d * .004 * SH.ORBIT[inten] * st.starSpeed : 0, bright = st.starBright || 1;
+  const drift = moving ? d * .004 * SH.ORBIT[inten] * (+st.starSpeed || 0) : 0, bright = st.starBright || 1;
   const cxs = SW / 2, cys = SH_ * .52; const w = warp.v;
   /* shooting stars */
   if (st.shooting && moving && t > nextShot) {
@@ -60,7 +70,7 @@ tickers.add((dt, t) => {
   const warping = Math.abs(w) > .02, tw0 = t / 1000, twk = moving && st.twinkle && !lite;
   const bk = warping ? null : {};
   for (const s of stars) {
-    s.x -= drift * s.z; if (s.x < 0) s.x += 1;
+    s.x -= drift * s.z; if (!(s.x >= 0)) s.x = Number.isFinite(s.x) ? s.x + 1 : Math.random(); /* NaN would hide the star for good */
     const x = s.x * SW - mouse.x.v * 22 * s.z * par, y = s.y * SH_ - mouse.y.v * 16 * s.z * par;
     const tw = twk ? (.65 + .35 * Math.sin(tw0 * s.tw + s.p)) : .8;
     const al = Math.min(1, (.25 + .6 * s.z) * tw * starAlpha.v * bright);
@@ -78,7 +88,7 @@ tickers.add((dt, t) => {
   }
   if (bk) for (const k in bk) { cx.globalAlpha = (k & 15) / 15; cx.fillStyle = k >= 16 ? '#e6f2ff' : '#a9bddc'; cx.fill(bk[k]); }
   cx.globalAlpha = 1;
-});
+}
 SH.mouse = mouse; SH.warp = warp;
 
 /* ================= dock ================= */
@@ -162,7 +172,7 @@ function renderTab(mid, tabId) {
   const ms = modState[mid]; const el = $(`#v-${mid} .tab[data-tab="${tabId}"]`); if (!el || ms.rendered.has(tabId)) return el;
   ms.rendered.add(tabId);
   const def = registry.modules[mid];
-  if (def && def.renderTab) { try { def.renderTab(tabId, el, ctxFor(modById(mid))); } catch (e) { console.error(e); el.innerHTML = `<div class="empty"><b>${SH.t('This tab failed to load')}</b>${esc(e.message)}</div>`; } }
+  if (def && def.renderTab) { try { def.renderTab(tabId, el, ctxFor(modById(mid))); } catch (e) { console.error(e); el.innerHTML = SH.emptyState({ art: 'error', title: SH.t('This tab failed to load'), text: esc(e.message) }); } }
   else el.innerHTML = skeletonFor(tabId.length);
   return el;
 }
@@ -322,7 +332,7 @@ function renderPal(q) {
   const n = norm(q.trim()); const all = paletteItems();
   palList = n ? all.filter(i => n.split(/\s+/).every(w => norm(i.t + ' ' + (i.path || '')).includes(w))) : all.filter(i => i.g !== 'Sections');
   palList = palList.slice(0, 40); palIdx = 0; const res = $('#palRes');
-  if (!palList.length) { res.innerHTML = `<div class="empty">${SH.t('Nothing matches “{q}”. Try “drivers”, “disk” or “clean”.', { q: esc(q) })}</div>`; return; }
+  if (!palList.length) { res.innerHTML = SH.emptyState({ art: 'none', small: true, title: SH.t('Nothing matches “{q}”. Try “drivers”, “disk” or “clean”.', { q: esc(q) }) }); return; }
   let html = '<div class="hl" id="palHl"></div>', g = '';
   palList.forEach((it, i) => { if (it.g !== g) { g = it.g; html += `<div class="grp">${GROUP[g] || g}</div>`; }
     html += `<button class="it" data-i="${i}"><span class="ic">${ic(it.ic)}</span>${it.path ? `<span class="path">${esc(it.path)}</span>` : ''}${esc(it.t)}<small>${it.g === 'Actions' ? SH.t('Run') : SH.t('Open')}</small></button>`; });
@@ -685,8 +695,12 @@ async function askAdmin(direct) {
   else if (r === false) toast(SH.t('Windows did not grant permission. You are still in normal mode.'));
   else { setAdmin(true); toast(SH.t('Administrator mode (simulated outside the app).')); }
 }
+/* the pill carries an icon, not a dot: a shield with a check for administrator mode, a plain shield outline for normal mode */
+SH.icons.add({ shieldplain: '<path d="M12 3 4.5 6v5.5c0 4.5 3.2 8 7.5 9.5 4.3-1.5 7.5-5 7.5-9.5V6z"/>' });
+function paintMode() { const e = $('#modeIc'); if (e) e.innerHTML = ic(state.admin ? 'shield' : 'shieldplain'); }
+paintMode();
 function setAdmin(on) {
-  state.admin = on; const pill = $('#modePill'); pill.classList.toggle('admin', on); const txt = $('#modeTxt');
+  state.admin = on; const pill = $('#modePill'); pill.classList.toggle('admin', on); const txt = $('#modeTxt'); paintMode();
   anim(txt, [{ opacity: 1, transform: 'none', filter: 'blur(0px)' }, { opacity: 0, transform: 'translate3d(0,-8px,0)', filter: 'blur(4px)' }], { d: 160 }).finished.then(() => {
     txt.textContent = on ? SH.t('Administrator mode') : SH.t('Normal mode');
     anim(txt, [{ opacity: 0, transform: 'translate3d(0,8px,0)', filter: 'blur(4px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 300, e: EASE.spring });
@@ -773,7 +787,9 @@ SH.boot = async () => {
   const [info, pc] = await Promise.all([SH.call('info'), SH.call('pc_info')]);
   SH.call('phase', 'info + pc_info loaded');
   if (pc && pc.components) { Object.assign(SH.PC, pc); SH.PC.real = true; }
-  if (info) { state.version = info.version; state.portable = !!info.portable; const ver = $('#sheet nav .ver'); if (ver) ver.textContent = `StellarHub ${info.version}`; if (info.admin) { state.admin = true; $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
+  if (info) { state.version = info.version; state.codename = info.codename || ''; state.portable = !!info.portable; const ver = $('#sheet nav .ver'); if (ver) ver.textContent = `StellarHub ${info.version}${state.codename ? ' · ' + state.codename : ''}`;
+    /* the version in a corner of every view, small: support screenshots always say which one it is */
+    const vt = $('#verTag'); if (vt) vt.textContent = `v${info.version}${state.codename ? ' · ' + state.codename : ''}${state.portable ? ' · ' + SH.t('portable') : ''}`; if (info.admin) { state.admin = true; paintMode(); $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
   applyLook(); applyZoom();
   MODS.filter(m => m.id !== 'home').forEach(buildModule);
   SH.on('module:registered', def => { if (def.id !== 'home' && modById(def.id)) buildModule(modById(def.id)); });

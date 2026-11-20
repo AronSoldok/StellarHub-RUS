@@ -96,6 +96,9 @@ def make_icon_image(size=64, tile=True):
     ImageDraw.Draw(upper).rectangle((0, 0, s, cy), fill=255)
     ring = ring.rotate(tilt, resample=Image.BICUBIC, center=(cx, cy))
     upper = upper.rotate(tilt, resample=Image.NEAREST, center=(cx, cy))
+    big = size >= 200  # the start screen: no hard seam where the two halves meet, softer shadows
+    if big:
+        upper = upper.filter(ImageFilter.GaussianBlur(s * .035))
 
     def hint(m):
         """small sizes: snap each shape's edge pixels toward fully on or off, so lines stay crisp"""
@@ -143,8 +146,8 @@ def make_icon_image(size=64, tile=True):
     img.alpha_composite(pl)
     if tier == 2:
         # the ring's shadow falls on the planet just above where it passes in front
-        sh = front.transform((s, s), Image.AFFINE, (1, 0, 0, 0, 1, s * .028)).filter(ImageFilter.GaussianBlur(s * .008))
-        sh = ImageChops.multiply(sh, disc).point(lambda v: int(v * .5))
+        sh = front.transform((s, s), Image.AFFINE, (1, 0, 0, 0, 1, s * .028)).filter(ImageFilter.GaussianBlur(s * (.022 if big else .008)))
+        sh = ImageChops.multiply(sh, disc).point(lambda v: int(v * (.36 if big else .5)))
         img.alpha_composite(_layer(s, (90, 16, 34), sh))
         # a thin atmospheric rim on the lit edge
         edge = Image.new("L", (s, s), 0)
@@ -155,7 +158,9 @@ def make_icon_image(size=64, tile=True):
 
     # a sliver of navy between the planet and the front of the ring, so the ring clearly passes in front
     if tier:
-        gap = ImageChops.multiply(ImageChops.subtract(wide, front), disc).point(lambda v: int(v * .85))
+        gap = ImageChops.multiply(ImageChops.subtract(wide, front), disc).point(lambda v: int(v * (.45 if big else .85)))
+        if big:
+            gap = gap.filter(ImageFilter.GaussianBlur(s * .004))
         img.alpha_composite(_layer(s, (24, 20, 40), gap))
     f = ring_color(False) if tier else _layer(s, (196, 234, 255), front)
     f.putalpha(front)
@@ -164,7 +169,7 @@ def make_icon_image(size=64, tile=True):
     # the moon, with a faint glow at large sizes (at tray size there is no room for it next to the ring)
     if tier:
         mx, my, mr = (0, .785, .775)[tier] * s, (0, .185, .2)[tier] * s, (0, .065, .048)[tier] * s
-        if tier == 2:
+        if tier == 2 and not big:  # (large: the start screen draws it on its own, wider canvas)
             glow = Image.new("L", (s, s), 0)
             ImageDraw.Draw(glow).ellipse((mx - mr * 2.6, my - mr * 2.6, mx + mr * 2.6, my + mr * 2.6), fill=70)
             img.alpha_composite(_layer(s, _ICE, glow.filter(ImageFilter.GaussianBlur(mr * 1.2))))

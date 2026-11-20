@@ -511,7 +511,7 @@ function renderOverview(el) {
   </div>`;
   renderQueue(false);
   const groups = $('.u-groups', el);
-  if (!S.scanned) groups.innerHTML = CAT_ORDER.map((c, k) => `<div class="pan u-group" data-asm><div class="u-gh"><span class="sk" style="width:32px;height:32px;border-radius:10px"></span><span class="sk" style="width:${120 + k * 18}px;height:12px"></span></div>${[0, 1].map(i => `<div class="sk-row" style="border:0;padding:8px 4px"><div class="sk a" style="--dl:${i * .1}s"></div><div class="sk b" style="--w:46%"></div><div class="sk c"></div></div>`).join('')}</div>`).join('');
+  if (!S.scanned) groups.innerHTML = CAT_ORDER.map((c, k) => `<div class="pan u-group" data-asm><div class="u-gh"><span class="sk" style="width:32px;height:32px;border-radius:var(--r-s)"></span><span class="sk" style="width:${120 + k * 18}px;height:12px"></span></div>${[0, 1].map(i => `<div class="sk-row" style="border:0;padding:8px 4px"><div class="sk a" style="--dl:${i * .1}s"></div><div class="sk b" style="--w:46%"></div><div class="sk c"></div></div>`).join('')}</div>`).join('');
   ensureScan(); scanWindows(); updateWinWait();
   if (S.scanned) { fillGroups(el, true); updateOverviewCounts(true); }
 }
@@ -587,7 +587,7 @@ function refreshAppsFilter(animate) {
   const html = apps.map(it => appsFilter === 'hidden'
     ? `<div class="u-row" data-item="${esc(it.id)}">${tile(it)}<span class="u-name"><b>${esc(dn(it.name))}</b><span>${S.ignored.has(it.id) ? t('You ignore version {v}', { v: esc(it.to) }) : t('Pinned to {v}', { v: esc(it.from) })}</span></span>${vers(it)}<span class="u-size">${mb(it.mb)}</span><span class="u-act"><button class="btn sm ghost" data-unhide="${esc(it.id)}">${t('Show again')}</button></span></div>`
     : itemRow(it)).join('');
-  list.innerHTML = html || `<div class="empty"><b>${appsFilter === 'hidden' ? t("You aren't ignoring any version") : appsFilter === 'sel' ? t('Nothing selected yet') : appsQuery ? t('No app with that name') : S.errs.apps || S.noWinget ? t('No results') : t('Your apps are up to date')}</b>${appsFilter === 'sel' ? t('Check the box next to the apps you want to update.') : ''}</div>${errBox('apps')}`;
+  list.innerHTML = html || SH.emptyState({ art: appsFilter === 'hidden' || appsFilter === 'sel' ? 'first' : appsQuery ? 'none' : S.errs.apps || S.noWinget ? 'error' : 'ok', title: appsFilter === 'hidden' ? t("You aren't ignoring any version") : appsFilter === 'sel' ? t('Nothing selected yet') : appsQuery ? t('No app with that name') : S.errs.apps || S.noWinget ? t('No results') : t('Your apps are up to date'), text: appsFilter === 'sel' ? t('Check the box next to the apps you want to update.') : '', action: !appsFilter || appsFilter === 'pending' || appsFilter === 'all' ? { label: t('Check for updates'), click: '#v-updater [data-check]' } : null }) + errBox('apps');
   if (animate) $$('.u-row, .empty', list).slice(0, 14).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: i * 28, e: EASE.spring }));
   const pend = pendingIn('apps'); const cnt = $('.u-apend', el);
   if (cnt && +(cnt.dataset.v || 0) !== pend.length) SH.countUp(cnt, pend.length, 600);
@@ -689,7 +689,7 @@ function renderStore(el) {
 function fillStore(el) {
   const box = $('.u-storelist', el); if (!box || !S.scanned) return;
   const list = S.items.filter(i => i.cat === 'store');
-  box.innerHTML = list.length ? list.map(it => itemRow(it, { menu: false })).join('') : `<div class="empty"><b>${t('The Store is up to date')}</b>${t('No Store apps have a new version.')}</div>`;
+  box.innerHTML = list.length ? list.map(it => itemRow(it, { menu: false })).join('') : SH.emptyState({ art: 'ok', title: t('The Store is up to date'), text: t('No Store apps have a new version.') });
   $$('.u-row', box).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: Math.min(i, 10) * 40, e: EASE.spring }));
   syncGroupChecks();
   const ok = (S.apps && S.apps.storeOk) || [];

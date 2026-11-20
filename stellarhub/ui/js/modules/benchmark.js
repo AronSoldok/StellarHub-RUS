@@ -206,11 +206,10 @@ function drawTimeChart(c, series, o = {}) {
   const all = series.flatMap(s => s.pts); if (!all.length) return;
   const t0 = Math.min(...all.map(p => p[0])), t1 = Math.max(...all.map(p => p[0])), span = Math.max(1, t1 - t0);
   const vmax = Math.max(...all.map(p => p[1])) * 1.12, vmin = o.zero ? 0 : Math.min(...all.map(p => p[1])) * .85;
-  const L = o.pad ?? 10, R = w - (o.pad ?? 10), T = 10, B = h - (o.axis ? 20 : 8);
+  const L = o.pad ?? 10, R = w - (o.pad ?? 10), T = 10, B = h - (o.axis ? 22 : 8);
   const px = at => all.length === 1 ? (L + R) / 2 : L + (at - t0) / span * (R - L), py = v => B - (v - vmin) / Math.max(1e-9, vmax - vmin) * (B - T);
-  x.strokeStyle = css('--line'); x.lineWidth = 1;
-  for (let i = 0; i <= 3; i++) { const y = Math.round(T + (B - T) * i / 3) + .5; x.beginPath(); x.moveTo(L, y); x.lineTo(R, y); x.stroke(); }
-  if (o.axis) { x.fillStyle = css('--faint'); x.font = '11px Onest, system-ui, sans-serif'; x.textAlign = 'left'; x.fillText(fmtShort(t0), L, h - 4); if (t1 !== t0) { x.textAlign = 'right'; x.fillText(fmtShort(t1), R, h - 4); } }
+  const K = SH.chartKit; K.grid(x, L, R, T, B, 4); K.ticks(x, L, T, B, 4, vmax, vmin, v => (o.fmt || fmtN)(v));
+  if (o.axis) K.xlabels(x, L, R, h, fmtShort(t0), t1 !== t0 ? fmtShort(t1) : '');
   const prog = o.prog ?? 1;
   series.forEach(s => {
     const col = css(s.col) || s.col; const P = s.pts.slice().sort((a, b) => a[0] - b[0]).map(p => [px(p[0]), py(p[1]), p]);
@@ -228,12 +227,9 @@ function drawTimeChart(c, series, o = {}) {
     let best = null; series.forEach(s => (s._P || []).forEach(p => { const d = Math.abs(p[0] - o.hover); if (!best || d < best.d) best = { d, p, s }; }));
     if (best && best.d < 30) {
       const [hx, hy, raw] = best.p; const col = css(best.s.col) || best.s.col;
-      x.strokeStyle = rgba(css('--ink') || '#E8EDF6', .2); x.beginPath(); x.moveTo(Math.round(hx) + .5, T); x.lineTo(Math.round(hx) + .5, B); x.stroke();
-      x.fillStyle = col; x.beginPath(); x.arc(hx, hy, 5, 0, 6.3); x.fill();
-      const l1 = (o.fmt || fmtN)(raw[1]), l2 = fmtShort(raw[0]); x.font = '500 12px Onest, system-ui, sans-serif';
-      const tw = Math.max(x.measureText(l1).width, x.measureText(l2).width) + 20, bx = hx + 12 + tw > w ? hx - 12 - tw : hx + 12;
-      x.fillStyle = rgba(css('--deep') || '#0B1222', .95); x.strokeStyle = rgba(css('--ink') || '#E8EDF6', .14); x.beginPath(); x.roundRect(bx, T, tw, 42, 8); x.fill(); x.stroke();
-      x.textAlign = 'left'; x.fillStyle = css('--ink'); x.fillText(l1, bx + 10, T + 17); x.fillStyle = css('--mute'); x.font = '11.5px Onest, system-ui, sans-serif'; x.fillText(l2, bx + 10, T + 33);
+      K.cursor(x, hx, T, B);
+      x.fillStyle = col; x.beginPath(); x.arc(hx, hy, 4, 0, 6.3); x.fill();
+      K.tip(x, hx, w, T, [[col, (o.fmt || fmtN)(raw[1])], [css('--mute'), fmtShort(raw[0])]]);
     }
   }
 }
@@ -703,7 +699,7 @@ function histSide(id) {
   const metric = c.cfg.metric || (r => r.score);
   box.innerHTML = L.length ? L.slice(0, 12).map((r, i) => { const p = L[i + 1]; const v = metric(r[id]);
     return `<div class="bm-hr${i === 0 ? ' last' : ''}"><span><b>${esc(fmtDate(r.at))}</b><em>${r.kind === 'full' ? t('in a full benchmark') : esc(c.cfg.histSub ? c.cfg.histSub(r[id]) : '')}</em></span><span class="bm-hv">${deltaChip(delta(v, p && metric(p[id])), true)}<b>${c.cfg.metric ? fmtV(v) : fmtN(v)}</b>${c.cfg.metricUnit ? `<small>${c.cfg.metricUnit}</small>` : ''}</span></div>`; }).join('')
-    : `<div class="bm-hempty faint">${t('Your results will show up here, so you can compare them over time.')}</div>`;
+    : SH.emptyState({ art: 'first', small: true, text: t('Your results will show up here, so you can compare them over time.') });
   c.chart.draw();
 }
 async function runComp(id) {
@@ -930,6 +926,7 @@ function renderStress(el, ctx) {
   $('[data-run]', el).addEventListener('click', () => RUN && RUN.kind === 'stress' ? RUN.cancel() : runStress());
   busyFns.add(() => { const b = $('[data-run]', el); const mine = RUN && RUN.kind === 'stress'; b.innerHTML = mine ? `${ic('stop')}${t('Stop')}` : `${ic('play')}${t('Start')}`; b.className = mine ? 'btn sec' : 'btn pri'; b.disabled = !!RUN && !mine; $$('.seg button', el).forEach(x => { x.disabled = !!RUN; }); });
   ST.charts = SERIES.map(s => ({ s, c: $(`[data-s="${s.k}"] canvas`, el) }));
+  ST.charts.forEach(o => { o.c.addEventListener('pointermove', e => { o.hx = e.clientX - o.c.getBoundingClientRect().left; stDraw(); }); o.c.addEventListener('pointerleave', () => { o.hx = null; stDraw(); }); });
   new ResizeObserver(() => stDraw()).observe($('.bm-charts', el));
   onHistory(() => { if (!RUN || RUN.kind !== 'stress') stIdle(); });
   loadHistory().then(stIdle);
@@ -961,16 +958,17 @@ const stUses = (k, tg = ST.target) => { const s = SERIES.find(x => x.k === k); r
 function stDraw() {
   const el = ST.el; if (!el || !el.offsetParent) return;
   const D = ST.data; const total = (D ? D.min : ST.min) * 60;
-  ST.charts.forEach(({ s, c }) => {
-    const f = fitCanvas(c); if (!f) return; const { x, w, h } = f; x.clearRect(0, 0, w, h);
-    const L = 2, R = w - 2, T = 6, B = h - 4;
-    x.strokeStyle = css('--line'); x.lineWidth = 1; for (let i = 0; i <= 3; i++) { const y = Math.round(T + (B - T) * i / 3) + .5; x.beginPath(); x.moveTo(L, y); x.lineTo(R, y); x.stroke(); }
+  ST.charts.forEach(o => {
+    const { s, c } = o; const f = fitCanvas(c); if (!f) return; const { x, w, h } = f; x.clearRect(0, 0, w, h);
+    const K = SH.chartKit, L = 2, R = w - 2, T = 6, B = h - K.xpad;
+    K.grid(x, L, R, T, B, 4);
     if (!D || !D.s.length) return;
     const lines = [['cpu', '--accent'], ['gpu', '--accent2']].filter(([p]) => s[p] && (p === 'cpu' ? D.target !== 'gpu' : D.target !== 'cpu'));
     const vals = lines.flatMap(([p]) => D.s.map(q => q[s[p]]).filter(v => !nil(v)));
     let lo = s.k === 'load' ? 0 : Math.min(...vals), hi = s.k === 'load' ? 100 : Math.max(...vals);
     if (!vals.length) { lo = 0; hi = 1; } if (s.k !== 'load') { const pad = Math.max((hi - lo) * .2, s.k === 'clock' ? .2 : 3); lo = Math.max(0, lo - pad); hi += pad; }
     if (s.k === 'temp') { const lim = Math.max(...lines.map(([p]) => LIM[p])); if (hi >= lim - 12) { hi = Math.max(hi, lim + 2); const y = B - (lim - lo) / (hi - lo) * (B - T); x.setLineDash([3, 4]); x.strokeStyle = rgba(css('--bad') || '#FF6B7A', .7); x.beginPath(); x.moveTo(L, y); x.lineTo(R, y); x.stroke(); x.setLineDash([]); } }
+    K.ticks(x, L, T, B, 4, hi, lo, v => s.k === 'clock' ? fmt1(v) : Math.round(v)); K.xlabels(x, L, R, h, '0:00', fmtDur(total));
     lines.forEach(([p, cv]) => {
       const col = css(cv); x.strokeStyle = col; x.lineWidth = 1.8; x.lineJoin = 'round'; x.beginPath(); let on = false;
       D.s.forEach(q => { const v = q[s[p]]; if (nil(v)) { on = false; return; } const px = L + (q.t / total) * (R - L), py = B - (v - lo) / Math.max(1e-6, hi - lo) * (B - T); if (on) x.lineTo(px, py); else { x.moveTo(px, py); on = true; } });
@@ -979,6 +977,12 @@ function stDraw() {
     if (s.k === 'clock') (D.thr || []).forEach(ev => { const px = Math.round(L + ev.at / total * (R - L)) + .5; const wc = css('--warn') || '#F4C26B';
       x.strokeStyle = rgba(wc, .55); x.setLineDash([2, 4]); x.beginPath(); x.moveTo(px, T); x.lineTo(px, B); x.stroke(); x.setLineDash([]);
       x.fillStyle = wc; x.beginPath(); x.arc(px, T + 2, 3, 0, 6.3); x.fill(); });
+    if (o.hx != null && o.hx >= L && o.hx <= R) {
+      const at = (o.hx - L) / (R - L) * total; let q = D.s[0]; D.s.forEach(r => { if (Math.abs(r.t - at) < Math.abs(q.t - at)) q = r; });
+      const hx = L + q.t / total * (R - L); K.cursor(x, hx, T, B);
+      const tl = []; lines.forEach(([p, cv]) => { const v = q[s[p]]; if (nil(v)) return; const col = css(cv); x.fillStyle = col; x.beginPath(); x.arc(hx, B - (v - lo) / Math.max(1e-6, hi - lo) * (B - T), 3.5, 0, 6.3); x.fill(); tl.push([col, `${p === 'cpu' ? t('Processor') : t('Graphics card')}: ${s.dec ? fmt1(v) : fmtInt(v)} ${s.u}`]); });
+      if (tl.length) { tl.push([css('--mute'), fmtDur(q.t)]); K.tip(x, hx, w, T, tl); }
+    }
   });
 }
 function stSummaryHTML(S) {
@@ -1127,7 +1131,7 @@ function hiPaint() {
   box.innerHTML = L.length ? L.map(r => { const [n, i] = KIND[r.kind] || [r.kind, 'benchmark'];
     const val = r.kind === 'network' ? `${fmtV(r.network.down)}<small>Mbps</small>` : r.kind === 'stress' ? `<span class="chip ${r.stress.reason || r.stress.errors ? 'bad' : (r.stress.throttle || []).length ? 'warn' : 'ok'}">${r.stress.reason ? t('Stopped') : r.stress.errors ? t('Unstable') : (r.stress.throttle || []).length ? t('Throttled') : t('Stable')}</span>` : fmtN(r.score);
     return `<div class="row bm-hrow"><span class="ri${r.kind === 'full' ? ' acc' : ''}">${ic(i)}</span><span class="rt"><b>${n}</b><span>${esc(fmtDate(r.at))}, ${esc(runSummary(r))}</span></span><span class="bm-hval">${val}</span><button class="btn sm ghost bm-del" data-del="${esc(r.id)}" title="${esc(t('Delete this result'))}" aria-label="${esc(t('Delete this result'))}">${ic('trash')}</button></div>`; }).join('')
-    : `<div class="empty"><b>${t('No results yet')}</b>${t('Every test you run is saved here, so you can see how your PC changes over time.')}</div>`;
+    : SH.emptyState({ art: 'first', title: t('No results yet'), text: t('Every test you run is saved here, so you can see how your PC changes over time.'), action: { label: t('Run full benchmark'), go: 'benchmark/overview', pri: true } });
 }
 
 /* ============================================================ module */

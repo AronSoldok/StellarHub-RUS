@@ -916,5 +916,6 @@
  "Measured when applied": "Misurato all'applicazione",
  "Check what it is": "Controlla cos'è",
  "Administrator": "Amministratore",
- "Open": "Aperto"
+ "Open": "Aperto",
+ "to create the restore point and change services. Without it, those steps are skipped.": "per creare il punto di ripristino e modificare i servizi. Senza, questi passaggi vengono saltati."
 }

@@ -5,7 +5,7 @@
 .hv-bento .bt{position:relative;perspective:900px;min-width:0;min-height:0;cursor:pointer;outline:none;border-radius:var(--r-l)}
 .hv-bento .a-ram,.hv-bento .a-ssd,.hv-bento .a-bat,.hv-bento .a-wif,.hv-bento .a-aud,.hv-bento .a-sys{border-radius:var(--r-m)}
 .hv-bento .tilt{position:absolute;inset:0;border-radius:inherit;transform-style:preserve-3d;will-change:transform;overflow:hidden;
-  display:flex;flex-direction:column;padding:14px 16px 14px;border:1px solid var(--line);background:var(--raise);
+  display:flex;flex-direction:column;padding:14px 16px 14px;border:1px solid var(--line);background:var(--sheen),var(--raise);box-shadow:var(--rim);
   transition:border-color calc(200ms*var(--f)),background-color calc(200ms*var(--f))}
 .hv-bento .a-ram .tilt,.hv-bento .a-ssd .tilt,.hv-bento .a-bat .tilt,.hv-bento .a-wif .tilt,.hv-bento .a-aud .tilt,.hv-bento .a-sys .tilt{padding:11px 13px 12px}
 
@@ -41,13 +41,12 @@
 .hv-bento .art{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;transform:translateZ(26px);padding:4px 0 8px}
 .hv-bento .art svg{width:100%;height:100%;display:block;overflow:visible}
 .hv-bento .meta{transform:translateZ(12px);min-width:0}
-.hv-bento .meta .k{font-size:11.5px;color:var(--mute)}
-.hv-bento .meta .t{display:block;font:500 12.5px/1.25 var(--display);letter-spacing:-.01em;margin-top:2px;overflow-wrap:anywhere}
-.hv-bento .a-gpu .meta .t{font-size:16px}
-.hv-bento .a-cpu .meta .t{font-size:14.5px}
+.hv-bento .meta .k{font-size:11.5px;color:var(--faint)}
+.hv-bento .meta .t{display:block;font:600 13.5px/1.25 var(--text);letter-spacing:0;margin-top:2px;overflow-wrap:anywhere}
+.hv-bento .a-gpu .meta .t,.hv-bento .a-cpu .meta .t{font:500 16px/1.2 var(--display);letter-spacing:-.015em}
 .hv-bento .live{margin-top:8px}
 .hv-bento .nums{display:flex;gap:18px;align-items:baseline;margin-bottom:8px}
-.hv-bento .nums b{font:500 17px var(--display);letter-spacing:-.02em}
+.hv-bento .nums b{font:500 17px var(--display);letter-spacing:-.025em}
 .hv-bento .nums b.n{font-size:32px;letter-spacing:-.04em}
 .hv-bento .nums small{font-size:11.5px;color:var(--mute);margin-left:3px}
 .hv-bento .lbar{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 8px;font-size:12px;line-height:1.35;color:var(--mute);margin-bottom:6px}
@@ -65,7 +64,10 @@
 .hv-bento .art-gpu .strip{stroke:var(--accent);stroke-width:2;stroke-linecap:round;opacity:.85}
 .hv-bento .art-gpu .fin{stroke:var(--accent2);stroke-opacity:.28}
 .hv-bento .ring{fill:var(--void);fill-opacity:.65;stroke:var(--accent2);stroke-opacity:.35}
-.hv-bento .gfan{will-change:transform}
+.hv-bento .artbox{position:relative;flex:none}
+.hv-bento .artbox>svg.art-gpu{position:absolute;inset:0}
+/* the fans: their own composited layers over the drawing, turned by the Web Animations API (see bento.js) */
+.hv-bento .artbox>svg.gfan{position:absolute;width:auto;height:auto;overflow:visible;will-change:transform}
 .hv-bento .gfan path{fill:var(--accent2);fill-opacity:.14;stroke:var(--accent2);stroke-opacity:.55;stroke-width:1}
 .hv-bento .hub{fill:var(--deep);stroke:var(--accent2);stroke-opacity:.6}
 .hv-bento .gold{fill:var(--warn);fill-opacity:.16}
@@ -75,13 +77,9 @@
 .hv-bento .art-cpu .pad{fill:var(--warn);opacity:.5}
 .hv-bento .art-cpu .cap{fill:var(--raise3);stroke:var(--accent2);stroke-opacity:.3}
 .hv-bento .art-cpu .die{fill:var(--accent);fill-opacity:.07;stroke:var(--accent);stroke-opacity:.6}
-.hv-bento .art-cpu .th{fill:var(--accent);opacity:.2;transition:opacity calc(160ms*var(--f)),fill calc(160ms*var(--f))}
+.hv-bento .art-cpu .th{fill:var(--accent2);opacity:.2;transition:opacity calc(700ms*var(--f)) var(--e-out),fill calc(700ms*var(--f)) var(--e-out)}
 /* each frame of that fade repaints the whole SVG card: nobody is touching the app (or it is in lighter mode), so it just changes */
 html[data-idle="1"] .hv-bento .art-cpu .th,html[data-lite="1"] .hv-bento .art-cpu .th{transition:none}
-.hv-bento .art-cpu .th.busy{fill:color-mix(in oklab,var(--accent) 60%,#fff)}
-.hv-bento .art-cpu .pulse{fill:none;stroke:var(--accent);stroke-width:1.2;opacity:0;transform-box:fill-box;transform-origin:50% 50%}
-.hv-bento .bt.hot .art-cpu .pulse{animation:hvbPulse calc(1600ms*var(--f) + 400ms) cubic-bezier(.16,1,.3,1) infinite}
-@keyframes hvbPulse{0%{opacity:.6;transform:scale(.62)}100%{opacity:0;transform:scale(1.12)}}
 
 .hv-bento .pcb{fill:var(--raise2);stroke:var(--accent2);stroke-opacity:.45;stroke-width:1.1}
 .hv-bento .mchip{fill:var(--void);fill-opacity:.7;stroke:var(--accent2);stroke-opacity:.35}
@@ -122,7 +120,7 @@ html[data-idle="1"] .hv-bento .art-cpu .th,html[data-lite="1"] .hv-bento .art-cp
 @keyframes hvbEq{from{transform:scaleY(.25)}to{transform:scaleY(1)}}
 
 .hv-bento .art-sys .lay{fill:var(--accent2);fill-opacity:.1;stroke:var(--accent2);stroke-opacity:.6;stroke-linejoin:round;
-  transition:transform calc(380ms*var(--f)) cubic-bezier(.3,1.5,.5,1),fill-opacity calc(200ms*var(--f))}
+  transition:transform calc(380ms*var(--f)) var(--e-snap),fill-opacity calc(200ms*var(--f))}
 .hv-bento .bt.hot .art-sys .l1{transform:translateY(-7px);fill-opacity:.22}
 .hv-bento .bt.hot .art-sys .l3{transform:translateY(7px)}
 
@@ -133,7 +131,7 @@ html[data-idle="1"] .hv-bento .art-cpu .th,html[data-lite="1"] .hv-bento .art-cp
   .hv-bento .nums{gap:12px}
   .hv-bento .nums b{font-size:15px}
   .hv-bento .nums b.n{font-size:26px}
-  .hv-bento .meta .t{font-size:11.5px}
+  .hv-bento .meta .t{font-size:12.5px}
   .hv-bento .lbar{font-size:11.5px}
 }
 @container (max-height:540px){
@@ -144,7 +142,7 @@ html[data-idle="1"] .hv-bento .art-cpu .th,html[data-lite="1"] .hv-bento .art-cp
 html[data-int=min] .hv-bento *{animation:none!important}
 
 /* ---------- every tile with the same background (Network, Audio and Displays used to look "switched off") ---------- */
-.hv-bento .k-deep .tilt,.hv-bento .k-open .tilt{background:var(--raise);box-shadow:none}
+.hv-bento .k-deep .tilt,.hv-bento .k-open .tilt{background:var(--sheen),var(--raise);box-shadow:var(--rim)}
 /* the stage never gets the scroll-area fade */
 #stage,#stage .vwrap,.hv-bento{-webkit-mask-image:none!important;mask-image:none!important}
 /* dynamic grid: bento.js builds it from the components this PC has */

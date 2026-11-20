@@ -836,7 +836,7 @@ async function renderBig(el) {
   try { BIG.items = await bigItems(); } catch (e) { ST.big = undefined; const l = $('.st-blist', el); if (l) loadErr(l, e, () => renderBig(el)); return; }
   const list = $('.st-blist', el);
   const total = () => { const l = bigList(); $('.st-btot', el).textContent = T('{n} files, {size}', { n: fmtInt(l.length), size: fmtB(l.reduce((a, n) => a + n.size, 0)) }); };
-  const paint = () => { const l = bigList(); list.innerHTML = l.map(bigRow).join('') || `<div class="empty"><b>${T('Nothing matches')}</b>${T('Try another word.')}</div>`; total(); paintIcons(list); };
+  const paint = () => { const l = bigList(); list.innerHTML = l.map(bigRow).join('') || SH.emptyState({ art: 'none', small: true, title: T('Nothing matches'), text: T('Try another word.') }); total(); paintIcons(list); };
   el._paint = paint;
   paint(); $$('.st-br', list).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: Math.min(i, 14) * 25, e: EASE.spring }));
   if (el.dataset.b) return; el.dataset.b = 1;
@@ -1055,13 +1055,13 @@ async function renderCompare(el) {
         <div class="tbl-head st-dh"><span>${T('Folder')}</span><span class="st-axis"><span>${T('Shrank')}</span><span>${T('Grew')}</span></span><span>${T('Change')}</span></div>
         <div class="st-scroll">${CH.length ? CH.map(([p, d, f]) => `<div class="st-dr"><div class="st-bn"><b>${esc(p.split('\\').filter(Boolean).pop())}</b><span class="faint">${wp(p)}</span></div>
           <span class="st-dv"><span class="${d > 0 ? 'up' : 'down'}" style="--v:${(Math.abs(d) / mx).toFixed(4)}"></span></span>
-          <span class="st-dn ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${fmt1(Math.abs(d))} GB<small>${T('{n} files', { n: (f >= 0 ? '+' : '−') + fmtInt(Math.abs(f)) })}</small></span></div>`).join('') : `<div class="empty"><b>${T('Almost nothing changed')}</b>${T('No folder changed by more than 64 MB.')}</div>`}</div></div>
+          <span class="st-dn ${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : '−'}${fmt1(Math.abs(d))} GB<small>${T('{n} files', { n: (f >= 0 ? '+' : '−') + fmtInt(Math.abs(f)) })}</small></span></div>`).join('') : SH.emptyState({ art: 'ok', small: true, title: T('Almost nothing changed'), text: T('No folder changed by more than 64 MB.') })}</div></div>
     </div>
     <div class="st-cr">
       <div class="pan st-hist" data-asm><h4>${T('Space used')} <em>${T('{n} scans', { n: H.length })}</em></h4>
         <svg viewBox="0 0 ${W} ${HH}" class="st-spark"><path class="area" d="${path} L${px(H.length - 1)},${HH} L${px(0)},${HH} Z"/><path class="ln" d="${path}"/>${H.map(([, v], i) => `<circle cx="${px(i)}" cy="${py(v)}" r="${i === H.length - 1 ? 4 : 2.5}"/>`).join('')}</svg>
         <div class="st-hx">${H.slice(-6).map(([d, v]) => `<span><b>${v}</b>${d}</span>`).join('')}</div></div>
-      <div class="pan st-new st-fp" data-asm><h4>${T('New large files')} <em>${T('{n} since the last scan', { n: NB.length })}</em></h4><div class="rows st-scroll">${NB.length ? NB.map(([n, g, p, d]) => `<div class="row">${badge(n, p + '\\' + n, T_(EXT2T[extOf(n)] || 'other').c)}<div class="rt"><b>${esc(n)}</b><span>${wp(p)}, ${d}</span></div><span class="st-bs">${fmt1(g)} GB</span></div>`).join('') : `<div class="empty"><b>${T('None')}</b>${T('No new file over 300 MB showed up.')}</div>`}</div></div>
+      <div class="pan st-new st-fp" data-asm><h4>${T('New large files')} <em>${T('{n} since the last scan', { n: NB.length })}</em></h4><div class="rows st-scroll">${NB.length ? NB.map(([n, g, p, d]) => `<div class="row">${badge(n, p + '\\' + n, T_(EXT2T[extOf(n)] || 'other').c)}<div class="rt"><b>${esc(n)}</b><span>${wp(p)}, ${d}</span></div><span class="st-bs">${fmt1(g)} GB</span></div>`).join('') : SH.emptyState({ art: 'ok', small: true, title: T('None'), text: T('No new file over 300 MB showed up.') })}</div></div>
     </div></div>`;
   SH.assemble(el, 40); paintIcons(el);
   const ln = $('.st-spark .ln', el); const L = ln.getTotalLength(); ln.style.strokeDasharray = `${L} ${L}`; anim(ln, [{ strokeDashoffset: L }, { strokeDashoffset: 0 }], { d: 1200, delay: 200 });

@@ -18,7 +18,7 @@
   .mode{display:flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:12px;border:1px solid var(--line2);font-size:11px;color:var(--mute);white-space:nowrap}
   .mode i{width:6px;height:6px;border-radius:50%;background:var(--faint)}
   .mode.admin{border-color:color-mix(in oklab,var(--accent) 60%,transparent);color:var(--ink)}
-  .mode.admin i{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  .mode.admin i{background:var(--accent);box-shadow:0 0 0 3px var(--acc-soft)}
   /* live numbers */
   .vit{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
   .vt{position:relative;padding:8px 9px 9px;border-radius:11px;background:var(--raise);overflow:hidden}
@@ -33,7 +33,7 @@
   .cap em{font-style:normal;color:var(--ink);transition:opacity calc(140ms*var(--f))}
   .mods{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
   .mods button{height:44px;border-radius:11px;display:grid;place-items:center;color:var(--mute);
-     transition:background-color calc(150ms*var(--f)),color calc(150ms*var(--f)),transform calc(240ms*var(--f)) cubic-bezier(.2,.9,.3,1.4)}
+     transition:background-color calc(150ms*var(--f)),color calc(150ms*var(--f)),transform calc(240ms*var(--f)) var(--e-snap)}
   .mods button:hover{background:var(--raise2);color:var(--ink);transform:translateY(-2px)}
   .mods button:active{transform:scale(.94)}
   .mods svg{width:19px;height:19px}
@@ -47,7 +47,7 @@
   .qa .toggle{display:inline-block;flex:none;width:42px;height:24px;transform:scale(.8);transform-origin:right center}
   .ft{margin-top:auto;display:flex;gap:6px}
   .ft .open{flex:1;height:36px;border-radius:11px;background:var(--accent);color:#1a0d0b;font-weight:500;display:flex;align-items:center;justify-content:center;gap:8px;
-     transition:filter calc(150ms*var(--f)),transform calc(240ms*var(--f)) cubic-bezier(.2,.9,.3,1.4)}
+     transition:filter calc(150ms*var(--f)),transform calc(240ms*var(--f)) var(--e-snap)}
   .ft .open:hover{filter:brightness(1.07)}
   .ft .open:active{transform:scale(.97)}
   .ft .ico{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;color:var(--mute);background:var(--raise);

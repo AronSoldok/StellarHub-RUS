@@ -234,7 +234,7 @@ function paintInto(el, html, fresh) {
 }
 const stamp = a => TS[a] ? (D[a] && D[a]._stale ? t('from {when}, updating…', { when: ago(TS[a]) }) : t('updated {when}', { when: ago(TS[a]) })) : t('checking…');
 let modCtx = null;
-const errBox = a => `<div class="empty"><b>${t("Couldn't read from Windows")}</b>${esc(ERR[a] || '')}<div style="margin-top:14px"><button class="btn sec" data-retry="${a}">${ic('restore')}${t('Try again')}</button></div></div>`;
+const errBox = a => SH.emptyState({ art: 'error', title: t("Couldn't read from Windows"), text: esc(ERR[a] || ''), action: { label: t('Try again'), data: `data-retry="${a}"`, icon: 'restore' } });
 document.addEventListener('click', e => { const b = e.target.closest('#v-privacy [data-retry]'); if (b) load(b.dataset.retry); });
 
 /* ================= actions: fixes and undo ================= */

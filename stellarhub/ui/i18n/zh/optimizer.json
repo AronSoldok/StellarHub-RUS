@@ -916,5 +916,6 @@
  "Measured when applied": "应用后测量",
  "Check what it is": "请确认来源",
  "Administrator": "管理员",
- "Open": "已打开"
+ "Open": "已打开",
+ "to create the restore point and change services. Without it, those steps are skipped.": "以创建还原点并更改服务。没有它，这些步骤将被跳过。"
 }
