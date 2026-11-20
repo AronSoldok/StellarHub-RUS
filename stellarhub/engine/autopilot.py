@@ -1308,7 +1308,7 @@ def _maybe_notify(r, st, res, force=False):
 
 
 def _sep():
-    return "，" if language() == "zh" else ", "
+    return {"zh": "，", "ja": "、"}.get(language(), ", ")
 
 
 def _after_power(what, r):

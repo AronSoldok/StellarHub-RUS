@@ -114,7 +114,7 @@ conditions and what to do.
 - **Settings for almost everything**: theme, colors, interface size, density, corners, starfield, animation
   intensity and speed, shortcuts to Windows tools and more.
 - The **side buttons of your mouse** go back and forward, like in a browser.
-- **Six languages**: English, Español, Português (Brasil), Italiano, Français and 简体中文. It follows the Windows
+- **Seven languages**: English, Español, Português (Brasil), Italiano, Français, 简体中文 and 日本語. It follows the Windows
   language by default and can be changed in *Settings > General*.
 
 ## 🖼️ Screenshots
@@ -268,7 +268,7 @@ designs/                   the early design explorations
 - [x] Real engine: telemetry, drivers, apps, updates, disk, optimizer and monitor
 - [x] Autopilot running routines on its own (while StellarHub is open, also hidden in the tray)
 - [x] `.exe` installer
-- [x] Six languages
+- [x] Seven languages
 - [x] Automatic StellarHub updates from this repository
 - [x] Portable version (1.0.0)
 - [ ] Code-signed releases (SignPath Foundation)

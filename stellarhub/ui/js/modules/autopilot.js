@@ -24,8 +24,8 @@ SH.icons.add({
    Named tr, not t: t is a common local name here. */
 const tr = (s, v) => SH.tc('autopilot', s, v);
 const LOC = SH.i18n.locale;
-const ZH = SH.i18n.lang === 'zh';
-const SEP = ZH ? '、' : ', ', SP = ZH ? '' : ' ';   // list separator and space between sentences
+const ZH = SH.i18n.lang === 'zh', CJK = ZH || SH.i18n.lang === 'ja';
+const SEP = CJK ? '、' : ', ', SP = CJK ? '' : ' ';   // list separator and space between sentences
 const dtf = o => new Intl.DateTimeFormat(LOC, o);
 const wdName = (i, style) => dtf({ weekday: style }).format(new Date(2024, 0, 1 + i));   // 1 Jan 2024 was a Monday
 const W7 = [0, 1, 2, 3, 4, 5, 6];
@@ -1066,7 +1066,7 @@ function drawLog(anims) {
   const el = lEl; if (!el) return;
   const items = LOG.filter(l => logFilter === 'all' || l.st !== 'ok');
   const ST = { ok: ['ok', tr('Done')], warn: ['warn', tr('With warnings')], skip: ['', tr('Skipped')], bad: ['bad', tr('Failed')] };
-  const RSEP = ZH ? '，' : ', ';
+  const RSEP = ZH ? '，' : CJK ? '、' : ', ';
   const SI = { ok: 'check', decide: 'info', skip: 'clock', bad: 'alert' };
   let day = '', html = '';
   items.forEach(l => { const dl = pastDay(l.when); if (dl !== day) { day = dl; html += `<div class="lg-day">${esc(dl)}</div>`; }
