@@ -92,7 +92,7 @@ function kbLayout(fmt, lang) {
     add('ArrowLeft', 13, y); add('ArrowDown', 14, y); add('ArrowRight', 15, y);
     W = 16; H = y + 1;
   }
-  return { keys: K, W, H, count: new Set(K.map(k => k.code).filter(c => c !== 'Fn')).size };
+  return { keys: K, W, H, lang, count: new Set(K.map(k => k.code).filter(c => c !== 'Fn')).size };
 }
 const kb = { capturing: false, tested: new Set(), down: new Map(), lastUp: {}, ev: {}, chatN: {}, maxRoll: 0, chatter: new Set(), stuck: new Set(), escT: 0, presses: 0, layout: null, detected: null, sugNum: false,
   missing: new Set(), marking: false, autoT: {} };
@@ -107,7 +107,11 @@ function kbSaveMissing() { SH.setSetting('testerKbMissing', { ...(state.settings
 const kbCodes = () => kb.layout ? new Set(kb.layout.keys.map(k => k.code).filter(c => c !== 'Fn')) : new Set();
 const kbTotal = () => [...kbCodes()].filter(c => !kb.missing.has(c)).length;
 const kbDoneN = () => { const codes = kbCodes(); return [...kb.tested].filter(c => codes.has(c) && !kb.missing.has(c)).length; };
-const kbLang = () => state.settings.testerKbLang || kb.detected || 'es-ES';
+/* the layout Windows uses is the default. A layout picked by hand is remembered with the one it replaced
+   (testerKbPick = { lang, over }), so if Windows changes keyboards the detected one comes back. The old
+   testerKbLang setting is ignored: it kept a pick forever, even when it didn't match Windows. */
+const kbPick = () => { const p = state.settings.testerKbPick; return p && typeof p === 'object' && typeof p.lang === 'string' && p.over === kb.detected ? p.lang : ''; };
+const kbLang = () => kbPick() || kb.detected || 'es-ES';
 function kbKeysHTML() {
   const lay = kb.layout = kbLayout(kbFmt(), kbLang());
   kbLoadMissing();
@@ -128,15 +132,20 @@ function kbDetChip(el) {
   const chip = $('#kbDet', el); if (!chip || !kb.detected || !KB_LANGS[kb.detected]) return;
   const same = kbLang() === kb.detected;
   chip.hidden = false; chip.classList.toggle('ok', same); chip.classList.toggle('warn', !same);
-  chip.innerHTML = `${ic(same ? 'check' : 'alert')}${same ? t('Windows uses {layout}', { layout: esc(KB_LANGS[kb.detected].n) }) : t('Windows uses {layout}, not this one', { layout: esc(KB_LANGS[kb.detected].n) })}`;
+  chip.innerHTML = `${ic(same ? 'check' : 'alert')}${same ? t('Windows uses {layout}', { layout: esc(KB_LANGS[kb.detected].n) }) : t('Windows uses {layout}, not this one', { layout: esc(KB_LANGS[kb.detected].n) })}`
+    + (same ? '' : `<button class="btn ghost sm" id="kbUseWin">${t('Use it')}</button>`);
+  const use = $('#kbUseWin', chip);
+  if (use) use.onclick = () => { SH.setSetting('testerKbPick', null); $('#kbLang', el).value = kb.detected; kbRebuild(el, true); kbDetChip(el); };
 }
 async function kbDetect(el) {
   try {
     if (!navigator.keyboard || !navigator.keyboard.getLayoutMap) return;
     const m = await navigator.keyboard.getLayoutMap(); const g = c => (m.get(c) || '').toLowerCase();
     const d = g('KeyQ') === 'a' ? 'fr-FR' : g('KeyY') === 'z' ? 'de-DE' : g('Semicolon') === 'ñ' ? (g('Backquote') === 'º' ? 'es-ES' : 'es-419') : g('Semicolon') === 'ç' ? 'pt-BR' : g('Backslash') === '#' ? 'en-GB' : 'en-US';
-    kb.detected = d; kbDetChip(el);
-    if (!state.settings.testerKbLang && d !== 'es-ES') { $('#kbLang', el).value = d; kbRebuild(el, true); }
+    const drawn = kb.layout && kb.layout.lang;
+    kb.detected = d;
+    const want = kbLang(); $('#kbLang', el).value = want;
+    if (want !== drawn) kbRebuild(el, true);
     kbDetChip(el);
   } catch {}
 }
@@ -167,7 +176,7 @@ function renderKeyboard(el) {
   new ResizeObserver(() => kbFit(el)).observe($('#kbStage', el));
   requestAnimationFrame(() => SH.placeSeg($('#kbFmt', el), true));
   $('#kbFmt', el).addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return; $$('#kbFmt button', el).forEach(x => x.classList.toggle('on', x === b)); SH.placeSeg($('#kbFmt', el)); SH.setSetting('testerKbFormat', b.dataset.v); kbRebuild(el, true); });
-  $('#kbLang', el).addEventListener('change', e => { SH.setSetting('testerKbLang', e.target.value); kbRebuild(el, true); kbDetChip(el); });
+  $('#kbLang', el).addEventListener('change', e => { const v = e.target.value; SH.setSetting('testerKbPick', v === kb.detected ? null : { lang: v, over: kb.detected }); kbRebuild(el, true); kbDetChip(el); });
   $('#kbSugYes', el).addEventListener('click', e => { const b = $(`#kbFmt [data-v="${e.currentTarget.dataset.to || 'full'}"]`, el); b && b.click(); hideSug(el); });
   $('#kbMiss', el).addEventListener('click', () => setMarking(el, !kb.marking));
   $('#kbMissDone', el).addEventListener('click', () => setMarking(el, false));

@@ -233,5 +233,6 @@
   "Let go of the stick and keep it still to check it.": "Suelta la palanca y mantenla quieta para comprobarla.",
   "Resting at the middle: {x}, {y}.": "En reposo en el centro: {x}, {y}.",
   "Rests off center ({x}, {y}) but inside the dead zone, so games should not notice.": "En reposo queda descentrada ({x}, {y}) pero dentro de la zona muerta, así que los juegos no deberían notarlo.",
-  "Rests off center ({x}, {y}), beyond the dead zone. Games will see input you are not making.": "En reposo queda descentrada ({x}, {y}), fuera de la zona muerta. Los juegos verán una entrada que no estás haciendo."
+  "Rests off center ({x}, {y}), beyond the dead zone. Games will see input you are not making.": "En reposo queda descentrada ({x}, {y}), fuera de la zona muerta. Los juegos verán una entrada que no estás haciendo.",
+  "Use it": "Usar este"
 }
