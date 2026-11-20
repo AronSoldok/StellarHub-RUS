@@ -104,18 +104,18 @@ class _Card:
 
     def __init__(self, scale):
         s = self.s = scale
-        W, H = int(700 * s), int(580 * s)
+        W, H = int(720 * s), int(640 * s)
         self.size = (W, H)
         cx = W // 2
         n = self.n = int(340 * s)                          # logo size
-        lx, ly = cx - n // 2, int(58 * s)
+        lx, ly = cx - n // 2, int(84 * s)
         self.logo_at = (lx, ly)
         base = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 
         # --- the patch of space: dark enough to read on a light wallpaper, no edges anywhere
         sky = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         sd = ImageDraw.Draw(sky)
-        sd.ellipse((cx - int(215 * s), int(70 * s), cx + int(215 * s), int(505 * s)), fill=(6, 9, 20, 246))  # near-opaque: text behind doesn't show
+        sd.ellipse((cx - int(225 * s), int(92 * s), cx + int(225 * s), int(548 * s)), fill=(6, 9, 20, 246))  # near-opaque: text behind doesn't show
         base.alpha_composite(sky.filter(ImageFilter.GaussianBlur(int(46 * s))))
         neb = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         nd = ImageDraw.Draw(neb)
@@ -156,17 +156,71 @@ class _Card:
             print("splash logo:", e)
 
         # --- the name, with a real shadow
-        self.name_y = name_y = ly + int(n * .72) + int(44 * s)   # the ring's lowest point is at .713 of the logo
+        self.name_y = name_y = ly + int(n * .72) + int(58 * s)   # the ring's lowest point is at .713 of the logo
         name = _brand_font(int(46 * s))
         self._shadowed(base, (cx, name_y), "StellarHub", name, (243, 246, 252, 255), dy=int(4 * s), blur=int(9 * s), a=235)
         self.small = _font("segoeui.ttf", int(17 * s))
         self.status_xy = (cx, name_y + int(40 * s))
         # nothing may end in a hard edge: everything fades out before the window's border
-        fade = Image.new("L", (W, H), 0)
-        ImageDraw.Draw(fade).ellipse((int(40 * s), int(30 * s), W - int(40 * s), H - int(30 * s)), fill=255)
-        self.fade = fade = fade.filter(ImageFilter.GaussianBlur(int(48 * s)))
+        lut = []
+        for v in range(256):               # v: elliptic distance from the center, 255 at the window's edge
+            r = v / 255
+            k = 0 if r >= .9 else 1 if r <= .54 else (lambda u: u * u * (3 - 2 * u))((.9 - r) / .36)
+            lut.append(int(255 * k))
+        self.fade = fade = Image.radial_gradient("L").resize((W, H), Image.BILINEAR).point(lut)
         base.putalpha(ImageChops.multiply(base.getchannel("A"), fade))
         self.base = base
+        self._moons = [self._moon(int(n * d), seed) + (cx + n * ox, ly + n * .53 + n * oy, amp * s, per, ph)
+                       for d, ox, oy, seed, amp, per, ph in ((.085, -.47, -.17, 5, 3.4, 5.6, 0.0),
+                                                             (.06, .52, .13, 9, 2.8, 4.7, 1.9),
+                                                             (.042, -.25, -.45, 13, 2.2, 6.3, 3.7))]
+
+    def _moon(self, size, seed):
+        # a small grey moon: lit from the upper left like the planet, a few soft craters, a faint rim light
+        import random
+        rnd = random.Random(seed)
+        S = size * 4
+        im = Image.new("RGBA", (S + 8, S + 8), (0, 0, 0, 0))
+        c, r = (S + 8) / 2, S / 2
+        body = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        bd = ImageDraw.Draw(body)
+        steps = 24
+        for i in range(steps):               # a soft sphere: light upper left, darker lower right
+            k = i / steps
+            rr = r * (1 - k)
+            ox, oy = -r * .35 * k, -r * .38 * k
+            g = int(104 + 118 * k ** 1.2)
+            bd.ellipse((c + ox - rr, c + oy - rr, c + ox + rr, c + oy + rr), fill=(g, g + 4, g + 12, 255))
+        mask = Image.new("L", im.size, 0)
+        ImageDraw.Draw(mask).ellipse((c - r, c - r, c + r, c + r), fill=255)
+        body = body.filter(ImageFilter.GaussianBlur(S * .012))
+        craters = Image.new("RGBA", im.size, (0, 0, 0, 0))   # their own layer: ImageDraw replaces alpha
+        for _ in range(5):                   # a slightly darker floor with a lighter lip below it
+            a, d = rnd.uniform(0, 6.283), rnd.uniform(0, .6)
+            cr = r * rnd.uniform(.07, .14)
+            x, y = c + math.cos(a) * d * r, c + math.sin(a) * d * r
+            lip = Image.new("RGBA", im.size, (0, 0, 0, 0))
+            ImageDraw.Draw(lip).ellipse((x - cr, y - cr + cr * .22, x + cr, y + cr + cr * .22), fill=(232, 236, 244, 46))
+            craters.alpha_composite(lip)
+            floor = Image.new("RGBA", im.size, (0, 0, 0, 0))
+            ImageDraw.Draw(floor).ellipse((x - cr, y - cr, x + cr, y + cr), fill=(70, 74, 86, 58))
+            craters.alpha_composite(floor)
+        body.alpha_composite(craters.filter(ImageFilter.GaussianBlur(S * .008)))
+        body.putalpha(ImageChops.multiply(body.getchannel("A"), mask))
+        im.alpha_composite(body)
+        rim = Image.new("L", im.size, 0)
+        ImageDraw.Draw(rim).ellipse((c - r, c - r, c + r, c + r), outline=170, width=max(2, int(S * .03)))
+        lit = Image.linear_gradient("L").rotate(45, expand=False).resize(im.size).point(lambda v: 255 - v)
+        im.alpha_composite(Image.merge("RGBA", (Image.new("L", im.size, 225), Image.new("L", im.size, 236),
+                                                  Image.new("L", im.size, 250), ImageChops.multiply(rim, lit))))
+        small = im.convert("RGBa").resize((size + 2, size + 2), Image.LANCZOS).convert("RGBA")
+        sh = Image.new("RGBA", (small.width + 16, small.height + 16), (0, 0, 0, 0))
+        sh.paste(Image.new("RGBA", small.size, (0, 0, 0, 0)), (8, 8))
+        shadow = Image.new("RGBA", sh.size, (0, 0, 0, 0))
+        shadow.alpha_composite(Image.merge("RGBA", (Image.new("L", small.size, 0),) * 3 + (small.getchannel("A").point(lambda v: v * 90 // 255),)), (8, 10))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(3))
+        shadow.alpha_composite(small, (8, 8))
+        return (shadow,)
 
     def _texture(self, logo):
         """Soft gas-giant bands on the planet, fine grooves on the ring, and the version engraved on the planet."""
@@ -236,6 +290,16 @@ class _Card:
         img.alpha_composite(tx)
 
     TURN = 3.1  # seconds per turn
+
+    def _with_moons(self, t):
+        im = self.base.copy()
+        layer = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        for spr, x, y, amp, per, ph in self._moons:
+            yy = y + amp * math.sin(t / per * 2 * math.pi + ph)
+            layer.alpha_composite(spr, (int(round(x - spr.width / 2)), int(round(yy - spr.height / 2))))
+        layer.putalpha(ImageChops.multiply(layer.getchannel("A"), self.fade))
+        im.alpha_composite(layer)
+        return im
 
     def _ring_maps(self):
         """The visible ring of make_icon_image (same geometry: center (.5, .53), outer radii .385 x .135, width .064,
@@ -311,13 +375,13 @@ class _Card:
             self._maps_thread = threading.Thread(target=self._ring_maps, daemon=True)
             self._maps_thread.start()
         if not hasattr(self, "_star"):            # still being prepared: the scene without the light
-            im = self.base.copy()
+            im = self._with_moons(t)
             if status:
                 self._shadowed(im, self.status_xy, status, self.small, (236, 241, 249, 228), dy=int(2 * self.s), blur=int(4 * self.s), a=235)
             return im
         if not hasattr(self, "_light_t0"):
             self._light_t0 = t
-        im = self.base.copy()
+        im = self._with_moons(t)
         n, m = self.n, self.margin
         N = n + 2 * m
         head = (t / self.TURN) % 1.0 * 2 * math.pi
