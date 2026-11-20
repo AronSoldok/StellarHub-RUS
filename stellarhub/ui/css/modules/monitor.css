@@ -128,7 +128,7 @@
 #v-monitor .stick i{flex:1;height:14px;border-radius:2px;background:color-mix(in oklab,var(--ink) 18%,var(--deep))}
 #v-monitor .stick.empty{background:none;border:1.5px dashed var(--line2)}
 #v-monitor .stick.empty::after{display:none}
-#v-monitor .slot.on .stick{box-shadow:0 8px 18px -10px color-mix(in oklab,var(--accent2) 55%,transparent)}
+#v-monitor .slot.on .stick{border-color:color-mix(in oklab,var(--accent2) 60%,transparent);box-shadow:0 8px 16px -10px rgba(0,0,0,.8)}
 html[data-int=min] #v-monitor .slot.on .stick{animation:none}
 
 /* disks */

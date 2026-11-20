@@ -235,7 +235,7 @@ html[data-int=min] #v-privacy .pv-radar .blip .dot{animation:none}
 #v-privacy .pv-uac span{display:flex;flex-direction:column;gap:7px}
 #v-privacy .pv-uac i{height:6px;border-radius:6px;background:var(--raise3);transition:background-color calc(300ms*var(--f))}
 #v-privacy .pv-uac span.f i{background:color-mix(in oklab,var(--accent2) 55%,transparent)}
-#v-privacy .pv-uac span.on i{background:var(--accent2);box-shadow:0 0 0 1px color-mix(in oklab,var(--accent2) 50%,transparent),0 4px 10px -4px color-mix(in oklab,var(--accent2) 55%,transparent)}
+#v-privacy .pv-uac span.on i{background:var(--accent2);box-shadow:0 0 0 2px var(--ice-soft)}
 #v-privacy .pv-uac em{font-style:normal;font-size:10.5px;line-height:1.3;color:var(--faint)}
 #v-privacy .pv-uac span.on em{color:var(--ink)}
 #v-privacy .pv-encb b{display:block;font:500 22px var(--display);letter-spacing:-.02em}

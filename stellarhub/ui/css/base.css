@@ -23,8 +23,8 @@
   --acc-soft:color-mix(in oklab,var(--accent) 12%,transparent); --acc-line:color-mix(in oklab,var(--accent) 42%,transparent);
   --ice-soft:color-mix(in oklab,var(--accent2) 10%,transparent); --ice-line:color-mix(in oklab,var(--accent2) 34%,transparent);
   /* observatory glass: dark glass lit from above by the nebula, a rim of light on its top edge, a soft offset shadow */
-  --sheen:linear-gradient(180deg,color-mix(in oklab,var(--accent2) 4.5%,transparent),transparent 140px);
-  --rim:inset 0 1px 0 rgba(214,232,255,.065);
+  --sheen:linear-gradient(180deg,color-mix(in oklab,var(--accent2) 6%,transparent),transparent 150px);
+  --rim:inset 0 1px 0 rgba(214,232,255,.08);
   --lift:0 24px 48px -28px rgba(0,0,0,.85),0 2px 8px -3px rgba(0,0,0,.4);
   --lift-hi:0 44px 100px -34px rgba(0,0,0,.92),0 10px 26px -14px rgba(0,0,0,.55);
 }
@@ -206,7 +206,7 @@ body.frameless:not(.win-max) .rz{display:block}
   box-shadow:var(--rim),var(--lift)}
 .pan .pan{box-shadow:var(--rim)}
 .subnav,.search,.mode{box-shadow:0 14px 30px -18px rgba(0,0,0,.7)}
-.btn.pri{box-shadow:inset 0 1px 0 rgba(255,255,255,.24),0 10px 22px -12px color-mix(in oklab,var(--accent) 62%,transparent)}
+.btn.pri{box-shadow:inset 0 1px 0 rgba(255,255,255,.24),0 10px 20px -12px rgba(0,0,0,.8),0 2px 6px -3px rgba(0,0,0,.5)}
 .btn.sec{box-shadow:var(--rim),0 10px 22px -14px rgba(0,0,0,.7)}
 .mhead h1 .chip{vertical-align:middle;margin-left:12px;font:500 11.5px var(--text);letter-spacing:0;position:relative;top:-3px}
 .pan>h4,.pan-h{font-size:var(--fs-sm);font-weight:600;letter-spacing:.005em;color:color-mix(in oklab,var(--ink) 86%,var(--mute));display:flex;align-items:center;gap:8px;margin-bottom:12px}
@@ -282,16 +282,16 @@ html[data-int=min] .sk::after{animation:none}
 .dk{position:relative;width:52px;height:52px;flex:none;display:grid;place-items:center;border-radius:15px;color:var(--mute);
   transition:color calc(200ms*var(--f)),background-color calc(200ms*var(--f))}
 .dk:hover{color:var(--ink);background:var(--raise2)}
-.dk.on{color:var(--ink);background:color-mix(in oklab,var(--accent) 7%,transparent)}
+.dk.on{color:var(--ink);background:var(--raise2)}
 .dk svg{width:23px;height:23px}
 .tip{position:absolute;bottom:calc(100% + 14px);left:50%;white-space:nowrap;padding:6px 11px;border-radius:9px;background:var(--ink);color:var(--void);
   font-size:12.5px;font-weight:500;opacity:0;pointer-events:none;transform:translate(-50%,6px) scale(.92);
   transition:opacity calc(140ms*var(--f)),transform calc(200ms*var(--f)) var(--e-snap)}
 .dk:hover .tip{opacity:1;transform:translate(-50%,0) scale(1)}
 /* the active module carries the brand mark in small: a coral planet on an ice orbit (shell.js slides it, 18 px wide) */
-.dock .dot{position:absolute;bottom:2px;left:0;width:18px;height:8px;will-change:transform;pointer-events:none}
-.dock .dot::before{content:"";position:absolute;inset:1px 0;border-radius:50%;border:1px solid color-mix(in oklab,var(--accent2) 70%,transparent);transform:rotate(-12deg)}
-.dock .dot::after{content:"";position:absolute;left:6px;top:1px;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 1.5px var(--deep)}
+.dock .dot{position:absolute;bottom:1px;left:0;width:18px;height:6px;will-change:transform;pointer-events:none}
+.dock .dot::before{content:"";position:absolute;inset:.5px 0;border-radius:50%;border:1px solid color-mix(in oklab,var(--accent2) 70%,transparent);transform:rotate(-10deg)}
+.dock .dot::after{content:"";position:absolute;left:6.5px;top:.5px;width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 1.5px var(--deep)}
 .dock .sep{width:1px;height:28px;background:var(--line);margin:0 6px 12px;flex:none}
 
 /* ---------- layers: palette, settings, toasts ---------- */

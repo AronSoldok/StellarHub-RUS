@@ -16,7 +16,7 @@ html.pad-mode #padRing.on.has{opacity:1}
 html.pad-mode #padRing.on.has .pr-fr b{animation-play-state:running}
 #padRing .pr-in::after{content:"";position:absolute;inset:-5px;border-radius:calc(var(--rr) + 5px);
   background:color-mix(in oklab,var(--accent2) 7%,transparent);
-  box-shadow:0 0 26px -3px color-mix(in oklab,var(--accent2) 60%,transparent),0 0 0 1px color-mix(in oklab,var(--void) 70%,transparent)}
+  box-shadow:0 0 0 1px color-mix(in oklab,var(--accent2) 45%,transparent),0 0 0 3px color-mix(in oklab,var(--void) 70%,transparent),0 12px 28px -12px rgba(0,0,0,.8)}
 #padRing i{position:absolute;inset:-5px;border-radius:calc(var(--rr) + 5px);border:2px solid var(--accent);opacity:0}
 @keyframes padSpin{from{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}
 html[data-int=min] #padRing .pr-fr b{animation:none}
