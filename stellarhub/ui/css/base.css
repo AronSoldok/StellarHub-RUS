@@ -288,10 +288,7 @@ html[data-int=min] .sk::after{animation:none}
   font-size:12.5px;font-weight:500;opacity:0;pointer-events:none;transform:translate(-50%,6px) scale(.92);
   transition:opacity calc(140ms*var(--f)),transform calc(200ms*var(--f)) var(--e-snap)}
 .dk:hover .tip{opacity:1;transform:translate(-50%,0) scale(1)}
-/* the active module carries the brand mark in small: a coral planet on an ice orbit (shell.js slides it, 18 px wide) */
-.dock .dot{position:absolute;bottom:1px;left:0;width:18px;height:6px;will-change:transform;pointer-events:none}
-.dock .dot::before{content:"";position:absolute;inset:.5px 0;border-radius:50%;border:1px solid color-mix(in oklab,var(--accent2) 70%,transparent);transform:rotate(-10deg)}
-.dock .dot::after{content:"";position:absolute;left:6.5px;top:.5px;width:5px;height:5px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 1.5px var(--deep)}
+.dock .dot{position:absolute;bottom:5px;left:0;width:18px;height:3px;border-radius:3px;background:var(--accent);will-change:transform}
 .dock .sep{width:1px;height:28px;background:var(--line);margin:0 6px 12px;flex:none}
 
 /* ---------- layers: palette, settings, toasts ---------- */
