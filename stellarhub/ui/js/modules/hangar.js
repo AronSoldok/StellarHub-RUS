@@ -437,13 +437,18 @@ function secHTML(c, list) {
   return `<section class="hg-sec" data-sec="${c.id}"><div class="hg-sh"><span class="hg-si">${ic(c.ic)}</span><b>${esc(c.n)}</b><span class="faint hg-sc" data-sc="${c.id}"></span><span class="sp"></span>
     <button class="btn sm ghost hg-sall" data-all="${c.id}"></button></div><div class="hg-grid">${list.map(tileHTML).join('')}</div></section>`;
 }
+let listJob = 0;
 function renderList(animate) {
   const el = $(`#v-${ID} .tab[data-tab="catalog"]`); if (!el) return; const box = $('.hg-list', el); if (!box) return;
   const cats = S.cat === 'all' ? CATS : [CAT[S.cat]];
   const parts = cats.map(c => [c, visible(c.id)]).filter(([, l]) => l.length);
-  let html = parts.map(([c, l]) => secHTML(c, l)).join('');
-  if (!html) html = SH.emptyState({ cls: 'hg-empty', art: S.q ? 'none' : S.filter === 'new' ? 'ok' : 'first', title: S.q ? t('Nothing in the catalog matches “{q}”', { q: esc(S.q) }) : S.filter === 'sel' ? t('Nothing selected yet') : S.filter === 'new' ? t('You already have all of these') : t('No apps here'), text: S.q ? t('Look below for results from winget.') : S.filter === 'sel' ? t('Tick the apps you want, or start from a kit.') : '' });
-  if (S.q.length >= 2) html += wingetSecHTML();
+  /* A fresh list (first visit, a filter or a search, which also puts the scroll back on top) paints the sections that fill the screen
+     at once and adds the rest in idle time: ~150 tiles in one go were a 60-130 ms freeze. A refresh that must keep the scroll
+     position (animate false) is built whole. */
+  const job = ++listJob, head = animate ? parts.slice(0, 3) : parts, rest = animate ? parts.slice(3) : [];
+  let html = head.map(([c, l]) => secHTML(c, l)).join('');
+  if (!parts.length) html = SH.emptyState({ cls: 'hg-empty', art: S.q ? 'none' : S.filter === 'new' ? 'ok' : 'first', title: S.q ? t('Nothing in the catalog matches “{q}”', { q: esc(S.q) }) : S.filter === 'sel' ? t('Nothing selected yet') : S.filter === 'new' ? t('You already have all of these') : t('No apps here'), text: S.q ? t('Look below for results from winget.') : S.filter === 'sel' ? t('Tick the apps you want, or start from a kit.') : '' });
+  if (S.q.length >= 2 && !rest.length) html += wingetSecHTML();
   box.innerHTML = html;
   updSecCounts();
   /* the rail counts what the search and the filter leave */
@@ -451,6 +456,16 @@ function renderList(animate) {
   const ta = $('[data-rc="all"]', el); if (ta) ta.textContent = SH.fmtInt(tot);
   if (animate) $$('.hg-sh, .hg-app, .hg-empty, .hg-wrow', box).slice(0, 30).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: Math.min(i, 24) * 14, e: EASE.spring }));
   const sc = $('.hg-scroll', el); if (animate && sc) sc.scrollTop = 0;
+  if (rest.length) {
+    let i = 0; const idle = f => window.requestIdleCallback ? requestIdleCallback(f, { timeout: 160 }) : setTimeout(f, 30);
+    const more = () => {
+      if (job !== listJob || !box.isConnected) return;  /* a newer render took over */
+      box.insertAdjacentHTML('beforeend', rest.slice(i, i + 2).map(([c, l]) => secHTML(c, l)).join('')); i += 2; updSecCounts();
+      if (i < rest.length) idle(more);
+      else if (S.q.length >= 2) { box.insertAdjacentHTML('beforeend', wingetSecHTML()); updWs(false); }
+    };
+    idle(more);
+  }
 }
 function rerenderCatalog() { const el = $(`#v-${ID} .tab[data-tab="catalog"]`); if (el && $('.hg-list', el)) { renderList(false); noWinget(el); } }
 function updSecCounts() {
