@@ -161,6 +161,25 @@ every later update is silent; uninstalling removes it.
 | New features | 1.**2**.0 | Downloads in the background and installs the next time you open StellarHub (*Settings > Updates > Install new features automatically*) |
 | Small fixes | 1.2.**3** | Never interrupts you: it waits in *Settings > Updates* |
 
+Every big and feature version also gets a **name**: a figure of Greek or Roman mythology that is also a star, moon
+or constellation, short and easy to say. **2.0.0 is _Atlas_**; small fixes keep the name of their version. It shows in
+a corner of every view (`v2.0.0 · ATLAS`) and on the start screen, engraved on the planet.
+
+#### Why an antivirus may flag it
+
+StellarHub is new, not code-signed yet and talks to Windows a lot (drivers, services, startup entries, the
+registry), which is exactly what heuristic and machine-learning detections watch. A few engines have flagged it as
+"generic" or "suspicious" with no specific malware name. What is done about it:
+
+- the program is built by GitHub Actions from this public repository, with PyInstaller's bootloader **compiled from
+  source** (not the prebuilt one shared by thousands of programs), as a folder, without packers;
+- it installs **per user** by default (no administrator rights, nothing in `Program Files` or scheduled tasks), and
+  reads Windows through WMI inside its own process instead of starting hidden PowerShell windows;
+- every release is signed by the author and reported to the antivirus vendors as a false positive.
+
+If yours stops it, you can check the file yourself ([Verifying a download yourself](#verifying-a-download-yourself))
+or scan it on [VirusTotal](https://www.virustotal.com).
+
 ### ◇ Or take it with you (portable)
 
 Download **`StellarHub-Portable-x.y.z.zip`** from the same release and unzip it anywhere, for example a USB drive.
@@ -352,6 +371,9 @@ designs/                   the early design explorations
 - [x] Seven languages
 - [x] Automatic StellarHub updates from this repository
 - [x] Portable version (1.0.0)
+- [x] Updates signed by the author, verified before installing (2.0.0)
+- [x] Controller navigation and a controller tester (2.0.0)
+- [x] Desktop-tower 3D view, lighter mode for battery and integrated graphics (2.0.0)
 - [ ] Code-signed releases (SignPath Foundation)
 
 ## 🤝 Contributing
