@@ -233,5 +233,6 @@
   "Let go of the stick and keep it still to check it.": "松开摇杆并保持不动即可检测。",
   "Resting at the middle: {x}, {y}.": "静止时位于中心：{x}，{y}。",
   "Rests off center ({x}, {y}) but inside the dead zone, so games should not notice.": "静止时偏离中心（{x}，{y}），但仍在死区内，游戏一般不会察觉。",
-  "Rests off center ({x}, {y}), beyond the dead zone. Games will see input you are not making.": "静止时偏离中心（{x}，{y}），超出死区。游戏会收到你并未做出的输入。"
+  "Rests off center ({x}, {y}), beyond the dead zone. Games will see input you are not making.": "静止时偏离中心（{x}，{y}），超出死区。游戏会收到你并未做出的输入。",
+  "Use it": "使用它"
 }
