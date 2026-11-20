@@ -74,6 +74,51 @@ def show_topmost(form, x, y, w, h, hand_foreground_from=None):
     u.SetForegroundWindow(ctypes.c_void_p(hwnd))
 
 
+def _dump_threads(title):
+    """Every Python thread's stack into the log, so a freeze reported by a user says where it was waiting."""
+    import sys
+    import traceback
+    names = {t.ident: t.name for t in threading.enumerate()}
+    lines = [f"[hang] {title}"]
+    for ident, frame in sys._current_frames().items():
+        lines.append(f"--- thread {names.get(ident, ident)}")
+        lines.extend(x.rstrip("\n") for x in traceback.format_stack(frame)[-10:])
+    print("\n".join(lines), flush=True)
+
+
+def watch_ui(window, busy_fn=None, every=2.0, limit=8.0):
+    """Freeze detector: posts a no-op to the window thread every `every` seconds. If the window does not run it
+    within `limit` seconds (Windows would call it "not responding"), or an evaluate_js has waited that long for the
+    page, every thread's stack goes to the log once per freeze. Costs nothing while the window is healthy."""
+    def run():
+        from System import Action
+        form = None
+        while form is None:
+            form = getattr(window, "native", None)
+            time.sleep(0.5)
+        stuck = False
+        while True:
+            ev = threading.Event()
+            try:
+                form.BeginInvoke(Action(ev.set))
+            except Exception:
+                return  # the window is gone
+            ok = ev.wait(limit)
+            try:
+                busy = busy_fn() if busy_fn is not None else 0
+            except Exception:
+                busy = 0
+            if (not ok or busy > limit) and not stuck:
+                stuck = True
+                _dump_threads("the window thread has not answered for %.0f s" % limit if not ok
+                              else "an evaluate_js has waited %.0f s for the page" % busy)
+            elif ok and busy <= limit and stuck:
+                stuck = False
+                print("[hang] the window answers again", flush=True)
+            time.sleep(every)
+    threading.Thread(target=run, daemon=True, name="ui-watchdog").start()
+
+
 def wv_visible(window, on):
     """Tells WebView2 whether the window can be seen. A WebView2 whose window is hidden in the tray keeps
     painting and running requestAnimationFrame at full speed (measured: 11% GPU and over 100% CPU for a window

@@ -1,6 +1,47 @@
 """Runs a window's evaluate_js calls off the window thread, in order."""
 import collections
 import threading
+import time
+
+
+class Runner:
+    """Runs evaluate_js calls on its own thread and waits at most `timeout` seconds for each. pywebview's evaluate_js
+    waits for WebView2's reply with no time limit; if a reply never comes (a script WebView2 could not run, a page
+    being replaced) that thread would wait forever, and everything queued behind it with it. After the timeout the
+    stuck thread is left behind (it costs a parked thread) and a fresh one takes the next call."""
+    def __init__(self, window, name, timeout=15.0):
+        self.window, self.name, self.timeout = window, name, timeout
+        self._new()
+
+    def _new(self):
+        self._job, self._done = None, threading.Event()
+        self._go = threading.Event()
+        go, box = self._go, self
+
+        def work():
+            while True:
+                go.wait()
+                go.clear()
+                code, done = box._job
+                try:
+                    box.window.evaluate_js(code)
+                except Exception:
+                    pass
+                done.set()
+                if box._go is not go:  # this thread was given up on while it waited: a newer one took over
+                    return
+        threading.Thread(target=work, daemon=True, name=self.name).start()
+
+    def run(self, code):
+        """True if the page answered in time."""
+        done = threading.Event()
+        self._job = (code, done)
+        self._go.set()
+        if done.wait(self.timeout):
+            return True
+        print(f"[js] the page did not answer an evaluate_js in {self.timeout:.0f} s; going on without it", flush=True)
+        self._new()
+        return False
 
 
 class Sender:
@@ -14,7 +55,14 @@ class Sender:
         self._q = collections.deque()
         self._cv = threading.Condition()
         self._stop = False
+        self._since = 0.0  # when the evaluate_js in progress started (0: none), for the freeze detector
+        self._runner = Runner(window, "js-sender-run")
         threading.Thread(target=self._run, daemon=True, name="js-sender").start()
+
+    def busy_for(self):
+        """Seconds the evaluate_js in progress has been waiting for the page (0 when idle)."""
+        s = self._since
+        return time.monotonic() - s if s else 0.0
 
     def put(self, code, lossy=False):
         with self._cv:
@@ -44,7 +92,8 @@ class Sender:
                 if self._stop:
                     return
                 code, _ = self._q.popleft()
+            self._since = time.monotonic()
             try:
-                self.window.evaluate_js(code)
-            except Exception:
-                pass
+                self._runner.run(code)
+            finally:
+                self._since = 0.0

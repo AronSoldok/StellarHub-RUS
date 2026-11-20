@@ -100,6 +100,8 @@ def main():
     except Exception as e:
         print("autopilot:", e)
 
+    # freeze detector: if the window or the page stops answering, every thread's stack goes to the log once
+    winmgr.watch_ui(window, lambda: max([s.busy_for() for s in list(api._senders.values())] or [0]))
     window.events.loaded += lambda: _phase("page loaded")
     _phase("engine attached")
     startup.refresh_ui_cache()

@@ -59,7 +59,26 @@ def data_dir():
     """Settings, logs, history: %APPDATA%\\StellarHub, or <program>\\Data in the portable version."""
     if PORTABLE:
         return _portable_data_dir()
-    return os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "StellarHub")
+    real = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "StellarHub")
+    if os.environ.get("STELLARHUB_ISOLATED") == "1":
+        return _isolated_data_dir(real)
+    return real
+
+
+def _isolated_data_dir(real):
+    """A test copy (STELLARHUB_ISOLATED=1) gets its own data folder, seeded once with a copy of the real settings: it
+    starts looking like the user's StellarHub, but nothing it saves (settings, history, logs) reaches the real ones."""
+    import shutil
+    import tempfile
+    d = os.path.join(tempfile.gettempdir(), "stellarhub_isolated_data")
+    try:
+        os.makedirs(d, exist_ok=True)
+        src, dst = os.path.join(real, "settings.json"), os.path.join(d, "settings.json")
+        if os.path.isfile(src) and not os.path.exists(dst):
+            shutil.copyfile(src, dst)
+    except OSError:
+        pass
+    return d
 
 
 def local_dir():

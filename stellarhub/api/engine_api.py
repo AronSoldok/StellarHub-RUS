@@ -61,23 +61,25 @@ class EngineApi:
         """Each telemetry sample goes to the main window (if visible) and to the widget (if open).
         Called from the sampler thread, never from the window thread."""
         payload = json.dumps(data)
+        code = f"window.SH && SH.tele.push && SH.tele.push({payload})"
+        targets = []
         if self._visible and not self._minimized:
-            try:
-                self._window.evaluate_js(f"window.SH && SH.tele.push && SH.tele.push({payload})")
-            except Exception:
-                pass
-        w = self._widget
-        if w is not None:
-            try:
-                w.evaluate_js(f"window.SH && SH.tele.push && SH.tele.push({payload})")
-            except Exception:
-                pass
-        pw = self._panel
-        if pw is not None and self._panel_shown:
-            try:
-                pw.evaluate_js(f"window.SH && SH.tele.push && SH.tele.push({payload})")
-            except Exception:
-                pass
+            targets.append(self._window)
+        if self._widget is not None:
+            targets.append(self._widget)
+        if self._panel is not None and self._panel_shown:
+            targets.append(self._panel)
+        for w in targets:
+            self._tele_runner(w).run(code)
+
+    def _tele_runner(self, w):
+        """One Runner per window: a page that never answers costs this sample (5 s at most), not the live data."""
+        from ..jssender import Runner
+        rs = self.__dict__.setdefault("_tele_runners", {})
+        r = rs.get(w)
+        if r is None:
+            r = rs[w] = Runner(w, "tele-js", timeout=5.0)
+        return r
 
     def _tele_refresh(self):
         shown = self._visible and not self._minimized
