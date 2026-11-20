@@ -266,8 +266,19 @@ def _clear_cancel():
         pass
 
 
-def start():
-    """Starts the updater. Returns {ok, mode, at} or {ok: False, error}."""
+def _updater_answered(at, seconds=8):
+    """The updater writes state.json as soon as it starts: True if it did after `at`."""
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if (state().get("ts") or 0) >= at - 1:
+            return True
+        time.sleep(.25)
+    return False
+
+
+def start(allow_uac=True):
+    """Starts the updater. Returns {ok, mode, at} or {ok: False, error}. allow_uac=False (background download, or
+    at start): never shows the Windows prompt; reports {ok: False} instead."""
     m = mode()
     if m == "source":
         return {"ok": False, "mode": m, "error": tr("This copy runs from the source code: download the new version from GitHub.")}
@@ -279,8 +290,12 @@ def start():
             subprocess.Popen([exe, "--self-update"], creationflags=DETACHED | NO_WINDOW, close_fds=True, cwd=install_dir())
         elif m == "task":
             r = subprocess.run(["schtasks", "/run", "/tn", TASK], capture_output=True, creationflags=NO_WINDOW, timeout=20)
-            if r.returncode != 0:
+            if r.returncode != 0 or not _updater_answered(at):
+                from .. import schtask
+                schtask.end(TASK)  # queued (an old task on battery) or failed: don't let it start later by surprise
                 m = "uac"
+        if m == "uac" and not allow_uac:
+            return {"ok": False, "mode": m, "error": tr("Windows did not give permission to install the update.")}
         if m == "uac":
             if ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, "--self-update", install_dir(), 0) <= 32:
                 return {"ok": False, "mode": m, "error": tr("Windows did not give permission to install the update.")}
@@ -369,11 +384,11 @@ def _task_exists():
 
 def ensure_task():
     """--update-task on (the installer, as administrator): a task that runs this StellarHub.exe --self-update with
-    administrator rights for the user who installs, started on demand only (never on a schedule)."""
-    r = subprocess.run(["schtasks", "/create", "/tn", TASK, "/tr", f'"{sys.executable}" --self-update', "/sc", "once",
-                        "/st", "00:00", "/rl", "highest", "/it", "/f"],
-                       capture_output=True, creationflags=NO_WINDOW)
-    return r.returncode == 0
+    administrator rights for the user who installs, started on demand only (never on a schedule). Made from XML so
+    it also runs on battery (see stellarhub/schtask.py)."""
+    from .. import schtask
+    return schtask.create(TASK, sys.executable, "--self-update", "Installs StellarHub updates without the Windows "
+                          "prompt, when StellarHub asks for it.", multi="IgnoreNew", limit="PT2H")
 
 
 def delete_task():
@@ -571,7 +586,7 @@ def prefetch():
         open(_prefetch_flag(), "w").close()
     except OSError:
         return {"ok": False, "mode": m}
-    r = start()
+    r = start(allow_uac=False)
     if not r.get("ok") or r.get("mode") == "uac":
         _rm(_prefetch_flag())
         return {"ok": False, "mode": r.get("mode")}
@@ -595,7 +610,7 @@ def apply_staged_at_start(say=None, timeout=120):
         return False
     if say:
         say(tr("Updating to {v}…", v=ver))
-    r = start()
+    r = start(allow_uac=False)
     if not r.get("ok") or r.get("mode") == "uac":
         return False
     at, end = r.get("at") or time.time(), time.monotonic() + timeout

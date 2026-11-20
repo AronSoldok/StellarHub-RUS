@@ -345,5 +345,6 @@
   "DNS restored.": "DNS restaurado.",
   "Could not restore the DNS: {msg}": "Não foi possível restaurar o DNS: {msg}",
   "Could not restore the DNS.": "Não foi possível restaurar o DNS.",
-  "Wait until the current change finishes.": "Aguarde a alteração atual terminar."
+  "Wait until the current change finishes.": "Aguarde a alteração atual terminar.",
+  "Active": "Ativa"
 }

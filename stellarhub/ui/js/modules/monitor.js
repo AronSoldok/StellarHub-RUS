@@ -352,12 +352,12 @@ R.gpu = (el, t) => {
         <div class="gr"><div class="legend"><span><i style="background:var(--accent)"></i>${_t('usage')}</span><span><i class="dash" style="border-color:var(--accent2)"></i>${_t('temperature')}</span></div>
           <div class="chwrap">${cv('gCh')}</div>${axis}</div></div>
       <p class="mnote gstate" id="gState" hidden></p></div>
-    <div class="pan" data-asm>${head(esc(short(igpu) || _t('Integrated graphics')), _tc('integrated'))}
+    <div class="pan" data-asm>${head(esc(short(igpu) || _t('Integrated graphics')), _t('Integrated'))}
       ${igpu ? `<div class="igu"><div class="big"><span id="gI">–</span><small>%</small></div><div class="chwrap sm">${cv('gICh')}</div></div>` : ''}
       <p class="mnote">${igpu ? _t('Drives the laptop screen and saves battery. The dedicated GPU kicks in when a program asks for it.') : _t('This PC has no active integrated graphics.')}</p></div>
     <div class="pan" data-asm>${head(_t('Using the GPU'), procInfo.gpuPerProcess === false ? _t('not available') : '')}<div class="tops" id="gTop"></div></div>
     <div class="pan" data-asm>${head(_t('Displays'), `${mons.length || '–'}`)}<div class="rows">
-      ${mons.map(m => `<div class="row"><span class="ri">${ic('display')}</span><span class="rt"><b>${m.internal ? _t('Laptop screen') : _t('External monitor')}</b><span>${esc([m.vendor, m.name || m.code].filter(Boolean).join(' '))}${m.inches ? `, ${m.inches}"` : ''}</span></span><span class="chip ok">${_t('active')}</span></div>`).join('') || `<div class="muted">${_t('No display data.')}</div>`}</div></div>
+      ${mons.map(m => `<div class="row"><span class="ri">${ic('display')}</span><span class="rt"><b>${m.internal ? _t('Laptop screen') : _t('External monitor')}</b><span>${esc([m.vendor, m.name || m.code].filter(Boolean).join(' '))}${m.inches ? `, ${m.inches}"` : ''}</span></span><span class="chip ok">${_t('Active')}</span></div>`).join('') || `<div class="muted">${_t('No display data.')}</div>`}</div></div>
     <div class="pan" data-asm>${head(_t('Specifications'))}<dl class="spec" id="gSpec">
       <dt>${_t('Model')}</dt><dd>${esc(gpuTitle())}</dd>${specRows(g.rows)}</dl></div>
   </div>`;

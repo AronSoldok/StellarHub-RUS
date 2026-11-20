@@ -945,15 +945,27 @@ def _ensure_admin_task():
     if PORTABLE:
         return False  # the portable version asks Windows each time instead of leaving a task on the PC
     import subprocess
+    from . import schtask
     exe, args = _launch_cmd("--from-task")
-    task_cmd = f'"{exe}" {args}'
-    r = subprocess.run(["schtasks", "/create", "/tn", ADMIN_TASK, "/tr", task_cmd, "/sc", "once", "/st", "00:00",
-                        "/rl", "highest", "/it", "/f"],
-                       capture_output=True, text=True, creationflags=0x08000000)
-    if r.returncode == 0:  # replace tasks left by earlier versions under another name
+    ok = schtask.create(ADMIN_TASK, exe, args, "Opens StellarHub as administrator without the Windows prompt "
+                                               "(Settings > Administrator > Always open as administrator).")
+    if ok:  # replace tasks left by earlier versions under another name
         for old in LEGACY_ADMIN_TASKS:
             subprocess.run(["schtasks", "/delete", "/tn", old, "/f"], capture_output=True, creationflags=0x08000000)
-    return r.returncode == 0
+    return ok
+
+
+def _repair_update_task():
+    """The updater's task, if an older installer made it the old way (it didn't run on battery): made again."""
+    if PORTABLE or not FROZEN:
+        return
+    try:
+        from . import schtask
+        from .engine import selfupdate
+        if selfupdate._task_exists() and schtask.outdated(schtask.query_xml(selfupdate.TASK)):
+            selfupdate.ensure_task()
+    except Exception as e:
+        print("update task:", e)
 
 
 def _delete_admin_task():
@@ -983,13 +995,37 @@ def _elevate_on_start():
             pass
     if not PORTABLE and _task_opens_this_copy(ADMIN_TASK) and subprocess.run(
             ["schtasks", "/run", "/tn", ADMIN_TASK], capture_output=True, creationflags=0x08000000).returncode == 0:
-        return True
+        if _elevated_copy_started():
+            return True
+        # Windows kept the task waiting (a task made by an older version doesn't start on battery) or it failed:
+        # drop it and ask Windows the usual way; the elevated copy then makes the task again, the right way
+        from . import schtask
+        schtask.end(ADMIN_TASK)
     # no task, or it opens another copy (e.g. the source version before installing): ask Windows once;
     # the elevated copy then points the task at itself
     exe, args = _launch_cmd("--no-elevate" + (" --tray" if hidden else ""))
     if ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, args, base_dir(), 1) > 32:
         return True
     return False  # the user said no: stay in normal mode
+
+
+def _elevated_copy_started(seconds=8):
+    """After running the administrator task: True once the elevated copy holds the single-instance mutex (it takes
+    it within a second or two of starting). From a normal copy an elevated mutex can't be opened: access denied
+    also means it exists."""
+    k32 = ctypes.windll.kernel32
+    k32.OpenMutexW.restype = ctypes.c_void_p
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        h = k32.OpenMutexW(0x00100000, False, r"Local\StellarHub.SingleInstance")  # SYNCHRONIZE
+        err = k32.GetLastError()
+        if h:
+            k32.CloseHandle(ctypes.c_void_p(h))
+            return True
+        if err == 5:  # ERROR_ACCESS_DENIED: it exists, owned by the elevated copy
+            return True
+        time.sleep(0.15)
+    return False
 
 
 def _task_opens_this_copy(name):
@@ -1469,6 +1505,7 @@ def main():
                     threading.Thread(target=_ensure_admin_task, daemon=True).start()
         except (OSError, ValueError):
             pass
+        threading.Thread(target=_repair_update_task, daemon=True).start()
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     except Exception:

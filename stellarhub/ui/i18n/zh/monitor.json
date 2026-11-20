@@ -345,5 +345,6 @@
   "DNS restored.": "DNS 已恢复。",
   "Could not restore the DNS: {msg}": "无法恢复 DNS：{msg}",
   "Could not restore the DNS.": "无法恢复 DNS。",
-  "Wait until the current change finishes.": "请等待当前更改完成。"
+  "Wait until the current change finishes.": "请等待当前更改完成。",
+  "Active": "活动"
 }
