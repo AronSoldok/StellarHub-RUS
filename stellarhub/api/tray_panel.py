@@ -1,5 +1,6 @@
 """The tray panel (left click on the tray icon)."""
 import json
+import threading
 import time
 from pathlib import Path
 
@@ -52,7 +53,8 @@ class TrayPanelApi:
                     self._panel_shown = False
                     self._panel_hidden_at = time.time()
                     form.Hide()
-                    self._tele_refresh()
+                    # off the window thread: it reads the settings and stops the GPU session, none of which it may wait for
+                    threading.Thread(target=self._tele_refresh, daemon=True, name="tele-refresh").start()
             form.BeginInvoke(Action(lambda: form.add_Deactivate(EventHandler(on_deactivate))))
         except Exception as e:
             print("tray panel setup:", e)

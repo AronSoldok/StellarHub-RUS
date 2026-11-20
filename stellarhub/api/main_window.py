@@ -167,5 +167,6 @@ class MainWindowApi:
             self._minimized = self._window.native.WindowState == FormWindowState.Minimized
         except Exception:
             return
-        self._tele_refresh()
+        # off the window thread: it reads the settings and stops the GPU session, none of which it may wait for
+        threading.Thread(target=self._tele_refresh, daemon=True, name="tele-refresh").start()
 

@@ -258,6 +258,7 @@ class _Nvml:
         self.lib = None
         self.dev = None
         self.missing = False
+        self._lock = threading.RLock()  # shutdown (from whoever hides the window) must not cut a read short
 
     def init(self):
         if self.dev is not None:
@@ -283,14 +284,19 @@ class _Nvml:
             return False
 
     def shutdown(self):
-        if self.dev is not None and self.lib is not None:
-            try:
-                self.lib.nvmlShutdown()
-            except OSError:
-                pass
-        self.dev = None
+        with self._lock:
+            if self.dev is not None and self.lib is not None:
+                try:
+                    self.lib.nvmlShutdown()
+                except OSError:
+                    pass
+            self.dev = None
 
     def read(self):
+        with self._lock:
+            return self._read()
+
+    def _read(self):
         if not self.init():
             return None
         L, d = self.lib, self.dev
