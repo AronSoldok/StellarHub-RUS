@@ -109,3 +109,25 @@ Thesis: **observatory glass**. The sky stays alive around the work; the work sit
 stick illustration in Live Monitor > Memory (an illustration, kept). With the new DESIGN.md the detector also checks
 conformance to the documented scale and reports ~500 advisories (off-scale radii, colours and sizes in module CSS):
 a follow-up token cleanup, not part of this pass.
+
+## Follow-up pass: tokens, layouts, headers, icons, charts, empty states
+
+Detector, `impeccable detect stellarhub/ui` with DESIGN.md: **510 -> 72** findings (327 radius, 102 colour, 63 font-size
+and 5 font advisories before). The 13 findings of `--no-design-system` (12 indeterminate sweeps, 1 RAM contact
+gradient) are unchanged. What remains is outside module CSS: the top bar and Home (`home.css`, `bento.css`,
+`model3d.css`), the stand-alone tray and widget pages, the component sheet's corner demo, the hardware illustration
+pigments (publisher tiles, test pattern, monitor stand) and the keycap size clamps.
+
+- **Tokens**: radii `--r-xs/-s/-m/-l/-pill` (so the corner presets reach every module), spacing `--sp-xs..xl` for
+  gaps, type `--fs-cap..h1` plus display numerals `--fs-n1..n4`, icon sizes `--ic-xs..3xl` and one stroke `--ic-w`.
+  DESIGN.md documents the full scale and the black / scrim / white tones, so the check reads them as part of the system.
+- **Icons**: one 1.4 px line at every size (non-scaling stroke), seven sizes; 366 per-module sizes moved to the tokens.
+- **Layouts**: panels next to others hug their content (a short list never leaves an empty frame), grids use
+  `auto-fit` (Optimizer > Registry with one group now spans the width; Hangar kits cap at four columns; Privacy >
+  Protection balances its cards), Benchmark component tabs hug their results.
+- **Headers**: one structure (title, description, actions right, tabs below) already came from the shell; the actions
+  row now has one height and spacing for buttons and chips.
+- **Charts**: `SH.chartKit` (core.js) draws gridlines, y labels, x labels, cursor and tooltip for Live Monitor, the
+  battery chart and every Benchmark chart (history and stress, which gained a hover tooltip).
+- **Empty states**: `SH.emptyState` / `SH.emptyArt`, four small orbit scenes (all done, nothing found, nothing yet,
+  could not read), one line, one next step where it makes sense; every module uses it.

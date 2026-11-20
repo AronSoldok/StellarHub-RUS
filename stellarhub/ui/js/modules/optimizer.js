@@ -861,7 +861,7 @@ function renderStartup(el) {
     .sort((a, b) => (b.on - a.on) || (IMP_O[a.impact] - IMP_O[b.impact]) || a.name.localeCompare(b.name, 'en'));
   const draw = anims => {
     const it = items();
-    list.innerHTML = it.length ? it.map(rowHTML).join('') : `<div class="empty"><b>${t('Nothing matches “{q}”', { q: esc(q) })}</b>${t('Try another name.')}</div>`;
+    list.innerHTML = it.length ? it.map(rowHTML).join('') : SH.emptyState({ art: 'none', small: true, title: t('Nothing matches “{q}”', { q: esc(q) }), text: t('Try another name.') });
     $('#stCount', el).textContent = t('{n} of {total}', { n: it.length, total: DB.startup.length });
     if (anims) $$('.st-it', list).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 360, delay: Math.min(i, 14) * 24, e: EASE.spring }));
   };
@@ -925,7 +925,7 @@ function renderServices(el) {
       <span class="rt"><b>${esc(s.name)} <em class="faint">${esc(s.id)}</em>${s.delayed ? ` <span class="chip" title="${esc(t('Starts a little after Windows is ready. It is kept that way when you undo.'))}">${t('Delayed start')}</span>` : ''}</b><span>${esc(s.desc)}${s.warn ? ` <em class="warn-t">${esc(s.warn)}</em>` : ''}</span></span>
       <span><span class="chip${s.run ? ' ok' : ''}">${s.run ? tc('Running') : tc('Stopped')}</span></span>
       <span class="sv-st">${changed ? `<s>${START_N[s.cur]}</s>` : ''}<span>${START_N[target]}</span></span>
-      <button class="toggle${target !== 'disabled' ? ' on' : ''}" aria-label="${esc(s.name)}"><i></i></button></div>`; }).join('') : `<div class="empty"><b>${t('No services with changes')}</b>${t('Pick a profile or use the switches.')}</div>`;
+      <button class="toggle${target !== 'disabled' ? ' on' : ''}" aria-label="${esc(s.name)}"><i></i></button></div>`; }).join('') : SH.emptyState({ art: 'first', small: true, title: t('No services with changes'), text: t('Pick a profile or use the switches.') });
     if (anims) $$('.sv-it', list).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 360, delay: i * 26, e: EASE.spring }));
     const n = Object.keys(want).length; const ap = $('#svApply', el); $('#svRun', el).textContent = DB.services.filter(s => s.run).length; $('#svPend', el).textContent = n; if (busy) return; ap.disabled = !n; ap.textContent = !n ? t('Apply changes') : n === 1 ? t('Apply {n} change', { n }) : t('Apply {n} changes', { n });
   };
@@ -1027,7 +1027,7 @@ function renderRegistry(el) {
   };
   const draw = () => {
     if (regDone || (REAL && !regCount())) {
-      el.innerHTML = `<div class="pan rg-empty"><div class="empty rg-ok">${ic('check')}<b>${t('No broken entries')}</b>${last.regBackup ? `${t('The backup of what was fixed is in {path}.', { path: 'ProgramData\\StellarHub\\optimizer\\registry\\' + esc(last.regBackup) })}<div style="margin-top:14px"><button class="btn sec" id="rgUndo">${ic('undo')}${t('Restore the backup')}</button></div>` : REAL ? t('Nothing points to files that no longer exist.') : t('Nothing points to files that no longer exist.')}</div></div>`;
+      el.innerHTML = `<div class="pan rg-empty">${SH.emptyState({ art: 'ok', cls: 'rg-ok', title: t('No broken entries'), text: last.regBackup ? t('The backup of what was fixed is in {path}.', { path: 'ProgramData\\StellarHub\\optimizer\\registry\\' + esc(last.regBackup) }) : t('Nothing points to files that no longer exist.'), action: last.regBackup ? { label: t('Restore the backup'), id: 'rgUndo', icon: 'undo' } : null })}</div>`;
       const u = $('#rgUndo', el); if (u) u.addEventListener('click', async () => {
         if (u.disabled) return;
         busyBtn(u, t('Restoring registry entries…'));
@@ -1340,7 +1340,7 @@ function renderDebloat(el, ctx) {
       h += `<div class="db-g" data-g="${g}"><div class="db-gh">${g === 'keep' ? `<span class="db-gi">${ic('lock')}</span>` : `<button class="check grp" data-ga="${g}" aria-label="${esc(t('Select all in {group}', { group: DB_G[g][0] }))}">${ic('check')}</button>`}
         <span class="db-gt"><b>${DB_G[g][0]} <em>${list.length}</em></b><span>${DB_G[g][1]}</span></span><em class="db-gs">${szTxt(list.reduce((s, a) => s + (a.size || 0), 0))}</em></div>${list.map(appRow).join('')}</div>`;
     }
-    return h || `<div class="empty"><b>${t('No preinstalled apps to review')}</b>${t('The apps you installed yourself are in Program Remover.')}</div>`;
+    return h || SH.emptyState({ art: 'ok', title: t('No preinstalled apps to review'), text: t('The apps you installed yourself are in Program Remover.'), action: { label: t('Program Remover'), go: 'remover/programs' } });
   };
   const twRow = x => { const off = x.state === 'off';
     return `<div class="db-it tw${off ? ' done' : ''}" data-t="${x.id}">${off ? `<span class="db-ok">${ic('check')}</span>` : `<button class="check" aria-label="${esc(x.t)}">${ic('check')}</button>`}
@@ -1576,7 +1576,7 @@ SH.module({
     try { changed = (await Promise.all(need.map(n => load(n)))).some(Boolean); }
     catch (e) {
       if (cached) { setUpd(el, false); SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message })); return; }
-      el.innerHTML = `<div class="empty"><b>${t("Couldn't read from Windows")}</b>${esc(e.message)}<div style="margin-top:14px"><button class="btn sec" id="optRetry">${ic('restore')}${t('Try again')}</button></div></div>`;
+      el.innerHTML = SH.emptyState({ art: 'error', title: t("Couldn't read from Windows"), text: esc(e.message), action: { label: t('Try again'), id: 'optRetry', icon: 'restore' } });
       $('#optRetry', el).addEventListener('click', () => { el.innerHTML = ''; this.renderTab(tab, el, ctx); }); return;
     }
     if (!cached) { draw(); return; }

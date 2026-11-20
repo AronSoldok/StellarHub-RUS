@@ -455,7 +455,7 @@ function renderMic(el) {
   el.classList.add('fill');
   el.innerHTML = `<div class="mc">
     <div class="pan mc-main" data-asm>
-      <div class="mc-state" id="mcState"><div class="mc-ico">${ic('mic')}</div><b>${t('Test your microphone')}</b><span class="muted">${t("You'll see the level and the waveform live. Nothing is recorded or sent anywhere.")}</span><div class="mc-btns"><button class="btn pri lg" id="mcGo">${ic('mic')}${t('Allow the microphone')}</button><button class="btn sec lg" id="mcPerm" hidden>${ic('external')}${t('Open Windows permissions')}</button></div></div>
+      <div class="mc-state" id="mcState"><div class="mc-ico">${SH.emptyArt('first')}</div><b>${t('Test your microphone')}</b><span class="muted">${t("You'll see the level and the waveform live. Nothing is recorded or sent anywhere.")}</span><div class="mc-btns"><button class="btn pri lg" id="mcGo">${ic('mic')}${t('Allow the microphone')}</button><button class="btn sec lg" id="mcPerm" hidden>${ic('external')}${t('Open Windows permissions')}</button></div></div>
       <div class="mc-live" id="mcLive" hidden><canvas id="mcWave"></canvas>
         <div class="mc-meter"><div class="mc-bar"><span id="mcLvl"></span><i id="mcPeak"></i></div><div class="mc-db"><b id="mcDb">–</b><span class="muted">dB</span></div></div></div></div>
     <div class="mc-side">
@@ -529,7 +529,7 @@ function renderCamera(el) {
   el.classList.add('fill');
   el.innerHTML = `<div class="cm">
     <div class="pan cm-main" data-asm><div class="cm-frame" id="cmFrame"><video id="cmVid" playsinline muted></video><div class="cm-flash"></div>
-      <div class="mc-state" id="cmState"><div class="mc-ico">${ic('camera')}</div><b>${t('Test your camera')}</b><span class="muted">${t("You'll see the live image, its resolution and frames per second. Nothing leaves your PC.")}</span><div class="mc-btns"><button class="btn pri lg" id="cmGo">${ic('camera')}${t('Turn on the camera')}</button><button class="btn sec lg" id="cmPerm" hidden>${ic('external')}${t('Open Windows permissions')}</button></div></div></div></div>
+      <div class="mc-state" id="cmState"><div class="mc-ico">${SH.emptyArt('first')}</div><b>${t('Test your camera')}</b><span class="muted">${t("You'll see the live image, its resolution and frames per second. Nothing leaves your PC.")}</span><div class="mc-btns"><button class="btn pri lg" id="cmGo">${ic('camera')}${t('Turn on the camera')}</button><button class="btn sec lg" id="cmPerm" hidden>${ic('external')}${t('Open Windows permissions')}</button></div></div></div></div>
     <div class="mc-side">
       <div class="pan" data-asm><h4>${t('Camera')}</h4><select class="field mc-sel" id="cmDev" disabled><option>${t('No permission yet')}</option></select>
         <div class="cm-specs"><div><span class="faint">${t('Resolution')}</span><b id="cmRes">–</b></div><div><span class="faint">${t('Frame rate')}</span><b id="cmFps">–</b></div></div>

@@ -243,7 +243,8 @@ function setTri(box, n, total) {
   box.classList.toggle('on', st === 'true'); box.classList.toggle('some', st === 'mixed'); box.setAttribute('aria-checked', st);
 }
 /* the empty state, centred in its panel */
-const emptyBox = (title, body, icon = 'check') => `<div class="empty du-empty"><span class="du-ei${icon === 'check' ? ' ok' : ''}">${ic(icon)}</span><b>${title}</b><span class="du-et">${body}</span></div>`;
+const EMPTY_ART = { check: 'ok', alert: 'error', info: 'none' };
+const emptyBox = (title, body, icon = 'check', act = null) => SH.emptyState({ cls: 'du-empty', art: EMPTY_ART[icon] || 'first', title, text: body, action: act });
 function flip(container, mutate) {
   const kids = [...container.children]; const first = new Map(kids.map(e => [e, e.getBoundingClientRect().top]));
   mutate();
@@ -275,7 +276,7 @@ function swap(el, html, dir = 1) {
 }
 const stagger = (els, base = 0, step = 35) => els.forEach((el, i) => anim(el, [{ opacity: 0, transform: 'translate3d(0,10px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: base + Math.min(i, 16) * step, e: EASE.spring }));
 const skRows = n => `<div class="sk-rows">${Array.from({ length: n }, (_, k) => `<div class="sk-row"><div class="sk a" style="--dl:${k * .1}s"></div><div class="sk b" style="--w:${[44, 36, 52, 30, 41, 47][k % 6]}%;--dl:${k * .1}s"></div><div class="sk c"></div></div>`).join('')}</div>`;
-const errBox = (msg, retry) => `<div class="empty"><b>${t('Could not read it')}</b>${esc(msg)}${retry ? `<div style="margin-top:12px"><button class="btn sec sm" data-retry>${t('Try again')}</button></div>` : ''}</div>`;
+const errBox = (msg, retry) => SH.emptyState({ art: 'error', title: t('Could not read it'), text: esc(msg), action: retry ? { label: t('Try again'), data: 'data-retry' } : null });
 /* ---- things that take time always show it: a spinner, what is happening and for how long ---- */
 const SPIN = '<span class="dv-spin" aria-hidden="true"></span>';
 const mmss = s => `${Math.floor(s / 60)}:${pad(s % 60)}`;
@@ -322,7 +323,7 @@ function renderUpdates(el, ctx) {
       <span>${u.reboot ? `<span class="chip warn">${t('Needs a restart')}</span>` : `<span class="chip">${t('No restart')}</span>`}</span></div>`;
   }
   function drawList(animate, never) {
-    if (never) list.innerHTML = emptyBox(t('You have not searched yet'), t('Click "{btn}" and StellarHub will ask Windows Update which drivers are available for your PC.', { btn: t('Search again') }), 'search');
+    if (never) list.innerHTML = emptyBox(t('You have not searched yet'), t('Click "{btn}" and StellarHub will ask Windows Update which drivers are available for your PC.', { btn: t('Search again') }), 'search', { label: t('Check for updates'), click: '#duHeadSearch', pri: true });
     else if (!st.updates.length) list.innerHTML = emptyBox(t('Nothing to install'), t('Your drivers match the latest that Windows Update offers for this PC.'));
     else list.innerHTML = `<div class="tbl-head du-cols">${allCheck('duAll', t('Select all drivers'))}<span>${t('Driver')}</span><span>${t('Class')}</span><span>${t('Date')}</span><span>${t('Size')}</span><span></span></div><div class="rows" id="duRows">${st.updates.map(rowHTML).join('')}</div>`;
     if (animate) stagger($$('.du-row', list), 60);
@@ -491,7 +492,7 @@ async function renderAll(el) {
   el.innerHTML = `<div class="pan da-left" data-asm><div class="da-tools"><label class="field">${ic('search')}<input id="daQ" placeholder="${t('Search for a driver, manufacturer or version')}" spellcheck="false"></label>
       ${segHTML([['all', t('All')], ['2', t('Over 2 years')], ['5', t('Over 5 years')], ['inbox', t('From Windows')], ['bad', t('With problems')]], 'all')}<span class="cnt" id="daCnt">${t('Reading…')}</span></div>
       <div class="da-scroll" id="daScroll">${skRows(9)}</div></div>
-    <div class="pan da-detail" id="daDetail" data-asm><div class="dd-empty"><div>${ic('drivers')}<div>${t('Choose a driver to see its details,<br>go back to a previous version or disable it.')}</div></div></div></div>`;
+    <div class="pan da-detail" id="daDetail" data-asm><div class="dd-empty">${SH.emptyState({ art: 'first', small: true, text: t('Choose a driver to see its details,<br>go back to a previous version or disable it.') })}</div></div>`;
   const scroll = $('#daScroll', el); let q = '', age = 'all', selected = null, ALL = [], busyOp = false;
   wireSeg($('.seg', el), v => { age = v; filter(); });
   async function load(fresh) {

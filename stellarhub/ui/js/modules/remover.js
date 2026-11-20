@@ -482,7 +482,7 @@ function openFlow(progs, opts = {}) {
     try { res = await job; } catch (e) {
       rpStop(); tickers.delete(t2); busy = false; if (closed) return;
       if (e.cancelled) { SH.toast(T('Cancelled. Nothing else was touched.')); close(); return; }
-      swap(body, `<div class="empty"><b>${T('Could not uninstall')}</b>${esc(jobErr(e))}</div>`); setFoot(`<span class="t"></span><button class="btn pri" data-x>${T('Close')}</button>`); return;
+      swap(body, SH.emptyState({ art: 'error', small: true, title: T('Could not uninstall'), text: esc(jobErr(e)) })); setFoot(`<span class="t"></span><button class="btn pri" data-x>${T('Close')}</button>`); return;
     }
     rpStop(); tickers.delete(t2); busy = false; if (closed) return;
     if (res.cancelled) { SH.toast(T('Cancelled. The program is still installed.')); close(); return; }
@@ -534,7 +534,7 @@ function openFlow(progs, opts = {}) {
     const dir = setStep(4);
     const groups = Object.keys(TYPES).map(t => [t, items.filter(l => l.type === t)]).filter(g => g[1].length);
     swap(body, items.length ? `<div class="rv-groups">${groups.map(([t, list]) => `<div class="rg" data-g="${t}"><h5>${list.some(l => !l.blocked) ? ALLCHK(`data-gall="${t}"`, T('Select all: {group}', { group: TYPES[t][0] })) : ''}${ic(TYPES[t][1])}${TYPES[t][0]} <span class="faint">${list.length}</span></h5>${list.sort((a, b) => (a.blocked - b.blocked) || (b.conf - a.conf)).map(l => `<button class="lo${l.blocked ? ' blk' : ''}" data-l="${esc(l.id)}"${l.blocked ? ' aria-disabled="true"' : ''}>${l.blocked ? `<span class="check lock">${ic('lock')}</span>` : CHK(sel.has(l.id))}<span class="p"><b>${esc(l.path)}</b><span>${esc(l.why)}${progs.length > 1 ? `. ${T('From {name}', { name: esc(l.prog) })}` : ''}</span></span><span class="conf" style="--c:${confColor(l.conf)}"><span class="bar"><span style="transform:scaleX(0)" data-v="${l.conf / 100}"></span></span><b>${l.conf}</b></span><span class="sz">${l.mb ? fmtMB(l.mb) : ''}</span></button>`).join('')}</div>`).join('')}</div>`
-      : `<div class="empty"><b>${T('Nothing left')}</b>${T('The uninstaller removed everything. No cleanup needed.')}</div>`, dir, () => {
+      : SH.emptyState({ art: 'ok', small: true, title: T('Nothing left'), text: T('The uninstaller removed everything. No cleanup needed.') }), dir, () => {
       stagger($$('.rg', body), 40, 50); syncGroups();
       setTimeout(() => $$('.conf .bar>span', body).forEach((b, i) => anim(b, [{ transform: 'scaleX(0)' }, { transform: `scaleX(${b.dataset.v})` }], { d: 700, delay: i * 18 })), 120);
     });
@@ -673,7 +673,7 @@ function renderPrograms(el, ctx) {
   if (REAL()) {
     list.innerHTML = `<div class="sk-rows" style="padding:8px">${Array.from({ length: 9 }, (_, k) => `<div class="sk-row"><div class="sk a" style="--dl:${k * .07}s"></div><div class="sk b" style="--w:${[38, 52, 30, 46, 41][k % 5]}%;--dl:${k * .07}s"></div><div class="sk c"></div></div>`).join('')}</div>`;
     $('#rpCnt', el).textContent = T('Reading installed programs…');
-    ensureReal().then(() => { build(); showSummary(true); }).catch(e => { list.innerHTML = `<div class="empty"><b>${T('Could not read the program list')}</b>${esc(jobErr(e))}</div>`; });
+    ensureReal().then(() => { build(); showSummary(true); }).catch(e => { list.innerHTML = SH.emptyState({ art: 'error', title: T('Could not read the program list'), text: esc(jobErr(e)) }); });
   } else { build(); showSummary(true); }
   refreshers.add(() => {
     const ids = new Set(PROGRAMS.map(p => p.id));
@@ -685,7 +685,7 @@ function renderPrograms(el, ctx) {
 }
 
 /* ================= Batch ================= */
-const QUEUE_EMPTY = `<div class="empty"><b>${T('The queue is empty')}</b>${T('Select the programs you want to remove on the left.')}</div>`;
+const QUEUE_EMPTY = SH.emptyState({ art: 'first', small: true, title: T('The queue is empty'), text: T('Select the programs you want to remove on the left.') });
 function renderBatch(el) {
   el.classList.add('fill', 'rv-batch');
   el.innerHTML = `<div class="rv-left pan rv-listwrap" data-asm><div class="rv-tools"><label class="field">${ic('search')}<input id="rbQ" placeholder="${T('Filter programs')}" spellcheck="false"></label><span class="cnt" id="rbCnt"></span></div>
@@ -783,7 +783,7 @@ function renderBatch(el) {
     $('#rbGo', el).parentElement.replaceWith(done); anim(done, [{ opacity: 0, transform: 'translate3d(0,8px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring });
     $('#rbReview', el).addEventListener('click', () => openFlow(ps, { startAt: 'review', items: all, mode: mode === 'silent' ? 'silent' : 'normal', onDone: () => { sel.clear(); renderBatch(el); } }));
   });
-  if (REAL()) { list.innerHTML = `<div class="empty"><b>${T('Reading programs…')}</b></div>`; ensureReal().then(() => { build(); drawQueue(); }).catch(e => { list.innerHTML = `<div class="empty"><b>${T('Could not read the list')}</b>${esc(jobErr(e))}</div>`; }); }
+  if (REAL()) { list.innerHTML = `<div class="empty"><b>${T('Reading programs…')}</b></div>`; ensureReal().then(() => { build(); drawQueue(); }).catch(e => { list.innerHTML = SH.emptyState({ art: 'error', small: true, title: T('Could not read the list'), text: esc(jobErr(e)) }); }); }
   else { build(); drawQueue(); }
   refreshers.add(() => { if (!running && el.isConnected) { const keep = [...sel].filter(id => PROGRAMS.some(p => p.id === id)); sel.clear(); keep.forEach(id => sel.add(id)); build(); drawQueue(); } });
 }
@@ -846,7 +846,7 @@ function realWatch(el, { eye, wb, wl, idle }) {
   async function load(anim0) {
     try { list = await SH.engine('remover', 'traces') || []; } catch { list = []; }
     $('#wvN', el).textContent = list.length;
-    wl.innerHTML = list.length ? list.map(row).join('') : `<div class="empty"><b>${T('None yet')}</b>${T('The installs you watch will appear here.')}</div>`;
+    wl.innerHTML = list.length ? list.map(row).join('') : SH.emptyState({ art: 'first', small: true, title: T('None yet'), text: T('The installs you watch will appear here.') });
     if (anim0) stagger($$('.row', wl), 80, 50);
   }
   function watching(meta) {
@@ -924,7 +924,7 @@ function renderQuarantine(el) {
     return `<div class="qs" data-s="${s.id}"><div class="qs-h" role="button" tabindex="0">${ic('chev', 'i cv')}${pi({ id: 'q' + s.id, h: s.h, ini: s.ini, icon: iconByName(s.prog) })}<span class="rt"><b>${esc(s.prog)}</b><span>${fmtDate(s.date)}, ${esc(SMODE[s.mode] || s.mode)}</span></span><span class="muted" style="font-size:12.5px">${PL(s.items.length, '{n} item, {size}', '{n} items, {size}', { size: fmtMB(mb) })}</span>
       <span class="left">${PL(left, '{n} day left', '{n} days left')}<span class="bar ${left < 4 ? 'warn' : ''}"><span style="transform:scaleX(${(left / qDays).toFixed(3)})"></span></span></span>${s.restorable === false ? `<span class="chip">${T('Deleted permanently')}</span>` : s.pending ? `<span class="chip warn" title="${esc(T('Some files leave at the next restart. Restore them after restarting the PC.'))}">${T('Restart pending')}</span>` : `<button class="btn sm sec" data-a="all">${ic('restore')}${T('Restore all')}</button>`}</div>
       <div class="qs-b"><div><div class="qs-in">${s.items.map(l => `<div class="qit" data-l="${l.id}">${ic(TYPES[l.type][1])}<span class="p" title="${esc(l.path)}">${esc(l.path)}</span><span class="s">${l.mb ? fmtMB(l.mb) : ''}</span>${s.restorable === false || l.restorable === false || s.pending ? '' : `<button class="btn sm ghost" data-a="one">${T('Restore')}</button>`}</div>`).join('')}</div></div></div></div>`; };
-  function draw() { tot(); listEl.innerHTML = sessions.length ? sessions.map(sHTML).join('') : `<div class="empty"><b>${T('The quarantine is empty')}</b>${T('What you remove when uninstalling is kept here for {days} days in case you need it back.', { days: qDays })}</div>`; stagger([...listEl.children], 60, 50); }
+  function draw() { tot(); listEl.innerHTML = sessions.length ? sessions.map(sHTML).join('') : SH.emptyState({ art: 'ok', title: T('The quarantine is empty'), text: T('What you remove when uninstalling is kept here for {days} days in case you need it back.', { days: qDays }) }); stagger([...listEl.children], 60, 50); }
   listEl.addEventListener('click', async e => {
     const qs = e.target.closest('.qs'); if (!qs) return; const s = sessions.find(x => x.id === qs.dataset.s);
     const a = e.target.closest('[data-a]');
@@ -995,7 +995,7 @@ function renderHistory(el) {
   function draw() {
     const cnt = t => history.filter(h => h.type === t).length;
     el.innerHTML = `<div class="hv-grid"><div class="pan hv-main" data-asm><h4>${T('What Program Remover has done')} <em><button class="btn sm ghost" id="hvClear">${T('Clear history')}</button></em></h4>
-      ${history.length ? `<div class="hv-scroll"><div class="hv">${history.map(h => `<div class="he" style="--c:${COL[h.type]}"><div><b>${esc(h.title)}</b><span>${esc(h.sub)}</span></div><span class="d">${fmtDate(h.date)}</span></div>`).join('')}</div></div>` : `<div class="empty"><b>${T('No activity')}</b>${T('Every uninstall, restore and watched install will appear here.')}</div>`}</div>
+      ${history.length ? `<div class="hv-scroll"><div class="hv">${history.map(h => `<div class="he" style="--c:${COL[h.type]}"><div><b>${esc(h.title)}</b><span>${esc(h.sub)}</span></div><span class="d">${fmtDate(h.date)}</span></div>`).join('')}</div></div>` : SH.emptyState({ art: 'first', title: T('No activity'), text: T('Every uninstall, restore and watched install will appear here.') })}</div>
       <div class="pan hv-side" data-asm><h4>${T('At a glance')}</h4><div class="hv-stats">
         <div><b>${cnt('uninstall')}</b><span>${T('programs uninstalled')}</span></div><div><b>${cnt('restore')}</b><span>${T('restores')}</span></div>
         <div><b>${cnt('watch')}</b><span>${T('watched installs')}</span></div><div><b>${sessions.flatMap(x => x.items).length}</b><span>${T('leftovers in quarantine')}</span></div></div>

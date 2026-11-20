@@ -36,13 +36,17 @@ SH.module({
 - Before anything that needs administrator rights: `if (!SH.requireAdmin('to install drivers.')) return;` (suggests without nagging).
 - Confirmations: `SH.toast('Done', { action: { label: 'Undo', run } })`. No `alert`/`confirm`.
 - Palette actions: `SH.actions.add([{ t: 'Text', go: 'drivers', tab: 'backup', ic: 'download' }])`.
-- Icons: `SH.ic('name')`; add new ones with `SH.icons.add({ name: '<path d="..."/>' })` (24×24 stroke, no fill).
+- Icons: `SH.ic('name')`; add new ones with `SH.icons.add({ name: '<path d="..."/>' })` (24×24 stroke, no fill, no `stroke-width` of their own: the 1.4 px line comes from `svg.i`). Size them with the `--ic-*` tokens.
 
 ## Shared pieces (base.css)
 
 `.pan` (frame), `.btn` (`pri`, `sec`, `ghost`, `danger`, `sm`, `lg`), `.seg` + `.ind` (move it with `SH.placeSeg(seg)`), `.toggle`, `.check`, `.chip` (`ok`, `warn`, `bad`, `acc`), `.field`, `.bar>span` (with `transform: scaleX()`), `.rows/.row/.ri/.rt`, `.tbl-head`, `.empty`, `.sk` (skeleton), `.big`, `.muted`, `.faint`.
 
-Tokens: `--void --deep --raise --raise2 --raise3 --line --line2 --ink --mute --faint --accent --accent2 --on-accent --ok --warn --bad --display --text --r-l --r-m --r-s --f` (multiply CSS durations by `var(--f)`).
+- Empty states: always `SH.emptyState({ art, title, text, action, small, cls })` (returns HTML, `.empty.es`). `art` is `ok` (all done), `none` (nothing found), `first` (nothing yet / first use) or `error`. `action` renders one button: `{ label, id?, data?, go: 'module/tab', click: '#selector', icon?, pri? }`. `SH.emptyArt(art)` is the bare illustration for covers that keep their own layout. Never write a bare sentence in a blank panel.
+- Canvas charts share `SH.chartKit` (grid, y/x labels, tooltip, cursor): `grid(x,L,R,T,B,n)`, `ticks(x,L,T,B,n,hi,lo,fmt)`, `xlabels(x,L,R,h,a,b)`, `tip(x,px,W,T,[[color,text],...])`, `cursor(x,px,T,B)`; reserve `chartKit.xpad` px under the plot for the x labels.
+- Panels beside others hug their content (`align-self:start; max-height:100%`), grids use `repeat(auto-fit, minmax(...))`: no empty frames, no cell hanging in a corner.
+
+Tokens: `--void --deep --raise --raise2 --raise3 --line --line2 --ink --mute --faint --accent --accent2 --on-accent --ok --warn --bad --display --text --r-l --r-m --r-s --r-xs --r-pill --sp-xs..--sp-xl --fs-cap..--fs-h1 --fs-n1..--fs-n4 --ic-xs..--ic-3xl --ic-w --f` (multiply CSS durations by `var(--f)`). Module CSS uses the tokens for radii, type sizes and icon sizes, never literals (the corner presets reach every module that way).
 
 ## Animation
 

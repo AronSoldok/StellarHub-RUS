@@ -56,14 +56,14 @@ class Chart {
     const { ctx, w, h, o } = this; if (!w || !h) { this.size(); return; }
     this.reveal.step(dt);
     ctx.clearRect(0, 0, w, h);
-    ctx.strokeStyle = C.line; ctx.lineWidth = 1;
-    for (let i = 1; i < o.grid; i++) { const y = Math.round(h * i / o.grid) + .5; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+    const K = SH.chartKit, lab = h >= 110 && !o.bare, top = 6, B = h - (lab ? K.xpad : 3);
+    K.grid(ctx, 0, w, top, B, o.grid);
     /* optional series (CPU temperature...) are hidden when Windows does not provide that value */
     const series = o.series.filter(s => !(s.opt && REAL() && !SH.tele.has(s.key))).map(s => ({ ...s, data: hist(s.key).slice(-(o.n + 2)) }));
     if (!series.length) { ctx.clearRect(0, 0, w, h); return; }
     let max = o.max;
     if (max === 'auto') { let m = o.min; series.forEach(s => s.data.forEach(v => { if (v > m) m = v; })); this.mx.t = m * 1.18; this.mx.step(dt); max = this.mx.v; }
-    const step = w / (o.n - 1), top = 6, ph = h - top - 3;
+    const step = w / (o.n - 1), ph = B - top;
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w * Math.max(0, Math.min(1, this.reveal.v)), h); ctx.clip();
     series.forEach(s => {
       const col = C[s.col] || s.col;
@@ -74,16 +74,17 @@ class Chart {
       ctx.strokeStyle = col; ctx.lineWidth = s.w || 1.8; ctx.lineJoin = 'round';
       if (s.dash) ctx.setLineDash(s.dash); ctx.stroke(); ctx.setLineDash([]);
       if (s.fill) {
-        ctx.lineTo(w + step, h); ctx.lineTo(-step, h); ctx.closePath();
-        const g = ctx.createLinearGradient(0, top, 0, h); g.addColorStop(0, rgba(col, .26)); g.addColorStop(1, rgba(col, 0)); ctx.fillStyle = g; ctx.fill();
+        ctx.lineTo(w + step, B); ctx.lineTo(-step, B); ctx.closePath();
+        const g = ctx.createLinearGradient(0, top, 0, B); g.addColorStop(0, rgba(col, .26)); g.addColorStop(1, rgba(col, 0)); ctx.fillStyle = g; ctx.fill();
       }
     });
     ctx.restore();
-    if (this.hx != null && this.hx >= 0 && this.hx <= w) this.cross(series, step, frac);
+    if (lab) { K.ticks(ctx, 0, top, B, o.grid, max, 0, v => (o.dec && max < 20 ? fmt1(v) : Math.round(v)) + (o.unit || '')); K.xlabels(ctx, 0, w, h, _t('1 min ago'), _t('now')); }
+    if (this.hx != null && this.hx >= 0 && this.hx <= w) this.cross(series, step, frac, B);
   }
-  cross(series, step, frac) {
+  cross(series, step, frac, B) {
     const { ctx, w, h, o } = this, x = this.hx;
-    ctx.strokeStyle = rgba(C.ink, .22); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, 0); ctx.lineTo(Math.round(x) + .5, h); ctx.stroke();
+    SH.chartKit.cursor(ctx, x, 0, B);
     const idx = Math.round(x / step + 1 + frac); const labels = [];
     series.forEach(s => {
       const i = Math.max(0, Math.min(s.data.length - 1, idx)); const v = s.data[i], p = s.pts[i]; if (!p) return;
@@ -91,12 +92,7 @@ class Chart {
       labels.push([col, (s.label ? s.label + ': ' : '') + (s.fmt ? s.fmt(v) : (o.dec ? fmt1(v) : Math.round(v)) + (s.unit ?? o.unit))]);
     });
     const secs = Math.max(0, Math.round((o.n + 1 - idx) * .7)); labels.push([C.mute, secs <= 1 ? _t('now') : _t('{n} s ago', { n: secs })]);
-    ctx.font = '500 11.5px Onest, system-ui, sans-serif';
-    const tw = Math.max(...labels.map(l => ctx.measureText(l[1]).width)) + 20, bh = labels.length * 17 + 10;
-    const bx = x + 14 + tw > w ? x - 14 - tw : x + 14, by = 6;
-    ctx.fillStyle = rgba(C.deep || '#0B1222', .94); ctx.strokeStyle = rgba(C.ink, .14);
-    ctx.beginPath(); ctx.roundRect(bx, by, tw, bh, 8); ctx.fill(); ctx.stroke();
-    labels.forEach((l, i) => { ctx.fillStyle = l[0]; ctx.fillText(l[1], bx + 10, by + 18 + i * 17); });
+    SH.chartKit.tip(ctx, x, w, 6, labels);
   }
 }
 
@@ -249,7 +245,7 @@ function upt(s) { if (SH.fmtUptime) return SH.fmtUptime(s); const h = Math.floor
 const head = (title, em, go) => `<h4>${go ? `<button class="goto" data-goto="${go}">${title}${chev}</button>` : title}${em ? `<em>${em}</em>` : ''}</h4>`;
 const stat = (label, id, unit = '', sub = '') => `<div class="st"><span class="sl">${label}</span><b><span id="${id}">–</span>${unit ? `<small>${unit}</small>` : ''}</b>${sub ? `<span class="ss">${sub}</span>` : ''}</div>`;
 const cv = id => `<canvas class="ch" id="${id}"></canvas>`;
-const axis = `<div class="axis"><span>${_t('1 min ago')}</span><span>${_t('now')}</span></div>`;
+const axis = '';
 const gauge = id => `<div class="gauge"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="50" fill="none" style="stroke:var(--raise2)" stroke-width="9" stroke-linecap="round" stroke-dasharray="235.6 314.2"/><circle id="${id}A" cx="60" cy="60" r="50" fill="none" style="stroke:var(--accent)" stroke-width="9" stroke-linecap="round" stroke-dasharray="0 314.2"/></svg><div class="gv"><div><b id="${id}V">0</b><span>${_t('% used')}</span></div></div></div>`;
 const ring = (id, col = 'var(--accent2)') => `<svg class="ring" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="none" style="stroke:var(--raise2)" stroke-width="4"/><circle id="${id}" cx="20" cy="20" r="16" fill="none" style="stroke:${col}" stroke-width="4" stroke-linecap="round" stroke-dasharray="0 100.5"/></svg>`;
 const fanIc = id => `<svg class="i fan" id="${id}" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M12 10c-1-3-.5-6 1.5-7 2 1.5 1.5 5-1.5 7zM14 12c3-1 6-.5 7 1.5-1.5 2-5 1.5-7-1.5zM12 14c1 3 .5 6-1.5 7-2-1.5-1.5-5 1.5-7zM10 12c-3 1-6 .5-7-1.5 1.5-2 5-1.5 7 1.5z"/></svg>`;
@@ -357,7 +353,7 @@ R.gpu = (el, t) => {
       <p class="mnote">${igpu ? _t('Drives the laptop screen and saves battery. The dedicated GPU kicks in when a program asks for it.') : _t('This PC has no active integrated graphics.')}</p></div>
     <div class="pan" data-asm>${head(_t('Using the GPU'), procInfo.gpuPerProcess === false ? _t('not available') : '')}<div class="tops" id="gTop"></div></div>
     <div class="pan" data-asm>${head(_t('Displays'), `${mons.length || '–'}`)}<div class="rows">
-      ${mons.map(m => `<div class="row"><span class="ri">${ic('display')}</span><span class="rt"><b>${m.internal ? _t('Laptop screen') : _t('External monitor')}</b><span>${esc([m.vendor, m.name || m.code].filter(Boolean).join(' '))}${m.inches ? `, ${m.inches}"` : ''}</span></span><span class="chip ok">${_t('Active')}</span></div>`).join('') || `<div class="muted">${_t('No display data.')}</div>`}</div></div>
+      ${mons.map(m => `<div class="row"><span class="ri">${ic('display')}</span><span class="rt"><b>${m.internal ? _t('Laptop screen') : _t('External monitor')}</b><span>${esc([m.vendor, m.name || m.code].filter(Boolean).join(' '))}${m.inches ? `, ${m.inches}"` : ''}</span></span><span class="chip ok">${_t('Active')}</span></div>`).join('') || SH.emptyState({ art: 'none', small: true, title: _t('No display data.') })}</div></div>
     <div class="pan" data-asm>${head(_t('Specifications'))}<dl class="spec" id="gSpec">
       <dt>${_t('Model')}</dt><dd>${esc(gpuTitle())}</dd>${specRows(g.rows)}</dl></div>
   </div>`;
@@ -571,7 +567,7 @@ R.network = (el, t) => {
 /* ---------- battery ---------- */
 let batChart = null;
 R.battery = (el, t) => {
-  if (!SH.PC.components.some(c => c.id === 'battery') && REAL()) { el.innerHTML = `<div class="empty"><b>${_t('This PC has no battery')}</b>${_t('It is a desktop PC or the battery is not connected.')}</div>`; return; }
+  if (!SH.PC.components.some(c => c.id === 'battery') && REAL()) { el.innerHTML = SH.emptyState({ art: 'none', title: _t('This PC has no battery'), text: _t('It is a desktop PC or the battery is not connected.') }); return; }
   el.innerHTML = `<div class="grid g-bat">
     <div class="pan" data-asm>${head(_tc('Charge'))}
       <div class="batrow"><div class="batt"><div class="body"><span id="bF"></span></div><div class="cap"></div><svg class="i bolt" id="bBolt" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H12L11 21.5l8.5-11H12z"/></svg></div>
@@ -583,7 +579,7 @@ R.battery = (el, t) => {
       <p class="mnote">${_t('If the laptop stays plugged in most of the day, limiting the charge to 80% in the manufacturer\'s app extends battery life.')}</p></div>
     <div class="pan wide" data-asm>${head(_t('Charge level'), `<span id="bRange">${_t('this session')}</span>`)}
       <div class="legend"><span><i style="background:var(--accent2)"></i>${_tc('charge')}</span><span><i style="background:var(--raise3)"></i>${_t('plugged in')}</span></div>
-      <div class="chwrap tall"><canvas class="ch" id="bCh"></canvas></div><div class="axis"><span id="bA0">${_t('earlier')}</span><span>${_t('now')}</span></div></div>
+      <div class="chwrap tall"><canvas class="ch" id="bCh"></canvas></div></div>
   </div>`;
   num(t, S(el, 'bP'), v => v.battery); bar(t, S(el, 'bF'), v => v.battery / 100);
   num(t, S(el, 'bW'), v => nil(v.batteryPower) ? null : Math.abs(v.batteryPower), fmt1);
@@ -597,6 +593,7 @@ R.battery = (el, t) => {
   });
   /* chart: the Windows report for the last 24 h if it has changes; otherwise what was measured this session */
   let pts = null;
+  let batLeft = _t('24 h ago');
   const cvs = S(el, 'bCh'); const ctx = cvs.getContext('2d'); const rv = new Spring(0, 30, 10); let w = 0, h = 0;
   const size = () => { const r = cvs.getBoundingClientRect(); if (!r.width || !r.height) return; const d = Math.min(2, devicePixelRatio || 1); cvs.width = r.width * d; cvs.height = r.height * d; w = r.width; h = r.height; ctx.setTransform(d, 0, 0, d, 0, 0); };
   new ResizeObserver(size).observe(cvs);
@@ -606,14 +603,15 @@ R.battery = (el, t) => {
     draw(dt) {
       if (!w) { size(); return; } rv.step(dt); ctx.clearRect(0, 0, w, h);
       const data = pts || (REAL() ? session() : BAT24); if (data.length < 2) return;
-      const st = w / (data.length - 1), y = c => 6 + (h - 10) * (1 - c / 100);
+      const K = SH.chartKit, B = h - K.xpad, st = w / (data.length - 1), y = c => 6 + (B - 6) * (1 - c / 100);
       ctx.fillStyle = rgba(C.ink, .05); data.forEach((p, i) => { if (p.plugged) ctx.fillRect(i * st - st / 2, 0, st + .5, h); });
-      ctx.strokeStyle = C.line; ctx.lineWidth = 1; [25, 50, 75].forEach(c => { ctx.beginPath(); ctx.moveTo(0, Math.round(y(c)) + .5); ctx.lineTo(w, Math.round(y(c)) + .5); ctx.stroke(); });
+      K.grid(ctx, 0, w, 6, B, 4);
       ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w * clamp01(rv.v), h); ctx.clip();
       ctx.beginPath(); data.forEach((p, i) => i ? ctx.lineTo(i * st, y(p.c)) : ctx.moveTo(0, y(p.c)));
       ctx.strokeStyle = C.accent2; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
-      ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath(); const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, rgba(C.accent2, .22)); g.addColorStop(1, rgba(C.accent2, 0)); ctx.fillStyle = g; ctx.fill();
+      ctx.lineTo(w, B); ctx.lineTo(0, B); ctx.closePath(); const g = ctx.createLinearGradient(0, 6, 0, B); g.addColorStop(0, rgba(C.accent2, .22)); g.addColorStop(1, rgba(C.accent2, 0)); ctx.fillStyle = g; ctx.fill();
       ctx.restore();
+      K.ticks(ctx, 0, 6, B, 4, 100, 0, v => Math.round(v) + '%'); K.xlabels(ctx, 0, w, h, batLeft, _t('now'));
     },
   };
   batChart.replay();
@@ -622,8 +620,8 @@ R.battery = (el, t) => {
       [_t('Charge cycles'), rep.cycles ? fmtInt(rep.cycles) : _t('Windows does not report them')], [_t('Manufacturer'), rep.maker || null]].filter(x => x[1] != null) : [];
     S(el, 'bSpec').innerHTML = spec.map(([a, b]) => `<dt>${a}</dt><dd>${esc(b)}</dd>`).join(''); S(el, 'bName').textContent = rep && rep.name || _t('battery');
     const u = rep && rep.usage || [];
-    if (u.length >= 3) { pts = u.map(e => ({ c: e.pct, plugged: e.ac })); S(el, 'bRange').textContent = _t('last 24 h'); S(el, 'bA0').textContent = _t('24 h ago'); batChart.replay(); }
-    else { S(el, 'bRange').textContent = REAL() ? _t('this session (Windows has no changes in the last 24 h)') : _t('last 24 h'); S(el, 'bA0').textContent = REAL() ? _t('1 min ago') : _t('24 h ago'); }
+    if (u.length >= 3) { pts = u.map(e => ({ c: e.pct, plugged: e.ac })); S(el, 'bRange').textContent = _t('last 24 h'); batLeft = _t('24 h ago'); batChart.replay(); }
+    else { S(el, 'bRange').textContent = REAL() ? _t('this session (Windows has no changes in the last 24 h)') : _t('last 24 h'); batLeft = REAL() ? _t('1 min ago') : _t('24 h ago'); }
   };
   if (REAL()) load('bat', 'battery_report').then(fill); else fill({ design: 90001, full: 87206, cycles: 38, maker: 'ASUS', name: 'GU60558', usage: [] });
 };
@@ -693,7 +691,7 @@ function renderProcs(reorder, force) {
   const skel = $('.sk-rows', procBody); if (skel) skel.remove();
   const list = sortedProcs();
   const cnt = $('#pCount'); if (cnt) cnt.textContent = _t('{n} programs, {m} processes', { n: list.length, m: list.reduce((s, p) => s + p.k, 0) });
-  if (!list.length) { rowEls.forEach(el => el.remove()); if (!$('.empty', procBody)) procBody.insertAdjacentHTML('beforeend', `<div class="empty"><b>${_t('Nothing matches "{q}"', { q: esc(query) })}</b>${_t('Try the program name or its .exe file.')}</div>`); return; }
+  if (!list.length) { rowEls.forEach(el => el.remove()); if (!$('.empty', procBody)) procBody.insertAdjacentHTML('beforeend', SH.emptyState({ art: 'none', small: true, title: _t('Nothing matches "{q}"', { q: esc(query) }), text: _t('Try the program name or its .exe file.') })); return; }
   const em = $('.empty', procBody); if (em) em.remove();
   if (!reorder) { list.forEach(p => { const el = rowEls.get(p.id); if (el && el.parentNode) fillRow(el, p); }); return; }
   lastReorder = performance.now();

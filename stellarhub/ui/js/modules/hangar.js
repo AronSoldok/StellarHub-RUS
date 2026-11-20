@@ -417,7 +417,7 @@ function railHTML() {
 }
 function skelList() {
   return [0, 1].map(k => `<section class="hg-sec"><div class="hg-sh"><span class="sk" style="width:30px;height:30px;border-radius:9px"></span><span class="sk" style="width:${130 + k * 40}px;height:12px"></span></div>
-    <div class="hg-grid">${Array.from({ length: 9 }, (_, i) => `<div class="hg-app sk-app"><span class="sk" style="width:36px;height:36px;border-radius:10px;--dl:${i * .05}s"></span><span class="hg-at"><span class="sk" style="height:11px;width:${50 + (i * 17) % 35}%;--dl:${i * .05}s"></span><span class="sk" style="height:9px;width:${65 + (i * 13) % 25}%;margin-top:8px;--dl:${i * .05}s"></span></span></div>`).join('')}</div></section>`).join('');
+    <div class="hg-grid">${Array.from({ length: 9 }, (_, i) => `<div class="hg-app sk-app"><span class="sk" style="width:36px;height:36px;border-radius:var(--r-s);--dl:${i * .05}s"></span><span class="hg-at"><span class="sk" style="height:11px;width:${50 + (i * 17) % 35}%;--dl:${i * .05}s"></span><span class="sk" style="height:9px;width:${65 + (i * 13) % 25}%;margin-top:8px;--dl:${i * .05}s"></span></span></div>`).join('')}</div></section>`).join('');
 }
 function matchQ(a, q) { const f = fold(q); return fold(`${a.name} ${a.pub} ${a.id} ${a.desc}`).includes(f); }
 function visible(cat) {
@@ -442,7 +442,7 @@ function renderList(animate) {
   const cats = S.cat === 'all' ? CATS : [CAT[S.cat]];
   const parts = cats.map(c => [c, visible(c.id)]).filter(([, l]) => l.length);
   let html = parts.map(([c, l]) => secHTML(c, l)).join('');
-  if (!html) html = `<div class="empty hg-empty"><span class="hg-ei">${ic(S.filter === 'sel' ? 'check' : 'search')}</span><b>${S.q ? t('Nothing in the catalog matches “{q}”', { q: esc(S.q) }) : S.filter === 'sel' ? t('Nothing selected yet') : S.filter === 'new' ? t('You already have all of these') : t('No apps here')}</b>${S.q ? t('Look below for results from winget.') : S.filter === 'sel' ? t('Tick the apps you want, or start from a kit.') : ''}</div>`;
+  if (!html) html = SH.emptyState({ cls: 'hg-empty', art: S.q ? 'none' : S.filter === 'new' ? 'ok' : 'first', title: S.q ? t('Nothing in the catalog matches “{q}”', { q: esc(S.q) }) : S.filter === 'sel' ? t('Nothing selected yet') : S.filter === 'new' ? t('You already have all of these') : t('No apps here'), text: S.q ? t('Look below for results from winget.') : S.filter === 'sel' ? t('Tick the apps you want, or start from a kit.') : '' });
   if (S.q.length >= 2) html += wingetSecHTML();
   box.innerHTML = html;
   updSecCounts();
@@ -868,7 +868,7 @@ function fillKits(el, animate) {
   const pre = $('.hg-pre', el), mine = $('.hg-mine', el); if (!pre) return;
   pre.innerHTML = KITS.map(k => kitCard(k)).join('');
   const uk = userKits();
-  mine.innerHTML = uk.length ? uk.map(k => kitCard(k, true)).join('') : `<div class="pan hg-kempty"><span class="hg-ei">${ic('package')}</span><div><b>${t('No kits of your own yet')}</b><span class="muted">${t('Pick apps in the catalog, then save them here. Import a kit file or paste a code someone shared with you.')}</span></div></div>`;
+  mine.innerHTML = uk.length ? uk.map(k => kitCard(k, true)).join('') : `<div class="pan hg-kempty">${SH.emptyState({ art: 'first', small: true, title: t('No kits of your own yet'), text: t('Pick apps in the catalog, then save them here. Import a kit file or paste a code someone shared with you.') })}</div>`;
   const sb = $('[data-ksave]', el); if (sb) sb.disabled = !S.sel.size;
   if (animate) SH.assemble(el, 60, 30, '.hg-kit, .hg-kempty');
 }
@@ -996,7 +996,7 @@ function imported(k) {
 /* ---------------- history ---------------- */
 function renderHistory(el) {
   el.dataset.ready = '1'; el.classList.add('fill');
-  el.innerHTML = `<div class="hg-h"><div class="hg-hmain"><div class="hg-hlist">${[0, 1, 2].map(i => `<div class="pan hg-run"><div class="hg-rh"><span class="sk" style="width:38px;height:38px;border-radius:11px;--dl:${i * .1}s"></span><div style="flex:1"><span class="sk" style="display:block;height:12px;width:${30 + i * 8}%;--dl:${i * .1}s"></span><span class="sk" style="display:block;height:9px;width:${20 + i * 6}%;margin-top:8px;--dl:${i * .1}s"></span></div></div><div class="hg-ritems">${[0, 1, 2, 3, 4].map(() => '<span class="sk" style="width:120px;height:30px;border-radius:99px"></span>').join('')}</div></div>`).join('')}</div></div>
+  el.innerHTML = `<div class="hg-h"><div class="hg-hmain"><div class="hg-hlist">${[0, 1, 2].map(i => `<div class="pan hg-run"><div class="hg-rh"><span class="sk" style="width:38px;height:38px;border-radius:var(--r-s);--dl:${i * .1}s"></span><div style="flex:1"><span class="sk" style="display:block;height:12px;width:${30 + i * 8}%;--dl:${i * .1}s"></span><span class="sk" style="display:block;height:9px;width:${20 + i * 6}%;margin-top:8px;--dl:${i * .1}s"></span></div></div><div class="hg-ritems">${[0, 1, 2, 3, 4].map(() => '<span class="sk" style="width:120px;height:30px;border-radius:99px"></span>').join('')}</div></div>`).join('')}</div></div>
     <aside class="hg-hside"><div class="pan hg-hstat" data-asm></div></aside></div>`;
   loadHistory(el);
   el.addEventListener('click', e => {

@@ -14,7 +14,7 @@ import os
 import threading
 import time
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 from . import VERSION
 from .i18n import tr
@@ -93,110 +93,215 @@ def _brand_font(size):
 
 
 class _Card:
-    """The start screen: the StellarHub logo floating on the desktop (no card behind it), its name, a comet sweeping
-    a thin track and the status line. A soft shadow under everything keeps it readable on light wallpapers too.
-    The version and its codename hide on the planet, small. Everything static is drawn once; per frame only the
-    comet and the status line. ImageDraw REPLACES pixels, alpha included, so every translucent thing is drawn on
-    its own transparent layer and composited."""
+    """The start screen: the StellarHub logo floating on the desktop in a soft patch of space (a warm glow behind the
+    planet, a cool one toward the moon, a few faint stars fading out), its name and the status line. The planet's
+    ring is the loading indicator: a light runs around it, hidden by the planet while it passes behind. The version
+    and its codename are engraved on the planet. Everything is drawn at twice the size and scaled down (smooth
+    edges); the static scene once, per frame only the light and the status line. ImageDraw REPLACES pixels (alpha
+    included): translucent things are drawn on their own transparent layer and composited."""
+
+    SS = 2  # supersampling
 
     def __init__(self, scale):
         s = self.s = scale
-        W, H = int(380 * s), int(340 * s)
+        W, H = int(620 * s), int(600 * s)
         self.size = (W, H)
-        base = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         cx = W // 2
-        logo_size = int(176 * s)
-        ly = int(26 * s)
-        # a dark halo, very soft: no edge, no shape, only enough to separate the logo and the text from the desktop
-        halo = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        hd = ImageDraw.Draw(halo)
-        hd.ellipse((cx - int(110 * s), int(24 * s), cx + int(110 * s), int(214 * s)), fill=(5, 8, 18, 135))   # the logo
-        hd.rounded_rectangle((cx - int(135 * s), int(222 * s), cx + int(135 * s), int(312 * s)), radius=int(40 * s), fill=(5, 8, 18, 120))  # name, bar, status
-        base.alpha_composite(halo.filter(ImageFilter.GaussianBlur(int(26 * s))))
-        # a warm glow behind the planet
-        glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        gy, gr = ly + int(logo_size * .53), int(58 * s)
-        ImageDraw.Draw(glow).ellipse((cx - gr, gy - gr, cx + gr, gy + gr), fill=(255, 122, 102, 70))
-        base.alpha_composite(glow.filter(ImageFilter.GaussianBlur(int(30 * s))))
-        # the logo, with the version on the planet
+        n = self.n = int(340 * s)                          # logo size
+        lx, ly = cx - n // 2, int(34 * s)
+        self.logo_at = (lx, ly)
+        base = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+
+        # --- the patch of space: dark enough to read on a light wallpaper, no edges anywhere
+        sky = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(sky)
+        sd.ellipse((cx - int(250 * s), int(10 * s), cx + int(250 * s), int(560 * s)), fill=(6, 9, 20, 150))
+        base.alpha_composite(sky.filter(ImageFilter.GaussianBlur(int(60 * s))))
+        neb = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        nd = ImageDraw.Draw(neb)
+        pcx, pcy = cx, ly + n * .53
+        r = int(130 * s)
+        nd.ellipse((pcx - r, pcy - r, pcx + r, pcy + r), fill=(255, 112, 92, 64))               # warm, behind the planet
+        r2 = int(90 * s)
+        mx, my = cx + n * .30, ly + n * .16
+        nd.ellipse((mx - r2, my - r2, mx + r2, my + r2), fill=(120, 190, 255, 40))               # cool, toward the moon
+        base.alpha_composite(neb.filter(ImageFilter.GaussianBlur(int(55 * s))))
+        import random
+        rnd = random.Random(7)
+        stars = Image.new("RGBA", (W * 2, H * 2), (0, 0, 0, 0))
+        st = ImageDraw.Draw(stars)
+        for _ in range(46):
+            a, d = rnd.uniform(0, 6.283), rnd.uniform(.32, 1.0)
+            x = cx + math.cos(a) * d * 255 * s
+            y = H * .45 + math.sin(a) * d * 255 * s
+            fade = (1 - d) ** .8
+            rr = rnd.choice((.7, .9, 1.1, 1.5)) * s
+            st.ellipse((2 * (x - rr), 2 * (y - rr), 2 * (x + rr), 2 * (y + rr)), fill=(225, 238, 255, int(40 + 170 * fade)))
+        base.alpha_composite(stars.resize((W, H), Image.LANCZOS))
+
+        # --- the logo, textured, with the version engraved on the planet
         try:
             from .tray import make_icon_image
-            logo = make_icon_image(logo_size, tile=False).convert("RGBA")
+            logo = make_icon_image(n, tile=False).convert("RGBA")
+            logo = self._texture(logo)
             shadow = Image.new("RGBA", logo.size, (0, 0, 0, 0))
-            shadow.putalpha(logo.getchannel("A").point(lambda a: a * 90 // 255))
-            base.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(int(8 * s))), (cx - logo.width // 2, ly + int(6 * s)))
-            tag = Image.new("RGBA", logo.size, (0, 0, 0, 0))
-            td = ImageDraw.Draw(tag)
-            pcx, pcy, pr = logo.width / 2, logo.height * .53, logo.width * .2   # make_icon_image's planet (large tier)
-            try:
-                from . import CODENAME
-            except ImportError:
-                CODENAME = ""
-            td.text((pcx, pcy - pr * .42), CODENAME, font=_brand_font(max(7, int(9 * s))), fill=(70, 22, 18, 150), anchor="mm")
-            td.text((pcx, pcy - pr * .1), VERSION, font=_font("seguisb.ttf", max(7, int(8 * s))), fill=(70, 22, 18, 120), anchor="mm")
-            logo.alpha_composite(tag)
-            base.alpha_composite(logo, (cx - logo.width // 2, ly))
-            self.logo_at = (cx - logo.width // 2, ly, logo.width)
-        except Exception:
-            pass
-        # the name, with its own soft shadow
-        name_y = ly + logo_size + int(14 * s)
-        name = _brand_font(int(26 * s))
-        sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        ImageDraw.Draw(sh).text((cx, name_y + int(2 * s)), "StellarHub", font=name, fill=(0, 0, 0, 200), anchor="mm")
-        base.alpha_composite(sh.filter(ImageFilter.GaussianBlur(int(5 * s))))
-        txt = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        ImageDraw.Draw(txt).text((cx, name_y), "StellarHub", font=name, fill=(240, 244, 251, 255), anchor="mm")
-        base.alpha_composite(txt)
+            shadow.putalpha(logo.getchannel("A").point(lambda v: v * 120 // 255))
+            base.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(int(14 * s))), (lx, ly + int(10 * s)))
+            base.alpha_composite(logo, (lx, ly))
+        except Exception as e:
+            print("splash logo:", e)
+
+        # --- the name, with a real shadow
+        self.name_y = name_y = ly + n + int(18 * s)
+        name = _brand_font(int(46 * s))
+        self._shadowed(base, (cx, name_y), "StellarHub", name, (243, 246, 252, 255), dy=int(4 * s), blur=int(9 * s), a=235)
+        self.small = _font("segoeui.ttf", int(17 * s))
+        self.status_xy = (cx, name_y + int(52 * s))
         self.base = base
-        self.small = _font("segoeui.ttf", int(12 * s))
-        self.status_x, self.status_y = cx, name_y + int(34 * s)
+
+    def _texture(self, logo):
+        """Soft gas-giant bands on the planet, fine grooves on the ring, and the version engraved on the planet."""
+        n = logo.width
+        cx, cy, pr = n * .5, n * .53, n * .2
+        A = logo.getchannel("A")
+        px = logo.load()
+        # planet / ring masks from the colors: the planet is warm (red > blue), the ring cool (blue > red)
+        warm = Image.new("L", logo.size, 0)
+        cool = Image.new("L", logo.size, 0)
+        wp, cp = warm.load(), cool.load()
+        for y in range(n):
+            for x in range(n):
+                r, g, b, a = px[x, y]
+                if a > 8:
+                    if r > b + 20 and math.hypot(x - cx, y - cy) <= pr + 1:
+                        wp[x, y] = a
+                    elif b > r + 10:
+                        cp[x, y] = a
+        tex = Image.new("RGBA", logo.size, (0, 0, 0, 0))
+        td = ImageDraw.Draw(tex)
+        import random
+        rnd = random.Random(3)
+        y = cy - pr
+        while y < cy + pr:                                   # bands: uneven widths, a little tilted below
+            h = rnd.uniform(.035, .09) * pr
+            td.rectangle((cx - pr, y, cx + pr, y + h), fill=(120, 30, 30, rnd.choice((0, 14, 22, 30))))
+            y += h
+        tex = tex.rotate(-12, resample=Image.BICUBIC, center=(cx, cy)).filter(ImageFilter.GaussianBlur(n * .004))
+        bands = Image.new("RGBA", logo.size, (0, 0, 0, 0))
+        bands.alpha_composite(tex)
+        bands.putalpha(ImageChops.multiply(bands.getchannel("A"), warm))
+        logo.alpha_composite(bands)
+        grooves = Image.new("RGBA", logo.size, (0, 0, 0, 0))
+        gd = ImageDraw.Draw(grooves)
+        rx, ry, rw = n * .385, n * .135, n * .064
+        k = 0.0
+        while k < rw:                                        # fine concentric grooves across the ring's width
+            gd.ellipse((cx - rx + k, cy - ry + k, cx + rx - k, cy + ry - k), outline=(20, 50, 90, 46 if int(k / (rw / 7)) % 2 else 18), width=max(1, int(n * .003)))
+            k += rw / 7
+        grooves = grooves.rotate(20, resample=Image.BICUBIC, center=(cx, cy))
+        grooves.putalpha(ImageChops.multiply(grooves.getchannel("A"), cool))
+        logo.alpha_composite(grooves)
+        # the version, engraved: a dark cut with a faint light edge under it, on the visible half of the planet
+        try:
+            from . import CODENAME
+        except ImportError:
+            CODENAME = ""
+        eng = Image.new("RGBA", logo.size, (0, 0, 0, 0))
+        ed = ImageDraw.Draw(eng)
+        f1, f2 = _brand_font(max(8, int(n * .052))), _font("seguisb.ttf", max(8, int(n * .04)))
+        for (txt, f, yy) in ((CODENAME, f1, cy - pr * .46), (VERSION, f2, cy - pr * .17)):
+            ed.text((cx, yy + n * .004), txt, font=f, fill=(255, 210, 196, 90), anchor="mm")     # light edge
+            ed.text((cx, yy), txt, font=f, fill=(92, 24, 22, 150), anchor="mm")                 # the cut
+        eng.putalpha(ImageChops.multiply(eng.getchannel("A"), warm))
+        logo.alpha_composite(eng)
+        self.planet_mask = warm
+        return logo
+
+    def _shadowed(self, img, xy, text, font, fill, dy, blur, a):
+        W, H = img.size
+        sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(sh).text((xy[0], xy[1] + dy), text, font=font, fill=(0, 0, 0, a), anchor="mm")
+        img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(blur)))
+        tx = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(tx).text(xy, text, font=font, fill=fill, anchor="mm")
+        img.alpha_composite(tx)
+
+    LEVELS = 12
+
+    def _sprites(self):
+        """Soft glow and crisp core dots, pre-rendered at several intensities (ice at the tail, coral near the head),
+        drawn 4x larger and scaled down so their edges are smooth."""
+        n = self.n
+        rw = n * .064
+        self._glow, self._core = [], []
+        for i in range(self.LEVELS + 1):
+            w = i / self.LEVELS
+            rg = rw * (.8 + 1.2 * w)
+            size = int(rg * 2 + rw * 2.4) | 1
+            g = Image.new("RGBA", (size * 4, size * 4), (0, 0, 0, 0))
+            col = (255, 140, 118, int(80 * w)) if w > .6 else (160, 214, 255, int(55 * w))
+            c = size * 2
+            ImageDraw.Draw(g).ellipse((c - rg * 4, c - rg * 4, c + rg * 4, c + rg * 4), fill=col)
+            g = g.filter(ImageFilter.GaussianBlur(rw * 3.6)).convert("RGBa").resize((size, size), Image.LANCZOS).convert("RGBA")  # premultiplied: no dark fringe
+            self._glow.append(g)
+            r = rw * (.34 + .16 * w)
+            cs = int(r * 2 + 3) | 1
+            k = Image.new("RGBA", (cs * 4, cs * 4), (0, 0, 0, 0))
+            cc = cs * 2
+            ccol = (int(205 + 50 * w), int(234 - 70 * w ** 3), int(255 - 110 * w ** 3), int(30 + 210 * w))
+            ImageDraw.Draw(k).ellipse((cc - r * 4, cc - r * 4, cc + r * 4, cc + r * 4), fill=ccol)
+            self._core.append(k.convert("RGBa").resize((cs, cs), Image.LANCZOS).convert("RGBA"))
+        r = rw * .5
+        hs = int(r * 2 + 3) | 1
+        h = Image.new("RGBA", (hs * 4, hs * 4), (0, 0, 0, 0))
+        hc = hs * 2
+        ImageDraw.Draw(h).ellipse((hc - r * 4, hc - r * 4, hc + r * 4, hc + r * 4), fill=(255, 248, 242, 255))
+        self._headspr = h.convert("RGBa").resize((hs, hs), Image.LANCZOS).convert("RGBA")
+        hole = Image.new("L", (n * 4, n * 4), 255)
+        cx, cy, pr = n * 2, n * 4 * .53, n * 4 * .2
+        ImageDraw.Draw(hole).ellipse((cx - pr, cy - pr, cx + pr, cy + pr), fill=0)
+        self._hole = hole.resize((n, n), Image.LANCZOS)
 
     def frame(self, t, status):
-        """The loading indicator is the planet's ring: a light runs around it with a glowing trail, hidden by the
-        planet while it passes behind. Same geometry as tray.make_icon_image (large tier): center (.5, .53), radii
-        .385 x .135 of the logo minus half the ring width (.064), tilted 20 degrees; the half above the center is
-        the back of the ring."""
+        """The ring's light: same geometry as tray.make_icon_image (center (.5, .53), radii .385 x .135 minus half
+        the ring width .064, tilted 20 degrees; the half above the center is the back, where the planet hides it,
+        glow included)."""
+        if not hasattr(self, "_glow"):
+            self._sprites()
         im = self.base.copy()
-        if getattr(self, "logo_at", None):
-            lx, ly, n = self.logo_at
-            cx, cy, pr = n * .5, n * .53, n * .2
-            rw = n * .064
-            rx, ry = n * .385 - rw / 2, n * .135 - rw / 2
-            head = (t * 1.15) % 1.0 * 2 * math.pi           # one turn every ~0.87 s
-            trail = 2.3                                      # radians of glowing trail behind the head
-            glow = Image.new("RGBA", (n, n), (0, 0, 0, 0))
-            core = Image.new("RGBA", (n, n), (0, 0, 0, 0))
-            gd, cd = ImageDraw.Draw(glow), ImageDraw.Draw(core)
-            steps = 64
-            for i in range(steps, -1, -1):                   # from the end of the trail to the head
-                f = 1 - i / steps                            # 0 at the end of the trail, 1 at the head
-                a = head - trail * (1 - f)
-                x, y = cx + rx * math.cos(a), cy + ry * math.sin(a)
-                if y < cy and math.hypot(x - cx, y - cy) < pr * .98:
-                    continue                                 # behind the planet
-                w = f ** 2.2
-                r = rw * (.38 + .2 * w)
-                col = (int(200 + 55 * w), int(232 - 60 * w ** 3), int(255 - 100 * w ** 3))
-                cd.ellipse((x - r, y - r, x + r, y + r), fill=col + (int(40 + 200 * w),))
-                rg = rw * (.9 + 1.1 * w)
-                gd.ellipse((x - rg, y - rg, x + rg, y + rg), fill=(255, 150, 125, int(70 * w)) if w > .7 else (170, 220, 255, int(60 * w)))
-            hx, hy = cx + rx * math.cos(head), cy + ry * math.sin(head)
-            if not (hy < cy and math.hypot(hx - cx, hy - cy) < pr * .98):
-                r = rw * .55
-                cd.ellipse((hx - r, hy - r, hx + r, hy + r), fill=(255, 246, 240, 255))
-            glow = glow.filter(ImageFilter.GaussianBlur(max(2, rw * .9)))
-            glow.alpha_composite(core)
-            glow = glow.rotate(20, resample=Image.BICUBIC, center=(cx, cy))
-            im.alpha_composite(glow, (lx, ly))
+        n = self.n
+        cx, cy = n * .5, n * .53
+        rw = n * .064
+        rx, ry = n * .385 - rw / 2, n * .135 - rw / 2
+        ca, sa = math.cos(math.radians(20)), math.sin(math.radians(20))
+        head = (t * .95) % 1.0 * 2 * math.pi
+        trail, steps = 2.5, 120
+        back = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+        front = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+
+        def put(layer, spr, x, y):
+            layer.alpha_composite(spr, (int(round(x - spr.width / 2)), int(round(y - spr.height / 2))))
+
+        pts = []
+        for i in range(steps, -1, -1):
+            f = 1 - i / steps
+            a = head - trail * (1 - f)
+            dx, dy = rx * math.cos(a), ry * math.sin(a)
+            x, y = cx + dx * ca + dy * sa, cy - dx * sa + dy * ca          # same rotation as Image.rotate(20)
+            pts.append((f, dy < 0, x, y))
+        for f, is_back, x, y in pts[::3]:                                   # glows first (every third point), then the cores
+            lvl = int(round(f ** 2.4 * self.LEVELS))
+            if lvl:
+                put(back if is_back else front, self._glow[lvl], x, y)
+        for f, is_back, x, y in pts:
+            put(back if is_back else front, self._core[int(round(f ** 2.4 * self.LEVELS))], x, y)
+        f, is_back, x, y = pts[-1]
+        put(back if is_back else front, self._headspr, x, y)
+        back.putalpha(ImageChops.multiply(back.getchannel("A"), self._hole))
+        back.alpha_composite(front)
+        im.alpha_composite(back, self.logo_at)
         if status:
-            s = self.s
-            st = Image.new("RGBA", im.size, (0, 0, 0, 0))
-            ImageDraw.Draw(st).text((self.status_x, self.status_y + 1), status, font=self.small, fill=(0, 0, 0, 210), anchor="mm")
-            im.alpha_composite(st.filter(ImageFilter.GaussianBlur(int(3 * s))))
-            tx = Image.new("RGBA", im.size, (0, 0, 0, 0))
-            ImageDraw.Draw(tx).text((self.status_x, self.status_y), status, font=self.small, fill=(232, 238, 248, 200), anchor="mm")
-            im.alpha_composite(tx)
+            self._shadowed(im, self.status_xy, status, self.small, (236, 241, 249, 225), dy=int(2 * self.s), blur=int(5 * self.s), a=230)
         return im
 
 
@@ -223,6 +328,10 @@ def _blit(hwnd, img, alpha, pos):
 
 
 def _run(ready):
+    try:  # this thread draws at the real pixel size (otherwise Windows stretches the window at 125 %/150 %)
+        u32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))  # PER_MONITOR_AWARE_V2
+    except (AttributeError, OSError):
+        pass
     try:
         dpi = u32.GetDpiForSystem() if hasattr(u32, "GetDpiForSystem") else 96
     except Exception:
@@ -268,7 +377,7 @@ def _run(ready):
             _blit(hwnd, card.frame(now, _state["status"]), alpha, pos)
         except Exception:
             pass
-        time.sleep(1 / 40)
+        time.sleep(1 / 60)
     u32.DestroyWindow(hwnd)
     u32.UnregisterClassW("StellarHubSplash", hinst)
     _state["hwnd"] = None

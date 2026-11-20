@@ -13,12 +13,23 @@ colors:
   ok: "#7FE0B4"
   warn: "#F4C26B"
   bad: "#FF6B7A"
+  shade: "#000000"
+  scrim: "#03050B"
+  paper: "#FFFFFF"
   raise: "rgba(158,190,240,.045)"
   raise2: "rgba(158,190,240,.085)"
   raise3: "rgba(158,190,240,.13)"
   line: "rgba(170,200,245,.105)"
   line2: "rgba(170,200,245,.2)"
 typography:
+  mono:
+    fontFamily: "Cascadia Mono, Consolas, monospace"
+    fontSize: "12.5px"
+    fontWeight: 400
+  display-zero:
+    fontFamily: "UnbZero, Unbounded, system-ui, sans-serif"
+    fontSize: "28px"
+    fontWeight: 500
   display-hero:
     fontFamily: "Unbounded, Microsoft YaHei UI, system-ui, sans-serif"
     fontSize: "34px"
@@ -36,6 +47,30 @@ typography:
     fontSize: "17px"
     fontWeight: 500
     letterSpacing: "-0.02em"
+  display-num-1:
+    fontFamily: "Unbounded, Microsoft YaHei UI, system-ui, sans-serif"
+    fontSize: "24px"
+    fontWeight: 500
+  display-num-2:
+    fontFamily: "Unbounded, Microsoft YaHei UI, system-ui, sans-serif"
+    fontSize: "32px"
+    fontWeight: 500
+  display-num-3:
+    fontFamily: "Unbounded, Microsoft YaHei UI, system-ui, sans-serif"
+    fontSize: "40px"
+    fontWeight: 500
+  display-num-4:
+    fontFamily: "Unbounded, Microsoft YaHei UI, system-ui, sans-serif"
+    fontSize: "52px"
+    fontWeight: 500
+  display-h2:
+    fontFamily: "Unbounded, Microsoft YaHei UI, system-ui, sans-serif"
+    fontSize: "21px"
+    fontWeight: 500
+  lead:
+    fontFamily: "Onest, Microsoft YaHei UI, system-ui, sans-serif"
+    fontSize: "15px"
+    fontWeight: 600
   body:
     fontFamily: "Onest, Microsoft YaHei UI, system-ui, sans-serif"
     fontSize: "13.5px"
@@ -50,9 +85,11 @@ typography:
     fontSize: "11.5px"
     fontWeight: 400
 rounded:
+  xs: "5px"
   s: "9px"
   m: "14px"
   l: "22px"
+  pill: "999px"
 spacing:
   xs: "4px"
   sm: "8px"
@@ -103,11 +140,15 @@ Source of truth: `stellarhub/ui/css/base.css` (`:root` tokens) and `docs/UI_CONT
   slashed glyph (`UnbZero`) so 0 never reads as O.
 - Onest for everything below 15 px: labels and panel titles 600, body 400, data with tabular figures.
 - Roles: `--fs-cap` 11.5, `--fs-sm` 12.5, `--fs-body` 13.5, `--fs-lg` 15, `--fs-h3` 17, `--fs-h2` 21, `--fs-h1` 28.
+  Display numerals (tile and ring figures, results): `--fs-n1` 24, `--fs-n2` 32, `--fs-n3` 40, `--fs-n4` 52.
+  Module CSS uses these tokens, never a literal size.
 - Sentence case everywhere; no ALL-CAPS labels, no eyebrows above headings.
 
 ## Layout
 - Shell: top bar (62 px), content between it and the dock (`--dockspace`), modules inset 30 px.
-- Module: title + one-line description, a segmented tab bar, then panels. Gaps 10-26 px; tight inside a group,
+- Module: one header everywhere (`.mhead`: title and one-line description on the left, actions on the right), the tab bar
+  (`.subnav`) 18 px below it, then panels. Panels fill the width: grids use `repeat(auto-fit, minmax(...))`, side panels
+  size to their content, nothing hangs in a corner with empty space beside it. Gaps 10-26 px; tight inside a group,
   generous between groups. Minimum window 1100 x 700 must not wrap or overlap.
 - Density "compact" and corner presets (soft / mid / sharp) remap the same pieces.
 
@@ -121,8 +162,12 @@ No zero-offset coloured glows: a coloured dot gets a ring (`0 0 0 3px` soft) ins
 areas. Lite mode (`html[data-lite="1"]`) drops to short flat shadows and no blur.
 
 ## Shapes
-Radii `--r-s` 9, `--r-m` 14, `--r-l` 22 (round pills for search, chips, toggles). Icons are 24 px stroke SVGs
-(`SH.ic`), 1.6 stroke, no fill.
+Radii `--r-xs` 5 (bars, keys, tiny tiles), `--r-s` 9, `--r-m` 14, `--r-l` 22, `--r-pill` (search, chips, toggles).
+Module CSS uses the tokens, so the corner presets (soft, sharp) reach every module. Spacing: `--sp-xs` 4, `--sp-sm` 8,
+`--sp-md` 14, `--sp-lg` 18, `--sp-xl` 26. Icons are 24-unit stroke SVGs
+(`SH.ic`, class `i`), no fill, one 1.4 px line at every size (`--ic-w`, non-scaling stroke; `--ic-w-bold` 1.9 px only
+for 12-14 px marks inside filled badges). Seven sizes: `--ic-xs` 12, `--ic-s` 14, `--ic-m` 16 (buttons, rows),
+`--ic-l` 18 (default), `--ic-xl` 20, `--ic-2xl` 24 (dock), `--ic-3xl` 28.
 
 ## Components
 - Buttons: primary coral (top-lit gradient, inner highlight, coral-tinted offset shadow), secondary glass, ghost,
@@ -131,6 +176,12 @@ Radii `--r-s` 9, `--r-m` 14, `--r-l` 22 (round pills for search, chips, toggles)
 - Dock: the active module is marked by a small coral planet on an ice orbit, the brand mark in miniature.
 - Toasts: dark glass with a small planet as the signifier, action in coral.
 - Live indicators: steady dots with a ring; only indeterminate progress sweeps loop.
+
+## Empty states
+One component, `SH.emptyState({ art, title, text, action, small })`: a small orbit scene in the app's line style (a planet
+with a check for "all done", an orbit missing its moon for "nothing found", a lone star in its orbit for "nothing yet",
+a planet off its orbit for "could not read"), a one-line title, a short explanation and, where there is a next step, one
+button. Never a bare sentence in a blank panel.
 
 ## Motion
 - Curves: `--e-out` `cubic-bezier(.16,1,.3,1)` for arrivals, `--e-snap` `cubic-bezier(.22,1,.36,1)` for controls,
