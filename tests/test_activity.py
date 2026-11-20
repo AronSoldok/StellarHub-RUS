@@ -133,6 +133,23 @@ class Registry(unittest.TestCase):
         self.assertEqual(out["notes"], [["notify_activity", "Storage Checker finished: 312 GB used", "storage", "map"]])
         self.assertIsNone(out["badge"])                     # it is the current module: no badge on its icon
 
+    def test_python_says_the_window_is_hidden(self):
+        """WebView2 can keep document.visibilityState "visible" in the tray: Python's 'window' event counts too."""
+        out = self.run_js(r"""
+          SH.state.view = 'home';
+          SH.emit('window', { shown: false });
+          SH.activity.start('drivers', { go: { tab: 'updates' } }).end({ ok: false, error: 'offline' });
+          await tick(30);
+          const hidden = { toasts: toasts.length, notes: calls.filter(c => c[0] === 'notify_activity') };
+          SH.emit('window', { shown: true });
+          SH.activity.start('drivers').end({ ok: true });
+          out({ hidden, toasts: toasts.map(t => t.text), badge: !!SH.activity.done('drivers') });
+        """)
+        self.assertEqual(out["hidden"]["toasts"], 0)
+        self.assertEqual(out["hidden"]["notes"], [["notify_activity", "Driver Updater could not finish: offline", "drivers", "updates"]])
+        self.assertEqual(out["toasts"], ["Driver Updater finished."])
+        self.assertTrue(out["badge"])
+
     def test_taskbar_aggregate(self):
         out = self.run_js(r"""
           await tick(20);
@@ -335,6 +352,27 @@ class ApiMethods(unittest.TestCase):
         a._tray.notify.call_args[1]["on_click"]()
         a.show_main.assert_called_once()
         self.assertEqual(sent, ['window.SH && SH.activity && SH.activity.open("storage", {tab: "map"})'])
+
+    def test_the_page_hears_when_the_window_is_hidden_or_shown(self):
+        a = self.make()
+        sent = []
+        a._js = lambda code, *x, **k: sent.append(code)
+        a._sampler = None
+        with mock.patch("stellarhub.winmgr.wv_visible"):
+            a._visible, a._minimized = True, False
+            a._tele_refresh()
+            a._tele_refresh()                      # no change: nothing more
+            a._minimized = True
+            a._tele_refresh()
+            a._minimized, a._visible = False, False
+            a._tele_refresh()                      # still out of sight
+            a._visible = True
+            a._tele_refresh()
+        shown = [c for c in sent if "SH.emit('window'" in c]
+        self.assertEqual(len(shown), 3)
+        self.assertIn("shown: true", shown[0])
+        self.assertIn("shown: false", shown[1])
+        self.assertIn("shown: true", shown[2])
 
     def test_notify_activity_rejects_odd_names(self):
         a = self.make()

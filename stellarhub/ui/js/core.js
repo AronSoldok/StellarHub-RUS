@@ -572,8 +572,12 @@ const acts = new Map(), actDone = new Map();
 let actSeq = 0, actTimer = 0;
 const actMod = m => ACT_ALIAS[m] || m;
 const actInfo = mod => { const m = MODS.find(x => x.id === mod), x = ACT_EXTRA[mod]; return m ? { name: m.name, icon: m.icon } : x ? { name: t(x.name), icon: x.icon } : { name: String(mod), icon: 'dots' }; };
+/* the window is out of sight (in the tray or minimized). Python says so ('window', from Api._tele_refresh) because
+   WebView2 can keep document.visibilityState "visible" for a hidden window; document.hidden counts too. */
+let winHidden = false;
+const pageHidden = () => document.hidden || winHidden;
 /* the user is looking at that module (its own result UI answers): no toast, no badge */
-const actHere = mod => { mod = actMod(mod); if (document.hidden) return false; return mod === 'backups' ? !!state.setOpen : state.view === mod; };
+const actHere = mod => { mod = actMod(mod); if (pageHidden()) return false; return mod === 'backups' ? !!state.setOpen : state.view === mod; };
 const actView = a => ({ id: a.id, mod: a.mod, key: a.key, label: a.label, text: a.text, pct: a.pct, at: a.at, user: a.user, cancel: !!a.cancel });
 /* many progress updates a second become one 'activity' event every ~90 ms (also while hidden, when frames stop) */
 function actFlush(now) {
@@ -609,7 +613,7 @@ function actEnd(a, r) {
   if (a.user && !ok && !cancelled) actTbErr = Date.now() + 2600;
   emit('activity:end', { ...actView(a), ok, cancelled, told: tell });
   actFlush(true);
-  if (tell && !(r.toast === false && !document.hidden)) {  /* toast: false: the module says it itself (the badge and the tray notification stay) */
+  if (tell && !(r.toast === false && !pageHidden())) {  /* toast: false: the module says it itself (the badge and the tray notification stay) */
     /* a job followed on its own: the module may still say how it went in its own toast, which then is enough */
     if (a.auto) { const t0 = performance.now(); setTimeout(() => { if (!((SH.toast.lastAt || 0) > t0)) actTell(a, ok, r, error, go); }, 350); }
     else actTell(a, ok, r, error, go);
@@ -625,7 +629,7 @@ function actTell(a, ok, r, error, go) {
   const text = ok ? (sum ? t('{name} finished: {summary}', { name, summary: sum }) : t('{name} finished.', { name }))
     : error ? t('{name} could not finish: {error}', { name, error }) : t('{name} did not finish.', { name });
   /* the window is in the tray or minimized: a Windows notification, whose click opens the window on the module */
-  if (document.hidden) { call('notify_activity', text, a.mod, go.tab || ''); return; }
+  if (pageHidden()) { call('notify_activity', text, a.mod, go.tab || ''); return; }
   /* exactly one sound for the moment: the job's own scan_complete, if it just played, else this toast's */
   const quiet = performance.now() - sound.last < 700;
   SH.toast(text, { kind: ok ? (r.kind || 'success') : 'error', silent: quiet, ms: 9000, group: 'act:' + a.mod, action: { label: t('View'), run: () => actOpen(a.mod, go) } });
@@ -645,6 +649,8 @@ function actTaskbar() {
 /* coming to the module clears its badge; the window coming back shows the taskbar progress again */
 on('view', d => { if (d && actDone.delete(d.to)) actFlush(true); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { actTbSent = ''; actTaskbar(); } });
+on('window', d => { winHidden = !(d && d.shown); if (!winHidden) { actTbSent = ''; actTaskbar(); } });
+on('shown', d => { winHidden = !(d && d.shown); });  /* the start: opened hidden in the tray, or on screen */
 const activity = {
   start: actStart,
   /* running activities, the newest first; of(mod): the one to show for a module (the newest), with how many run there */

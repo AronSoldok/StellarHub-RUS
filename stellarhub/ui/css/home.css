@@ -141,6 +141,7 @@ html[data-int=min] .pend.act.ind .ring{animation:none}
   .pend span{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .pend:not(.act) span small{display:none}
   .pend.act span{display:block}
+  .act-rows .pend:nth-child(n+3){display:none}  /* two at most: the column must still fit above the dock */
   .pend.act b.ar{width:30px;height:30px;margin:0 6px 0 4px}
   .pend.act b.ar .ring{width:30px;height:30px}
   .healthp{padding:10px 14px}

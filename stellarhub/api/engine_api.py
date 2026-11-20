@@ -84,6 +84,11 @@ class EngineApi:
     def _tele_refresh(self):
         shown = self._visible and not self._minimized
         winmgr.wv_visible(self._window, shown)
+        if getattr(self, "_told_shown", None) != shown:
+            # the page cannot rely on document.hidden for this (WebView2 may keep it "visible" while the window is
+            # hidden or minimized): SH.activity uses it to tell the end of long work in a Windows notification instead
+            self._told_shown = shown
+            self._js(f"window.SH && SH.emit && SH.emit('window', {{shown: {'true' if shown else 'false'}}})")
         winmgr.wv_visible(self._panel, self._panel_shown)
         winmgr.wv_visible(self._widget, True)   # (re)assert: a widget WebView2 only ever renders while it exists
         if self._sampler:
