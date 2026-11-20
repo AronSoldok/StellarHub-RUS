@@ -836,7 +836,7 @@ function sound(ev, o = {}) {
   /* this gesture has its sound: js/sounds.js adds no click to it */
   if (snd.act && now - snd.act.at < 40) snd.act.claimed = true;
   if (!(+st.soundVolume > 0)) return false;
-  if (document.hidden && ev !== 'app_exit' && !o.visible) return false;
+  if (pageHidden() && ev !== 'app_exit' && !o.visible) return false;  /* also hidden in the tray, which WebView2 may not report */
   if (d.user && now - snd.gestureAt > 1500 && !o.preview && !o.visible) return false;
   if (now - (snd.last[ev] ?? -1e9) < d.gap) return false;
   snd.hist = snd.hist.filter(h => now - h.at < 100);
