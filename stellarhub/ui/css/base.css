@@ -329,7 +329,7 @@ html[data-int=min] .sk::after{animation:none}
 .dk:hover .tip{opacity:1;transform:translate(-50%,0) scale(1)}
 .dk .tip{translate:0 calc((1 - var(--dv))*52px)}
 .dock .dot{position:absolute;bottom:5px;left:0;width:18px;height:3px;border-radius:var(--r-xs);background:var(--accent);will-change:transform}
-.dock .sep{width:1px;height:28px;background:var(--line);margin:0 6px 12px;flex:none}
+.dock .sep{width:1px;height:28px;background:var(--line);margin:0 6px 12px;flex:none;--dx:0;translate:calc(var(--dx)*1px) 0}
 
 /* ---------- layers: palette, settings, toasts ---------- */
 .overlay{position:fixed;inset:0;z-index:60;visibility:hidden}

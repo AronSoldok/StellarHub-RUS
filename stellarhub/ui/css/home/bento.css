@@ -1,5 +1,5 @@
 /* StellarHub · "Mosaic" Home view */
-.hv-bento{position:absolute;inset:0 0 4px 0;display:grid;gap:10px;container-type:size;
+.hv-bento{position:absolute;inset:0;display:grid;gap:10px;container-type:size;
   grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:1fr 1fr .82fr .82fr;
   grid-template-areas:"gpu gpu cpu cpu" "gpu gpu cpu cpu" "ram ssd dsp dsp" "bat wif aud sys"}
 .hv-bento .bt{position:relative;perspective:900px;min-width:0;min-height:0;cursor:pointer;outline:none;border-radius:var(--r-l)}
@@ -166,7 +166,6 @@ html[data-int=min] .hv-bento *{animation:none!important}
   .hv-bento .art{display:none!important}
   /* short tiles keep their drawing (it used to be hidden): on the right, behind the text, softened like a
      watermark, so it never takes space from the text at any window size; it lights up on hover */
-  .hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .tilt{position:relative}
   .hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .meta{position:relative;z-index:1}
   .hv-bento :is(.a-ram,.a-ssd,.a-bat,.a-wif,.a-aud,.a-sys) .art{display:flex!important;position:absolute;right:10px;top:50%;
     flex:none;width:auto;height:62cqh;max-width:46cqw;max-height:none;padding:0;pointer-events:none;z-index:0;

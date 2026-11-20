@@ -64,7 +64,9 @@ const fill = (s, vars) => vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars &&
 function t(s, vars) {
   if (s === undefined || s === null) return '';
   const k = String(s);
-  return fill(dict[k] !== undefined && dict[k] !== '' ? dict[k] : k, vars);
+  /* "125 %": a number never ends a line apart from its % (a no-break space where the language puts a space before
+     the sign, as Spanish and French do) */
+  return fill(dict[k] !== undefined && dict[k] !== '' ? dict[k] : k, vars).replace(/(\d) %/g, '$1 %');
 }
 
 /* static text in the HTML files: <b data-t>Settings</b> translates its text; data-t-attr="title aria-label"

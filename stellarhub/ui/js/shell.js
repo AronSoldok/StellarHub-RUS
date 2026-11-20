@@ -100,6 +100,9 @@ const BASE = 52, GROW = .3;
    button (--dv the size factor, --dx the shift caused by the neighbours growing, see .dk in base.css), so the frame
    costs a style update and a composite instead of a flex layout and a rect read per button. */
 const dks = $$('.dk', dock).map(el => ({ el, s: new Spring(1, 320, 24), cx: 0, dx: 0, pv: '', px: '' }));
+/* the separators move with the buttons: each one shifts by the growth of every button before it (else a grown icon
+   slides over its separator) */
+const dseps = $$('.sep', dock).map(el => ({ el, before: dks.filter(d => d.el.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).length, px: '' }));
 const dotX = new Spring(0, 260, 24); let dockMouse = null, dockCx = false, dockBusy = false, dockHot = false, dockPx = '';
 dock.addEventListener('pointermove', e => dockMouse = e.clientX);
 dock.addEventListener('pointerleave', () => { dockMouse = null; dockCx = false; });
@@ -117,13 +120,14 @@ tickers.add(dt => {
     dockBusy = busy; dockHot = hover;
     const pw = extra.toFixed(2), ph = (BASE * (top - 1)).toFixed(2);  /* the pill grows with them: wider by the sum, taller by the tallest */
     if (pw + ph !== dockPx) { dockPx = pw + ph; dock.style.setProperty('--dkw', pw); dock.style.setProperty('--dkh', ph); }
-    let run = 0;
+    let run = 0; const runs = [0];
     for (const d of dks) {
-      const e = BASE * (d.s.v - 1); d.dx = run + e / 2 - extra / 2; run += e;  /* the row stays centred as it widens */
+      const e = BASE * (d.s.v - 1); d.dx = run + e / 2 - extra / 2; run += e; runs.push(run);  /* the row stays centred as it widens */
       const pv = d.s.v.toFixed(4), px = d.dx.toFixed(2);
       if (pv !== d.pv) { d.pv = pv; d.el.style.setProperty('--dv', pv); }
       if (px !== d.px) { d.px = px; d.el.style.setProperty('--dx', px); }
     }
+    for (const sp of dseps) { const px = (runs[sp.before] - extra / 2).toFixed(2); if (px !== sp.px) { sp.px = px; sp.el.style.setProperty('--dx', px); } }
   }
   /* the dock dot: measured only while the dock moves or the module changes (measuring every frame
      forces a full-page layout and drops the frame rate while scrolling) */
@@ -403,7 +407,7 @@ function langPicker() {
   const tiles = [['auto', SH.t('Automatic'), SH.t('Same as Windows: {lang}', { lang: sys[1] })], ...L.LANGS.map(([c, own, eng]) => [c, own, SH.t(eng)])];
   return `<div class="langs">${tiles.map(([c, a, b]) => `<button class="lang${c === cur ? ' on' : ''}" data-lang="${c}">${flag(c)}<span><b>${a}</b><small>${b}</small></span>${ic('check')}</button>`).join('')}</div>`;
 }
-const SECTIONS = [['look', SH.t('Appearance'), 'palette'], ['background', SH.t('Background'), 'sparkle'], ['motion', SH.t('Animation'), 'play'], ['home', SH.t('Home'), 'home'], ['widget', SH.t('Widget'), 'monitor'], ['general', SH.t('General'), 'sliders'], ['tools', SH.t('Tools'), 'wrench'], ['data', SH.t('Data'), 'folder'], ['backups', SH.t('Backups and restore'), 'restore'], ['keys', SH.t('Shortcuts'), 'keyboard'], ['admin', SH.t('Administrator'), 'shield'], ['updates', SH.t('Updates'), 'download'], ['about', SH.t('About'), 'info']];
+const SECTIONS = [['look', SH.t('Appearance'), 'palette'], ['language', SH.t('Language'), 'globe'], ['background', SH.t('Background'), 'sparkle'], ['motion', SH.t('Animation'), 'play'], ['home', SH.t('Home'), 'home'], ['widget', SH.t('Widget'), 'monitor'], ['general', SH.t('General'), 'sliders'], ['tools', SH.t('Tools'), 'wrench'], ['data', SH.t('Data'), 'folder'], ['backups', SH.t('Backups and restore'), 'restore'], ['keys', SH.t('Shortcuts'), 'keyboard'], ['admin', SH.t('Administrator'), 'shield'], ['updates', SH.t('Updates'), 'download'], ['about', SH.t('About'), 'info']];
 const seg = (key, opts) => `<div class="seg" data-key="${key}"><span class="ind"></span>${opts.map(([v, l]) => `<button data-v="${v}"${String(S()[key]) === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div>`;
 const tog = (key, label, sub) => `<div class="set inline"><div class="lbl"><div>${label}${sub ? `<span>${sub}</span>` : ''}</div></div><button class="toggle${S()[key] ? ' on' : ''}" data-key="${key}" aria-label="${label}"><i></i></button></div>`;
 /* slider: live value, saved on release */
@@ -461,8 +465,9 @@ function sectionHTML(id) {
         ${W.map(([k, n]) => `<div class="set inline" style="padding:8px 0;border:0"><div class="lbl">${n}</div><button class="toggle${on.includes(k) ? ' on' : ''}" data-wstat="${k}" aria-label="${n}"><i></i></button></div>`).join('')}</div>
       <p class="set-note">${t('It opens with StellarHub if you left it open last time, and stays closed if you closed it.')}</p>`;
     }
+    case 'language': return `<h3>${t('Language')}</h3><p>${t('The whole app, the widget and the tray menu.')}</p>
+      <div class="set">${langPicker()}</div>`;
     case 'general': return `<h3>${t('General')}</h3><p>${t('How the app behaves.')}</p>
-      <div class="set"><div class="lbl"><div>${t('Language')}<span>${t('The whole app, the widget and the tray menu.')}</span></div></div>${langPicker()}</div>
       ${state.portable ? `<div class="set-note">${t('This is the portable version: it does not add itself to Windows startup, so it leaves nothing behind on the PC.')}</div>` : tog('startWithWindows', t('Open when Windows starts'), t('Starts hidden in the tray, with no window.'))}
       ${tog('trayOnClose', t('Close to the tray'), t('The X hides the window; StellarHub keeps running in the tray. To quit: right-click the icon > Quit.'))}
       ${tog('sounds', t('Sounds'), t('A soft sound when long tasks finish.'))}
@@ -595,7 +600,7 @@ async function setLanguage(code, btn) {
   state.settings.language = code; L.remember(code);
   await SH.call('settings_set', { language: code });
   if (L.resolve(code) === L.lang) return;
-  try { sessionStorage.setItem('sh.reopenSettings', 'general'); } catch {}
+  try { sessionStorage.setItem('sh.reopenSettings', 'language'); } catch {}
   anim(document.body, [{ opacity: 1 }, { opacity: 0 }], { d: 220 }).finished.then(() => location.reload(), () => location.reload());
 }
 function applySetting(key, val) {
