@@ -406,5 +406,18 @@
   "This update isn't signed by StellarHub's author, so it wasn't installed.": "Esta atualização não está assinada pelo autor do StellarHub, então não foi instalada.",
   "Registry cleaner": "Limpador de registro",
   "Microsoft doesn't usually recommend registry cleaners: Windows doesn't need one to stay fast. You can turn it on if you'd like to use it; everything it changes is backed up and can be undone.": "A Microsoft normalmente não recomenda limpadores de registro: o Windows não precisa de um para continuar rápido. Você pode ativá-lo se quiser usá-lo; tudo o que ele altera tem backup e pode ser desfeito.",
-  "The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.": "A guia Registro agora está no Super Otimizador. Cada correção tem backup; você pode restaurá-lo em Configurações > Backup e restauração."
+  "The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.": "A guia Registro agora está no Super Otimizador. Cada correção tem backup; você pode restaurá-lo em Configurações > Backup e restauração.",
+  "Sound": "Som",
+  "Short, quiet sounds that confirm what you do.": "Sons curtos e discretos que confirmam o que você faz.",
+  "Turn every sound on or off.": "Ativa ou desativa todos os sons.",
+  "Volume": "Volume",
+  "Interface": "Interface",
+  "Clicks, tabs, menus, panels, switches and controller moves.": "Cliques, abas, menus, painéis, botões de alternância e movimentos com o controle.",
+  "Messages, warnings, errors and achievements.": "Mensagens, avisos, erros e conquistas.",
+  "Scans, refreshing, deleting, undoing and copying.": "Verificações, atualizar, excluir, desfazer e copiar.",
+  "Opening and quitting, administrator mode, updates, controllers, the widget and the keyboard test.": "Abrir e sair, modo administrador, atualizações, controles, o widget e o teste do teclado.",
+  "Play a sample": "Ouvir um exemplo",
+  "Hear how loud they are.": "Ouça o volume deles.",
+  "Orbital, an original set made for StellarHub (CC0). The hover sound is “UI hover” by unfa on Freesound (CC0).": "Orbital, um conjunto original criado para o StellarHub (CC0). O som ao passar o mouse é “UI hover”, de unfa no Freesound (CC0).",
+  "Change the sound volume": "Mudar o volume dos sons"
 }

@@ -70,10 +70,12 @@ class Api(SettingsApi, MainWindowApi, WidgetApi, TrayPanelApi, EngineApi):
         return True
 
     def ui_ready(self):
-        """The interface finished its first frame: logs how long the start took, from the process launch."""
+        """The interface finished its first frame: logs how long the start took, from the process launch. Answers
+        whether the window is on screen now (False when it started hidden in the tray): the UI plays the start sound."""
         phase("ui_ready")
         self._reveal()
         phase("revealed")
+        shown = bool(self._visible)
         try:
             import psutil
             secs = time.time() - psutil.Process().create_time()
@@ -81,6 +83,7 @@ class Api(SettingsApi, MainWindowApi, WidgetApi, TrayPanelApi, EngineApi):
                   f"{'administrator' if config.is_admin() else 'normal'})", flush=True)
         except Exception:
             pass
+        return shown
 
     def _js(self, code, target=None, lossy=False):
         """Notifies the UI WITHOUT waiting, and in order (one sender thread per window)."""

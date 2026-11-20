@@ -280,6 +280,34 @@ def ui_port():
     return port
 
 
+# WebView2 browser switches StellarHub needs: the interface sounds play without waiting for a click (the start sound plays
+# as the window appears). pywebview's own switch is repeated because the environment variable replaces, rather than
+# adds to, the arguments pywebview gives WebView2.
+BROWSER_ARGS = ("--autoplay-policy=no-user-gesture-required", "--disable-features=ElasticOverscroll")
+BROWSER_ARGS_ENV = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"
+
+
+def merge_browser_args(existing, extra=BROWSER_ARGS):
+    """`existing` (the environment variable as it is, e.g. a test copy's --remote-debugging-port) plus every switch in
+    `extra` it does not have yet. A switch already there keeps its value; --disable-features / --enable-features lists
+    are joined. Order is kept: what was there first, then the new switches."""
+    parts = (existing or "").split()
+    for arg in extra:
+        name, _, val = arg.partition("=")
+        i = next((k for k, p in enumerate(parts) if p.partition("=")[0] == name), None)
+        if i is None:
+            parts.append(arg)
+        elif name in ("--disable-features", "--enable-features") and val:
+            have = [f for f in parts[i].partition("=")[2].split(",") if f]
+            parts[i] = name + "=" + ",".join(have + [f for f in val.split(",") if f and f not in have])
+    return " ".join(parts)
+
+
+def set_browser_args():
+    """Before webview.start: merged into whatever the variable already holds (never dropped)."""
+    os.environ[BROWSER_ARGS_ENV] = merge_browser_args(os.environ.get(BROWSER_ARGS_ENV, ""))
+
+
 def refresh_ui_cache():
     """WebView2 keeps the .js/.css in its HTTP cache: after a UI change it would keep showing the old one.
     If any UI file changes, that cache is cleared."""
@@ -297,7 +325,7 @@ def refresh_ui_cache():
             h.update(VERSION.encode())
     for root, _dirs, files in ([] if config.FROZEN else sorted(os.walk(config.UI_DIR))):
         for f in sorted(files):
-            if f.endswith((".html", ".js", ".css", ".json")):
+            if f.endswith((".html", ".js", ".css", ".json", ".ogg")):
                 p = os.path.join(root, f)
                 h.update(p[len(config.UI_DIR):].encode())
                 try:

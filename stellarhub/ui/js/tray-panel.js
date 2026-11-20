@@ -52,7 +52,8 @@ async function refreshState() {
 
 /* called by Python every time the panel is shown */
 SH.panelShown = () => {
-  SH.lookChanged(); refreshState(); paint(SH.tele.v);
+  /* its sound once the settings are read again (they may have changed in the main window); visible: the window is being shown */
+  SH.lookChanged().then(() => SH.sound('panel_open', { visible: true })); refreshState(); paint(SH.tele.v);
   const p = $('#p');
   anim(p, [{ opacity: 0, transform: 'translate3d(0,14px,0) scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 380, e: EASE.spring });
   $$('.vt, .mods button, .qa button, .ft > *', p).forEach((el, i) =>
@@ -72,7 +73,7 @@ document.addEventListener('click', e => {
     if (act === 'widget') {
       if (a.dataset.busy) return;                 // the window is still being created or closed: ignore the extra click
       a.dataset.busy = '1'; a.setAttribute('aria-busy', 'true');
-      SH.call('widget_toggle').then(open => { const tog = $('#wTog'); if (tog) tog.classList.toggle('on', !!open); })
+      SH.call('widget_toggle').then(open => { const tog = $('#wTog'); if (tog) tog.classList.toggle('on', !!open); if (open !== undefined) SH.sound(open ? 'widget_on' : 'widget_off', { visible: true }); })
         .catch(() => {}).finally(() => { delete a.dataset.busy; a.removeAttribute('aria-busy'); });
       return;
     }

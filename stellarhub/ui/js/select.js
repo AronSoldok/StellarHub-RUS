@@ -68,6 +68,7 @@ function open(sel, btn) {
   btn.classList.add('open');
   items[openState.active] && items[openState.active].scrollIntoView({ block: 'nearest' });
   setActive(openState.active);
+  SH.sound('dropdown');
   anim(pop, [{ opacity: 0, transform: `translate3d(0,${up ? 6 : -6}px,0) scale(.96)` }, { opacity: 1, transform: 'none' }], { d: 260, e: EASE.spring });
   pop.addEventListener('click', e => { const b = e.target.closest('.csel-o'); if (b && !b.disabled) choose(+b.dataset.i); });
   pop.addEventListener('mousemove', e => { const b = e.target.closest('.csel-o'); if (b) setActive(+b.dataset.i, false); });

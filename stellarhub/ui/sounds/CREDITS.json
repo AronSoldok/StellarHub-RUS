@@ -1,0 +1,352 @@
+[
+ {
+  "event": "achievement",
+  "id": "achievement.orbital-achievement",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 1200
+ },
+ {
+  "event": "admin_granted",
+  "id": "admin_granted.orbital-admin-granted",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 935
+ },
+ {
+  "event": "app_exit",
+  "id": "app_exit.orbital-app-exit",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 1200
+ },
+ {
+  "event": "app_start",
+  "id": "app_start.orbital-app-start",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 2423
+ },
+ {
+  "event": "click",
+  "id": "click.orbital-click",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 154
+ },
+ {
+  "event": "copy",
+  "id": "copy.orbital-copy",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 279
+ },
+ {
+  "event": "delete",
+  "id": "delete.orbital-delete",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 399
+ },
+ {
+  "event": "device_connected",
+  "id": "device_connected.orbital-device-connected",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 694
+ },
+ {
+  "event": "device_disconnected",
+  "id": "device_disconnected.orbital-device-disconnected",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 671
+ },
+ {
+  "event": "dropdown",
+  "id": "dropdown.orbital-dropdown",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 221
+ },
+ {
+  "event": "error",
+  "id": "error.orbital-error",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 606
+ },
+ {
+  "event": "focus_move",
+  "id": "focus_move.orbital-focus-move",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 115
+ },
+ {
+  "event": "hover",
+  "id": "hover.freesound-ui-hover",
+  "family": "Freesound: unfa",
+  "license": "CC0-1.0",
+  "author": "unfa",
+  "sourceUrl": "https://freesound.org/people/unfa/sounds/565131/",
+  "attribution": "",
+  "durationMs": 115
+ },
+ {
+  "event": "key_press",
+  "id": "key_press.orbital-key-press",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 132
+ },
+ {
+  "event": "navigate",
+  "id": "navigate.orbital-navigate",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 421
+ },
+ {
+  "event": "palette_open",
+  "id": "palette_open.orbital-palette-open",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 563
+ },
+ {
+  "event": "panel_close",
+  "id": "panel_close.orbital-panel-close",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 332
+ },
+ {
+  "event": "panel_open",
+  "id": "panel_open.orbital-panel-open",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 478
+ },
+ {
+  "event": "progress_tick",
+  "id": "progress_tick.orbital-progress-tick",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 27
+ },
+ {
+  "event": "refresh",
+  "id": "refresh.orbital-refresh",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 498
+ },
+ {
+  "event": "scan_complete",
+  "id": "scan_complete.orbital-scan-complete",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 1121
+ },
+ {
+  "event": "scan_start",
+  "id": "scan_start.orbital-scan-start",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 981
+ },
+ {
+  "event": "screenshot",
+  "id": "screenshot.orbital-screenshot",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 208
+ },
+ {
+  "event": "success",
+  "id": "success.orbital-success",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 1002
+ },
+ {
+  "event": "tab_switch",
+  "id": "tab_switch.orbital-tab-switch",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 212
+ },
+ {
+  "event": "toast",
+  "id": "toast.orbital-toast",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 840
+ },
+ {
+  "event": "toggle_off",
+  "id": "toggle_off.orbital-toggle-off",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 320
+ },
+ {
+  "event": "toggle_on",
+  "id": "toggle_on.orbital-toggle-on",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 297
+ },
+ {
+  "event": "unavailable",
+  "id": "unavailable.orbital-unavailable",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 245
+ },
+ {
+  "event": "undo",
+  "id": "undo.orbital-undo",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 302
+ },
+ {
+  "event": "update_available",
+  "id": "update_available.orbital-update-available",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 960
+ },
+ {
+  "event": "update_installed",
+  "id": "update_installed.orbital-update-installed",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 1200
+ },
+ {
+  "event": "warning",
+  "id": "warning.orbital-warning",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 583
+ },
+ {
+  "event": "widget_off",
+  "id": "widget_off.orbital-widget-off",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 368
+ },
+ {
+  "event": "widget_on",
+  "id": "widget_on.orbital-widget-on",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 380
+ }
+]

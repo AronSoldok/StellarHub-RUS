@@ -12,12 +12,14 @@ function syncButtons() {
 let inFlight = false;
 async function toggleWidget(quiet) {
   if (inFlight) return;
+  SH.sound.claim();  /* its sound comes with the window (widget_on / widget_off), not with the click */
   inFlight = true; $$('[data-widget-btn], .toggle[data-act="widget"]').forEach(b => { b.setAttribute('aria-busy', 'true'); b.classList.add('busy'); });
   try {
     const sz = SH.widgetSize(state.settings);
     const r = await SH.call('widget_toggle', sz.w, sz.h);
-    if (r === undefined) { SH.toast(SH.t('The widget only opens inside the app.')); return; }
+    if (r === undefined) { SH.toast(SH.t('The widget only opens inside the app.'), { kind: 'unavailable' }); return; }
     SH.widgetOn = !!r; syncButtons();
+    if (quiet !== true) SH.sound(r ? 'widget_on' : 'widget_off');
     if (quiet !== true) SH.toast(r ? SH.t('Widget open. Drag it wherever you like.') : SH.t('Widget closed.'), { group: 'widget' });
   } finally {
     inFlight = false; $$('[data-widget-btn], .toggle[data-act="widget"]').forEach(b => { b.removeAttribute('aria-busy'); b.classList.remove('busy'); });

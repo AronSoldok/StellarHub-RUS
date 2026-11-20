@@ -232,7 +232,7 @@ function setTab(mid, tabId, quiet) {
   } else { from.classList.remove('on'); }
   if (def.enterTab) try { def.enterTab(tabId, to, ctxFor(modById(mid))); } catch (e) { console.error(e); }
   SH.emit('tab', { mod: mid, tab: tabId });
-  if (!quiet) pushHist();
+  if (!quiet) { pushHist(); SH.sound('tab_switch'); }
 }
 
 /* ================= history: back and forward (mouse side buttons, Alt+arrows) ================= */
@@ -268,6 +268,7 @@ function go(name, opts = {}) {
   const m = modById(name); if (!m) return;
   if (name === state.view) { if (opts.tab) setTab(name, opts.tab); return; }
   const token = ++navToken; const fromName = state.view, from = viewEl(fromName), to = viewEl(name);
+  if (!opts.silent) SH.sound('navigate');  /* opts.silent: the start route, which is not the user's doing */
   const fromDef = registry.modules[fromName]; if (fromDef) { try { fromDef.leave && fromDef.leave(); fromDef.leaveTab && fromDef.leaveTab(modState[fromName].tab); } catch (e) { console.error(e); } }
   state.view = name; SH.emit('view', { from: fromName, to: name });
   $$('.dk', dock).forEach(b => b.classList.toggle('on', b.dataset.go === name));
@@ -332,6 +333,7 @@ const BUILTIN = [
   { t: SH.t('Change the theme and colors'), go: 'settings', section: 'look', ic: 'palette' },
   { t: SH.t('Change the interface size'), go: 'settings', section: 'look', ic: 'sliders' },
   { t: SH.t('Change the animation intensity'), go: 'settings', section: 'motion', ic: 'sparkle' },
+  { t: SH.t('Change the sound volume'), go: 'settings', section: 'sound', ic: 'speaker' },
   { t: SH.t('Change the Home view'), go: 'settings', section: 'home', ic: 'layers' },
   { t: SH.t('Check for StellarHub updates'), go: 'settings', section: 'updates', ic: 'download' },
 ];
@@ -366,8 +368,8 @@ function setPalIdx(i, snap) {
 }
 tickers.add(dt => { if (!state.palOpen) return; const h = $('#palHl'); if (!h) return; hlY.step(dt); h.style.transform = `translateY(${hlY.v.toFixed(2)}px)`; });
 function openPal() {
-  if (state.setOpen) closeSettings();
-  state.palOpen = true; const o = $('#palO'); o.classList.add('on');
+  if (state.setOpen) closeSettings(true);
+  state.palOpen = true; const o = $('#palO'); o.classList.add('on'); SH.sound('palette_open');
   anim($('.scrim', o), [{ opacity: 0 }, { opacity: 1 }], { d: 220 });
   anim($('#pal'), [{ opacity: 0, transform: 'translate3d(0,-14px,0) scale(.95)', filter: 'blur(8px)' }, { opacity: 1, transform: 'translate3d(0,0,0) scale(1)', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
   const inp = $('#palIn'); inp.value = ''; renderPal(''); setTimeout(() => inp.focus(), 10);
@@ -382,7 +384,8 @@ $('#searchBtn').addEventListener('click', openPal);
 $('#palIn').addEventListener('input', e => renderPal(e.target.value));
 $('#palRes').addEventListener('click', e => { const b = e.target.closest('.it'); if (b) runItem(palList[+b.dataset.i]); });
 $('#palRes').addEventListener('pointermove', e => { const b = e.target.closest('.it'); if (b && +b.dataset.i !== palIdx) setPalIdx(+b.dataset.i); });
-function runItem(it) { if (!it) return; closePal(); setTimeout(() => { if (it.run) it.run(); else go(it.go, { tab: it.tab, section: it.section }); }, 90 * motion()); }
+/* the item's own sound follows (the view it opens, the settings sheet...): the click on it stays silent */
+function runItem(it) { if (!it) return; SH.sound.claim(); closePal(); setTimeout(() => { if (it.run) it.run(); else go(it.go, { tab: it.tab, section: it.section }); }, 90 * motion()); }
 SH.openPalette = openPal;
 
 /* ================= settings ================= */
@@ -407,13 +410,13 @@ function langPicker() {
   const tiles = [['auto', SH.t('Automatic'), SH.t('Same as Windows: {lang}', { lang: sys[1] })], ...L.LANGS.map(([c, own, eng]) => [c, own, SH.t(eng)])];
   return `<div class="langs">${tiles.map(([c, a, b]) => `<button class="lang${c === cur ? ' on' : ''}" data-lang="${c}">${flag(c)}<span><b>${a}</b><small>${b}</small></span>${ic('check')}</button>`).join('')}</div>`;
 }
-const SECTIONS = [['look', SH.t('Appearance'), 'palette'], ['language', SH.t('Language'), 'globe'], ['background', SH.t('Background'), 'sparkle'], ['motion', SH.t('Animation'), 'play'], ['home', SH.t('Home'), 'home'], ['widget', SH.t('Widget'), 'monitor'], ['general', SH.t('General'), 'sliders'], ['tools', SH.t('Tools'), 'wrench'], ['data', SH.t('Data'), 'folder'], ['backups', SH.t('Backups and restore'), 'restore'], ['keys', SH.t('Shortcuts'), 'keyboard'], ['admin', SH.t('Administrator'), 'shield'], ['updates', SH.t('Updates'), 'download'], ['about', SH.t('About'), 'info']];
+const SECTIONS = [['look', SH.t('Appearance'), 'palette'], ['language', SH.t('Language'), 'globe'], ['background', SH.t('Background'), 'sparkle'], ['motion', SH.t('Animation'), 'play'], ['sound', SH.t('Sound'), 'speaker'], ['home', SH.t('Home'), 'home'], ['widget', SH.t('Widget'), 'monitor'], ['general', SH.t('General'), 'sliders'], ['tools', SH.t('Tools'), 'wrench'], ['data', SH.t('Data'), 'folder'], ['backups', SH.t('Backups and restore'), 'restore'], ['keys', SH.t('Shortcuts'), 'keyboard'], ['admin', SH.t('Administrator'), 'shield'], ['updates', SH.t('Updates'), 'download'], ['about', SH.t('About'), 'info']];
 const seg = (key, opts) => `<div class="seg" data-key="${key}"><span class="ind"></span>${opts.map(([v, l]) => `<button data-v="${v}"${String(S()[key]) === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div>`;
 const tog = (key, label, sub) => `<div class="set inline"><div class="lbl"><div>${label}${sub ? `<span>${sub}</span>` : ''}</div></div><button class="toggle${S()[key] ? ' on' : ''}" data-key="${key}" aria-label="${label}"><i></i></button></div>`;
 /* slider: live value, saved on release */
 const rng = (key, label, sub, min, max, step, fmt) => `<div class="set"><div class="lbl"><div>${label}${sub ? `<span>${sub}</span>` : ''}</div><b class="rv" data-rv="${key}">${fmt(S()[key])}</b></div>
   <input type="range" class="rng" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${S()[key]}" style="--p:${(S()[key] - min) / (max - min) * 100}%"></div>`;
-const RNG_FMT = { starCount: v => v == 0 ? SH.t('none') : SH.fmtInt(v), starSpeed: v => SH.fmt1(v) + '×', starBright: v => Math.round(v * 100) + '%', nebula: v => Math.round(v * 100) + '%', animSpeed: v => SH.fmt1(v) + '×', panelAlpha: v => Math.round(v * 100) + '%' };
+const RNG_FMT = { starCount: v => v == 0 ? SH.t('none') : SH.fmtInt(v), starSpeed: v => SH.fmt1(v) + '×', starBright: v => Math.round(v * 100) + '%', nebula: v => Math.round(v * 100) + '%', animSpeed: v => SH.fmt1(v) + '×', panelAlpha: v => Math.round(v * 100) + '%', soundVolume: v => Math.round(v * 100) + '%' };
 const TOOLS = [['devmgmt', SH.t('Device Manager'), 'drivers'], ['services', SH.t('Services'), 'sliders'], ['eventvwr', SH.t('Event Viewer'), 'list'], ['taskschd', SH.t('Task Scheduler'), 'calendar'],
   ['diskmgmt', SH.t('Disk Management'), 'ssd'], ['taskmgr', SH.t('Task Manager'), 'monitor'], ['resmon', SH.t('Resource Monitor'), 'monitor'], ['msinfo32', SH.t('System Information'), 'info'],
   ['msconfig', SH.t('System Configuration'), 'gear'], ['regedit', SH.t('Registry Editor'), 'code'], ['sysdm', SH.t('System Properties'), 'windows'], ['perf', SH.t('Visual effects'), 'sparkle'],
@@ -450,6 +453,14 @@ function sectionHTML(id) {
       ${tog('parallax', t('Mouse depth'), t('The layers shift slightly as you move the mouse.'))}
       ${tog('countUp', t('Counting numbers'), t('Figures count up to their value when they appear.'))}
       <div class="set"><div class="lbl"><div>${t('Lighter effects')}<span>${t('Simpler effects and a calmer starfield, so it stays smooth and uses less of the graphics chip. On battery, live data is also slower. Automatic turns it on when the PC runs on battery or has only integrated graphics.')}</span></div></div>${seg('lightMode', [['auto', t('Automatic')], ['always', t('Always')], ['never', t('Never')]])}</div>`;
+    case 'sound': return `<h3>${t('Sound')}</h3><p>${t('Short, quiet sounds that confirm what you do.')}</p>
+      ${tog('sounds', t('Sounds'), t('Turn every sound on or off.'))}
+      ${rng('soundVolume', t('Volume'), '', 0, 1, .05, RNG_FMT.soundVolume)}
+      ${tog('soundUi', t('Interface'), t('Clicks, tabs, menus, panels, switches and controller moves.'))}
+      ${tog('soundAlerts', t('Notifications'), t('Messages, warnings, errors and achievements.'))}
+      ${tog('soundTasks', t('Tasks'), t('Scans, refreshing, deleting, undoing and copying.'))}
+      ${tog('soundSystem', t('System'), t('Opening and quitting, administrator mode, updates, controllers, the widget and the keyboard test.'))}
+      <div class="set inline"><div class="lbl"><div>${t('Play a sample')}<span>${t('Hear how loud they are.')}</span></div></div><button class="btn sec" data-act="soundsample">${ic('speaker')}${t('Play a sample')}</button></div>`;
     case 'home': return `<h3>${t('Home')}</h3><p>${t('What you see when you open StellarHub.')}</p>
       <div class="set"><div class="lbl">${t('PC view')}</div><div class="vcards" id="vcards">${variantCards()}</div></div>
       <div class="set"><div class="lbl"><div>${t('When the app opens')}<span>${t('Where you start each time.')}</span></div></div>${seg('startView', [['home', t('Home')], ['monitor', t('Live Monitor')], ['last', t('Where I left off')]])}</div>
@@ -470,7 +481,6 @@ function sectionHTML(id) {
     case 'general': return `<h3>${t('General')}</h3><p>${t('How the app behaves.')}</p>
       ${state.portable ? `<div class="set-note">${t('This is the portable version: it does not add itself to Windows startup, so it leaves nothing behind on the PC.')}</div>` : tog('startWithWindows', t('Open when Windows starts'), t('Starts hidden in the tray, with no window.'))}
       ${tog('trayOnClose', t('Close to the tray'), t('The X hides the window; StellarHub keeps running in the tray. To quit: right-click the icon > Quit.'))}
-      ${tog('sounds', t('Sounds'), t('A soft sound when long tasks finish.'))}
       <div class="set inline"><div class="lbl"><div>${t('Controller navigation')}<span>${t('Use a game controller to move around StellarHub. Turn it off if it gets in the way.')}</span></div></div><button class="toggle${S().gamepadNav !== false ? ' on' : ''}" data-key="gamepadNav" aria-label="${t('Controller navigation')}"><i></i></button></div>
       ${tog('registryCleaner', t('Registry cleaner'), t("Microsoft doesn't usually recommend registry cleaners: Windows doesn't need one to stay fast. You can turn it on if you'd like to use it; everything it changes is backed up and can be undone."))}
       ${tog('confirmDanger', t('Confirm anything that cannot be undone'), t('Everything else always has an undo button.'))}
@@ -500,6 +510,7 @@ function sectionHTML(id) {
       <div class="set inline"><div class="lbl"><div>${t('Source code')}<span>${t('Free software under the GNU GPLv3 license.')} github.com/estebanarosemena/StellarHub</span></div></div><button class="btn sec" data-act="github">${ic('external')}${t('Open in GitHub')}</button></div>
       <div class="set"><div class="lbl"><div>${t('Languages')}<span>${t('How much code there is in each.')}</span></div></div><div id="langs" class="langs"><div class="sk" style="height:10px"></div></div></div>
       <div class="set inline"><div class="lbl"><div>${t('Built with')}<span>${t('Python, pywebview and WebView2; three.js for the 3D model; Unbounded and Onest fonts.')}</span></div></div></div>
+      <div class="set inline"><div class="lbl"><div>${t('Sounds')}<span>${t('Orbital, an original set made for StellarHub (CC0). The hover sound is “UI hover” by unfa on Freesound (CC0).')}</span></div></div><button class="btn sec" data-act="freesound">${ic('external')}Freesound</button></div>
       <div class="set inline"><div class="lbl"><div>${t('This PC')}<span>${esc(SH.PC.model)}, ${esc(SH.PC.os)}</span></div></div></div>`;
   }
   return '';
@@ -526,7 +537,7 @@ function showSection(id, first) {
 }
 tickers.add(dt => { if (!state.setOpen) return; secInd.step(dt); $('#secInd').style.transform = `translateY(${secInd.v.toFixed(2)}px)`; });
 sheet.addEventListener('click', e => {
-  const sec = e.target.closest('[data-sec]'); if (sec) { if (sec.dataset.sec !== secOn) showSection(sec.dataset.sec); return; }
+  const sec = e.target.closest('[data-sec]'); if (sec) { if (sec.dataset.sec !== secOn) { showSection(sec.dataset.sec); SH.sound('tab_switch'); } return; }
   const sb = e.target.closest('.seg button'); if (sb) { const s = sb.parentElement; if (sb.classList.contains('on')) return; $$('button', s).forEach(x => x.classList.toggle('on', x === sb)); placeSeg(s); applySetting(s.dataset.key, sb.dataset.v); return; }
   const ws = e.target.closest('.toggle[data-wstat]'); if (ws) {
     ws.classList.toggle('on'); const list = $$('.toggle[data-wstat]', sheet).filter(x => x.classList.contains('on')).map(x => x.dataset.wstat);
@@ -553,6 +564,8 @@ async function runAct(a) {
     try { await SH.selfUpdate.check(true); } finally { if (b && b.isConnected) { b.disabled = false; b.classList.remove('su-busy'); b.innerHTML = html; } }
   }
   else if (a === 'github') { if (await SH.call('open_url', 'https://github.com/estebanarosemena/StellarHub') === undefined) window.open('https://github.com/estebanarosemena/StellarHub'); }
+  else if (a === 'freesound') { const u = 'https://freesound.org/people/unfa/sounds/565131/'; if (await SH.call('open_url', u) === undefined) window.open(u); }
+  else if (a === 'soundsample') SH.sound('success', { preview: true });
   else if (a === 'autozoom') {
     const v = String(autoZoom); const s = $('.seg[data-key="zoom"]', sheet);
     if (s) { $$('button', s).forEach(x => x.classList.toggle('on', x.dataset.v === v)); placeSeg(s); }
@@ -569,7 +582,7 @@ async function runAct(a) {
     /* the engine keeps the user's data (and turns off the startup entry and the always-admin task itself): same here */
     const kept = {}; RESET_KEEP.forEach(k => { if (old[k] !== undefined) kept[k] = old[k]; });
     Object.keys(state.settings).forEach(k => delete state.settings[k]); Object.assign(state.settings, SH.DEFAULTS, kept); SH.call('settings_set', { registryCleaner: !!state.settings.registryCleaner }); applyAll(); showSection(secOn);
-    toast(SH.t('Settings reset. Your routines, history and kits were kept.'), { action: { label: SH.t('Undo'), run: async () => {
+    toast(SH.t('Settings reset. Your routines, history and kits were kept.'), { action: { label: SH.t('Undo'), sound: 'undo', run: async () => {
       await SH.call('settings_set', old); Object.assign(state.settings, old); applyAll(); showSection(secOn);
       if (old.startWithWindows) SH.call('set_autostart', true).then(r => { if (r === false) toast(SH.t('Windows did not allow changing automatic startup.')); });
       if (old.alwaysAdmin) alwaysAdminOn();
@@ -578,11 +591,11 @@ async function runAct(a) {
 }
 sheet.addEventListener('input', e => {
   const r = e.target.closest('.rng'); if (r) { const k = r.dataset.key, v = +r.value; r.style.setProperty('--p', (v - r.min) / (r.max - r.min) * 100 + '%');
-    const lab = $(`[data-rv="${k}"]`, sheet); if (lab) lab.textContent = RNG_FMT[k](v); state.settings[k] = v; applyLook(); return; }
+    const lab = $(`[data-rv="${k}"]`, sheet); if (lab) lab.textContent = RNG_FMT[k](v); state.settings[k] = v; if (k === 'soundVolume') SH.sound.volume(); else applyLook(); return; }
   const c = e.target.closest('input[data-color]'); if (c) { state.settings[c.dataset.color] = c.value; applyLook(); }
 });
 sheet.addEventListener('change', e => {
-  const r = e.target.closest('.rng'); if (r) { state.settings[r.dataset.key] = undefined; SH.setSetting(r.dataset.key, +r.value); return; }
+  const r = e.target.closest('.rng'); if (r) { state.settings[r.dataset.key] = undefined; SH.setSetting(r.dataset.key, +r.value); if (r.dataset.key === 'soundVolume') SH.sound('click', { preview: true }); return; }
   const c = e.target.closest('input[data-color]'); if (c) { state.settings[c.dataset.color] = undefined; SH.setSetting(c.dataset.color, c.value); $$('.swatch', sheet).forEach(x => x.classList.remove('on')); }
 });
 function placeSeg(s, snap) {
@@ -670,13 +683,15 @@ function applyAll() { applyLook(); applyZoom(); syncAllTabs(); SH.power && SH.po
 SH.on('power', () => applyLook());
 function openSettings(section) {
   if (state.palOpen) closePal();
+  if (!state.setOpen) SH.sound('panel_open');
   state.setOpen = true; const o = $('#setO'); o.classList.add('on');
   anim($('.scrim', o), [{ opacity: 0 }, { opacity: 1 }], { d: 240 });
   anim(sheet, [{ opacity: 0, transform: 'translate3d(48px,0,0) scale(.97)', filter: 'blur(8px)' }, { opacity: 1, transform: 'translate3d(0,0,0) scale(1)', filter: 'blur(0px)' }], { d: 460, e: EASE.spring });
   requestAnimationFrame(() => showSection(section || secOn, true));
 }
-function closeSettings() {
+function closeSettings(quiet) {
   if (!state.setOpen) return; state.setOpen = false; const o = $('#setO');
+  if (quiet !== true) SH.sound('panel_close');
   anim($('.scrim', o), [{ opacity: 1 }, { opacity: 0 }], { d: 200 });
   const a = anim(sheet, [{ opacity: 1, transform: 'translate3d(0,0,0)' }, { opacity: 0, transform: 'translate3d(36px,0,0)' }], { d: 220, e: EASE.io });
   a.finished.then(() => { if (!state.setOpen) o.classList.remove('on'); }).catch(() => {});
@@ -704,16 +719,17 @@ function hideNote() {
   if ($('#noteNever').classList.contains('on')) SH.setSetting('adminHints', false);
 }
 /* modules call this before anything that needs elevation: it suggests without nagging (at most once every 10 min) */
-SH.requireAdmin = reason => { if (state.admin) return true; if (S().adminHints && Date.now() - lastHint > 600000) showNote(reason); else toast(SH.t('This needs administrator mode.'), { action: { label: SH.t('Turn on'), run: () => askAdmin(true) } }); return false; };
+SH.requireAdmin = reason => { if (state.admin) return true; if (S().adminHints && Date.now() - lastHint > 600000) { showNote(reason); SH.sound('unavailable'); } else toast(SH.t('This needs administrator mode.'), { kind: 'unavailable', action: { label: SH.t('Turn on'), run: () => askAdmin(true) } }); return false; };
 async function askAdmin(direct) {
   if (state.admin) return; if (!direct && !noteShown) { showNote(); return; }
   hideNote();
   /* the permission becomes permanent (it can be turned off in Settings > Administrator) */
-  state.settings.alwaysAdmin = true; await SH.call('settings_set', { alwaysAdmin: true });
+  /* adminAsked: the administrator copy plays admin_granted when it opens (js/sounds.js) */
+  state.settings.alwaysAdmin = true; state.settings.adminAsked = Date.now(); await SH.call('settings_set', { alwaysAdmin: true, adminAsked: state.settings.adminAsked });
   const r = await SH.call('relaunch_admin');
   if (r === true) toast(SH.t('Opening StellarHub as administrator…'));
-  else if (r === false) toast(SH.t('Windows did not grant permission. You are still in normal mode.'));
-  else { setAdmin(true); toast(SH.t('Administrator mode (simulated outside the app).')); }
+  else if (r === false) { state.settings.adminAsked = 0; SH.call('settings_set', { adminAsked: 0 }); toast(SH.t('Windows did not grant permission. You are still in normal mode.'), { kind: 'warning' }); }
+  else { state.settings.adminAsked = 0; setAdmin(true); SH.sound('admin_granted'); toast(SH.t('Administrator mode (simulated outside the app).')); }
 }
 /* the pill carries an icon, not a dot: a shield with a check for administrator mode, a plain shield outline for normal mode */
 SH.icons.add({ shieldplain: '<path d="M12 3 4.5 6v5.5c0 4.5 3.2 8 7.5 9.5 4.3-1.5 7.5-5 7.5-9.5V6z"/>' });
@@ -743,6 +759,9 @@ const MAX_TOASTS = 3;
 function toast(text, o = {}) {
   const box = $('#toasts'); const group = o.group || text;
   const same = [...box.children].find(x => x.dataset.group === group && !x.dataset.dead);
+  /* o.kind: 'success', 'warning', 'error', 'unavailable' (or another SH.sound event, e.g. 'update_installed'); none is a
+     plain toast, whose sound keeps quiet right after another one */
+  SH.sound(o.kind || 'toast');
   if (same) {
     same.querySelector('span').textContent = text; clearTimeout(same._timer); same._timer = setTimeout(same._kill, o.ms || 3600);
     anim(same, [{ transform: 'scale(1)' }, { transform: 'scale(1.04)', offset: .4 }, { transform: 'scale(1)' }], { d: 320, keep: true });
@@ -750,7 +769,8 @@ function toast(text, o = {}) {
   }
   const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.dataset.group = group;
   t.innerHTML = `<span>${esc(text)}</span>${o.action ? `<button class="btn sm">${esc(o.action.label)}</button>` : ''}`;
-  if (o.action) $('button', t).addEventListener('click', () => { o.action.run(); kill(); });
+  /* action.sound: 'undo' for an Undo button; anything else clicks */
+  if (o.action) $('button', t).addEventListener('click', () => { if (o.action.sound) SH.sound(o.action.sound); o.action.run(); kill(); });
   box.appendChild(t);
   anim(t, [{ opacity: 0, transform: 'translate3d(24px,0,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 440, e: EASE.spring });
   function kill() { if (t.dataset.dead) return; t.dataset.dead = '1'; clearTimeout(t._timer);
@@ -823,7 +843,8 @@ SH.boot = async () => {
   let seen = false; try { seen = !!sessionStorage.getItem('sh.noteAuto'); } catch {}
   if (!state.admin && S().adminHints && !seen) setTimeout(() => { try { sessionStorage.setItem('sh.noteAuto', '1'); } catch {} if (!state.setOpen && !state.palOpen) showNote(undefined, true); }, 4200);
   SH.emit('boot');
-  SH.booted = true; requestAnimationFrame(() => SH.call('ui_ready'));  /* startup time goes to the log */
+  /* startup time goes to the log; ui_ready reveals the window and answers whether it is on screen ('shown': the start sound) */
+  SH.booted = true; requestAnimationFrame(() => SH.call('ui_ready').then(v => SH.emit('shown', { shown: v !== false })));
   bootDone();
   /* the page can reload (language change) while a task keeps running in Python: its waiters are gone, so say it is
      still running and report how it ended */
@@ -845,11 +866,11 @@ SH.boot = async () => {
   const hv = h.match(/^home=(\w+)$/); if (hv) setTimeout(() => SH.setSetting('homeVariant', hv[1]), 50);
   SH.on('view', d => SH.setSetting('lastView', d.to));
   const sv = S().startView === 'last' ? S().lastView : S().startView;
-  if (!h && sv && sv !== 'home' && modById(sv)) setTimeout(() => go(sv), 700);
+  if (!h && sv && sv !== 'home' && modById(sv)) setTimeout(() => go(sv, { silent: true }), 700);
   const hm = h.match(/^(\w+)(?:\/([\w*]+))?$/);
   if (hm && modById(hm[1]) && hm[1] !== 'home') setTimeout(() => {
-    if (hm[2] === '*') { go(hm[1]); tabsOf(modById(hm[1])).forEach((t, i) => setTimeout(() => setTab(hm[1], t.id), 300 * i)); }
-    else go(hm[1], { tab: hm[2] });
+    if (hm[2] === '*') { go(hm[1], { silent: true }); tabsOf(modById(hm[1])).forEach((t, i) => setTimeout(() => setTab(hm[1], t.id), 300 * i)); }
+    else go(hm[1], { tab: hm[2], silent: true });
   }, 100);
 };
 })();

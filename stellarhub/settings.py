@@ -49,6 +49,21 @@ def migrate_store_python_data():
         pass
 
 
+# the interface sounds (ui/js/core.js SH.sound): how long quitting waits for the exit sound, which fades out with the
+# window at that point (the file is longer)
+EXIT_SOUND_WAIT = 0.7
+
+
+def plays_exit_sound(s):
+    """Whether quitting plays the exit sound: sounds on (the default), the System group on, the volume above 0."""
+    s = s if isinstance(s, dict) else {}
+    try:
+        vol = float(s.get("soundVolume", 0.6))
+    except (TypeError, ValueError):
+        vol = 0.6
+    return s.get("sounds", True) is not False and s.get("soundSystem", True) is not False and vol > 0
+
+
 # ---------------------------------------------------------------- read / write
 def read():
     """Best effort: {} when the file is missing or unreadable (start path, installer, elevation checks)."""

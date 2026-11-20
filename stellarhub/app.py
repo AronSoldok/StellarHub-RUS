@@ -106,6 +106,7 @@ def main():
     window.events.loaded += lambda: _phase("page loaded")
     _phase("engine attached")
     startup.refresh_ui_cache()
+    startup.set_browser_args()  # sounds may play without a click (the start sound)
     _phase("window created, starting webview")
     webview.start(gui="edgechromium", debug=launch.debug, http_server=True, http_port=startup.ui_port(),
                   private_mode=False, storage_path=WEB_DIR)

@@ -406,5 +406,18 @@
   "This update isn't signed by StellarHub's author, so it wasn't installed.": "Questo aggiornamento non è firmato dall'autore di StellarHub, quindi non è stato installato.",
   "Registry cleaner": "Pulitore del registro",
   "Microsoft doesn't usually recommend registry cleaners: Windows doesn't need one to stay fast. You can turn it on if you'd like to use it; everything it changes is backed up and can be undone.": "Microsoft di solito non consiglia i pulitori del registro: Windows non ne ha bisogno per restare veloce. Puoi attivarlo se vuoi usarlo; tutto ciò che modifica viene salvato in un backup e si può annullare.",
-  "The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.": "La scheda Registro ora è nel Super ottimizzatore. Ogni correzione ha il suo backup; puoi ripristinarlo da Impostazioni > Backup e ripristino."
+  "The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.": "La scheda Registro ora è nel Super ottimizzatore. Ogni correzione ha il suo backup; puoi ripristinarlo da Impostazioni > Backup e ripristino.",
+  "Sound": "Suono",
+  "Short, quiet sounds that confirm what you do.": "Suoni brevi e discreti che confermano ciò che fai.",
+  "Turn every sound on or off.": "Attiva o disattiva tutti i suoni.",
+  "Volume": "Volume",
+  "Interface": "Interfaccia",
+  "Clicks, tabs, menus, panels, switches and controller moves.": "Clic, schede, menu, pannelli, interruttori e spostamenti con il controller.",
+  "Messages, warnings, errors and achievements.": "Messaggi, avvisi, errori e traguardi.",
+  "Scans, refreshing, deleting, undoing and copying.": "Analisi, aggiornare, eliminare, annullare e copiare.",
+  "Opening and quitting, administrator mode, updates, controllers, the widget and the keyboard test.": "Apertura e chiusura, modalità amministratore, aggiornamenti, controller, il widget e il test della tastiera.",
+  "Play a sample": "Ascolta un esempio",
+  "Hear how loud they are.": "Senti quanto sono forti.",
+  "Orbital, an original set made for StellarHub (CC0). The hover sound is “UI hover” by unfa on Freesound (CC0).": "Orbital, un set originale creato per StellarHub (CC0). Il suono al passaggio del mouse è «UI hover» di unfa su Freesound (CC0).",
+  "Change the sound volume": "Cambia il volume dei suoni"
 }

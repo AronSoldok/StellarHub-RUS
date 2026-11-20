@@ -406,5 +406,18 @@
   "This update isn't signed by StellarHub's author, so it wasn't installed.": "此更新未由 StellarHub 作者签名，因此未安装。",
   "Registry cleaner": "注册表清理",
   "Microsoft doesn't usually recommend registry cleaners: Windows doesn't need one to stay fast. You can turn it on if you'd like to use it; everything it changes is backed up and can be undone.": "Microsoft 通常不建议使用注册表清理工具：Windows 不需要它也能保持流畅。如果你想使用，可以将其开启；它所做的每项更改都会备份，并且可以撤销。",
-  "The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.": "“注册表”选项卡现在位于超级优化中。每项修复都有备份；你可以在 设置 > 备份与还原 中恢复。"
+  "The Registry tab is now in Super Optimizer. Every fix is backed up; you can restore it from Settings > Backups and restore.": "“注册表”选项卡现在位于超级优化中。每项修复都有备份；你可以在 设置 > 备份与还原 中恢复。",
+  "Sound": "声音",
+  "Short, quiet sounds that confirm what you do.": "简短、轻柔的声音，确认你的每个操作。",
+  "Turn every sound on or off.": "开启或关闭所有声音。",
+  "Volume": "音量",
+  "Interface": "界面",
+  "Clicks, tabs, menus, panels, switches and controller moves.": "点击、标签页、菜单、面板、开关和手柄移动。",
+  "Messages, warnings, errors and achievements.": "消息、警告、错误和成就。",
+  "Scans, refreshing, deleting, undoing and copying.": "扫描、刷新、删除、撤销和复制。",
+  "Opening and quitting, administrator mode, updates, controllers, the widget and the keyboard test.": "打开和退出、管理员模式、更新、手柄、小组件和键盘测试。",
+  "Play a sample": "试听",
+  "Hear how loud they are.": "听听音量大小。",
+  "Orbital, an original set made for StellarHub (CC0). The hover sound is “UI hover” by unfa on Freesound (CC0).": "Orbital，为 StellarHub 原创的音效（CC0）。悬停音效为 Freesound 上 unfa 的“UI hover”（CC0）。",
+  "Change the sound volume": "更改声音音量"
 }

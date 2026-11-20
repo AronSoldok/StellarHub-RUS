@@ -101,6 +101,7 @@ function stepTo(id) {
 function bar(p, indet) { const s = $('#suBar', box); if (!s) return; s.parentElement.classList.toggle('indet', !!indet); if (!indet) s.style.transform = `scaleX(${Math.max(0, Math.min(1, p)).toFixed(3)})`; }
 function failView(text) {
   running = false; if (!box) return;
+  SH.sound('error');
   $('.su-body', box).innerHTML = `<div class="su-fail">${ic('alert')}<div><b>${t('The update could not be installed')}</b><span>${esc(text)}</span></div></div>`;
   $('.su-foot', box).innerHTML = `<div class="su-meta"></div><div class="su-acts"><button class="btn sec" data-su="page">${ic('external')}${t('Open the download page')}</button><button class="btn pri" data-su="close">${t('Close')}</button></div>`;
 }
@@ -170,7 +171,7 @@ async function stage(r) {
   staging = r.latest; paintSettings();
   if (!(s && s.ver === r.latest && ['checking', 'download', 'verify'].includes(s.st) && now - (s.ts || 0) < 600)) {  /* not already on its way */
     let p = null; try { p = await SH.engine('selfupdate', 'prefetch'); } catch {}
-    if (!p || !p.ok) { staging = null; paintSettings(); if (!box && state.settings.skipVersion !== r.latest) open(r); return; }
+    if (!p || !p.ok) { staging = null; paintSettings(); if (!box && state.settings.skipVersion !== r.latest) { open(r); SH.sound('update_available'); } return; }
     at = p.at || now;
   }
   const end = Date.now() + 30 * 60000;
@@ -188,21 +189,21 @@ async function check(manual) {
   try { r = await ask(); } catch (e) { if (manual) SH.toast(e.message); return null; }
   if (r === undefined) { if (manual) SH.toast(t('This only works inside the app.')); return null; }  /* sample mode */
   last = r; paintSettings();
-  if (!r.ok) { if (manual) SH.toast(t("Couldn't reach GitHub. Check your connection and try again.")); return r; }
+  if (!r.ok) { if (manual) SH.toast(t("Couldn't reach GitHub. Check your connection and try again."), { kind: 'error' }); return r; }
   if (!r.newer) { if (manual) SH.toast(t('You are on the latest version.')); return r; }
   /* on its own, StellarHub only interrupts for a big version (X.0.0); new features install at the next start, and a
      small fix waits in Settings > Updates */
   if (!manual && quiet(r)) { stage(r); return r; }
-  if (manual || (kindOf(r.current, r.latest) !== 'patch' && state.settings.skipVersion !== r.latest)) { if (!box) open(r); }
+  if (manual || (kindOf(r.current, r.latest) !== 'patch' && state.settings.skipVersion !== r.latest)) { if (!box) { open(r); SH.sound('update_available'); } }
   return r;
 }
 async function afterUpdate() {
   let n; try { n = await SH.engine('selfupdate', 'after_update'); } catch { return; }
   if (!n) return;
   if (n.ok) {
-    SH.toast(t('StellarHub was updated to {v}', { v: n.to }), { ms: 10000, action: { label: t("What's new"), run: () => SH.call('open_url', `${REL}/tag/v${n.to}`) } });
+    SH.toast(t('StellarHub was updated to {v}', { v: n.to }), { kind: 'update_installed', ms: 10000, action: { label: t("What's new"), run: () => SH.call('open_url', `${REL}/tag/v${n.to}`) } });
     if (n.route && n.route !== 'home' && SH.MODS.some(m => m.id === n.route)) setTimeout(() => SH.go(n.route), 500);
-  } else SH.toast(t("The update to {v} couldn't be installed. You are still on {now}.", { v: n.to, now: n.now }));
+  } else SH.toast(t("The update to {v} couldn't be installed. You are still on {now}.", { v: n.to, now: n.now }), { kind: 'error' });
 }
 /* Settings > Updates: what is waiting (a small fix doesn't open the window, so this is where it shows up) */
 let setEl = null;

@@ -20,7 +20,8 @@ const reduceMQ = matchMedia('(prefers-reduced-motion: reduce)');
 const DEFAULTS = {
   theme: 'deep', accent: '#FF7A66', accent2: '#9ED6FF', zoom: 'auto', intensity: reduceMQ.matches ? 'min' : 'max',
   stars: true, camera: true, parallax: true, homeVariant: 'bento', adminHints: true, trayOnClose: true,
-  startWithWindows: false, autoUpdate: true, autoUpdateFeatures: true, skipVersion: '', language: 'auto', density: 'comfortable', sounds: false,
+  startWithWindows: false, autoUpdate: true, autoUpdateFeatures: true, skipVersion: '', language: 'auto', density: 'comfortable',
+  sounds: true, soundVolume: .6, soundUi: true, soundAlerts: true, soundTasks: true, soundSystem: true,
   widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetLayout: 'grid',
   starCount: 400, starSpeed: 1.5, starBright: 1.2, widgetMode: 'full', widgetWasOpen: false, alwaysAdmin: false, twinkle: true, shooting: true, nebula: 1, animSpeed: 1, panelAlpha: 1.75, corners: 'mid',
   countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', measurePing: true, lastView: 'home', batterySaver: true, lightMode: 'auto', registryCleaner: false,
@@ -101,13 +102,25 @@ on('job', m => {
   if (m.kind === 'end') jobWaiters.delete(m.id);
   jobDeliver(w, m);
 });
+/* o.sound: 'scan' for a scan the user started (scan_start now, scan_complete when it ends well, a soft tick at 25, 50
+   and 75 % if it runs long), 'task' for another long task the user started (only the ticks). Background refreshes
+   leave it out and stay silent. */
 function job(mod, fn, args = [], o = {}) {
   let id = null, cancelWanted = false;
+  if (o.sound) {
+    const t0 = performance.now(), op = o.onProgress; let mark = 0;
+    if (o.sound === 'scan') sound('scan_start');
+    o = { ...o, onProgress(m) {
+      const q = m && m.kind === 'progress' && typeof m.pct === 'number' ? Math.floor(m.pct * 4) : 0;
+      if (q > mark && q < 4) { mark = q; if (performance.now() - t0 > 4000) sound('progress_tick'); }
+      if (op) op(m);
+    } };
+  }
   const p = new Promise(async (res, rej) => {
     const r = await call('engine_job', mod, fn, args);
     if (r === undefined) { res(undefined); return; }
     if (!r.ok) { rej(new Error(r.error)); return; }
-    id = r.id; const w = { res, rej, o }; jobWaiters.set(id, w); if (cancelWanted) call('job_cancel', id);
+    id = r.id; const w = { res: o.sound === 'scan' ? v => { sound('scan_complete'); res(v); } : res, rej, o }; jobWaiters.set(id, w); if (cancelWanted) call('job_cancel', id);
     const early = jobEarly.get(id);
     if (early) { jobEarly.delete(id); for (const m of early) { if (m.kind === 'end') jobWaiters.delete(id); jobDeliver(w, m); } }
   });
@@ -117,10 +130,10 @@ function job(mod, fn, args = [], o = {}) {
 /* Saved settings come from disk (an older build, a hand-edited file): never trust their types. Keys that have a
    default must have the same type (numbers also inside their range); keys without one (the lists and maps the
    modules keep) must have the shape below. Anything else falls back to the default, or is dropped, key by key. */
-const RANGE = { starCount: [0, 3000], starSpeed: [0, 5], starBright: [0, 3], nebula: [0, 3], animSpeed: [.25, 3], panelAlpha: [0, 3] };
+const RANGE = { starCount: [0, 3000], starSpeed: [0, 5], starBright: [0, 3], nebula: [0, 3], animSpeed: [.25, 3], panelAlpha: [0, 3], soundVolume: [0, 1] };
 const ENUM = { intensity: ['max', 'normal', 'min'], lightMode: ['auto', 'always', 'never'], widgetLayout: ['grid', 'list', 'row'] };
 const SHAPE = { activity: 'a', hangarKits: 'a', cleanExclusions: 'a', autopilotRoutines: 'a', autopilotLog: 'a',
-  pending: 'o', updIgnored: 'o', updSchedule: 'o', testerKbMissing: 'o', autopilotNotify: 'o', cpsBest: 'n', autopilotSchema: 'n' };
+  pending: 'o', updIgnored: 'o', updSchedule: 'o', testerKbMissing: 'o', autopilotNotify: 'o', cpsBest: 'n', autopilotSchema: 'n', adminAsked: 'n' };
 const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
 function sanitizeSettings(saved) {
   const out = {};
@@ -607,6 +620,140 @@ const chartKit = (() => {
   };
 })();
 
+/* ---------- sounds ----------
+   SH.sound('click') plays one of the short interface sounds, ui/sounds/<event>.ogg, through the Web Audio API: one
+   AudioContext, one master gain (the Volume setting), each file fetched and decoded the first time it is needed
+   (js/sounds.js preloads the common ones in idle time and wires the interface to them). What keeps it calm:
+   - settings: `sounds` (all of them), `soundVolume` (0-1) and one switch per group (soundUi, soundAlerts, soundTasks,
+     soundSystem). Lighter effects and intensity "minimum" mute nothing.
+   - nothing plays while the page is hidden (the window in the tray or minimized), except app_exit.
+   - every event has a minimum gap between two plays (hover 70 ms, click 40 ms, most others 120 ms or more).
+   - one sound per gesture. Interface sounds (`user`) need a click, a key or a controller press in the last 1.5 s, so
+     code that changes a tab or a view by itself stays quiet. Within 100 ms the first interface sound wins; a more
+     important one (a notification, a finished scan) cuts whatever less important one began in those 100 ms, and a
+     less important one right after a more important one is dropped. A plain toast keeps quiet when anything played
+     in the last 350 ms: the action already made its sound. At most 4 sounds at once.
+   opts: gain (an extra trim), visible (the caller knows its window is on screen: the tray panel), preview (Settings >
+   Sound "Play a sample": plays even with its group off).
+   Returns true when the sound plays (or will, once its file is decoded). */
+const SOUND_EV = {
+  /* interface */
+  click: { c: 'ui', g: .5, gap: 40, tier: 1, user: 1 }, hover: { c: 'ui', g: .16, gap: 70, tier: 0 },
+  tab_switch: { c: 'ui', g: .45, gap: 80, tier: 1, user: 1 }, navigate: { c: 'ui', g: .5, gap: 120, tier: 1, user: 1 },
+  dropdown: { c: 'ui', g: .45, gap: 80, tier: 1, user: 1 }, palette_open: { c: 'ui', g: .5, gap: 150, tier: 1, user: 1 },
+  focus_move: { c: 'ui', g: .2, gap: 45, tier: 0 }, panel_open: { c: 'ui', g: .45, gap: 150, tier: 1, user: 1 },
+  panel_close: { c: 'ui', g: .4, gap: 150, tier: 1, user: 1 }, toggle_on: { c: 'ui', g: .45, gap: 60, tier: 1, user: 1 },
+  toggle_off: { c: 'ui', g: .45, gap: 60, tier: 1, user: 1 },
+  /* notifications */
+  toast: { c: 'alerts', g: .4, gap: 400, tier: 1 }, success: { c: 'alerts', g: .5, gap: 300, tier: 2 },
+  warning: { c: 'alerts', g: .5, gap: 300, tier: 2 }, error: { c: 'alerts', g: .5, gap: 300, tier: 2 },
+  unavailable: { c: 'alerts', g: .45, gap: 400, tier: 2 }, achievement: { c: 'alerts', g: .55, gap: 1500, tier: 3 },
+  /* tasks */
+  scan_start: { c: 'tasks', g: .45, gap: 500, tier: 1 }, scan_complete: { c: 'tasks', g: .5, gap: 500, tier: 2 },
+  progress_tick: { c: 'tasks', g: .25, gap: 400, tier: 0 }, refresh: { c: 'tasks', g: .45, gap: 300, tier: 1, user: 1 },
+  delete: { c: 'tasks', g: .5, gap: 200, tier: 1, user: 1 }, undo: { c: 'tasks', g: .5, gap: 200, tier: 1, user: 1 },
+  copy: { c: 'tasks', g: .45, gap: 200, tier: 1, user: 1 }, screenshot: { c: 'tasks', g: .5, gap: 300, tier: 2 },
+  /* system */
+  app_start: { c: 'system', g: .5, gap: 3000, tier: 3 }, app_exit: { c: 'system', g: .5, gap: 3000, tier: 3 },
+  admin_granted: { c: 'system', g: .55, gap: 3000, tier: 3 }, update_available: { c: 'system', g: .5, gap: 2000, tier: 2 },
+  update_installed: { c: 'system', g: .55, gap: 2000, tier: 3 }, device_connected: { c: 'system', g: .5, gap: 1000, tier: 2 },
+  device_disconnected: { c: 'system', g: .5, gap: 1000, tier: 2 }, widget_on: { c: 'system', g: .45, gap: 150, tier: 1 },
+  widget_off: { c: 'system', g: .45, gap: 150, tier: 1 }, key_press: { c: 'system', g: .2, gap: 25, tier: 0 },
+};
+const SOUND_CAT = { ui: 'soundUi', alerts: 'soundAlerts', tasks: 'soundTasks', system: 'soundSystem' };
+const snd = { ctx: null, master: null, buf: new Map(), failed: new Map(), last: {}, lastAny: -1e9, hist: [], voices: [], gestureAt: -1e9, act: null };
+function sndCtx() {
+  if (snd.ctx) return snd.ctx;
+  const C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
+  try { snd.ctx = new C({ latencyHint: 'interactive' }); } catch { return null; }
+  snd.master = snd.ctx.createGain(); snd.master.connect(snd.ctx.destination); sndVolume();
+  return snd.ctx;
+}
+/* the slider is linear for the eye, the ear wants a curve: half way is about a quarter of the power */
+function sndVolume() { if (!snd.master) return; const v = Math.max(0, Math.min(1, +state.settings.soundVolume || 0)); snd.master.gain.cancelScheduledValues(0); snd.master.gain.value = v * v * 1.6; }
+function sndLoad(ev) {
+  const have = snd.buf.get(ev); if (have) return have;
+  if (performance.now() - (snd.failed.get(ev) ?? -1e9) < 30000) return null;  /* a missing file is not asked for again at every click */
+  const ctx = sndCtx(); if (!ctx) return null;
+  const p = fetch(`sounds/${ev}.ogg`).then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.arrayBuffer(); })
+    .then(a => ctx.decodeAudioData(a))
+    .then(b => { snd.buf.set(ev, b); return b; }, () => { snd.buf.delete(ev); snd.failed.set(ev, performance.now()); return null; });
+  snd.buf.set(ev, p);
+  return p;
+}
+function sndStart(v, b, o) {
+  const ctx = snd.ctx; if (!ctx || v.cancelled) { v.ended = true; return; }
+  if (ctx.state !== 'running') {  /* not allowed to play yet (no gesture in a plain browser): late is worse than never */
+    const t0 = performance.now();
+    ctx.resume().then(() => { if (performance.now() - t0 < 150 && !v.cancelled && ctx.state === 'running') sndStart(v, b, o); else v.ended = true; }, () => { v.ended = true; });
+    return;
+  }
+  const src = ctx.createBufferSource(), g = ctx.createGain();
+  src.buffer = b; g.gain.value = SOUND_EV[v.ev].g * (o.gain ?? 1);
+  src.connect(g); g.connect(snd.master);
+  src.onended = () => { v.ended = true; try { g.disconnect(); } catch {} };
+  v.src = src; v.g = g; src.start();
+}
+function sndStop(v, fade = .01) {
+  v.cancelled = true; v.ended = true;
+  if (v.src && snd.ctx) { const t = snd.ctx.currentTime; try { v.g.gain.setTargetAtTime(0, t, fade); v.src.stop(t + fade * 5); } catch {} }
+}
+function sound(ev, o = {}) {
+  const d = SOUND_EV[ev]; if (!d) return false;
+  const st = state.settings, now = performance.now();
+  if (!o.preview && (st.sounds === false || st[SOUND_CAT[d.c]] === false)) return false;
+  /* this gesture has its sound: js/sounds.js adds no click to it */
+  if (snd.act && now - snd.act.at < 40) snd.act.claimed = true;
+  if (!(+st.soundVolume > 0)) return false;
+  if (document.hidden && ev !== 'app_exit' && !o.visible) return false;
+  if (d.user && now - snd.gestureAt > 1500 && !o.preview && !o.visible) return false;
+  if (now - (snd.last[ev] ?? -1e9) < d.gap) return false;
+  snd.hist = snd.hist.filter(h => now - h.at < 100);
+  if (snd.hist.some(h => h.tier > d.tier)) return false;
+  if (d.tier === 1 && snd.hist.some(h => h.tier === 1)) return false;
+  if (ev === 'toast' && now - snd.lastAny < 350) return false;
+  snd.voices = snd.voices.filter(v => !v.ended);
+  if (d.tier >= 2) snd.voices.forEach(v => { if (v.tier < d.tier && now - v.at < 100) sndStop(v); });
+  /* two long system sounds never overlap (the start sound, then "updated to x.y.z"): the newer one takes over */
+  if (d.tier === 3) snd.voices.forEach(v => { if (v.tier === 3) sndStop(v, .04); });
+  snd.voices = snd.voices.filter(v => !v.ended);
+  if (snd.voices.length >= 4) { const low = snd.voices.filter(v => v.tier < d.tier).sort((a, b) => a.at - b.at)[0]; if (!low) return false; sndStop(low); }
+  const ctx = sndCtx(); if (!ctx) return false;
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  snd.last[ev] = now; snd.lastAny = now; snd.hist.push({ tier: d.tier, at: now });
+  const v = { ev, tier: d.tier, at: now, src: null, g: null, ended: false, cancelled: false };
+  snd.voices.push(v);
+  const b = snd.buf.get(ev);
+  if (b instanceof AudioBuffer) sndStart(v, b, o);
+  else {
+    const p = sndLoad(ev);
+    if (!p) { v.ended = true; return false; }
+    /* a file decoded too late is dropped: a sound must land with what it belongs to */
+    p.then(ab => { if (!ab || performance.now() - now > 300) { v.ended = true; return; } sndStart(v, ab, o); });
+  }
+  return true;
+}
+/* a gesture: interface sounds may follow it (the controller calls SH.sound.gesture() on every button) */
+const sndGesture = () => { snd.gestureAt = performance.now(); if (snd.ctx && snd.ctx.state === 'suspended') snd.ctx.resume().catch(() => {}); };
+addEventListener('pointerdown', sndGesture, { capture: true, passive: true });
+addEventListener('keydown', e => { if (e.isTrusted) sndGesture(); }, { capture: true, passive: true });
+on('setting', ({ key }) => { if (key === 'soundVolume') sndVolume(); });
+Object.assign(sound, {
+  EVENTS: Object.keys(SOUND_EV),
+  info: ev => SOUND_EV[ev] && { ...SOUND_EV[ev] },
+  gesture: sndGesture,
+  /* js/sounds.js marks the start of a click (begin) and checks at its end whether something already sounded (claimed).
+     claim(): this gesture is handled and stays silent (the widget, whose sound comes when its window does). */
+  begin() { const n = performance.now(); if (!snd.act || n - snd.act.at > 40) snd.act = { at: n, claimed: false }; return snd.act; },
+  claim() { if (snd.act && performance.now() - snd.act.at < 40) snd.act.claimed = true; },
+  preload(list) { if (!sndCtx()) return; (list || Object.keys(SOUND_EV)).forEach(ev => { if (SOUND_EV[ev]) sndLoad(ev); }); },
+  volume: sndVolume,
+  /* fades everything out, starting `at` seconds from now (the window closing) */
+  fadeOut(at = 0, len = .12) { if (snd.master && snd.ctx) snd.master.gain.setTargetAtTime(0, snd.ctx.currentTime + at, len / 3); },
+});
+/* when the last sound started (performance.now()) */
+Object.defineProperty(sound, 'last', { get: () => snd.lastAny });
+
 /* i18n.js ran first and already put SH.t and SH.i18n here: keep them */
 /* the icon of a PC component: the network adapter is drawn as a cable port when it is wired (Ethernet), Windows for
    the system */
@@ -616,7 +763,7 @@ window.SH = Object.assign(window.SH || {}, {
   $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, effInt, on, emit, call, apiReady, loadSettings, setSetting, compIcon,
   engine, job, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, rollNumber, fitText, esc,
   ic, icons, emptyState, emptyArt, chartKit, PC, MODS, modById, registry, module, homeVariant, actions,
-  go: () => {}, toast: () => {}, openComponent: () => {}, sfScan,
+  go: () => {}, toast: () => {}, openComponent: () => {}, sfScan, sound,
   /* the window coming in after the start screen, and going away when StellarHub closes, updates or reopens as
      administrator (app.py calls these): a short fade instead of a cut */
   enter() {
@@ -624,7 +771,10 @@ window.SH = Object.assign(window.SH || {}, {
     document.documentElement.animate([{ opacity: 0, transform: 'scale(1.012)' }, { opacity: 1, transform: 'none' }],
       { duration: 380, easing: 'cubic-bezier(.2,.8,.2,1)' });
   },
-  leave() {
+  /* quitting (withSound: the user quit with the window on screen): the exit sound, which Api.quit waits for (at most
+     ~0.7 s), fades out with the window */
+  leave(withSound) {
+    if (withSound && sound('app_exit')) sound.fadeOut(.5, .15);
     const a = document.documentElement.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.985)' }],
       { duration: state.settings.intensity === 'min' ? 80 : 240, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' });
     return a.finished;

@@ -3,7 +3,7 @@ import ctypes
 import threading
 import time
 
-from .. import config, elevation, paths, winmgr
+from .. import config, elevation, paths, settings, winmgr
 from ..i18n import tr
 
 
@@ -126,8 +126,11 @@ class MainWindowApi:
             self._tray.stop()
         delay = 0.05
         if self._visible:
-            self._js("window.SH && SH.leave && SH.leave()")
-            delay = 0.3
+            # the user quit with the window on screen: its exit sound plays while it fades (not for an update or the
+            # administrator relaunch, which reopen it)
+            sound = not force and settings.plays_exit_sound(self.settings_get())
+            self._js(f"window.SH && SH.leave && SH.leave({'true' if sound else 'false'})")
+            delay = settings.EXIT_SOUND_WAIT if sound else 0.3
         threading.Timer(delay, lambda: self._window.destroy()).start()
         return True
 

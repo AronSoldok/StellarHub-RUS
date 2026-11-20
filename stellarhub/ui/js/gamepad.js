@@ -205,7 +205,7 @@ function move(dir) {
   if (cur && cur.tagName === 'INPUT' && cur.type === 'range' && (dir === 'left' || dir === 'right') && usable(cur, sc)) { stepRange(cur, dir === 'right' ? 1 : -1); return; }
   if (!usable(cur, sc)) { const n = initialFor(sc); n && setCur(n, true); return; }
   const n = best(cur, list, dir);
-  if (n) setCur(n); else bump(dir);
+  if (n) { setCur(n); SH.sound('focus_move'); } else bump(dir);
 }
 function stepRange(el, d) {
   const step = +el.step || 1, min = +el.min || 0, max = el.max === '' ? 100 : +el.max;
@@ -215,11 +215,15 @@ function stepRange(el, d) {
 }
 
 /* ---------- actions ---------- */
+/* viaPad: js/sounds.js treats this click like a pointer's (a click sound, a toggle's sound...) */
 function click(el) {
-  if (nativeEl(el)) { el.click(); return; }
-  const r = rectOf(el), o = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1, pointerType: 'mouse', isPrimary: true, view: window };
-  el.dispatchEvent(new PointerEvent('pointerdown', o)); el.dispatchEvent(new MouseEvent('mousedown', o));
-  el.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 })); el.dispatchEvent(new MouseEvent('mouseup', { ...o, buttons: 0 })); el.dispatchEvent(new MouseEvent('click', { ...o, buttons: 0 }));
+  SH.sound.viaPad = true;
+  try {
+    if (nativeEl(el)) { el.click(); return; }
+    const r = rectOf(el), o = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, buttons: 1, pointerType: 'mouse', isPrimary: true, view: window };
+    el.dispatchEvent(new PointerEvent('pointerdown', o)); el.dispatchEvent(new MouseEvent('mousedown', o));
+    el.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 })); el.dispatchEvent(new MouseEvent('mouseup', { ...o, buttons: 0 })); el.dispatchEvent(new MouseEvent('click', { ...o, buttons: 0 }));
+  } finally { SH.sound.viaPad = false; }
 }
 function activate() {
   if (editing()) { const a = document.activeElement; if (a.tagName !== 'TEXTAREA') a.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true })); return; }
@@ -270,6 +274,7 @@ const settings = () => { key(',', { ctrlKey: true }); sync(80); sync(400); };
 const palette = () => { key('k', { ctrlKey: true }); sync(80); sync(400); };
 
 function press(i) {
+  SH.sound.gesture();  /* interface sounds may follow a controller press, as they follow a click or a key */
   switch (i) {
     case B.A: activate(); break;
     case B.B: back(); break;
@@ -419,12 +424,14 @@ function scan() {
   for (const gp of l) if (gp && gp.connected && !pads.has(gp.index)) { pads.set(gp.index, { btn: [], primed: false, dir: null, next: 0, since: 0, chord: 0 }); detectLayout(gp); }
 }
 addEventListener('gamepadconnected', e => {
+  SH.sound('device_connected');
   if (!enabled()) return;
   pads.set(e.gamepad.index, { btn: [], primed: false, dir: null, next: 0, since: 0, chord: 0 }); detectLayout(e.gamepad);
   if (!sessionToast && !S().gamepadSeen) { sessionToast = true; SH.setSetting('gamepadSeen', true); SH.toast(t('Controller connected: you can use StellarHub with it'), { group: 'pad', ms: 5200 }); }
   kick();
 });
 addEventListener('gamepaddisconnected', e => {
+  SH.sound('device_disconnected');
   pads.delete(e.gamepad.index); scan();
   if (!pads.size) { if (mode) SH.toast(t('Controller disconnected'), { group: 'pad', ms: 2600 }); setMode(false); }
   kick();
