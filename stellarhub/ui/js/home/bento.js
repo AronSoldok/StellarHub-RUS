@@ -34,24 +34,27 @@ const ART = {
       <rect class="sub" x="14" y="14" width="172" height="172" rx="12"/>${pads}
       <rect class="cap" x="36" y="40" width="10" height="5" rx="1"/><rect class="cap" x="154" y="150" width="10" height="5" rx="1"/><rect class="cap" x="36" y="154" width="10" height="5" rx="1"/>
       <rect class="die" x="54" y="50" width="92" height="104" rx="5"/>${th}
+      <defs><clipPath id="cpuClip"><rect x="54" y="50" width="92" height="104" rx="5"/></clipPath>
+        <linearGradient id="cpuScan" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="var(--accent2)" stop-opacity="0"/><stop offset=".55" stop-color="var(--accent2)" stop-opacity=".34"/><stop offset="1" stop-color="var(--accent2)" stop-opacity="0"/></linearGradient></defs>
+      <g clip-path="url(#cpuClip)"><rect class="scan" x="14" y="50" width="40" height="104" fill="url(#cpuScan)"/></g>
     </svg>`;
   },
   ram: () => `<svg viewBox="0 0 200 84" class="art-ram">
     <path class="pcb" d="M6 14 H194 V60 H112 V66 H104 V60 H6 Z"/>
-    ${[0, 1, 2, 3].map(i => `<rect class="mchip" x="${16 + i * 44}" y="22" width="34" height="26" rx="2"/>`).join('')}
+    ${[0, 1, 2, 3].map(i => `<rect class="mchip" x="${16 + i * 44}" y="22" width="34" height="26" rx="2"/><rect class="mglow" style="--d:${i * 110}ms" x="${16 + i * 44}" y="22" width="34" height="26" rx="2"/>`).join('')}
     ${Array.from({ length: 30 }, (_, i) => `<rect class="pin" x="${10 + i * 6.1 + (i > 15 ? 6 : 0)}" y="62" width="3.4" height="10" rx=".8"/>`).join('')}
     <circle class="hole" cx="10" cy="22" r="2.6"/>
   </svg>`,
   ssd: () => `<svg viewBox="0 0 200 60" class="art-ssd">
     <path class="pcb" d="M4 16 H182 A12 12 0 0 1 182 44 H4 V34 H8 V26 H4 Z"/>
-    <rect class="mchip" x="18" y="21" width="30" height="18" rx="2"/><rect class="mchip" x="56" y="20" width="44" height="20" rx="2"/><rect class="mchip" x="108" y="20" width="44" height="20" rx="2"/>
+    ${[[18, 21, 30, 18], [56, 20, 44, 20], [108, 20, 44, 20]].map(([x, y, w, h], i) => `<rect class="mchip" x="${x}" y="${y}" width="${w}" height="${h}" rx="2"/><rect class="mglow" style="--d:${i * 130}ms" x="${x}" y="${y}" width="${w}" height="${h}" rx="2"/>`).join('')}
     <circle class="led" cx="164" cy="30" r="3"/><circle class="hole" cx="186" cy="30" r="4"/>
   </svg>`,
   dsp: () => `<svg viewBox="0 0 280 120" class="art-dsp">
-    <rect class="frame" x="8" y="6" width="164" height="104" rx="8"/><rect class="screen" x="15" y="13" width="150" height="90" rx="4"/>
+    <rect class="frame" x="8" y="6" width="164" height="104" rx="8"/><rect class="screen" x="15" y="13" width="150" height="90" rx="4"/><rect class="scrglow" x="15" y="13" width="150" height="90" rx="4"/>
     <rect class="sweep" x="15" y="13" width="40" height="90"/>
     <text x="90" y="62" text-anchor="middle">2560 × 1600</text>
-    <rect class="frame" x="186" y="24" width="88" height="56" rx="5"/><rect class="screen" x="191" y="29" width="78" height="46" rx="3"/>
+    <rect class="frame" x="186" y="24" width="88" height="56" rx="5"/><rect class="screen" x="191" y="29" width="78" height="46" rx="3"/><rect class="scrglow s2" x="191" y="29" width="78" height="46" rx="3"/>
     <path class="stand" d="M230 80 V94 M214 96 H246"/>
     <text x="230" y="56" text-anchor="middle" class="sm">1920 × 1080</text>
   </svg>`,
@@ -178,7 +181,7 @@ function mount(el, ctx) {
   if (SH.engine) SH.engine('system', 'displays').then(ds => {
     if (!ds || !root) return; const tx = $$('.art-dsp text', root); const sorted = ds.slice().sort((x, y) => y.w * y.h - x.w * x.h);
     tx.forEach((e, i) => { e.textContent = sorted[i] ? `${sorted[i].w} × ${sorted[i].h}` : ''; });
-    if (ds.length < 2) $$('.art-dsp .frame, .art-dsp .screen, .art-dsp .stand', root).slice(2).forEach(e => { e.style.display = 'none'; });
+    if (ds.length < 2) $$('.art-dsp .frame, .art-dsp .screen, .art-dsp .stand', root).slice(2).concat($$('.art-dsp .s2', root)).forEach(e => { e.style.display = 'none'; });
   }).catch(() => {});
   tiles = $$('.bt', root).map(b => ({ b, tilt: $('.tilt', b), rx: new Spring(0, 170, 18), ry: new Spring(0, 170, 18), lift: new Spring(0, 200, 20) }));
   tiles.forEach(t => {
