@@ -102,9 +102,11 @@ body.frameless:not(.win-max) .rz{display:block}
 .mode:hover{background:var(--raise2);color:var(--ink)}
 .mode:active{transform:scale(.96)}
 .mode #modeTxt{overflow:hidden;text-overflow:ellipsis;max-width:190px}
-.mode .d{flex:none;width:7px;height:7px;border-radius:50%;background:var(--faint);transition:background-color calc(300ms*var(--f)),box-shadow calc(300ms*var(--f))}
+.mode .d{flex:none;width:16px;height:16px;display:grid;place-items:center;color:var(--faint);transition:color calc(300ms*var(--f))}
+.mode .d svg{width:16px;height:16px}
+.mode:hover .d{color:var(--mute)}
 .mode.admin{color:var(--ink);border-color:color-mix(in oklab,var(--accent) 45%,transparent)}
-.mode.admin .d{background:var(--accent);box-shadow:0 0 0 3px var(--acc-soft)}
+.mode.admin .d{color:var(--accent)}
 .iconbtn{width:36px;height:36px;display:grid;place-items:center;border-radius:50%;color:var(--mute);transition:color calc(160ms*var(--f)),background-color calc(160ms*var(--f)),transform calc(160ms*var(--f))}
 .iconbtn:hover{color:var(--ink);background:var(--raise2)}
 .iconbtn:active{transform:scale(.92)}

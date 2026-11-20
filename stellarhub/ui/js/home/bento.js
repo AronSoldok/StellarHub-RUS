@@ -5,17 +5,24 @@
 const { $, $$, Spring, EASE, anim, tickers, esc, fmt1 } = SH;
 
 /* ---------- illustrations ---------- */
-function fanSVG(cx, cy, r, cls) {
-  let b = ''; for (let i = 0; i < 9; i++) b += `<path d="M${cx} ${cy - r * .28} C ${cx + r * .3} ${cy - r * .45} ${cx + r * .5} ${cy - r * .75} ${cx + r * .25} ${cy - r * .95} C ${cx + r * .1} ${cy - r * .7} ${cx - r * .05} ${cy - r * .5} ${cx} ${cy - r * .28} Z" transform="rotate(${i * 40} ${cx} ${cy})"/>`;
-  return `<circle class="ring" cx="${cx}" cy="${cy}" r="${r + 4}"/><g class="${cls}" style="transform-origin:${cx}px ${cy}px">${b}<circle class="hub" cx="${cx}" cy="${cy}" r="${r * .26}"/></g>`;
+/* The blades are NOT inside the card's SVG: an SVG group cannot be composited, so each frame of its turn repaints the whole card.
+   Each fan is its own small <svg> laid over the drawing (same place, same scale, see fitGpuArt) with will-change:transform, and a
+   Web Animations rotate runs it on the compositor at the display's refresh rate with nothing on the main thread. */
+const GPU_FANS = [[100, 68, 40], [222, 68, 40]], GPU_VB = [320, 150];
+function fanBlades(r) {
+  let b = ''; for (let i = 0; i < 9; i++) b += `<path d="M0 ${-r * .28} C ${r * .3} ${-r * .45} ${r * .5} ${-r * .75} ${r * .25} ${-r * .95} C ${r * .1} ${-r * .7} ${-r * .05} ${-r * .5} 0 ${-r * .28} Z" transform="rotate(${i * 40})"/>`;
+  return `${b}<circle class="hub" r="${r * .26}"/>`;
 }
+const fanRing = (cx, cy, r) => `<circle class="ring" cx="${cx}" cy="${cy}" r="${r + 4}"/>`;
+const fanOverlay = ([cx, cy, r]) => { const R = r + 4; /* the box is the ring's, so the 40-radius blades have a little room */
+  return `<svg class="gfan" viewBox="${-R} ${-R} ${R * 2} ${R * 2}" aria-hidden="true" style="left:${((cx - R) / GPU_VB[0] * 100).toFixed(3)}%;top:${((cy - R) / GPU_VB[1] * 100).toFixed(3)}%;width:${(R * 2 / GPU_VB[0] * 100).toFixed(3)}%;height:${(R * 2 / GPU_VB[1] * 100).toFixed(3)}%">${fanBlades(r)}</svg>`; };
 const ART = {
   gpu: () => `<svg viewBox="0 0 320 150" class="art-gpu">
     <rect class="bracket" x="2" y="16" width="12" height="112" rx="3"/>
     <rect class="body" x="14" y="12" width="296" height="104" rx="14"/>
     <path class="strip" d="M30 14 H294"/>
     ${Array.from({ length: 30 }, (_, i) => `<line class="fin" x1="${40 + i * 8.6}" y1="20" x2="${40 + i * 8.6}" y2="30"/>`).join('')}
-    ${fanSVG(100, 68, 40, 'gfan')}${fanSVG(222, 68, 40, 'gfan')}
+    ${GPU_FANS.map(f => fanRing(...f)).join('')}
     <rect class="gold" x="66" y="116" width="150" height="12" rx="2"/>
     ${Array.from({ length: 18 }, (_, i) => `<rect class="pin" x="${70 + i * 8}" y="119" width="4" height="7" rx="1"/>`).join('')}
   </svg>`,
@@ -27,7 +34,6 @@ const ART = {
       <rect class="sub" x="14" y="14" width="172" height="172" rx="12"/>${pads}
       <rect class="cap" x="36" y="40" width="10" height="5" rx="1"/><rect class="cap" x="154" y="150" width="10" height="5" rx="1"/><rect class="cap" x="36" y="154" width="10" height="5" rx="1"/>
       <rect class="die" x="54" y="50" width="92" height="104" rx="5"/>${th}
-      <circle class="pulse" cx="100" cy="100" r="70"/>
     </svg>`;
   },
   ram: () => `<svg viewBox="0 0 200 84" class="art-ram">
@@ -140,7 +146,22 @@ function liveHTML(area) {
 const uptime = s => SH.fmtUptime(s);  /* the same "8 days 11 h" as Home and Live Monitor, in the interface language */
 
 let root = null, tick = null, offs = [], tiles = [], barEl = {};
-const gfan = { a: 0, sp: new Spring(0, 30, 10), boost: new Spring(0, 60, 14) };
+const gfan = { sp: new Spring(0, 30, 10), boost: new Spring(0, 60, 14), anims: [], rate: -1, ro: null };
+/* Fits the wrapper around the GPU drawing to the exact box the SVG's viewBox takes inside the tile (the art is "contain"-fitted
+   and centred), so the fan overlays, positioned in percent of it, stay on the fan positions at any window size. */
+function fitGpuArt() {
+  const box = root && $('.artbox', root); if (!box) return; const a = box.parentElement; const w = a.clientWidth, h = a.clientHeight; if (!w || !h) return;
+  const k = Math.min(w / GPU_VB[0], h / GPU_VB[1]); box.style.width = (GPU_VB[0] * k).toFixed(2) + 'px'; box.style.height = (GPU_VB[1] * k).toFixed(2) + 'px';
+}
+/* one infinite 1-second turn per fan; speed = playbackRate in turns per second (updatePlaybackRate keeps the angle continuous) */
+function fansRun(on, rate) {
+  if (!gfan.anims.length) return;
+  if (!on) { if (gfan.running !== false) { gfan.anims.forEach(a => a.pause()); gfan.running = false; } return; }
+  rate = Math.max(.0001, rate);
+  if (gfan.running !== true) { gfan.anims.forEach(a => { a.updatePlaybackRate(rate); a.play(); }); gfan.running = true; gfan.rate = rate; return; }
+  if (Math.abs(rate - gfan.rate) > Math.max(.004, gfan.rate * .01)) { gfan.rate = rate; gfan.anims.forEach(a => a.updatePlaybackRate(rate)); }
+}
+const fansOn = () => !!root && !document.hidden && (SH.state.view === 'home' || SH.homeAnimating);
 const bars = { vram: new Spring(0, 60, 14), ram: new Spring(0, 60, 14), disk: new Spring(0, 60, 14) };
 
 function mount(el, ctx) {
@@ -150,7 +171,7 @@ function mount(el, ctx) {
   root.innerHTML = list.map(t => {
     const c = comp(t.comp);
     return `<div class="bt k-${t.kind} a-${t.area}" style="grid-area:${t.area}" data-comp="${t.comp}" tabindex="0" role="button" aria-label="${esc(c.name)}: ${esc(c.title)}">
-      <div class="tilt"><div class="glow"></div><div class="art">${ART[t.area]()}</div>
+      <div class="tilt"><div class="glow"></div><div class="art">${t.area === 'gpu' ? `<div class="artbox">${ART.gpu()}${GPU_FANS.map(fanOverlay).join('')}</div>` : ART[t.area]()}</div>
       <div class="meta"><span class="k">${esc(c.name)}</span><b class="t" title="${esc(c.title)}">${esc(shortTitle(t, c))}</b><div class="live">${liveHTML(t.area)}</div></div></div></div>`;
   }).join('');
   /* the display drawing with the real resolutions */
@@ -175,17 +196,22 @@ function mount(el, ctx) {
     t.b.addEventListener('pointerdown', () => anim(t.b, [{ transform: 'scale(1)' }, { transform: 'scale(.97)', offset: .4 }, { transform: 'scale(1)' }], { d: 320, e: EASE.out }));
   });
   offs.push(SH.tele.on(read)); read();
-  const fans = $$('.gfan', root); barEl = {};
+  barEl = {};
+  gfan.anims = $$('.gfan', root).map(f => f.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 1000, iterations: Infinity, easing: 'linear' }));
+  gfan.anims.forEach(a => a.pause()); gfan.running = false; gfan.rate = -1;
+  fitGpuArt(); const art = $('.a-gpu .art', root);
+  if (art && window.ResizeObserver) { gfan.ro = new ResizeObserver(fitGpuArt); gfan.ro.observe(art); }
+  addEventListener('resize', fitGpuArt); document.addEventListener('visibilitychange', onVis);
   tick = dt => {
-    if (!root || (SH.state.view !== 'home' && !SH.homeAnimating)) return;
-    const still = SH.effInt() === 'min' || SH.state.lite;
-    const fv = SH.tele.v.fanGpu, gu = SH.tele.v.gpu; gfan.sp.t = still ? 0 : !nil(fv) ? fv / 100 * 1.1 : .15 + (gu || 0) / 100 * .9; gfan.sp.step(dt); gfan.boost.step(dt);
-    /* an SVG group cannot be composited: each turn repaints the card. Normally they turn smoothly (30 fps, 60 when
-       fast); with lighter effects (battery, integrated GPU) at 15 fps, and still after 45 s without use. The angle
-       uses the time that passed, so the speed is the same at any frame rate. */
-    gfan.acc = (gfan.acc || 0) + dt;
-    const lite = SH.state.lite, fastFan = gfan.sp.v + gfan.boost.v > .6;
-    if (!still && gfan.acc >= (lite ? .066 : fastFan ? .016 : .033) && !(lite && SH.idleFor() >= 45000)) { gfan.a = (gfan.a + (gfan.sp.v + gfan.boost.v * 1.6) * 360 * gfan.acc) % 360; gfan.acc = 0; fans.forEach(f => { f.style.transform = `rotate(${gfan.a.toFixed(2)}deg)`; }); }
+    if (!fansOn()) { fansRun(false); if (!root || (SH.state.view !== 'home' && !SH.homeAnimating)) return; }
+    else {
+      /* turns per second, from the fan telemetry (or the GPU load) plus the hover boost. The compositor does the rotating; this
+         only nudges the playback rate while the speed is changing. Lighter effects: slower, still smooth, and parked after 45 s idle. */
+      const still = SH.effInt() === 'min', lite = SH.state.lite;
+      const fv = SH.tele.v.fanGpu, gu = SH.tele.v.gpu; gfan.sp.t = still ? 0 : !nil(fv) ? fv / 100 * 1.1 : .15 + (gu || 0) / 100 * .9; gfan.sp.step(dt); gfan.boost.step(dt);
+      const rps = (gfan.sp.v + gfan.boost.v * 1.6) * (lite ? .5 : 1);
+      fansRun(!still && rps > .01 && !(lite && SH.idleFor() >= 45000), rps);
+    }
     for (const k in bars) { const b = bars[k]; if (b.idle && b.drawn) continue; b.step(dt); if (Math.abs(b.v - b.t) < .002 && Math.abs(b.vel) < .06) b.set(b.t); const e = barEl[k] || (barEl[k] = $(`[data-b="${k}"]`, root)); if (e) e.style.transform = `scaleX(${Math.max(0, b.v).toFixed(4)})`; b.drawn = true; }
     for (const t of tiles) {
       t.rx.step(dt); t.ry.step(dt); t.lift.step(dt);
@@ -211,10 +237,12 @@ function read() {
   /* a move under 1 % of the bar is invisible and would keep its spring (and a repaint every frame) running for a second */
   const aim = (b, x) => { if (Math.abs(b.t - x) > .01) b.t = x; };
   aim(bars.vram, (v.vram || 0) / (v.vramTotal || 8)); aim(bars.ram, (v.ram || 0) / (v.ramTotal || 1)); aim(bars.disk, (v.diskUsed || 0) / (v.diskTotal || 1));
-  /* The thread cells are SVG: every frame of their 600 ms fade repaints the whole card. The load is rounded to 8 steps and a cell
-     is only written when its step changes, so a calm CPU leaves Home with nothing to repaint between samples. */
+  /* The thread cells are a quiet heat map of the real load per thread: ice when idle, warming to coral when busy, easing between
+     samples (CSS transition). They are SVG, so a cell is only written when its load, rounded to 10 steps, changes: a calm CPU leaves
+     Home with nothing to repaint between samples. Nothing pulses. */
   const th = v.threads || [];
-  $$('.th', root).forEach((e, i) => { const q = Math.round(Math.min(1, th[i] || 0) * 8); if (e._q === q) return; e._q = q; e.style.opacity = (.18 + .82 * q / 8).toFixed(3); e.classList.toggle('busy', q >= 6); });
+  $$('.th', root).forEach((e, i) => { const q = Math.round(Math.min(1, Math.max(0, th[i] || 0)) * 10); if (e._q === q) return; e._q = q;
+    e.style.opacity = (.28 + .66 * q / 10).toFixed(3); e.style.fill = `color-mix(in oklab, var(--accent) ${q * 10}%, var(--accent2))`; });
 }
 function intro(quick) {
   if (!root) return;
@@ -228,8 +256,11 @@ function intro(quick) {
     gfan.sp.set(0);
   }
 }
+function onVis() { if (document.hidden) fansRun(false); }
 function unmount() {
-  if (tick) tickers.delete(tick); tick = null; offs.forEach(f => f()); offs = []; tiles = []; root = null;
+  if (tick) tickers.delete(tick); tick = null; offs.forEach(f => f()); offs = []; tiles = [];
+  gfan.anims.forEach(a => a.cancel()); gfan.anims = []; gfan.running = false; if (gfan.ro) gfan.ro.disconnect(); gfan.ro = null;
+  removeEventListener('resize', fitGpuArt); document.removeEventListener('visibilitychange', onVis); root = null;
 }
 
 SH.homeVariant({
