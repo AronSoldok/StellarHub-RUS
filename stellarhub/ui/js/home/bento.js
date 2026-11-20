@@ -202,9 +202,12 @@ function mount(el, ctx) {
   barEl = {};
   gfan.anims = $$('.gfan', root).map(f => f.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 1000, iterations: Infinity, easing: 'linear' }));
   gfan.anims.forEach(a => a.pause()); gfan.running = false; gfan.rate = -1;
-  fitGpuArt(); const art = $('.a-gpu .art', root);
+  /* the observer reports the first size after the first layout and every change after it, so the fit never forces a layout of its own
+     (the window resize listener did: 45 ms inside the resize event at start); without ResizeObserver the old way */
+  const art = $('.a-gpu .art', root);
   if (art && window.ResizeObserver) { gfan.ro = new ResizeObserver(fitGpuArt); gfan.ro.observe(art); }
-  addEventListener('resize', fitGpuArt); document.addEventListener('visibilitychange', onVis);
+  else { fitGpuArt(); addEventListener('resize', fitGpuArt); }
+  document.addEventListener('visibilitychange', onVis);
   tick = dt => {
     if (!fansOn()) { fansRun(false); if (!root || (SH.state.view !== 'home' && !SH.homeAnimating)) return; }
     else {
