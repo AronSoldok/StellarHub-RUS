@@ -43,8 +43,25 @@
 #v-storage .st-scan.done{display:none}
 #v-storage .st-sbox{display:flex;flex-direction:column;align-items:center;gap:6px;width:min(520px,90%);flex:none;contain:layout}
 #v-storage .st-dial{position:relative;width:250px;height:250px;flex:none;display:grid;place-items:center;margin-bottom:4px}
-/* the SVG has margin in its viewBox and doesn't clip: the ring's glow no longer gets cut off */
-#v-storage .st-ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);overflow:visible}
+/* the scan ring is made of layers that only move (transform): the progress is two half discs turned behind a ring mask, the
+   head is a dot turned with them, and a soft comet keeps circling while the scan runs, so it never looks stuck.
+   Nothing repaints per frame: every change is a transform transition on its own layer. */
+#v-storage .st-rg{position:absolute;inset:30px;border-radius:50%;overflow:hidden;
+  -webkit-mask:radial-gradient(closest-side,transparent calc(100% - 7px),#000 calc(100% - 6.2px));mask:radial-gradient(closest-side,transparent calc(100% - 7px),#000 calc(100% - 6.2px))}
+#v-storage .st-rg i{position:absolute;display:block}
+#v-storage .st-tr{inset:0;background:var(--raise2)}
+#v-storage .st-hv{top:0;bottom:0;width:50%;overflow:hidden}
+#v-storage .st-hv.r{right:0} #v-storage .st-hv.l{left:0}
+#v-storage .st-hv>i{top:0;height:100%;width:200%;left:-100%;background:linear-gradient(90deg,transparent 50%,var(--accent2) 50%);transform:rotate(-180deg);transition:transform calc(900ms*var(--f)) linear;will-change:transform}
+#v-storage .st-hv.l>i{transform:rotate(0deg)}
+#v-storage .st-co{inset:0;background:conic-gradient(from 0deg,transparent 0 75%,color-mix(in oklab,var(--accent2) 34%,transparent) 99.4%,color-mix(in oklab,var(--ink) 80%,transparent) 99.4% 100%);opacity:0;transition:opacity calc(400ms*var(--f))}
+#v-storage .st-scan.busy .st-co{opacity:1;animation:stspin calc(2400ms*var(--f) + 600ms) linear infinite;will-change:transform}
+html[data-int=min] #v-storage .st-scan.busy .st-co{animation:none;opacity:0}
+#v-storage .st-dial.fin .st-co{animation-play-state:paused}
+#v-storage .st-hd{position:absolute;inset:30px;transform:rotate(0deg);transition:transform calc(900ms*var(--f)) linear;pointer-events:none}
+#v-storage .st-hd::after{content:"";position:absolute;left:50%;top:3.4px;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:var(--accent2);box-shadow:0 0 0 3px color-mix(in oklab,var(--accent2) 22%,transparent)}
+#v-storage .st-lay{position:absolute;inset:0;pointer-events:none;contain:strict}
+#v-storage .st-lay canvas{position:absolute;display:block;will-change:transform,opacity}
 #v-storage .st-cancel{margin-top:8px;opacity:0;pointer-events:none;transition:opacity calc(200ms*var(--f))}
 #v-storage .st-scan.busy .st-cancel{opacity:1;pointer-events:auto}
 /* free space switch in the map bar */
@@ -85,9 +102,6 @@
 #v-storage .st-lerr .muted{font-size:var(--fs-sm);overflow-wrap:anywhere}
 #v-storage .st-cmpl{margin:0 0 12px;font-size:var(--fs-body)}
 #v-storage .st-tr.grp .st-nm{color:var(--mute)}
-#v-storage .st-ring circle{fill:none;stroke-width:4;stroke-linecap:round}
-#v-storage .st-ring .bg{stroke:var(--raise2)}
-#v-storage .st-ring .fg{stroke:var(--accent2);stroke-dasharray:0 400;filter:drop-shadow(0 0 6px color-mix(in oklab,var(--accent2) 60%,transparent))}
 #v-storage .st-sv{position:relative;display:flex;flex-direction:column;align-items:center;width:170px;text-align:center}
 #v-storage .st-sv b{display:block;width:100%;font:500 var(--fs-n1)/1.1 var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;white-space:nowrap}
 #v-storage .st-sv span{font-size:var(--fs-cap);color:var(--mute);margin-top:4px;white-space:nowrap}

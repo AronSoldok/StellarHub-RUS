@@ -516,3 +516,8 @@ html[data-lite="1"] .sheet,html[data-lite="1"] .pal{box-shadow:0 16px 40px -18px
 /* the version, bottom left of every view (support screenshots): small and quiet, never in the way */
 .ver-tag{position:fixed;left:18px;bottom:14px;z-index:30;pointer-events:none;font:500 10.5px/1 var(--text);letter-spacing:.06em;color:var(--faint);opacity:.75;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.6)}
 .ver-tag:empty{display:none}
+
+/* rolling numbers (SH.rollNumber): every character in its own column; the old one leaves up, the new one arrives from below */
+.rn-c{display:inline-block;position:relative;clip-path:inset(-.08em -.12em);white-space:pre}
+.rn-n{display:inline-block}
+.rn-g{position:absolute;left:0;top:0;pointer-events:none}

@@ -341,11 +341,22 @@ function fillLeaf(ctx, n, x, y, w, h, a) {
   /* same spacing across the whole map: half a pixel per side (1 px between neighbors) */
   if (w > 2.5 && h > 2.5) ctx.fillRect(x + .5, y + .5, w - 1, h - 1); else ctx.fillRect(x, y, w, h);
 }
+/* the cached picture of the map's tiles (drawn again only when the layout, the highlighted type or the size change) */
+const hiKey = () => TM.hiLock || TM.hiType || '';
+function baseFor() {
+  const cv = TM.cv, b = TM.base || (TM.base = document.createElement('canvas'));
+  if (TM.baseL === TM.leaves && TM.baseHi === hiKey() && b.width === cv.width && b.height === cv.height) return;
+  b.width = cv.width; b.height = cv.height;
+  const c = b.getContext('2d'), V = VPR(); c.setTransform(TM.dpr, 0, 0, TM.dpr, 0, 0);
+  c.save(); roundRect(c, V.x, V.y, V.w, V.h, 10); c.clip();
+  for (const l of TM.leaves) fillLeaf(c, l.n, l.r.x, l.r.y, l.r.w, l.r.h, 1);
+  c.restore(); TM.baseL = TM.leaves; TM.baseHi = hiKey();
+}
 const easeQ = k => 1 - Math.pow(1 - k, 4);
 function draw(now) {
   const { ctx, vp, dpr } = TM; if (!ctx || !vp.w) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.globalAlpha = 1; ctx.clearRect(0, 0, vp.w, vp.h);
-  if (!TM.ready) return;
+  if (!TM.ready || (TM.A && TM.A.layers)) return;
   /* clean clip with the same radius as the panel: nothing spills out at the corners */
   const V = VPR(); ctx.save(); roundRect(ctx, V.x, V.y, V.w, V.h, 10); ctx.clip();
   if (TM.A) {
@@ -359,8 +370,9 @@ function draw(now) {
     if (k >= 1) { TM.A = null; TM.labelA.t = 1; }
     TM.dirty = true; return;
   }
-  for (const l of TM.leaves) fillLeaf(ctx, l.n, l.r.x, l.r.y, l.r.w, l.r.h, 1);
   ctx.restore();
+  /* the tiles are painted once into a cached layer and only blitted; hover, selection and labels are drawn over it */
+  baseFor(); ctx.drawImage(TM.base, 0, 0, vp.w, vp.h);
   ctx.globalAlpha = 1;
   const la = TM.labelA.v;
   if (la > .01) {
@@ -429,16 +441,68 @@ function zoomTo(nr, why) {
   renderCrumbs(true); renderInfo(); renderLegend(); TM.dirty = true;
   setTimeout(() => prefetch(nr), 700 * SH.motion());
 }
-/* map intro when the scan finishes: a soft diagonal wave; each block arrives from slightly below
-   and transparent, without growing from a point (that looked abrupt) */
-function introAnim() {
-  const V = VPR(); const span = V.w + V.h || 1;
-  const items = TM.leaves.map(l => {
-    const cx = l.r.x + l.r.w / 2, cy = l.r.y + l.r.h / 2; const s = .985;
-    const wave = ((cx - V.x) + (cy - V.y)) / span;
-    return { n: l.n, f: { x: cx - l.r.w * s / 2, y: cy - l.r.h * s / 2 + 12, w: l.r.w * s, h: l.r.h * s }, t: l.r, a0: 0, a1: 1, d: Math.min(.55, wave * .5) };
-  });
-  TM.A = { items, t0: performance.now(), dur: Math.max(1, 1150 * SH.motion()) }; TM.labelA.set(0); TM.dirty = true;
+/* map intro when the scan finishes. The map is drawn ONCE, cut into pieces (every piece a small canvas: a folder, or a
+   group of folders, covering at most ~4.5% of the map); the reveal only moves those finished layers (opacity and a short
+   rise, compositor only), staggered outward from the center in small batches. The pieces are painted nearest the center
+   first, a few milliseconds per frame, and each starts as soon as it is ready, so a big map or a slow PC never holds a
+   frame back and nothing is redrawn while it plays. At the end the pieces become the cached picture of the map (no tile
+   is painted again) and the main canvas takes over with identical pixels. */
+function revealStart() {
+  if (!TM.cv || SH.effInt() === 'min' || !TM.leaves.length) return null;
+  const V = VPR(), dpr = TM.dpr, maxA = V.w * V.h * .045, wrap = TM.cv.parentElement, mo = SH.motion();
+  const groups = new Map();
+  for (const l of TM.leaves) {
+    let n = l.n;
+    while (n.parent) { const pr = TM.rects.get(n.parent.id); if (!pr || pr.w * pr.h > maxA) break; n = n.parent; }
+    let g = groups.get(n); if (!g) { g = { r: TM.rects.get(n.id) || l.r, leaves: [] }; groups.set(n, g); }
+    g.leaves.push(l);
+  }
+  const box = document.createElement('div'); box.className = 'st-lay'; box.setAttribute('aria-hidden', 'true');
+  const half = Math.hypot(V.w, V.h) / 2 || 1, pieces = [];
+  for (const g of groups.values()) {
+    const x0 = Math.floor(g.r.x) - 1, y0 = Math.floor(g.r.y) - 1, x1 = Math.ceil(g.r.x + g.r.w) + 1, y1 = Math.ceil(g.r.y + g.r.h) + 1;
+    const px0 = Math.round(x0 * dpr), py0 = Math.round(y0 * dpr);
+    const cv = document.createElement('canvas'); cv.width = Math.round((x1 - x0) * dpr); cv.height = Math.round((y1 - y0) * dpr);
+    cv.style.cssText = `left:${px0 / dpr}px;top:${py0 / dpr}px;width:${cv.width / dpr}px;height:${cv.height / dpr}px;opacity:0`;
+    box.appendChild(cv);
+    pieces.push({ cv, g, px0, py0, d: Math.min(1, Math.hypot((g.r.x + g.r.w / 2) - (V.x + V.w / 2), (g.r.y + g.r.h / 2) - (V.y + V.h / 2)) / half) });
+  }
+  pieces.sort((a, b) => a.d - b.d);
+  wrap.insertBefore(box, $('.st-tip', wrap));
+  TM.A = { layers: true, box }; TM.dirty = true;
+  const lay = { box, pieces, w: TM.vp.w, h: TM.vp.h }, t0 = performance.now() + 340 * mo, anims = [];
+  let k = 0, over = false;
+  const end = () => {
+    if (over) return; over = true;
+    if (TM.A && TM.A.layers) TM.A = null;
+    if (TM.vp.w !== lay.w || TM.vp.h !== lay.h || hiKey() !== '' || pieces.some(p => p.g)) relayout();
+    else if (TM.cv && TM.cv.width) {
+      const b = TM.base || (TM.base = document.createElement('canvas')); b.width = TM.cv.width; b.height = TM.cv.height;
+      const c = b.getContext('2d'); pieces.forEach(p => c.drawImage(p.cv, p.px0, p.py0));
+      TM.baseL = TM.leaves; TM.baseHi = hiKey();
+    }
+    TM.labelA.set(0); TM.labelA.t = 1; draw(performance.now()); TM.dirty = true;
+    box.remove();
+  };
+  const step = () => {
+    if (over) return;
+    const ts = performance.now();
+    while (k < pieces.length && (performance.now() - ts < 4 || k === 0)) {
+      const p = pieces[k++], c = p.cv.getContext('2d');
+      c.setTransform(dpr, 0, 0, dpr, -p.px0, -p.py0);
+      c.save(); roundRect(c, V.x, V.y, V.w, V.h, 10); c.clip();
+      for (const l of p.g.leaves) fillLeaf(c, l.n, l.r.x, l.r.y, l.r.w, l.r.h, 1);
+      c.restore(); p.g = null;
+      /* its slot in the wave, or right now if painting fell behind */
+      const wait = Math.max(0, t0 + p.d * 460 * mo - performance.now());
+      anims.push(p.cv.animate([{ opacity: 0, transform: 'translate3d(0,12px,0)' }, { opacity: 1, transform: 'none' }], { duration: 560 * mo, delay: wait, easing: EASE.out, fill: 'both' }));
+    }
+    if (k < pieces.length) requestAnimationFrame(step);
+    else Promise.all(anims.map(a => a.finished)).then(end).catch(end);
+  };
+  requestAnimationFrame(step);
+  setTimeout(end, 9000);
+  return lay;
 }
 /* from one layout to another (e.g. when showing or hiding free space): each block slides to its new place */
 function morphFrom(oldLeaves) {
@@ -458,7 +522,7 @@ function renderMap(el) {
         <button class="btn sm ghost" data-up>${ic('up')}${T('Up one level')}</button></div>
       <div class="st-cvw pan" data-asm data-nofade><canvas></canvas><div class="st-tip"></div>
         <div class="st-scan"><div class="st-sbox">
-          <div class="st-dial"><svg class="st-ring" viewBox="-14 -14 148 148"><circle cx="60" cy="60" r="54" class="bg"/><circle cx="60" cy="60" r="54" class="fg"/></svg>
+          <div class="st-dial"><div class="st-rg"><i class="st-tr"></i><i class="st-hv r"><i></i></i><i class="st-hv l"><i></i></i><i class="st-co"></i></div><i class="st-hd"></i>
             <div class="st-sv"><b class="st-sn">0</b><span>${T('files read')}</span></div></div>
           <div class="st-sp faint">${T('Preparing the scan…')}</div><div class="st-ss muted">&nbsp;</div>
           <button class="btn sm ghost st-cancel" data-cancel>${ic('x')}${T('Cancel')}</button></div></div>
@@ -602,25 +666,33 @@ function setPathText(el, s) {
 /* animated scan: a ring with the real progress; when it finishes, the ring shrinks into the center and the map
    opens from there with a soft wave (everything used to pop in place at once) */
 let scanProg = null;
+/* ring progress, 0 to 1: the two half discs and the head dot are turned by transform (see storage.css); instant = no transition */
+function setArc(dial, p, instant) {
+  if (!dial) return; p = Math.max(0, Math.min(1, p || 0));
+  const hs = $$('.st-hv>i', dial), hd = $('.st-hd', dial), set = (e, deg) => { e.style.transform = `rotate(${deg.toFixed(2)}deg)`; };
+  const all = [...hs, hd]; if (instant) all.forEach(e => e.style.transition = 'none');
+  set(hs[0], -180 + 360 * Math.min(p, .5)); set(hs[1], 360 * Math.max(0, p - .5)); set(hd, 360 * p);
+  if (instant) { void dial.offsetWidth; all.forEach(e => e.style.transition = ''); }
+}
 async function runScan() {
   if (TM.scanning) return; TM.scanning = true; scanProg = null;
   const el = $(`#v-${ID} .tab[data-tab="map"]`); const sc = el && $('.st-scan', el);
   if (sc) {
     sc.classList.remove('done'); sc.classList.add('busy');
     $$('.st-dial, .st-sp, .st-ss, .st-cancel', sc).forEach(x => { x.getAnimations().forEach(a => a.cancel()); });
-    $('.st-sn', sc).textContent = '0'; setPathText($('.st-sp', sc), T('Preparing the scan…')); $('.st-ss', sc).innerHTML = '&nbsp;';
-    anim(sc, [{ opacity: 0, transform: 'scale(.94)', filter: 'blur(8px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
+    SH.rollNumber($('.st-sn', sc), 0, { plain: true }); setPathText($('.st-sp', sc), T('Preparing the scan…')); $('.st-ss', sc).innerHTML = '&nbsp;';
+    anim(sc, [{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 380, e: EASE.out });
   }
   const wasReady = TM.ready;
   if (TM.ready) { TM.ready = false; TM.dirty = true; }
-  const fg = sc && $('.fg', sc); const C = 2 * Math.PI * 54; if (fg) fg.style.strokeDasharray = `0 ${C}`;
+  const dial = sc && $('.st-dial', sc); setArc(dial, 0, true); if (dial) dial.classList.remove('fin');
   let last = 0, lastT = performance.now(), shown = 0, t;
   const spEl = sc && $('.st-sp', sc), unitEl = sc && $('.st-sv span', sc); if (unitEl) unitEl.textContent = T('files read');
   try {
     t = await API.scan(p => {
       scanProg = { files: p.files, frac: p.frac || 0, unit: p.unit }; paintScanWait();
       if (!sc) return;
-      $('.st-sn', sc).textContent = fmtInt(p.files); setPathText(spEl, p.path || ' ');
+      SH.rollNumber($('.st-sn', sc), p.files); setPathText(spEl, p.path || ' ');
       if (unitEl && p.unit) { const u = p.unit === 'entries' ? T('entries read') : T('files read'); if (unitEl.textContent !== u) unitEl.textContent = u; }
       const now = performance.now();
       if (now - lastT > 500) {
@@ -629,7 +701,7 @@ async function runScan() {
         $('.st-ss', sc).textContent = p.method === 'mft' ? T('{n} entries per second · reading the NTFS file table', { n: fmtInt(Math.round(r / m) * m) }) : T('{n} files per second', { n: fmtInt(Math.round(r / m) * m) });
         last = p.files; lastT = now;
       }
-      shown = Math.max(shown, p.frac || 0); if (fg) fg.style.strokeDasharray = `${(C * shown).toFixed(1)} ${C}`;
+      shown = Math.max(shown, p.frac || 0); setArc(dial, shown);
     });
   } catch (e) {
     TM.scanning = false; if (sc) sc.classList.remove('busy');
@@ -641,9 +713,11 @@ async function runScan() {
     if (sc) { setPathText($('.st-sp', sc), T("Couldn't scan.")); $('.st-ss', sc).textContent = (e && e.message) || ''; }
     console.error(e); return;
   }
-  if (fg) fg.style.strokeDasharray = `${C} ${C}`;
+  setArc(dial, 1);
   TM.root = t; if (!TM.cur || !isAnc(t, TM.cur)) TM.cur = t;
   TM.scanning = false; TM.ready = true; TM.sel = null; TM.hover = TM.hoverTop = null; relayout();
+  /* the map is drawn once, in pieces, before the ring leaves: the reveal below only moves finished layers */
+  const lay = revealStart();
   const ib = $(`#v-${ID} .st-info`); if (ib) ib.dataset.k = '';
   const lb = $(`#v-${ID} .st-leg`); if (lb) lb.dataset.k = '';
   if (sc) {
@@ -651,13 +725,13 @@ async function runScan() {
     $('.st-ss', sc).textContent = T('{files} files in {dirs} folders', { files: fmtInt(t.fc), dirs: fmtInt(t.dirs) });
     const dial = $('.st-dial', sc), rest = $$('.st-sp, .st-ss, .st-cancel', sc);
     rest.forEach(x => anim(x, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(0,6px,0)' }], { d: 260, delay: 160 }));
-    anim(dial, [{ transform: 'scale(1)', opacity: 1, filter: 'blur(0px)' }, { transform: 'scale(.5)', opacity: 0, filter: 'blur(6px)' }], { d: 520, delay: 220, e: EASE.io });
+    dial.classList.add('fin');
+    anim(dial, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.5)', opacity: 0 }], { d: 520, delay: 220, e: EASE.io });
     const finish = () => { if (TM.scanning || sc.classList.contains('done')) return; sc.classList.add('done'); [dial, ...rest, sc].forEach(x => x.getAnimations().forEach(a => a.cancel())); };
     anim(sc, [{ backgroundColor: 'rgba(6,10,20,.6)' }, { backgroundColor: 'rgba(6,10,20,0)' }], { d: 700, delay: 260 }).finished.then(finish).catch(() => {});
     setTimeout(finish, 1400); /* in case the window is hidden and the animations don't advance */
   }
-  if (TM.cv) anim(TM.cv, [{ clipPath: 'circle(0% at 50% 50%)' }, { clipPath: 'circle(75% at 50% 50%)' }], { d: 1100, delay: 340, e: EASE.out });
-  setTimeout(() => { introAnim(); renderCrumbs(true); renderInfo(); renderLegend(); prefetch(TM.cur); }, 340 * SH.motion());
+  setTimeout(() => { if (!lay) { TM.A = null; TM.labelA.t = 1; TM.dirty = true; } /* the side panels in their own frames, so none of them makes the reveal skip */ renderCrumbs(true); requestAnimationFrame(() => { renderInfo(); requestAnimationFrame(() => { renderLegend(); prefetch(TM.cur); }); }); }, 340 * SH.motion());
   if (ST.real) refreshDrives();
 }
 

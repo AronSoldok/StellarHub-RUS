@@ -224,6 +224,69 @@ function countUp(el, to, d = 900, dec = 0) {
     el.textContent = dec ? fmt1(v) : fmtInt(v); if (k < 1) requestAnimationFrame(f); else el.dataset.v = to; };
   requestAnimationFrame(f);
 }
+/* rolling number (odometer): when the text changes, each character that differs slides to its next value (the old one
+   up and out, the new one in from below; the other way when the number goes down). Compositor only (transform and
+   opacity through WAAPI), so a counter that changes ten times a second stays smooth. Characters that did not change
+   are not touched. Plain text while the lighter mode is on, at intensity "minimum" or when the count-up setting is off.
+   SH.rollNumber(el, 77390, { format: SH.fmtInt }); a string value is shown as it is (first call: no animation). */
+function rollNumber(el, value, o = {}) {
+  if (!el) return;
+  const num = typeof value === 'number' && isFinite(value);
+  const txt = num ? (o.format || fmtInt)(value) : String(value);
+  const rn = el._rn;
+  const plain = state.lite || effInt() === 'min' || state.settings.countUp === false || o.plain || document.hidden;
+  if (rn && rn.txt === txt) return;
+  const dir = num && rn && rn.num != null && value < rn.num ? -1 : 1;
+  if (!rn || plain || !rn.cols) {
+    if (plain) { el.textContent = txt; el._rn = { txt, num: num ? value : null, cols: null }; }
+    else { build(el, txt); el._rn.num = num ? value : null; }
+    return;
+  }
+  const cols = rn.cols, old = rn.txt, nw = Array.from(txt), od = Array.from(old);
+  const dur = (o.d ?? 460) * motion(), dy = dir * (effInt() === 'normal' ? 55 : 80);
+  /* aligned from the right: the units stay under the units when the number grows a digit */
+  const out = [];
+  for (let i = 1; i <= Math.max(nw.length, od.length); i++) {
+    const a = od[od.length - i], b = nw[nw.length - i], c = cols[od.length - i];
+    if (b === undefined) { if (c) c.el.remove(); continue; }
+    if (a === b && c) { out.unshift(c); continue; }
+    if (a === undefined || !c) {
+      const col = mk(b); out.unshift(col);
+      col.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur * .6, easing: 'ease-out' });
+      continue;
+    }
+    /* a roll already under way: just change the character inside it, no restart */
+    const run = c.anim && c.anim.playState === 'running' && (+c.anim.currentTime || 0) < dur * .55;
+    if (run) { c.cur.textContent = b; c.el.dataset.c = b; out.unshift(c); continue; }
+    if (c.anim) { try { c.anim.cancel(); } catch {} } if (c.ghost) { c.ghost.remove(); c.ghost = null; }
+    const g = document.createElement('span'); g.className = 'rn-g'; g.textContent = a; c.el.appendChild(g); c.ghost = g;
+    c.cur.textContent = b; c.el.dataset.c = b;
+    const ease = { duration: dur, easing: EASE.out };
+    const ga = g.animate([{ opacity: 1, transform: 'translate3d(0,0,0)' }, { opacity: 0, transform: `translate3d(0,${-dy}%,0)` }], ease);
+    c.anim = c.cur.animate([{ opacity: 0, transform: `translate3d(0,${dy}%,0)` }, { opacity: 1, transform: 'translate3d(0,0,0)' }], ease);
+    c.anim.onfinish = () => { if (c.ghost === g) { g.remove(); c.ghost = null; } };
+    ga.onfinish = () => g.remove();
+    out.unshift(c);
+  }
+  el.setAttribute('aria-label', txt);
+  /* only the columns' order in the array matters; the DOM already has them in place (new ones are inserted at the start) */
+  rn.cols = out; rn.txt = txt; rn.num = num ? value : null;
+  function mk(ch) {
+    const e = document.createElement('span'), cur = document.createElement('span');
+    e.className = 'rn-c'; e.dataset.c = ch; e.setAttribute('aria-hidden', 'true'); cur.className = 'rn-n'; cur.textContent = ch; e.appendChild(cur);
+    const first = el.firstChild; el.insertBefore(e, first);
+    return { el: e, cur, anim: null, ghost: null };
+  }
+}
+function build(el, txt) {
+  el.textContent = ''; el.setAttribute('aria-label', txt);
+  const cols = Array.from(txt).map(ch => {
+    const e = document.createElement('span'), cur = document.createElement('span');
+    e.className = 'rn-c'; e.dataset.c = ch; e.setAttribute('aria-hidden', 'true'); cur.className = 'rn-n'; cur.textContent = ch; e.appendChild(cur); el.appendChild(e);
+    return { el: e, cur, anim: null, ghost: null };
+  });
+  el._rn = { txt, num: null, cols };
+}
 /* shrinks the font size until the text fits on one line */
 function fitText(el, max, min = 14) {
   if (!el || !el.parentElement) return;
@@ -486,7 +549,7 @@ const chartKit = (() => {
 /* i18n.js ran first and already put SH.t and SH.i18n here: keep them */
 window.SH = Object.assign(window.SH || {}, {
   $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, effInt, on, emit, call, apiReady, loadSettings, setSetting,
-  engine, job, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, fitText, esc,
+  engine, job, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, rollNumber, fitText, esc,
   ic, icons, emptyState, emptyArt, chartKit, PC, MODS, modById, registry, module, homeVariant, actions,
   go: () => {}, toast: () => {}, openComponent: () => {}, sfScan,
   /* the window coming in after the start screen, and going away when StellarHub closes, updates or reopens as
