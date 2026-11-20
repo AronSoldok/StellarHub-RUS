@@ -112,7 +112,7 @@ def acquire(launch):
 def start_background_work(launch):
     """Work the window does not wait for: the prefetch, the housekeeping that follows an install or update. Returns
     False when a staged update took over (the installer opens StellarHub again, updated)."""
-    threading.Thread(target=prefetch, daemon=True, name="prefetch").start()
+    start_prefetch()
     try:
         os.remove(elevation.START_HIDDEN)
     except OSError:
@@ -283,6 +283,12 @@ def ui_port():
 def refresh_ui_cache():
     """WebView2 keeps the .js/.css in its HTTP cache: after a UI change it would keep showing the old one.
     If any UI file changes, that cache is cleared."""
+    if not config.FROZEN:  # the page's one-request dictionaries (the installer's build makes them: packaging spec)
+        try:
+            from . import i18n
+            i18n.build_bundles()
+        except Exception as e:
+            print("i18n bundles:", e)
     h = hashlib.sha1()
     if config.FROZEN:  # installed: the UI only changes with a new build, so the version and build time identify it
         try:
@@ -291,7 +297,7 @@ def refresh_ui_cache():
             h.update(VERSION.encode())
     for root, _dirs, files in ([] if config.FROZEN else sorted(os.walk(config.UI_DIR))):
         for f in sorted(files):
-            if f.endswith((".html", ".js", ".css")):
+            if f.endswith((".html", ".js", ".css", ".json")):
                 p = os.path.join(root, f)
                 h.update(p[len(config.UI_DIR):].encode())
                 try:
@@ -315,6 +321,16 @@ def refresh_ui_cache():
             fh.write(h.hexdigest())
     except OSError:
         pass
+
+
+_prefetch_started = threading.Event()
+
+
+def start_prefetch():
+    """Starts the prefetch once (main() calls it before the start screen so the imports overlap with it)."""
+    if not _prefetch_started.is_set():
+        _prefetch_started.set()
+        threading.Thread(target=prefetch, daemon=True, name="prefetch").start()
 
 
 def prefetch():

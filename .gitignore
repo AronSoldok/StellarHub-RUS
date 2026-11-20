@@ -12,6 +12,9 @@ dist/
 *.spec
 !packaging/StellarHub.spec
 
+# one-request translation bundles (stellarhub/i18n.py build_bundles; the build and every source start make them)
+stellarhub/ui/i18n/_bundle/
+
 # editores y sistema
 .vscode/
 .idea/

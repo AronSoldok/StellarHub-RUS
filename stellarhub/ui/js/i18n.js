@@ -38,15 +38,24 @@ function resolve(pref) { return pref && pref !== 'auto' && CODES.includes(pref) 
 const pref = stored() || 'auto';
 const lang = resolve(pref);
 const dict = Object.create(null);
+/* one synchronous GET: the whole language in one file (ui/i18n/_bundle/<lang>.json, made by stellarhub/i18n.py
+   build_bundles), or null when there is none */
+function readJSON(url) {
+  try {
+    const x = new XMLHttpRequest();
+    x.open('GET', url, false); // synchronous on purpose: see the note at the top
+    x.overrideMimeType('application/json');
+    x.send();
+    if (x.status === 200 || (x.status === 0 && x.responseText)) return JSON.parse(x.responseText);
+  } catch { /* a missing or broken file */ }
+  return null;
+}
 if (lang !== 'en') {
-  for (const area of AREAS) {
-    try {
-      const x = new XMLHttpRequest();
-      x.open('GET', `i18n/${lang}/${area}.json`, false); // synchronous on purpose: see the note at the top
-      x.overrideMimeType('application/json');
-      x.send();
-      if (x.status === 200 || (x.status === 0 && x.responseText)) Object.assign(dict, JSON.parse(x.responseText));
-    } catch { /* a missing or broken file: that area stays in English */ }
+  const all = readJSON(`i18n/_bundle/${lang}.json`);
+  if (all) Object.assign(dict, all);
+  else for (const area of AREAS) { // no bundle: the area files one by one (a missing one stays in English)
+    const part = readJSON(`i18n/${lang}/${area}.json`);
+    if (part) Object.assign(dict, part);
   }
 }
 

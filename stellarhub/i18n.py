@@ -26,6 +26,46 @@ def _ui_dir():
     return os.path.join(base, "stellarhub", "ui", "i18n")
 
 
+def build_bundles(i18n_dir=None):
+    """One file per language with every area merged (ui/i18n/_bundle/<lang>.json), so the page reads its dictionary
+    with ONE request at start instead of twenty (each synchronous request cost ~5 ms: 100 ms of a blank window).
+    Merged in the order i18n.js lists the areas. Only stale or missing bundles are rewritten; the page falls back
+    to the single files when a bundle is absent. Returns how many were written."""
+    base = i18n_dir or _ui_dir()
+    areas = []
+    try:
+        with open(os.path.join(os.path.dirname(base), "js", "i18n.js"), encoding="utf-8") as fh:
+            import re
+            m = re.search(r"const AREAS = \[(.*?)\];", fh.read(), re.S)
+            areas = re.findall(r"'([\w-]+)'", m.group(1)) if m else []
+    except OSError:
+        pass
+    written = 0
+    for lang in CODES:
+        folder = os.path.join(base, lang)
+        if lang == "en" or not os.path.isdir(folder):
+            continue
+        names = [a + ".json" for a in areas if os.path.isfile(os.path.join(folder, a + ".json"))]
+        out = os.path.join(base, "_bundle", lang + ".json")
+        try:
+            newest = max([os.path.getmtime(os.path.join(folder, n)) for n in names] + [os.path.getmtime(os.path.join(os.path.dirname(base), "js", "i18n.js"))])
+            if os.path.isfile(out) and os.path.getmtime(out) >= newest:
+                continue
+            merged = {}
+            for n in names:
+                with open(os.path.join(folder, n), encoding="utf-8") as fh:
+                    merged.update(json.load(fh))
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            tmp = out + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(merged, fh, ensure_ascii=False, separators=(",", ":"))
+            os.replace(tmp, out)
+            written += 1
+        except (OSError, ValueError):
+            pass  # no bundle: the page reads the single files
+    return written
+
+
 def windows_language():
     """Two-letter code of the Windows display language, if StellarHub has it; otherwise English."""
     try:

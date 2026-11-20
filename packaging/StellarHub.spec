@@ -11,11 +11,17 @@
 #     programs, some of them malware, and antivirus machine-learning models match on it.
 #   * everything else in _internal, so the install folder holds just StellarHub.exe and that one folder.
 import os
+import sys
 
 from PyInstaller.utils.hooks import collect_submodules
 
 ROOT = os.path.dirname(SPECPATH)  # noqa: F821  (SPECPATH is provided by PyInstaller)
 ASSETS = os.path.join(ROOT, "build", "assets")
+
+# the page reads each language in one request: make the merged dictionaries before the UI folder is collected
+sys.path.insert(0, ROOT)
+from stellarhub import i18n as _i18n  # noqa: E402
+_i18n.build_bundles(os.path.join(ROOT, "stellarhub", "ui", "i18n"))
 
 a = Analysis(  # noqa: F821
     [os.path.join(ROOT, "run.py")],

@@ -30,6 +30,7 @@ def main():
     if startup.run_command(sys.argv):
         return
     launch = startup.prepare()
+    startup.start_prefetch()  # imports and the tray icon load while the start screen comes up
     startup.show_splash(launch)
     if not startup.acquire(launch):
         return
