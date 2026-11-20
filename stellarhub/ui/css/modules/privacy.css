@@ -121,7 +121,11 @@ html[data-int=min] #v-privacy .pv-radar.scanning~.pv-sw{animation:none;opacity:.
 #v-privacy .pv-fi svg{width:var(--ic-m);height:var(--ic-m)}
 #v-privacy .pv-f.bad .pv-fi{color:var(--accent);background:color-mix(in oklab,var(--accent) 12%,transparent)}
 #v-privacy .pv-f.warn .pv-fi{color:var(--warn);background:color-mix(in oklab,var(--warn) 11%,transparent)}
-#v-privacy .pv-f.pend{opacity:.55}
+/* a row still being checked: the final row's size, muted, with a quiet shimmer line where the description will be (the Home ".pend" class is a different thing) */
+#v-privacy .pv-pend{pointer-events:none}
+#v-privacy .pv-pend .pv-fi{color:var(--faint)}
+#v-privacy .pv-pend .pv-ft b{color:var(--mute);font-weight:400}
+#v-privacy .pv-pend .pv-ft>.sk{display:block;height:10px;margin:6px 0 4px;border-radius:var(--r-xs)}
 #v-privacy .pv-ft{flex:1;min-width:0}
 #v-privacy .pv-ft b{display:block;font-weight:500}
 #v-privacy .pv-ft>span{display:block;font-size:var(--fs-sm);color:var(--mute);margin-top:2px;line-height:1.4;

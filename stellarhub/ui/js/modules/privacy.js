@@ -394,14 +394,14 @@ function paintOverview(first) {
   const live = AREAS.some(a => D[a] && D[a]._stale) || pending.length;
   const head = `<h4 class="pan-h">${t('What we found')} <em>${live ? t('checking…') : upd ? t('updated {when}', { when: ago(upd) }) : ''}</em></h4>`;
   const pend = pending.map(a => ERR[a] ? `<div class="pv-f info"><span class="pv-fi">${ic(AREA_IC[a])}</span><div class="pv-ft"><b>${AREA_N[a]}</b><span>${esc(t("Couldn't read from Windows"))}: ${esc(ERR[a])}</span></div><div class="pv-fa"><button class="btn sm ghost" data-retry="${a}">${t('Try again')}</button></div></div>`
-    : `<div class="pv-f pend"><span class="pv-fi">${ic(AREA_IC[a])}</span><div class="pv-ft"><b>${esc(t('Checking: {area}', { area: AREA_N[a] }))}</b><span class="sk" style="display:block;height:9px;width:${36 + (a.length * 7) % 30}%;margin-top:8px"></span></div></div>`).join('');
+    : `<div class="pv-f pv-pend"><span class="pv-fi">${ic(AREA_IC[a])}</span><div class="pv-ft"><b>${esc(t('Checking: {area}', { area: AREA_N[a] }))}</b><span class="sk" style="width:${36 + (a.length * 7) % 30}%"></span></div></div>`).join('');
   const ok = !fs.length && !pending.length ? `<div class="pv-allok">${ic('shield')}<div><b>${t('Everything is fine')}</b><span>${t('No problems found in protection, permissions, network, tracking or auto-starts.')}</span></div></div>` : '';
   const pass = ps.length ? `<div class="pv-pass${passOpen ? ' open' : ''}"><button class="pv-ph" id="pvPass">${ic('check')}<span>${ps.length === 1 ? t('1 check passed') : t('{n} checks passed', { n: ps.length })}</span>${ic('chevd')}</button><div class="pv-pl"><div>${ps.map(p => `<span class="pv-pi">${ic('check')}${esc(p)}</span>`).join('')}</div></div></div>` : '';
   const html = `${head}<div class="pv-fl">${ok}${fs.map(findingRow).join('')}${pend}</div>${pass}`;
   if (right.dataset.sig === html) return;
   right.dataset.sig = html; right.innerHTML = html;
   /* rows that just arrived slide in; the ones already there stay put */
-  $$('.pv-f', right).forEach((r, i) => { const k = (r.dataset.f || '') + (r.classList.contains('pend') ? ':p' : ''); if (!first && !seenF.has(k) && !r.classList.contains('pend')) anim(r, [{ opacity: 0, transform: 'translate3d(12px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: i * 30, e: EASE.spring }); seenF.add(k); });
+  $$('.pv-f', right).forEach((r, i) => { const k = (r.dataset.f || '') + (r.classList.contains('pv-pend') ? ':p' : ''); if (!first && !seenF.has(k) && !r.classList.contains('pv-pend')) anim(r, [{ opacity: 0, transform: 'translate3d(12px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: i * 30, e: EASE.spring }); seenF.add(k); });
 }
 const seenF = new Set();
 function showPlan() {
