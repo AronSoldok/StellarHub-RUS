@@ -522,7 +522,7 @@ function renderMap(el) {
         <button class="btn sm ghost" data-up>${ic('up')}${T('Up one level')}</button></div>
       <div class="st-cvw pan" data-asm data-nofade><canvas></canvas><div class="st-tip"></div>
         <div class="st-scan"><div class="st-sbox">
-          <div class="st-dial"><div class="st-rg"><i class="st-tr"></i><i class="st-hv r"><i></i></i><i class="st-hv l"><i></i></i><i class="st-co"></i></div><i class="st-hd"></i>
+          <div class="st-dial"><div class="st-rg"><i class="st-tr"></i><i class="st-hv r"><i></i></i><i class="st-hv l"><i></i></i><i class="st-co"></i></div>
             <div class="st-sv"><b class="st-sn">0</b><span>${T('files read')}</span></div></div>
           <div class="st-sp faint">${T('Preparing the scan…')}</div><div class="st-ss muted">&nbsp;</div>
           <button class="btn sm ghost st-cancel" data-cancel>${ic('x')}${T('Cancel')}</button></div></div>
@@ -564,6 +564,7 @@ function renderMap(el) {
   });
   el.addEventListener('pointerover', e => { const lg = e.target.closest('[data-leg]'); TM.hiType = lg ? lg.dataset.leg : null; TM.dirty = true; });
   el.addEventListener('pointerout', e => { if (e.target.closest('[data-leg]') && !e.relatedTarget?.closest?.('[data-leg]')) { TM.hiType = null; TM.dirty = true; } });
+  if (!TM.ready) sideSkeleton();
   if (TM.ready) { $('.st-scan', el).classList.add('done'); relayout(); renderCrumbs(); renderInfo(); renderLegend(); }
 }
 function deepen(n) { while (n.dir && n.kids.length && n.kids[0].dir && n.kids[0].size / n.size > .985) n = n.kids[0]; return n; }
@@ -599,6 +600,12 @@ function renderCrumbs(animate) {
 const whenText = ms => { if (!ms) return T('today, {time}', { time: '09:12' }); const d = new Date(ms); const today = new Date().toDateString() === d.toDateString();
   const time = d.toLocaleTimeString(SH.i18n.locale, { hour: '2-digit', minute: '2-digit' });
   return today ? T('today, {time}', { time }) : T('{date}, {time}', { date: d.toLocaleDateString(SH.i18n.locale, { day: 'numeric', month: 'short' }), time }); };
+/* while the first scan runs the side cards keep their final size, with placeholder lines (never an empty box) */
+function sideSkeleton() {
+  const info = $(`#v-${ID} .st-info`), leg = $(`#v-${ID} .st-leg`);
+  if (info && !info.dataset.k) info.innerHTML = `<div class="st-skel" aria-hidden="true"><div class="st-skh"><i class="sk"></i><div><i class="sk"></i><i class="sk"></i></div></div><i class="sk st-skbig"></i><i class="sk st-skbar"></i>${'<i class="sk st-skln"></i>'.repeat(4)}</div>`;
+  if (leg && !leg.dataset.k) leg.innerHTML = `<div class="st-skel" aria-hidden="true">${'<i class="sk st-skrow"></i>'.repeat(7)}</div>`;
+}
 function renderInfo() {
   const box = $(`#v-${ID} .st-info`); if (!box || !TM.ready) return;
   let n = TM.hover || TM.sel || TM.cur; if (n.free) n = TM.cur;
@@ -612,7 +619,7 @@ function renderInfo() {
       <div class="st-used"><span style="--v:${(disk.used / disk.total).toFixed(4)}"></span></div>`
       : `<h4>${T('Scanned folder')}</h4><div class="st-ih"><span class="st-it" style="--c:${T_(n.dom).c}">${ic('folder')}</span><div><b>${esc(targetName())}</b><span class="faint">${wp(I ? I.target : '')}</span></div></div>
       <div class="st-ib"><div class="big">${fmtB(n.size).replace(/ (\w+)$/, '<small>$1</small>')}</div><span class="muted">${T('{pct} of the drive, which has {free} GB free.', { pct: pct(n.size / disk.total), free: fmtInt(disk.free / GB) })}</span></div>`)
-      + `<dl class="st-dl"><dt>${T('Files')}</dt><dd>${fmtInt(n.fc)}</dd><dt>${T('Folders')}</dt><dd>${fmtInt(n.dirs)}</dd><dt>${T('Scanned')}</dt><dd>${I ? T('{when}, in {secs} s', { when: whenText(I.when), secs: fmt1(I.secs) }) : whenText()}</dd>
+      + `<dl class="st-dl"><dt>${T('Files')}</dt><dd>${fmtInt(n.fc)}</dd><dt>${T('Folders')}</dt><dd>${fmtInt(n.dirs)}</dd><dt>${T('Scanned')}</dt><dd>${I ? (I.secs < .1 ? T('{when}, in under 0.1 s', { when: whenText(I.when) }) : T('{when}, in {secs} s', { when: whenText(I.when), secs: fmt1(I.secs) })) : whenText()}</dd>
       ${I && I.method ? `<dt>${T('Read from')}</dt><dd title="${I.method === 'mft' ? T('The NTFS master file table was read directly (admin mode): every file in seconds. Hard links count once.') : T('Every folder was listed one by one. Admin mode on an NTFS drive reads the file table instead, which is much faster.')}">${I.method === 'mft' ? T('NTFS file table') : T('Folder scan')}</dd>` : ''}
       <dt>${T('Sizes')}</dt><dd title="${T("The map uses each file's real size, as Explorer shows it under Size. Space on disk can differ: small files fill whole clusters, compressed and sparse files take less.")}">${T('File size')}${I && I.alloc ? ` · ${T('{n} GB on disk', { n: fmt1(I.alloc / GB) })}` : ''}</dd>
       ${I && I.errors ? `<dt>${T('No access')}</dt><dd title="${I.admin ? T("Folders Windows won't let even an administrator read.") : T('Admin mode can read more system folders.')}">${T('{n} folders', { n: fmtInt(I.errors) })}</dd>` : ''}</dl>`;
@@ -666,13 +673,13 @@ function setPathText(el, s) {
 /* animated scan: a ring with the real progress; when it finishes, the ring shrinks into the center and the map
    opens from there with a soft wave (everything used to pop in place at once) */
 let scanProg = null;
-/* ring progress, 0 to 1: the two half discs and the head dot are turned by transform (see storage.css); instant = no transition */
+/* ring fill, 0 to 1: two half discs turned by transform behind a ring mask (see storage.css), so the arc grows on the compositor.
+   The transitions are slightly longer than the gap between updates and linear, so the fill glides instead of stepping. */
 function setArc(dial, p, instant) {
   if (!dial) return; p = Math.max(0, Math.min(1, p || 0));
-  const hs = $$('.st-hv>i', dial), hd = $('.st-hd', dial), set = (e, deg) => { e.style.transform = `rotate(${deg.toFixed(2)}deg)`; };
-  const all = [...hs, hd]; if (instant) all.forEach(e => e.style.transition = 'none');
-  set(hs[0], -180 + 360 * Math.min(p, .5)); set(hs[1], 360 * Math.max(0, p - .5)); set(hd, 360 * p);
-  if (instant) { void dial.offsetWidth; all.forEach(e => e.style.transition = ''); }
+  const hs = $$('.st-hv>i', dial); if (instant) hs.forEach(e => e.style.transition = 'none');
+  hs[0].style.transform = `rotate(${(-180 + 360 * Math.min(p, .5)).toFixed(2)}deg)`; hs[1].style.transform = `rotate(${(360 * Math.max(0, p - .5)).toFixed(2)}deg)`;
+  if (instant) { void dial.offsetWidth; hs.forEach(e => e.style.transition = ''); }
 }
 async function runScan() {
   if (TM.scanning) return; TM.scanning = true; scanProg = null;
@@ -683,9 +690,9 @@ async function runScan() {
     SH.rollNumber($('.st-sn', sc), 0, { plain: true }); setPathText($('.st-sp', sc), T('Preparing the scan…')); $('.st-ss', sc).innerHTML = '&nbsp;';
     anim(sc, [{ opacity: 0, transform: 'scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 380, e: EASE.out });
   }
-  const wasReady = TM.ready;
+  const wasReady = TM.ready; if (!TM.root) sideSkeleton();
   if (TM.ready) { TM.ready = false; TM.dirty = true; }
-  const dial = sc && $('.st-dial', sc); setArc(dial, 0, true); if (dial) dial.classList.remove('fin');
+  const dial = sc && $('.st-dial', sc); if (dial) { dial.classList.remove('fin', 'det'); setArc(dial, 0, true); }
   let last = 0, lastT = performance.now(), shown = 0, t;
   const spEl = sc && $('.st-sp', sc), unitEl = sc && $('.st-sv span', sc); if (unitEl) unitEl.textContent = T('files read');
   try {
@@ -694,6 +701,7 @@ async function runScan() {
       if (!sc) return;
       SH.rollNumber($('.st-sn', sc), p.files); setPathText(spEl, p.path || ' ');
       if (unitEl && p.unit) { const u = p.unit === 'entries' ? T('entries read') : T('files read'); if (unitEl.textContent !== u) unitEl.textContent = u; }
+      if (dial && p.frac > 0) { shown = Math.max(shown, p.frac); dial.classList.add('det'); setArc(dial, shown); }
       const now = performance.now();
       if (now - lastT > 500) {
         /* 3 significant digits, so the speed line doesn't flicker on every update */
@@ -701,7 +709,7 @@ async function runScan() {
         SH.rollNumber($('.st-ss', sc), p.method === 'mft' ? T('{n} entries per second · reading the NTFS file table', { n: fmtInt(Math.round(r / m) * m) }) : T('{n} files per second', { n: fmtInt(Math.round(r / m) * m) }));
         last = p.files; lastT = now;
       }
-      shown = Math.max(shown, p.frac || 0); setArc(dial, shown);
+      
     });
   } catch (e) {
     TM.scanning = false; if (sc) sc.classList.remove('busy');
@@ -713,7 +721,7 @@ async function runScan() {
     if (sc) { setPathText($('.st-sp', sc), T("Couldn't scan.")); $('.st-ss', sc).textContent = (e && e.message) || ''; }
     console.error(e); return;
   }
-  setArc(dial, 1);
+  if (dial) { dial.classList.add('det'); setArc(dial, 1); }
   TM.root = t; if (!TM.cur || !isAnc(t, TM.cur)) TM.cur = t;
   TM.scanning = false; TM.ready = true; TM.sel = null; TM.hover = TM.hoverTop = null; relayout();
   /* the map is drawn once, in pieces, before the ring leaves: the reveal below only moves finished layers */

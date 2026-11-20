@@ -203,5 +203,6 @@
   "Scanning… (see {tab})": "Verificando… (veja a aba {tab})",
   "Go to {tab}": "Ir para {tab}",
   "{n} files read": "{n} arquivos lidos",
-  "{n} entries read": "{n} entradas lidas"
+  "{n} entries read": "{n} entradas lidas",
+  "{when}, in under 0.1 s": "{when}, em menos de 0,1 s"
 }

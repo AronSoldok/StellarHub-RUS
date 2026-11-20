@@ -203,5 +203,6 @@
   "Scanning… (see {tab})": "正在扫描…（见“{tab}”标签页）",
   "Go to {tab}": "前往{tab}",
   "{n} files read": "已读取 {n} 个文件",
-  "{n} entries read": "已读取 {n} 个条目"
+  "{n} entries read": "已读取 {n} 个条目",
+  "{when}, in under 0.1 s": "{when}，用时不到 0.1 秒"
 }

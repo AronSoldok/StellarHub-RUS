@@ -203,5 +203,6 @@
   "Scanning… (see {tab})": "Analisi in corso… (vedi la scheda {tab})",
   "Go to {tab}": "Vai a {tab}",
   "{n} files read": "{n} file letti",
-  "{n} entries read": "{n} voci lette"
+  "{n} entries read": "{n} voci lette",
+  "{when}, in under 0.1 s": "{when}, in meno di 0,1 s"
 }

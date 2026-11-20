@@ -291,7 +291,7 @@ html[data-int=min] .sk::after{animation:none}
 .subnav button .bd[hidden]{display:none}
 .subnav .ind{position:absolute;left:0;top:4px;height:34px;border-radius:var(--r-s);background:var(--sheen),var(--raise3);border:1px solid var(--line2);box-shadow:var(--rim),0 6px 14px -8px rgba(0,0,0,.7);will-change:transform,width;pointer-events:none}
 .tabs{position:relative;flex:1;min-height:0}
-.tab{position:absolute;inset:0;overflow:auto;visibility:hidden;padding:2px 4px 14px 2px;scrollbar-gutter:stable}
+.tab{position:absolute;inset:0 -10px;overflow:auto;visibility:hidden;padding:2px 2px 14px 2px;scrollbar-gutter:stable both-edges}
 .tab.fill{padding-bottom:8px}
 
 /* fade on scrollable areas: at the top only once you have scrolled, at the bottom only if there is more content.
@@ -518,6 +518,7 @@ html[data-lite="1"] .sheet,html[data-lite="1"] .pal{box-shadow:0 16px 40px -18px
 .ver-tag:empty{display:none}
 
 /* rolling numbers (SH.rollNumber): every character in its own column; the old one leaves up, the new one arrives from below */
-rn-c{display:inline-block;position:relative;clip-path:inset(-.08em -.12em);white-space:pre}
+rn-c{display:inline-block;position:relative;overflow:clip;clip-path:inset(0);white-space:pre;vertical-align:baseline;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+rn-c[data-d]{width:1ch;text-align:center}
 rn-n{display:inline-block}
-rn-g{position:absolute;left:0;top:0;pointer-events:none}
+rn-g{position:absolute;left:0;right:0;top:0;text-align:inherit;pointer-events:none}

@@ -230,67 +230,70 @@ function countUp(el, to, d = 900, dec = 0) {
 }
 /* rolling number (odometer): when the text changes, each character that differs slides to its next value (the old one
    up and out, the new one in from below; the other way when the number goes down). Compositor only (transform and
-   opacity through WAAPI), so a counter that changes ten times a second stays smooth. Characters that did not change
-   are not touched. Plain text while the lighter mode is on, at intensity "minimum" or when the count-up setting is off.
-   SH.rollNumber(el, 77390, { format: SH.fmtInt }); a string value is shown as it is (first call: no animation). */
+   opacity through WAAPI). Every character sits in a clipped, fixed-width cell, so only the outgoing and the incoming
+   glyph can ever be seen and nothing shifts sideways. A counter that is fed many times a second is coalesced: the
+   element shows the latest value at most every ~200 ms, and any roll still under way is cancelled first, so animations
+   never stack and no stale glyph is left behind. Plain text while the lighter mode is on, at intensity "minimum" or when
+   the count-up setting is off.   SH.rollNumber(el, 77390, { format: SH.fmtInt }); a string is shown as it is. */
+const ROLL_GAP = 240;
 function rollNumber(el, value, o = {}) {
   if (!el) return;
   const num = typeof value === 'number' && isFinite(value);
   const txt = num ? (o.format || fmtInt)(value) : String(value);
-  let rn = el._rn; if (num) el.dataset.v = value;
+  if (num) el.dataset.v = value;
+  let rn = el._rn;
   if (rn && rn.cols && (!rn.cols.length || rn.cols[0].el.parentNode !== el)) rn = el._rn = null; /* something else rewrote the element */
   const plain = state.lite || effInt() === 'min' || state.settings.countUp === false || o.plain || document.hidden;
+  if (rn && rn.timer) { rn.next = { txt, num: num ? value : null, o }; return; } /* a newer value replaces the waiting one */
   if (rn && rn.txt === txt && (rn.cols || el.textContent === txt)) return;
-  const dir = num && rn && rn.num != null && value < rn.num ? -1 : 1;
   if (!rn || plain || !rn.cols) {
-    if (plain) { el.textContent = txt; el._rn = { txt, num: num ? value : null, cols: null }; }
+    if (plain) { el.textContent = txt; el._rn = { txt, num: num ? value : null, cols: null, t: performance.now() }; }
     else { build(el, txt); el._rn.num = num ? value : null; }
     return;
   }
+  const wait = rn.t + ROLL_GAP - performance.now();
+  if (wait > 4) {
+    rn.next = { txt, num: num ? value : null, o };
+    rn.timer = setTimeout(() => { const n = rn.next; rn.timer = 0; rn.next = null; if (el._rn === rn && n) rollNumber(el, n.num != null ? n.num : n.txt, { ...n.o, format: n.num != null ? () => n.txt : undefined }); }, wait);
+    return;
+  }
   const cols = rn.cols, old = rn.txt, nw = Array.from(txt), od = Array.from(old);
-  const dur = (o.d ?? 460) * motion(), dy = dir * (effInt() === 'normal' ? 55 : 80);
-  /* aligned from the right: the units stay under the units when the number grows a digit */
+  const dir = num && rn.num != null && value < rn.num ? -1 : 1, dur = (o.d ?? 230) * motion(), dy = dir * (effInt() === 'normal' ? 60 : 85);
+  const mk = ch => { const e = document.createElement('rn-c'), cur = document.createElement('rn-n'); setCh(e, ch); cur.textContent = ch; e.appendChild(cur); return { el: e, cur, anim: null, ghost: null }; };
   const out = [];
-  for (let i = 1; i <= Math.max(nw.length, od.length); i++) {
-    const a = od[od.length - i], b = nw[nw.length - i], c = cols[od.length - i];
-    if (b === undefined) { if (c) c.el.remove(); continue; }
+  for (let k = 1; k <= Math.max(nw.length, od.length); k++) {
+    const a = od[od.length - k], b = nw[nw.length - k], c = cols[od.length - k];
+    if (b === undefined) { if (c) { c.anim && c.anim.cancel(); c.el.remove(); } continue; }
     if (a === b && c) { out.unshift(c); continue; }
     if (a === undefined || !c) {
-      const col = mk(b); out.unshift(col);
-      col.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur * .6, easing: 'ease-out' });
+      const col = mk(b); el.insertBefore(col.el, el.firstChild); out.unshift(col);
+      col.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur * .7, easing: 'ease-out' });
       continue;
     }
-    /* a roll already under way: just change the character inside it, no restart */
-    const run = c.anim && c.anim.playState === 'running' && (+c.anim.currentTime || 0) < dur * .55;
-    if (run) { c.cur.textContent = b; c.el.dataset.c = b; out.unshift(c); continue; }
-    if (c.anim) { try { c.anim.cancel(); } catch {} } if (c.ghost) { c.ghost.remove(); c.ghost = null; }
-    const g = document.createElement('rn-g'); g.textContent = a; c.el.appendChild(g); c.ghost = g;
-    c.cur.textContent = b; c.el.dataset.c = b;
-    const ease = { duration: dur, easing: EASE.out };
-    const ga = g.animate([{ opacity: 1, transform: 'translate3d(0,0,0)' }, { opacity: 0, transform: `translate3d(0,${-dy}%,0)` }], ease);
-    c.anim = c.cur.animate([{ opacity: 0, transform: `translate3d(0,${dy}%,0)` }, { opacity: 1, transform: 'translate3d(0,0,0)' }], ease);
-    c.anim.onfinish = () => { if (c.ghost === g) { g.remove(); c.ghost = null; } };
+    /* clean state first: whatever was still moving in this cell is dropped */
+    if (c.anim) { try { c.anim.cancel(); } catch {} c.anim = null; }
+    c.el.querySelectorAll('rn-g').forEach(g => g.remove());
+    const g = document.createElement('rn-g'); g.textContent = a; c.el.appendChild(g);
+    c.cur.textContent = b; setCh(c.el, b);
+    const ease = { duration: dur, easing: EASE.out, fill: 'both' };
+    const ga = g.animate([{ opacity: 1, transform: 'translate3d(0,0,0)', offset: 0 }, { opacity: 0, transform: `translate3d(0,${-dy * .6}%,0)`, offset: .42 }, { opacity: 0, transform: `translate3d(0,${-dy}%,0)`, offset: 1 }], ease);
     ga.onfinish = () => g.remove();
+    c.anim = c.cur.animate([{ opacity: 0, transform: `translate3d(0,${dy}%,0)`, offset: 0 }, { opacity: 0, transform: `translate3d(0,${dy * .6}%,0)`, offset: .38 }, { opacity: 1, transform: 'translate3d(0,0,0)', offset: 1 }], ease);
+    c.anim.onfinish = () => { if (c.anim) { try { c.anim.cancel(); } catch {} c.anim = null; } };
     out.unshift(c);
   }
   el.setAttribute('aria-label', txt);
-  /* only the columns' order in the array matters; the DOM already has them in place (new ones are inserted at the start) */
-  rn.cols = out; rn.txt = txt; rn.num = num ? value : null;
-  function mk(ch) {
-    const e = document.createElement('rn-c'), cur = document.createElement('rn-n');
-    e.dataset.c = ch; e.setAttribute('aria-hidden', 'true'); cur.textContent = ch; e.appendChild(cur);
-    const first = el.firstChild; el.insertBefore(e, first);
-    return { el: e, cur, anim: null, ghost: null };
-  }
+  rn.cols = out; rn.txt = txt; rn.num = num ? value : null; rn.t = performance.now();
 }
+const setCh = (e, ch) => { e.dataset.c = ch; if (/\d/.test(ch)) e.dataset.d = ''; else delete e.dataset.d; };
 function build(el, txt) {
   el.textContent = ''; el.setAttribute('aria-label', txt); el.style.whiteSpace = 'nowrap'; /* columns are atomic: never wrap between them */
   const cols = Array.from(txt).map(ch => {
-    const e = document.createElement('rn-c'), cur = document.createElement('rn-n');
-    e.dataset.c = ch; e.setAttribute('aria-hidden', 'true'); cur.textContent = ch; e.appendChild(cur); el.appendChild(e);
+    const e = document.createElement('rn-c'), cur = document.createElement('rn-n'); setCh(e, ch); e.setAttribute('aria-hidden', 'true');
+    cur.textContent = ch; e.appendChild(cur); el.appendChild(e);
     return { el: e, cur, anim: null, ghost: null };
   });
-  el._rn = { txt, num: null, cols };
+  el._rn = { txt, num: null, cols, t: performance.now(), timer: 0, next: null };
 }
 /* shrinks the font size until the text fits on one line */
 function fitText(el, max, min = 14) {

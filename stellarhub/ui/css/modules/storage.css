@@ -43,23 +43,22 @@
 #v-storage .st-scan.done{display:none}
 #v-storage .st-sbox{display:flex;flex-direction:column;align-items:center;gap:6px;width:min(520px,90%);flex:none;contain:layout}
 #v-storage .st-dial{position:relative;width:250px;height:250px;flex:none;display:grid;place-items:center;margin-bottom:4px}
-/* the scan ring is made of layers that only move (transform): the progress is two half discs turned behind a ring mask, the
-   head is a dot turned with them, and a soft comet keeps circling while the scan runs, so it never looks stuck.
-   Nothing repaints per frame: every change is a transform transition on its own layer. */
+/* the scan ring: a quiet track and ONE comet arc (a conic gradient with a long fading tail) turned by transform on its own
+   layer. It is indeterminate on purpose: the real progress is the counter below, which is what the scan can honestly tell. */
 #v-storage .st-rg{position:absolute;inset:30px;border-radius:50%;overflow:hidden;
   -webkit-mask:radial-gradient(closest-side,transparent calc(100% - 7px),#000 calc(100% - 6.2px));mask:radial-gradient(closest-side,transparent calc(100% - 7px),#000 calc(100% - 6.2px))}
-#v-storage .st-rg i{position:absolute;display:block}
-#v-storage .st-tr{inset:0;background:var(--raise2)}
-#v-storage .st-hv{top:0;bottom:0;width:50%;overflow:hidden}
-#v-storage .st-hv.r{right:0} #v-storage .st-hv.l{left:0}
-#v-storage .st-hv>i{top:0;height:100%;width:200%;left:-100%;background:linear-gradient(90deg,transparent 50%,var(--accent2) 50%);transform:rotate(-180deg);transition:transform calc(900ms*var(--f)) linear;will-change:transform}
-#v-storage .st-hv.l>i{transform:rotate(0deg)}
-#v-storage .st-co{inset:0;background:conic-gradient(from 0deg,transparent 0 75%,color-mix(in oklab,var(--accent2) 34%,transparent) 99.4%,color-mix(in oklab,var(--ink) 80%,transparent) 99.4% 100%);opacity:0;transition:opacity calc(400ms*var(--f))}
-#v-storage .st-scan.busy .st-co{opacity:1;animation:stspin calc(2400ms*var(--f) + 600ms) linear infinite;will-change:transform}
-html[data-int=min] #v-storage .st-scan.busy .st-co{animation:none;opacity:0}
+#v-storage .st-rg i{position:absolute;display:block;inset:0}
+#v-storage .st-tr{background:var(--raise2)}
+#v-storage .st-hv{top:0;bottom:0;width:50%;overflow:hidden;opacity:0;transition:opacity calc(300ms*var(--f))}
+#v-storage .st-hv.r{left:auto;right:0} #v-storage .st-hv.l{left:0;right:auto}
+#v-storage .st-hv>i{top:0;bottom:auto;right:auto;height:100%;width:200%;left:-100%;background:linear-gradient(90deg,transparent 50%,var(--accent2) 50%);transform:rotate(-180deg);transition:transform calc(900ms*var(--f)) linear;will-change:transform}
+#v-storage .st-hv.l>i{left:0;transform:rotate(0deg)}
+#v-storage .st-dial.det .st-hv{opacity:1}
+#v-storage .st-dial.det .st-co{display:none}
+#v-storage .st-co{background:conic-gradient(from 0deg,transparent 0 38%,color-mix(in oklab,var(--accent2) 18%,transparent) 62%,var(--accent2) 100%);opacity:0;transition:opacity calc(400ms*var(--f))}
+#v-storage .st-scan.busy .st-co{opacity:1;animation:stspin calc(1400ms*var(--f) + 500ms) linear infinite;will-change:transform}
+html[data-int=min] #v-storage .st-scan.busy .st-co{animation:none;opacity:.6}
 #v-storage .st-dial.fin .st-co{animation-play-state:paused}
-#v-storage .st-hd{position:absolute;inset:30px;transform:rotate(0deg);transition:transform calc(900ms*var(--f)) linear;pointer-events:none}
-#v-storage .st-hd::after{content:"";position:absolute;left:50%;top:3.4px;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:var(--accent2);box-shadow:0 0 0 3px color-mix(in oklab,var(--accent2) 22%,transparent)}
 #v-storage .st-lay{position:absolute;inset:0;pointer-events:none;contain:strict}
 #v-storage .st-lay canvas{position:absolute;display:block;will-change:transform,opacity}
 #v-storage .st-cancel{margin-top:8px;opacity:0;pointer-events:none;transition:opacity calc(200ms*var(--f))}
@@ -109,6 +108,10 @@ html[data-int=min] #v-storage .st-scan.busy .st-co{animation:none;opacity:0}
 #v-storage .st-ss{width:100%;height:17px;line-height:17px;font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;font-variant-numeric:tabular-nums;flex:none}
 #v-storage .st-side{display:flex;flex-direction:column;gap:var(--sp-md);min-height:0}
 #v-storage .st-info{flex:none}
+#v-storage .st-skel{display:flex;flex-direction:column;gap:10px}
+#v-storage .st-skel i{display:block}
+#v-storage .st-skh{display:flex;gap:12px;align-items:center} #v-storage .st-skh>.sk{width:38px;height:38px;flex:none;border-radius:var(--r-m)} #v-storage .st-skh>div{flex:1;display:flex;flex-direction:column;gap:7px} #v-storage .st-skh>div>.sk{height:11px;width:70%} #v-storage .st-skh>div>.sk+.sk{width:45%}
+#v-storage .st-skbig{height:34px;width:62%;margin-top:6px} #v-storage .st-skbar{height:6px} #v-storage .st-skln{height:11px} #v-storage .st-skln:nth-of-type(odd){width:88%} #v-storage .st-skrow{height:24px}
 #v-storage .st-ih{display:flex;gap:var(--sp-md);align-items:flex-start;margin-bottom:12px}
 #v-storage .st-ih>div{min-width:0}
 #v-storage .st-ih>div b{display:block;font-weight:500;word-break:break-word}
