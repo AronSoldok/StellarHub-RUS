@@ -80,8 +80,14 @@ class Job:
             msg["result"] = self.result
         try:
             _emit("job", msg)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[job {self.name}] could not send {kind}: {e}", flush=True)
+            if kind == "end":  # e.g. a result that is not JSON: the UI must still hear that the task is over
+                msg.update(state="error", result={"error": f"The task finished but its result could not be delivered: {e}"})
+                try:
+                    _emit("job", msg)
+                except Exception:
+                    pass
 
     def info(self):
         return {"id": self.id, "name": self.name, "state": self.state, "pct": self.pct, "text": self.text}
@@ -107,7 +113,7 @@ def start(name, fn, *args, **kwargs):
             job.state = "done"
         except Cancelled:
             job.state = "cancelled"
-        except Exception as e:
+        except BaseException as e:  # also SystemExit and the like: the UI must always get an "end"
             job.state = "error"
             job.result = {"error": str(e), "trace": traceback.format_exc(limit=6)}
             print(f"[job {name}]", traceback.format_exc())
