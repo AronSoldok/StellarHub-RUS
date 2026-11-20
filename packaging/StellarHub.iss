@@ -1,11 +1,16 @@
 ﻿; StellarHub installer (Inno Setup 6.7 or later). Built by packaging/build.ps1, which passes the version:
 ;   ISCC.exe /DAppVersion=0.2.0 packaging\StellarHub.iss
 ;
-; What it does, and nothing else: copies StellarHub to Program Files, adds a Start menu shortcut, downloads and installs
-; the WebView2 runtime from Microsoft only if Windows lacks it, applies the choices made on the options page (desktop
-; shortcut, open with Windows, always as administrator, the widget at startup, updates, the app's language), creates the
-; on-demand task StellarHub updates itself with, and registers a normal uninstaller.
+; What it does, and nothing else: copies StellarHub to the user's own programs folder (%LOCALAPPDATA%\Programs, no
+; administrator rights, no Windows prompt) or, if the user picks "for all users", to Program Files; adds a Start menu
+; shortcut, downloads and installs the WebView2 runtime from Microsoft only if Windows lacks it, applies the choices made
+; on the options page (desktop shortcut, open with Windows, always as administrator, the widget at startup, updates, the
+; app's language), and registers a normal uninstaller. It creates no scheduled task: a per-user install updates itself
+; without one, and an all-users install makes its update task the first time it updates (Windows asks once, see
+; stellarhub/engine/selfupdate.py).
 ; The uninstaller also removes what the app registered itself (its scheduled tasks and "open with Windows" entry).
+; /ALLUSERS and /CURRENTUSER choose the mode from the command line (silent installs default to the current user); an
+; existing all-users install is upgraded in place whichever is given (UsePreviousPrivileges).
 ;
 ; /SELFUPDATE=<path of state.json> is how StellarHub's updater runs it (see stellarhub/engine/selfupdate.py), with
 ; /SILENT: Setup shows only its small progress window (no pages, no questions). It writes "done" or "failed" to that
@@ -50,9 +55,12 @@ DisableWelcomePage=no
 ShowLanguageDialog=no
 LanguageDetectionMethod=uilanguage
 UsePreviousLanguage=no
-PrivilegesRequired=admin
-; /CURRENTUSER installs for one user without administrator rights (used by the automated tests)
-PrivilegesRequiredOverridesAllowed=commandline
+; per-user by default (no administrator rights, no UAC, installs into %LOCALAPPDATA%\Programs): the setup offers
+; "Install for me only (recommended)" or "for all users", and /ALLUSERS or /CURRENTUSER decide silently. An install
+; that already exists keeps its mode, so an all-users install upgrades in place.
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog commandline
+UsePreviousPrivileges=yes
 UsedUserAreasWarning=no
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -732,13 +740,8 @@ begin
       Log('Installing for this user only: StellarHub sets up its administrator task the first time it opens.');
   end;
 
-  { the task StellarHub updates itself with: it runs StellarHub.exe --self-update with administrator rights, and only
-    when the app starts it (it has no schedule). Installing for one user needs no task. }
-  if IsAdminInstallMode then
-  begin
-    Log('Update task: on');
-    Exec(Exe, '--update-task on', '', SW_HIDE, ewWaitUntilTerminated, Code);
-  end;
+  { no scheduled task is made here any more: a per-user install updates itself directly, and an all-users install
+    makes its update task the first time the updater runs elevated (stellarhub/engine/selfupdate.py) }
 
   { Windows scans every new file the first time it runs; doing that here, with the progress window up, keeps the
     first real start from taking 15-20 s with nothing on screen }

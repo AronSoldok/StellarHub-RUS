@@ -26,6 +26,10 @@ internet, the server sees your IP address.
 | Only when you run the network test in Benchmark Testing | `speed.cloudflare.com` | Measures download and upload speed | It never runs by itself |
 | Only when you click "search the web" in Program Remover | Your browser opens `www.google.com` | Searching how to uninstall that program | Don't click it |
 
+The installer makes no scheduled task, and by default StellarHub installs for you only (no administrator rights). If
+you chose *all users*, the first update asks Windows once and then creates one on-demand task, *StellarHub\Update*,
+which only runs StellarHub's own updater when an update is started (it has no schedule); uninstalling removes it.
+
 When it is installed, if Windows lacks the Microsoft Edge WebView2 Runtime, the installer downloads it from Microsoft
 (`go.microsoft.com`) and only runs it if Windows confirms it is signed by Microsoft.
 

@@ -291,8 +291,50 @@ def wifi_ssid():
     return None
 
 
+def _metered_com():
+    """The cost of the internet connection from Windows' network list manager (INetworkCostManager::GetCost), a COM
+    call from this process: the same answer as the WinRT NetworkCostType, without starting powershell.exe. True when
+    the connection is fixed or variable (metered), False when unrestricted or unknown; raises if COM does not answer."""
+    import uuid
+    from ctypes import POINTER, byref, c_void_p, wintypes
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("a", ctypes.c_uint32), ("b", ctypes.c_uint16), ("c", ctypes.c_uint16), ("d", ctypes.c_ubyte * 8)]
+
+    def guid(text):
+        u, g = uuid.UUID(text), GUID()
+        g.a, g.b, g.c = u.time_low, u.time_mid, u.time_hi_version
+        g.d[:] = u.bytes[8:]
+        return g
+    ole32 = ctypes.windll.ole32
+    ole32.CoCreateInstance.argtypes = [POINTER(GUID), c_void_p, wintypes.DWORD, POINTER(GUID), POINTER(c_void_p)]
+    ole32.CoCreateInstance.restype = ctypes.c_long
+    init = ole32.CoInitializeEx(None, 0) & 0xFFFFFFFF  # S_OK / S_FALSE: ours to undo; a different mode already set: fine
+    mgr = c_void_p()
+    try:
+        # CLSID_NetworkListManager, IID_INetworkCostManager
+        hr = ole32.CoCreateInstance(byref(guid("DCB00C01-570F-4A9B-8D69-199FDBA5723B")), None, 1 | 4,
+                                    byref(guid("DCB00008-570F-4A9B-8D69-199FDBA5723B")), byref(mgr))
+        if hr != 0 or not mgr:
+            raise OSError(f"CoCreateInstance 0x{hr & 0xFFFFFFFF:08x}")
+        vtbl = ctypes.cast(mgr, POINTER(POINTER(c_void_p)))[0]
+        cost = wintypes.DWORD(0)
+        hr = ctypes.WINFUNCTYPE(ctypes.c_long, c_void_p, POINTER(wintypes.DWORD), c_void_p)(vtbl[3])(mgr, byref(cost), None)
+        ctypes.WINFUNCTYPE(ctypes.c_ulong, c_void_p)(vtbl[2])(mgr)  # Release
+        if hr != 0:
+            raise OSError(f"GetCost 0x{hr & 0xFFFFFFFF:08x}")
+        return bool(cost.value & (0x2 | 0x4))  # NLM_CONNECTION_COST_FIXED | _VARIABLE
+    finally:
+        if init in (0, 1):
+            ole32.CoUninitialize()
+
+
 def metered():
     """True/False, or None if Windows didn't answer."""
+    try:
+        return _metered_com()
+    except Exception:
+        pass  # (no COM answer: ask Windows through PowerShell, as before)
     try:
         out = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
                               "[void][Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime];"

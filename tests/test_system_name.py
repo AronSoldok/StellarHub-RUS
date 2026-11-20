@@ -9,9 +9,7 @@ def build(**fields):
     r = {"maker": "", "model": "", "family": "", "chassis": [3], "pcType": 1, "os": "Microsoft Windows 11 Pro", "osVer": "25H2",
          "cpu": {"name": "CPU"}, "gpus": [], "ram": [], "disks": [], "nets": [], "audio": [], "monitors": []}
     r.update(fields)
-    def fake(script, *a, **k):  # the system disk and the adapters are asked apart from the main script
-        return r.get("sysDisk") if script == system.SCRIPT_SYSDISK else r["nets"] if script == system.SCRIPT_NETS else r
-    with mock.patch.object(system, "ps_json", fake), mock.patch.object(system, "_save", lambda *a: None, create=True):
+    with mock.patch.object(system, "_query", lambda: r), mock.patch.object(system, "_save", lambda *a: None, create=True):
         return system._build()
 
 

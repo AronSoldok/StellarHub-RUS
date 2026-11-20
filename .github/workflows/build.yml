@@ -44,6 +44,21 @@ jobs:
           Start-Process $f -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/CURRENTUSER', "/DIR=$env:RUNNER_TEMP\inno" -Wait
           "STELLARHUB_ISCC=$env:RUNNER_TEMP\inno\ISCC.exe" >> $env:GITHUB_ENV
 
+      # PyInstaller's prebuilt bootloader is the same bytes in thousands of programs (some of them malware) and
+      # antivirus machine-learning models flag programs that match it. Releases compile their own from PyInstaller's
+      # source distribution with the runner's MSVC: packaging/build.ps1 installs `pyinstaller==<pinned>` with
+      # PYINSTALLER_COMPILE_BOOTLOADER=1 and --no-binary pyinstaller, then packaging/check_bootloader.py compares the
+      # resulting run.exe / runw.exe with the ones in the official wheel and the build FAILS if they are identical
+      # (a compile that silently fell back to the prebuilt files).
+      - name: Compile PyInstaller's bootloader (MSVC check)
+        shell: pwsh
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw 'No MSVC C++ compiler on the runner: the bootloader cannot be compiled' }
+          "Using the C++ tools in $vs"
+          "STELLARHUB_COMPILE_BOOTLOADER=1" >> $env:GITHUB_ENV
+          "STELLARHUB_REQUIRE_COMPILED_BOOTLOADER=1" >> $env:GITHUB_ENV
+
       - name: Build (tests, StellarHub.exe, installer)
         shell: powershell
         run: |
@@ -54,6 +69,13 @@ jobs:
         if: failure()
         shell: pwsh
         run: Get-ChildItem build\logs | ForEach-Object { "===== $($_.Name)"; Get-Content $_.FullName -Tail 60 }
+
+      - name: Verify the compiled bootloader
+        shell: pwsh
+        run: |
+          # build.ps1 already refuses a fallback; this is the independent second look (and goes in the job log)
+          .\.buildenv\Scripts\python.exe packaging\check_bootloader.py
+          if ($LASTEXITCODE -ne 0) { throw 'The release was built with the prebuilt PyInstaller bootloader' }
 
       - name: Keep the installer
         id: upload

@@ -128,7 +128,8 @@ class Manifest(unittest.TestCase):
         self.assertNotIn(PUB, su.TRUSTED_KEYS)
 
 
-class CheckAndDownload(unittest.TestCase):
+class ServedUpdates(unittest.TestCase):
+    """A local web server plays GitHub (serve), and the updater runs against it (run_it)."""
     NAME = "StellarHub-Setup-9.9.9.exe"
 
     def setUp(self):
@@ -156,6 +157,13 @@ class CheckAndDownload(unittest.TestCase):
             self.addCleanup(p.stop)
         return s
 
+    def run_it(self):
+        with mock.patch.object(su.subprocess, "Popen") as popen:
+            code = su.run_updater()
+        return code, su.state(), popen
+
+
+class CheckAndDownload(ServedUpdates):
     def test_check_reports_a_newer_version(self):
         self.serve()
         r = su.check()
@@ -178,11 +186,6 @@ class CheckAndDownload(unittest.TestCase):
         with mock.patch.dict(os.environ, {"STELLARHUB_UPDATE_URL": "http://127.0.0.1:9/none.json"}):
             r = su.check()
         self.assertFalse(r["ok"])
-
-    def run_it(self):
-        with mock.patch.object(su.subprocess, "Popen") as popen:
-            code = su.run_updater()
-        return code, su.state(), popen
 
     def assert_refused(self, code, st, popen):
         self.assertNotEqual(code, 0)
@@ -435,3 +438,99 @@ class PortableFinish(unittest.TestCase):
         with mock.patch.object(su, "install_dir", lambda: os.path.join(root, "elsewhere")), mock.patch.object(su.subprocess, "Popen") as popen:
             self.assertEqual(su.finish_update(dst, "1"), 2)
         popen.assert_not_called()
+
+
+class InstallModes(ServedUpdates):
+    """Per-user installs update directly; an all-users install asks Windows once and then has its task."""
+
+    def frozen(self, per_machine, admin, task, portable=False):
+        for p in (mock.patch.object(su, "FROZEN", True), mock.patch.object(su, "_portable", lambda: portable),
+                  mock.patch.object(su, "per_machine", lambda: per_machine), mock.patch.object(su, "_admin", lambda: admin),
+                  mock.patch.object(su, "_writable", lambda d: not per_machine), mock.patch.object(su, "_task_exists", lambda: task)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_a_per_user_install_updates_directly_with_no_task_and_no_prompt(self):
+        self.frozen(per_machine=False, admin=False, task=False)
+        self.assertEqual(su.mode(), "direct")
+        with mock.patch.object(su.subprocess, "Popen") as popen, mock.patch.object(su.subprocess, "run") as run, \
+                mock.patch.object(su.ctypes.windll.shell32, "ShellExecuteW") as uac:
+            r = su.start(allow_uac=False)
+        self.assertEqual((r["ok"], r["mode"]), (True, "direct"))
+        self.assertEqual(popen.call_args[0][0][1:], ["--self-update"])
+        run.assert_not_called()  # no schtasks
+        uac.assert_not_called()
+
+    def test_an_all_users_install_modes(self):
+        self.frozen(per_machine=True, admin=False, task=False)
+        self.assertEqual(su.mode(), "uac")
+        with mock.patch.object(su, "_task_exists", lambda: True):
+            self.assertEqual(su.mode(), "task")
+        with mock.patch.object(su, "_admin", lambda: True):
+            self.assertEqual(su.mode(), "direct")
+
+    def test_the_background_download_never_asks_windows(self):
+        self.frozen(per_machine=True, admin=False, task=False)
+        with mock.patch.object(su.ctypes.windll.shell32, "ShellExecuteW") as uac, mock.patch.object(su.subprocess, "Popen") as popen:
+            self.assertFalse(su.prefetch()["ok"])  # a new-features version shows the update window instead
+            self.assertFalse(os.path.exists(su._prefetch_flag()))
+            self.assertFalse(su.start(allow_uac=False)["ok"])
+        uac.assert_not_called()
+        popen.assert_not_called()
+
+    def test_a_click_on_update_asks_windows_once(self):
+        self.frozen(per_machine=True, admin=False, task=False)
+        with mock.patch.object(su.ctypes.windll.shell32, "ShellExecuteW", return_value=42) as uac:
+            r = su.start(allow_uac=True)
+        self.assertEqual((r["ok"], r["mode"]), (True, "uac"))
+        self.assertEqual(uac.call_args[0][1], "runas")
+        self.assertEqual(uac.call_args[0][3], "--self-update")
+
+    def test_the_staged_update_at_start_may_ask_windows(self):
+        self.frozen(per_machine=True, admin=False, task=False)
+        with mock.patch.object(su, "staged", lambda: "9.9.9"), mock.patch.object(su, "start", return_value={"ok": False}) as start:
+            self.assertFalse(su.apply_staged_at_start())
+        start.assert_called_once_with(allow_uac=True)
+
+    def test_the_elevated_updater_of_an_all_users_install_makes_the_task_once(self):
+        self.serve()
+        self.frozen(per_machine=True, admin=True, task=False)
+        with mock.patch.object(su, "ensure_task", return_value=True) as ensure:
+            code, st, popen = self.run_it()
+        self.assertEqual((code, st["st"]), (0, "installing"))
+        ensure.assert_called_once_with()
+        self.assertIn("/ALLUSERS", popen.call_args[0][0])
+
+    def test_an_existing_task_is_left_alone_and_a_per_user_install_never_gets_one(self):
+        self.serve()
+        self.frozen(per_machine=True, admin=True, task=True)
+        with mock.patch.object(su, "ensure_task") as ensure:
+            self.run_it()
+        ensure.assert_not_called()
+        self.frozen(per_machine=False, admin=True, task=False)  # a per-user copy running as administrator
+        with mock.patch.object(su, "ensure_task") as ensure:
+            code, st, popen = self.run_it()
+        ensure.assert_not_called()
+        self.assertIn("/CURRENTUSER", popen.call_args[0][0])
+
+    def test_a_task_that_cannot_be_made_does_not_stop_the_update(self):
+        self.serve()
+        self.frozen(per_machine=True, admin=True, task=False)
+        with mock.patch.object(su, "ensure_task", side_effect=OSError("no")):
+            code, st, popen = self.run_it()
+        self.assertEqual((code, st["st"]), (0, "installing"))
+
+    def test_the_uninstaller_only_removes_the_tasks_that_start_this_copy(self):
+        from stellarhub import elevation, startup
+        with mock.patch.object(elevation, "task_opens_this_copy", lambda name: False), \
+                mock.patch.object(su, "_task_exists", lambda: False), mock.patch("subprocess.run") as run, \
+                mock.patch.object(su, "delete_task") as delete, mock.patch.object(startup.autostart, "remove_if_ours"):
+            startup.uninstall_cleanup()
+        run.assert_not_called()  # another install's tasks (a per-user copy next to an all-users one) stay
+        delete.assert_not_called()
+        with mock.patch.object(elevation, "task_opens_this_copy", lambda name: name == elevation.ADMIN_TASK), \
+                mock.patch.object(su, "_task_exists", lambda: True), mock.patch("subprocess.run") as run, \
+                mock.patch.object(su, "delete_task") as delete, mock.patch.object(startup.autostart, "remove_if_ours"):
+            startup.uninstall_cleanup()
+        self.assertEqual([c[0][0][3] for c in run.call_args_list], [elevation.ADMIN_TASK])
+        delete.assert_called_once_with()

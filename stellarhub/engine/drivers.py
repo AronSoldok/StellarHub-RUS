@@ -110,12 +110,37 @@ Get-CimInstance Win32_PnPSignedDriver -Property DeviceName,DeviceClass,DriverPro
 """
 
 
+def _inventory_wmi():
+    """The rows _INV returns, from two WMI queries inside this process (no powershell.exe)."""
+    from . import wmi
+    state = {e["DeviceID"]: e["ConfigManagerErrorCode"] for e in wmi.query(r"root\cimv2", "Win32_PnPEntity", ["DeviceID", "ConfigManagerErrorCode"])}
+    rows = []
+    for d in wmi.query(r"root\cimv2", "Win32_PnPSignedDriver", ["DeviceName", "DeviceClass", "DriverProviderName", "DriverVersion",
+                                                                   "DriverDate", "InfName", "HardWareID", "DeviceID", "IsSigned",
+                                                                   "Manufacturer"]):
+        if not d["DeviceName"] or not d["DriverVersion"]:
+            continue
+        when = wmi.cim_datetime(d["DriverDate"])
+        rows.append({"n": d["DeviceName"], "c": d["DeviceClass"] or "", "p": d["DriverProviderName"], "v": d["DriverVersion"],
+                     "d": when.strftime("%Y-%m-%d") if when else "", "inf": d["InfName"], "hw": d["HardWareID"], "id": d["DeviceID"],
+                     "s": d["IsSigned"], "m": d["Manufacturer"], "e": state.get(d["DeviceID"])})
+    return rows
+
+
+def _inventory():
+    try:
+        return _inventory_wmi()
+    except Exception as e:
+        print("[drivers] WMI failed, using PowerShell:", e, flush=True)
+    return ps_json(_INV, timeout=120, as_list=True) or []
+
+
 def list_drivers(fresh=False, max_age=120):
     """Installed drivers. inbox=True for the ones that ship with Windows (dated 2006-06-21, provider Microsoft)."""
     with _lock:
         if not fresh and _cache["drivers"] and time.time() - _cache["at"] < max_age:
             return _cache["drivers"]
-        rows = ps_json(_INV, timeout=120, as_list=True) or []
+        rows = _inventory()
         out = []
         for i, r in enumerate(rows):
             inbox = (r.get("p") or "").lower() == "microsoft" and (r.get("d") or "").startswith("2006-06-2")

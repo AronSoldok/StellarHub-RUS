@@ -3,10 +3,15 @@
 How an update runs (the same steps for every kind of install):
   1. The app asks GitHub for the latest release (check) and shows what is new.
   2. The user says yes: the app starts the updater, which is StellarHub.exe itself with --self-update:
-       - installed for one user (in %LOCALAPPDATA%) or already running as administrator: started directly;
-       - installed for everyone (in Program Files): through the "StellarHub\\Update" scheduled task the installer
-         created, which runs it with administrator rights without the Windows prompt; if the task is not there,
-         Windows asks once.
+       - installed for one user (the default, in %LOCALAPPDATA%\\Programs) or already running as administrator:
+         started directly ("direct": no administrator rights, no task, no prompt, nothing to set up);
+       - installed for everyone (in Program Files) with the "StellarHub\\Update" scheduled task: through the task,
+         which runs it with administrator rights without the Windows prompt ("task");
+       - installed for everyone without the task (the installer no longer creates it): Windows asks ONCE ("uac"),
+         and the elevated updater then creates the task (ensure_task), so every later update is silent. The prompt
+         only ever appears when the user clicks Update or at the start-time staged install; the background download
+         (prefetch) never triggers it, so a new-features version on such an install shows the update window
+         instead of being staged silently.
   3. The updater downloads the installer into <install folder>\\update (in Program Files only administrators can
      write there), checks its signature (see below) and says "ready" in
      <install folder>\\update\\state.json, which the app reads to show the progress.
@@ -315,8 +320,9 @@ def pick(rel, portable=None):
 
 # ---------------------------------------------------------------- for the app
 def mode():
-    """How this copy updates: source (from the source code: no installer), direct (no administrator rights needed,
-    or it already has them), task (Program Files, through the scheduled task) or uac (Program Files, Windows asks)."""
+    """How this copy updates: source (from the source code: no installer), direct (a per-user install, which needs
+    no administrator rights, or a copy that already has them), task (installed for all users, through the scheduled
+    task) or uac (installed for all users, no task yet: Windows asks once and the updater then makes the task)."""
     if not FROZEN:
         return "source"
     if _portable():
@@ -489,7 +495,7 @@ def after_update():
     return note
 
 
-# ---------------------------------------------------------------- the scheduled task (made by the installer)
+# ---------------------------------------------------------------- the scheduled task (made by the first elevated update)
 def _task_exists():
     try:
         r = subprocess.run(["schtasks", "/query", "/tn", TASK, "/xml"], capture_output=True, timeout=10, creationflags=NO_WINDOW)
@@ -504,12 +510,23 @@ def _task_exists():
 
 
 def ensure_task():
-    """--update-task on (the installer, as administrator): a task that runs this StellarHub.exe --self-update with
-    administrator rights for the user who installs, started on demand only (never on a schedule). Made from XML so
-    it also runs on battery (see stellarhub/schtask.py)."""
+    """A task that runs this StellarHub.exe --self-update with administrator rights for the user who made it, started
+    on demand only (never on a schedule). Made by the elevated updater of an all-users install (the first update asks
+    Windows once; this is what makes the later ones silent) and by --update-task on. Made from XML so it also runs
+    on battery (see stellarhub/schtask.py)."""
     from .. import schtask
     return schtask.create(TASK, sys.executable, "--self-update", "Installs StellarHub updates without the Windows "
                           "prompt, when StellarHub asks for it.", multi="IgnoreNew", limit="PT2H")
+
+
+def _make_task_if_missing():
+    """Run by the elevated updater of an all-users install: makes the update task if it isn't there (the installer no
+    longer makes it), so the next updates need no Windows prompt. Never stops the update if it fails."""
+    try:
+        if not _task_exists():
+            print("[update] update task:", "created" if ensure_task() else "could not be created", flush=True)
+    except Exception as e:
+        print("[update] update task:", e, flush=True)
 
 
 def delete_task():
@@ -605,6 +622,8 @@ def run_updater():
         return 3
     try:
         _write_state(st="checking")
+        if per_machine() and _admin() and not _portable():
+            _make_task_if_missing()  # the first update of an all-users install: Windows asked once, never again
         info = pick(_latest())
         if not info or not newer(info["ver"], VERSION):
             _write_state(st="uptodate", ver=VERSION)
@@ -746,8 +765,8 @@ def apply_staged_at_start(say=None, timeout=120):
         return False
     if say:
         say(tr("Updating to {v}…", v=ver))
-    r = start(allow_uac=False)
-    if not r.get("ok") or r.get("mode") == "uac":
+    r = start(allow_uac=True)  # an all-users install without the task asks Windows once (the user staged this update)
+    if not r.get("ok"):
         return False
     at, end = r.get("at") or time.time(), time.monotonic() + timeout
     while time.monotonic() < end:

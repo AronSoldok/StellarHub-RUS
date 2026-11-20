@@ -16,13 +16,50 @@ from ctypes import wintypes
 import psutil
 
 from ..i18n import tc, tr
+from . import wmi
 from .ps import ps_json, gather
 
 EXPORTS = {"pc_info", "pc_info_fresh", "displays", "screen_thumb", "counts", "health"}
 
 
 def health():
-    """Real summary for Home: antivirus, devices with errors and the latest restore point."""
+    """Real summary for Home: antivirus, devices with errors and the latest restore point. Asked to WMI inside this
+    process; the PowerShell script below only runs if WMI (System.Management through pythonnet) is not available."""
+    try:
+        return _health_wmi()
+    except Exception as e:
+        print("[health] WMI failed, using PowerShell:", e, flush=True)
+    return _health_ps()
+
+
+def _health_wmi():
+    def rows(ns, cls, props=None, where=None):
+        try:
+            return wmi.query(ns, cls, props, where)
+        except wmi.WmiError:
+            return None  # the PowerShell version used -ErrorAction SilentlyContinue: a missing class is "no data"
+    mp = rows(r"root\Microsoft\Windows\Defender", "MSFT_MpComputerStatus", ["RealTimeProtectionEnabled", "AntivirusSignatureAge"])
+    mp = mp[0] if mp else None
+    av = rows(r"root\SecurityCenter2", "AntiVirusProduct", ["displayName"]) or []
+    err = [e for e in (rows(r"root\cimv2", "Win32_PnPEntity", ["Name", "ConfigManagerErrorCode"], "ConfigManagerErrorCode<>0") or [])
+           if e["ConfigManagerErrorCode"] != 22]
+    restore = None
+    try:  # Get-ComputerRestorePoint: needs administrator rights (access denied otherwise: no restore point is reported)
+        pts = wmi.query(r"root\default", "SystemRestore", ["SequenceNumber", "CreationTime"])
+        if pts:
+            when = wmi.cim_datetime(max(pts, key=lambda x: x["SequenceNumber"])["CreationTime"])
+            if when:
+                restore = when.strftime("%Y-%m-%dT%H:%M:%S.") + f"{when.microsecond * 10:07d}"  # like .ToString('o')
+    except wmi.WmiError:
+        pass
+    return {"defender": bool(mp["RealTimeProtectionEnabled"]) if mp else None,
+            "sigAge": mp["AntivirusSignatureAge"] if mp else None,
+            "antivirus": [a["displayName"] for a in av], "deviceErrors": len(err),
+            "errorNames": [e["Name"] for e in err[:5]], "restore": restore,
+            "restoreAccess": bool(ctypes.windll.shell32.IsUserAnAdmin())}
+
+
+def _health_ps():
     r = ps_json(r"""
 $mp = Get-CimInstance -Namespace root/Microsoft/Windows/Defender -ClassName MSFT_MpComputerStatus -ErrorAction SilentlyContinue
 $err = @(Get-CimInstance Win32_PnPEntity -Filter 'ConfigManagerErrorCode<>0' -ErrorAction SilentlyContinue | Where-Object { $_.ConfigManagerErrorCode -ne 22 })
@@ -157,8 +194,131 @@ SCRIPT_SYSDISK = r"(Get-Partition -DriveLetter $env:SystemDrive[0] -ErrorAction 
 SCRIPT_NETS = r"""@(Get-NetAdapter -Physical -ErrorAction SilentlyContinue | Where-Object Status -eq 'Up' | ForEach-Object { [pscustomobject]@{ name=$_.InterfaceDescription; speed=$_.LinkSpeed; media="$($_.PhysicalMediaType)" } })"""
 
 
+# Windows' own names for the numbers WMI gives (what Get-PhysicalDisk and Get-NetAdapter print)
+_MEDIA = {0: "Unspecified", 3: "HDD", 4: "SSD", 5: "SCM"}
+_BUS = {0: "Unknown", 1: "SCSI", 2: "ATAPI", 3: "ATA", 4: "1394", 5: "SSA", 6: "Fibre Channel", 7: "USB", 8: "RAID", 9: "iSCSI",
+        10: "SAS", 11: "SATA", 12: "SD", 13: "MMC", 14: "Virtual", 15: "File Backed Virtual", 16: "Spaces", 17: "NVMe",
+        18: "SCM", 19: "UFS"}
+_HEALTH = {0: "Healthy", 1: "Warning", 2: "Unhealthy", 5: "Unknown"}
+_PHYS = {0: "Unspecified", 1: "Wireless LAN", 2: "Cable Modem", 3: "Phone Line", 4: "Power Line", 5: "DSL", 6: "Fibre Channel",
+         7: "1394", 8: "Wireless WAN", 9: "Native 802.11", 10: "Bluetooth", 11: "Infiniband", 12: "WiMax", 13: "UWB",
+         14: "802.3", 15: "802.5", 16: "Infiniband over Ethernet", 17: "Native Wireless WAN", 18: "Native 802.15.4"}
+
+
+def _link_speed(bps):
+    """Get-NetAdapter's LinkSpeed text: 1201000000 -> "1.2 Gbps", 100000000 -> "100 Mbps", 0 -> "0 bps"."""
+    bps = int(bps or 0)
+    for unit, name in ((10 ** 9, "Gbps"), (10 ** 6, "Mbps"), (10 ** 3, "Kbps")):
+        if bps >= unit:
+            return f"{round(bps / unit, 1):g} {name}"
+    return f"{bps} bps"
+
+
+def _text(v):
+    return "" if v is None else str(v)
+
+
+def _query_wmi():
+    """What the PowerShell scripts below return, as dicts, from WMI queries inside this process (no powershell.exe)."""
+    def q(cls, props, where=None, ns=r"root\cimv2"):
+        return wmi.query(ns, cls, props, where)
+
+    def soft(cls, props, ns):  # the PowerShell version used -ErrorAction SilentlyContinue for these
+        try:
+            return wmi.query(ns, cls, props)
+        except wmi.WmiError:
+            return []
+    cs = q("Win32_ComputerSystem", ["Manufacturer", "Model", "SystemFamily", "PCSystemType"])[0]
+    en = (q("Win32_SystemEnclosure", ["ChassisTypes"]) or [{}])[0]
+    os_ = q("Win32_OperatingSystem", ["Caption", "BuildNumber", "InstallDate"])[0]
+    bb = (q("Win32_BaseBoard", ["Product", "Manufacturer"]) or [{}])[0]
+    cpu = (q("Win32_Processor", ["Name", "NumberOfCores", "NumberOfLogicalProcessors", "MaxClockSpeed", "L2CacheSize",
+                                  "L3CacheSize", "SocketDesignation"]) or [{}])[0]
+    bios = (q("Win32_BIOS", ["SMBIOSBIOSVersion", "ReleaseDate"]) or [{}])[0]
+    disp = ubr = None
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion") as k:
+            for name in ("DisplayVersion", "UBR"):
+                try:
+                    v = winreg.QueryValueEx(k, name)[0]
+                except OSError:
+                    v = None
+                if name == "UBR":
+                    ubr = v
+                else:
+                    disp = v
+    except OSError:
+        pass
+    WMI_NS = r"root\wmi"
+    mid = soft("WmiMonitorID", ["InstanceName", "UserFriendlyName", "ManufacturerName", "ProductCodeID"], WMI_NS)
+
+    def chars(codes):  # the EDID strings are arrays of character codes, padded with zeros
+        return "".join(chr(c) for c in (codes or []) if c)
+    mons = [{"inst": m["InstanceName"], "name": chars(m["UserFriendlyName"]), "maker": chars(m["ManufacturerName"]),
+             "code": chars(m["ProductCodeID"])} for m in mid]
+    sizes = [{"inst": m["InstanceName"], "w": m["MaxHorizontalImageSize"], "h": m["MaxVerticalImageSize"]}
+             for m in soft("WmiMonitorBasicDisplayParams", ["InstanceName", "MaxHorizontalImageSize", "MaxVerticalImageSize"], WMI_NS)]
+    conn = [{"inst": m["InstanceName"], "tech": m["VideoOutputTechnology"]}
+            for m in soft("WmiMonitorConnectionParams", ["InstanceName", "VideoOutputTechnology"], WMI_NS)]
+    arrays = [a["MemoryDevices"] for a in q("Win32_PhysicalMemoryArray", ["MemoryDevices"]) if a["MemoryDevices"] is not None]
+    pd = wmi.query(r"root\Microsoft\Windows\Storage", "MSFT_PhysicalDisk",
+                   ["DeviceId", "FriendlyName", "MediaType", "BusType", "Size", "HealthStatus"])
+    disks = [{"id": _text(d["DeviceId"]), "name": d["FriendlyName"], "media": _MEDIA.get(d["MediaType"], _text(d["MediaType"])),
+              "bus": _BUS.get(d["BusType"], _text(d["BusType"])), "size": d["Size"],
+              "health": _HEALTH.get(d["HealthStatus"], _text(d["HealthStatus"]))}
+             for d in sorted(pd, key=lambda d: int(d["DeviceId"]) if str(d["DeviceId"]).isdigit() else 0)]
+    return {"maker": cs["Manufacturer"], "model": cs["Model"], "family": cs["SystemFamily"],
+            "chassis": list(en.get("ChassisTypes") or []), "pcType": cs["PCSystemType"], "os": os_["Caption"], "osVer": disp,
+            "build": os_["BuildNumber"], "ubr": ubr, "installDate": os_["InstallDate"], "bios": bios.get("SMBIOSBIOSVersion"),
+            "biosDate": bios.get("ReleaseDate"), "board": bb.get("Product"), "boardMaker": bb.get("Manufacturer"),
+            "cpu": {"name": _text(cpu.get("Name")).strip(), "cores": cpu.get("NumberOfCores"),
+                    "threads": cpu.get("NumberOfLogicalProcessors"), "maxMhz": cpu.get("MaxClockSpeed"),
+                    "l2": cpu.get("L2CacheSize"), "l3": cpu.get("L3CacheSize"), "socket": cpu.get("SocketDesignation")},
+            "gpus": [{"name": g["Name"], "driver": g["DriverVersion"], "driverDate": g["DriverDate"], "ram": g["AdapterRAM"],
+                      "w": g["CurrentHorizontalResolution"], "h": g["CurrentVerticalResolution"], "hz": g["CurrentRefreshRate"]}
+                     for g in q("Win32_VideoController", ["Name", "DriverVersion", "DriverDate", "AdapterRAM",
+                                                          "CurrentHorizontalResolution", "CurrentVerticalResolution",
+                                                          "CurrentRefreshRate"])],
+            "ram": [{"cap": m["Capacity"], "speed": m["Speed"], "maker": m["Manufacturer"], "part": _text(m["PartNumber"]).strip(),
+                     "slot": m["DeviceLocator"], "type": m["SMBIOSMemoryType"]}
+                    for m in q("Win32_PhysicalMemory", ["Capacity", "Speed", "Manufacturer", "PartNumber", "DeviceLocator",
+                                                        "SMBIOSMemoryType"])],
+            "slots": sum(arrays) if arrays else None, "disks": disks,
+            "audio": [a["Name"] for a in q("Win32_SoundDevice", ["Name", "Status"]) if a["Status"] == "OK"],
+            "monitors": mons, "monSizes": sizes, "monConn": conn}
+
+
+def _sysdisk_wmi():
+    """The disk number of the partition that holds the system drive (Get-Partition -DriveLetter C)."""
+    letter = os.environ.get("SystemDrive", "C:")[0].upper()
+    rows = wmi.query(r"root\Microsoft\Windows\Storage", "MSFT_Partition", ["DiskNumber"], f"DriveLetter = {ord(letter)}")
+    return rows[0]["DiskNumber"] if rows else None
+
+
+def _nets_wmi():
+    """Physical network adapters that are connected (Get-NetAdapter -Physical, Status Up)."""
+    rows = wmi.query(r"root\StandardCimv2", "MSFT_NetAdapter",
+                     ["InterfaceDescription", "InterfaceIndex", "InterfaceOperationalStatus", "MediaConnectState",
+                      "HardwareInterface", "ReceiveLinkSpeed", "TransmitLinkSpeed", "NdisPhysicalMedium"])
+    up = [r for r in rows if r["HardwareInterface"] and r["InterfaceOperationalStatus"] == 1 and r["MediaConnectState"] == 1]
+    return [{"name": r["InterfaceDescription"], "speed": _link_speed(max(r["ReceiveLinkSpeed"] or 0, r["TransmitLinkSpeed"] or 0)),
+             "media": _PHYS.get(r["NdisPhysicalMedium"], _text(r["NdisPhysicalMedium"]))}
+            for r in sorted(up, key=lambda r: r["InterfaceIndex"])]
+
+
 def _query():
-    """The same data the old single script returned, from three PowerShell processes running at once."""
+    """The same data the old single script returned. From WMI inside this process; if that is not available, from three
+    PowerShell processes running at once (as before)."""
+    try:
+        r = _query_wmi()
+        r["sysDisk"], r["nets"] = _sysdisk_wmi(), _nets_wmi()
+        return r
+    except Exception as e:
+        print("[pc_info] WMI failed, using PowerShell:", e, flush=True)
+    return _query_ps()
+
+
+def _query_ps():
     def safe(fn, default):
         try:
             return fn()

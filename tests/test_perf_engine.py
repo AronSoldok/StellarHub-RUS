@@ -43,7 +43,7 @@ class DriverCacheTests(unittest.TestCase):
 
     def test_max_age_shares_one_measurement(self):
         rows = [{"n": "A", "c": "NET", "p": "Intel", "v": "1", "d": "2024-01-01", "id": "X1", "e": 0}]
-        with mock.patch.object(drivers, "ps_json", return_value=rows) as q:
+        with mock.patch.object(drivers, "_inventory", return_value=rows) as q:
             first = drivers.list_drivers()
             drivers._cache["at"] -= 300           # older than the 120 s of the Drivers page, younger than 600 s
             self.assertEqual(len(drivers.list_drivers(max_age=600)), 1)
@@ -56,11 +56,36 @@ class DriverCacheTests(unittest.TestCase):
 
     def test_count_comes_from_the_inventory(self):
         rows = [{"n": "A", "v": "1", "id": "1"}, {"n": "B", "v": "2", "id": "2"}]
-        with mock.patch.object(drivers, "ps_json", return_value=rows):
+        with mock.patch.object(drivers, "_inventory", return_value=rows):
             self.assertEqual(system._drivers_count(), 2)
 
 
 class SystemQueryTests(unittest.TestCase):
+    """pc_info reads WMI inside the process; the three PowerShell reads are only the fallback."""
+
+    def test_wmi_is_used_first_and_no_powershell_starts(self):
+        with mock.patch.object(system, "_query_wmi", lambda: {"maker": "ACME"}), mock.patch.object(system, "_sysdisk_wmi", lambda: 0),                 mock.patch.object(system, "_nets_wmi", lambda: [{"name": "Wi-Fi"}]),                 mock.patch.object(system, "ps_json", side_effect=AssertionError("powershell started")):
+            r = system._query()
+        self.assertEqual((r["maker"], r["sysDisk"], r["nets"]), ("ACME", 0, [{"name": "Wi-Fi"}]))
+
+    def test_powershell_is_the_fallback_when_wmi_fails(self):
+        def boom():
+            raise system.wmi.WmiError("no System.Management")
+        with mock.patch.object(system, "_query_wmi", boom), mock.patch.object(system, "_query_ps", lambda: {"maker": "PS"}):
+            self.assertEqual(system._query()["maker"], "PS")
+        with mock.patch.object(system.wmi, "query", side_effect=system.wmi.WmiError("x")),                 mock.patch.object(drivers, "ps_json", return_value=[{"n": "A", "v": "1", "id": "1"}]):
+            self.assertEqual(len(drivers._inventory()), 1)
+
+    def test_link_speed_reads_like_get_netadapter(self):
+        self.assertEqual([system._link_speed(v) for v in (1201000000, 1000000000, 866700000, 100000000, 2500000000, 0)],
+                         ["1.2 Gbps", "1 Gbps", "866.7 Mbps", "100 Mbps", "2.5 Gbps", "0 bps"])
+
+    def test_cim_dates(self):
+        from stellarhub.engine import wmi
+        self.assertEqual(wmi.cim_datetime("20060621000000.******+***").strftime("%Y-%m-%d"), "2006-06-21")  # a driver date
+        self.assertIsNone(wmi.cim_datetime("garbage"))
+        self.assertIsNone(wmi.cim_datetime(None))
+
     def test_merges_the_three_reads(self):
         def fake(script, timeout=90, as_list=False):
             if script == system.SCRIPT_SYSDISK:
@@ -69,7 +94,7 @@ class SystemQueryTests(unittest.TestCase):
                 return [{"name": "Wi-Fi"}]
             return {"maker": "ACME"}
         with mock.patch.object(system, "ps_json", fake):
-            r = system._query()
+            r = system._query_ps()
         self.assertEqual((r["maker"], r["sysDisk"], r["nets"]), ("ACME", 0, [{"name": "Wi-Fi"}]))
 
     def test_a_failing_side_read_does_not_lose_the_rest(self):
@@ -78,7 +103,7 @@ class SystemQueryTests(unittest.TestCase):
                 raise ps.ToolError("slow")
             return {"maker": "ACME"}
         with mock.patch.object(system, "ps_json", fake):
-            r = system._query()
+            r = system._query_ps()
         self.assertEqual((r["maker"], r["sysDisk"], r["nets"]), ("ACME", None, []))
 
 

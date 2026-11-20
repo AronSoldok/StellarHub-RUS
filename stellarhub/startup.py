@@ -177,10 +177,19 @@ def cli_setup(pairs):
 
 def uninstall_cleanup():
     """--uninstall-cleanup: removes what StellarHub registered in Windows outside its own folder."""
-    elevation.delete_admin_task()
+    # only the tasks that start THIS copy: another install of StellarHub on the PC (a per-user one next to an
+    # all-users one, a test copy) keeps its own
+    try:
+        import subprocess
+        for name in (elevation.ADMIN_TASK, *elevation.LEGACY_ADMIN_TASKS):
+            if elevation.task_opens_this_copy(name):
+                subprocess.run(["schtasks", "/delete", "/tn", name, "/f"], capture_output=True, creationflags=0x08000000)
+    except Exception:
+        pass
     try:
         from .engine import selfupdate
-        selfupdate.delete_task()
+        if selfupdate._task_exists():
+            selfupdate.delete_task()
     except Exception:
         pass
     autostart.remove_if_ours()

@@ -6,29 +6,44 @@
   Result: dist\StellarHub-Setup-<version>.exe and dist\StellarHub-Portable-<version>.zip (each with its .sha256)
   Needs Python 3.12+ and Inno Setup 6.6+ (winget install JRSoftware.InnoSetup). Nothing is installed system-wide:
   the Python packages go into .buildenv, with the exact versions below.
+
+  PyInstaller's bootloader (the stub every PyInstaller program starts with) is compiled from source for releases:
+  the prebuilt one is the same bytes in thousands of programs, some of them malware, and antivirus machine-learning
+  models flag programs that match it. This needs the C compiler of Visual Studio (Build Tools, "Desktop development
+  with C++"):
+      STELLARHUB_COMPILE_BOOTLOADER=1   compile it (the default when vswhere finds MSVC; =0 never)
+      STELLARHUB_REQUIRE_COMPILED_BOOTLOADER=1   fail instead of warning when the result is the prebuilt one
+                                                  (GitHub Actions sets both: releases always come from there)
+  Without a compiler a local build keeps the prebuilt bootloader and says so: local builds are not released.
 #>
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
 
+$pyi = "pyinstaller==6.22.3"
 $pins = "pywebview==6.2.1", "pythonnet==3.2.1", "psutil==7.2.2", "pystray==0.19.5", "pillow==12.3.0",
-        "pyinstaller==6.22.3", "pyinstaller-hooks-contrib==2026.9"
+        "pyinstaller-hooks-contrib==2026.9"
 $version = (Select-String -Path stellarhub\__init__.py -Pattern 'VERSION = "(.+)"').Matches[0].Groups[1].Value
 Write-Host "StellarHub $version" -ForegroundColor Cyan
 New-Item -ItemType Directory -Force build\logs | Out-Null
 
 # Runs a program with its output in build\logs\<step>.log. Not through a pipe on purpose: a process left running by
 # a test (the uninstaller tests start a "ping" on purpose) would keep the pipe open and the build would never end.
-function Step([string]$name, [string]$exe, [string[]]$argv) {
+function Run([string]$name, [string]$exe, [string[]]$argv) {
     Write-Host "  $name..."
     $log = "build\logs\$name.log"
     $p = Start-Process -FilePath $exe -ArgumentList $argv -NoNewWindow -PassThru `
         -RedirectStandardOutput $log -RedirectStandardError "$log.err"
     $null = $p.Handle  # Windows PowerShell only keeps the exit code if the handle was read
     $p.WaitForExit()
-    if ($p.ExitCode -ne 0) {
+    return $p.ExitCode
+}
+function Step([string]$name, [string]$exe, [string[]]$argv) {
+    $code = Run $name $exe $argv
+    if ($code -ne 0) {
+        $log = "build\logs\$name.log"
         Get-Content $log, "$log.err" -Tail 25 -ErrorAction SilentlyContinue
-        throw "$name failed (exit code $($p.ExitCode)); see $log"
+        throw "$name failed (exit code $code); see $log"
     }
 }
 
@@ -40,11 +55,47 @@ if (-not (Test-Path $py)) {
 }
 Step "pip" $py (@("-m", "pip", "install", "--disable-pip-version-check") + $pins)
 
+# 1b. PyInstaller with its own bootloader, compiled here from the sdist (see the header)
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$msvc = $null
+if (Test-Path $vswhere) {
+    $msvc = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+}
+$compile = switch ($env:STELLARHUB_COMPILE_BOOTLOADER) { "1" { $true } "0" { $false } default { [bool]$msvc } }
+$require = $env:STELLARHUB_REQUIRE_COMPILED_BOOTLOADER -eq "1"
+if ($compile -and -not $msvc) { throw "STELLARHUB_COMPILE_BOOTLOADER=1 but no Visual Studio C++ compiler was found (vswhere): install the Build Tools with the C++ workload" }
+$compiled = $false
+if ($compile) {
+    $compiled = (Run "bootloader-check" $py @("packaging\check_bootloader.py")) -eq 0  # already compiled in .buildenv?
+    if (-not $compiled) {
+        Write-Host "  compiling PyInstaller's bootloader with $msvc (a few minutes)..."
+        $null = Run "pyinstaller-uninstall" $py @("-m", "pip", "uninstall", "-y", "pyinstaller")
+        $env:PYINSTALLER_COMPILE_BOOTLOADER = "1"
+        try {
+            Step "pyinstaller-compile" $py @("-m", "pip", "install", "--disable-pip-version-check", "--no-cache-dir", "--verbose",
+                                              "--no-binary", "pyinstaller", $pyi)
+        } finally { Remove-Item Env:\PYINSTALLER_COMPILE_BOOTLOADER -ErrorAction SilentlyContinue }
+    }
+} else {
+    Step "pyinstaller-install" $py @("-m", "pip", "install", "--disable-pip-version-check", $pyi)
+}
+# a compile that silently fell back to the prebuilt bootloader must never go unnoticed: compare with the official wheel
+$compiled = (Run "bootloader-check" $py @("packaging\check_bootloader.py")) -eq 0
+Get-Content "build\logs\bootloader-check.log" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $_" }
+if ($compiled) {
+    Write-Host "  Bootloader: compiled from source." -ForegroundColor Green
+} elseif ($require -or $compile) {
+    throw "The PyInstaller bootloader is the prebuilt one although a compiled one was required (see build\logs\bootloader-check.log and pyinstaller-compile.log)"
+} else {
+    Write-Warning "No C compiler found: this build uses PyInstaller's PREBUILT bootloader, which antivirus machine-learning models flag more often. Fine for local testing; releases are built on GitHub Actions with a compiled one (install Visual Studio Build Tools with the C++ workload, or set STELLARHUB_COMPILE_BOOTLOADER=1, to do it here)."
+}
+
 # 2. tests first: never package a broken engine
 Step "tests" $py @("-m", "unittest", "discover", "-s", "tests", "-t", ".")
 Get-Content "build\logs\tests.log.err" -Tail 1
 
-# 3. icon, installer artwork, version resource, code statistics
+# 3. icon, installer artwork, version resource (CompanyName, FileDescription, ProductName, LegalCopyright,
+#    OriginalFilename: packaging\StellarHub.manifest is the application manifest), code statistics
 Step "assets" $py @("packaging\make_assets.py")
 
 # 4. StellarHub.exe (one folder, no UPX: see the notes in StellarHub.spec)

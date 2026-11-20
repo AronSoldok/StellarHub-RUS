@@ -143,12 +143,17 @@ conditions and what to do.
 ### ◇ Install it
 
 Download **`StellarHub-Setup-x.y.z.exe`** from the [latest release](https://github.com/estebanarosemena/StellarHub/releases/latest)
-and run it. It installs to `Program Files`, adds a Start menu shortcut and can be removed from *Settings > Apps*
-like any other program. Requires Windows 10 (1809) or 11, 64-bit; if your PC lacks the
+and run it. By default it installs **for you only**, in `%LOCALAPPDATA%\Programs\StellarHub`: no administrator
+rights and no Windows prompt (the setup also offers *Install for all users*, into `Program Files`, which asks Windows
+once). It adds a Start menu shortcut and can be removed from *Settings > Apps* like any other program, and the
+installer creates no scheduled task. Silent installs use `/CURRENTUSER` (the default) or `/ALLUSERS`, plus
+`/DIR=...`; an existing all-users install is upgraded in place. Requires Windows 10 (1809) or 11, 64-bit; if your PC lacks the
 [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/), the setup downloads it from Microsoft
 (and only runs it if it is signed by Microsoft).
 
-After that, StellarHub keeps itself up to date:
+After that, StellarHub keeps itself up to date. A per-user install does it with no prompt at all. An all-users
+install asks Windows **once**, the first time, and then makes an on-demand *StellarHub\Update* task (no schedule) so
+every later update is silent; uninstalling removes it.
 
 | Version | Example | What happens |
 |---|---|---|
@@ -191,7 +196,13 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 It creates a clean build environment with pinned versions, runs the tests, builds `StellarHub.exe` with
 PyInstaller and packs it with [Inno Setup](https://jrsoftware.org/isinfo.php) 6.7+ into `dist\`. The app is built
 as a folder (not a single self-extracting file) and without UPX, so it starts as fast as running from source and
-does not look like a packed executable to antivirus software.
+does not look like a packed executable to antivirus software. Release builds also **compile PyInstaller's
+bootloader from source**: the prebuilt one is byte-for-byte the same in thousands of programs, some of them malware,
+and antivirus machine-learning models match on it. The build installs the pinned PyInstaller from its source package
+with `PYINSTALLER_COMPILE_BOOTLOADER=1` and fails if `packaging\check_bootloader.py` finds the result identical to the
+official wheel's. Locally it compiles it when Visual Studio's C++ tools are found (`STELLARHUB_COMPILE_BOOTLOADER=1`
+forces it, `=0` skips it) and otherwise keeps the prebuilt one and says so. `StellarHub.exe` carries a complete version
+resource (`packaging\make_assets.py`) and an application manifest (`packaging\StellarHub.manifest`).
 
 Releases are built from this repository by GitHub Actions ([`.github/workflows/build.yml`](.github/workflows/build.yml)),
 with the same script.
@@ -300,7 +311,8 @@ certificate by [SignPath Foundation](https://signpath.org)*.
 ## 🏗️ How it's built
 
 - **Python** for everything that talks to Windows (`stellarhub/engine/`): live telemetry (psutil, performance
-  counters, nvidia-smi), WMI, PowerShell, Windows Update, winget, pnputil…
+  counters, nvidia-smi), WMI (in-process, through .NET), PowerShell only for what you ask for, Windows Update,
+  winget, pnputil…
 - **A single interface** in plain HTML, CSS and JavaScript, no frameworks (`stellarhub/ui/`), inside a native
   window powered by [pywebview](https://pywebview.flowrl.com/) and WebView2.
 - How a module is written and how it talks to the engine: [`docs/UI_CONTRACT.md`](docs/UI_CONTRACT.md).

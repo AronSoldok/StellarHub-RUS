@@ -6,6 +6,9 @@
 #   * no UPX: compressed DLLs must be unpacked in memory on every start, and packed executables are a classic
 #     antivirus false-positive trigger (which also makes Defender scan them longer).
 #   * a clean build environment (.buildenv) with pinned versions, so only what StellarHub imports ships.
+#   * the bootloader (the stub every PyInstaller program starts with) is compiled from source in release builds
+#     (packaging/build.ps1, packaging/check_bootloader.py): the prebuilt one is byte-identical in thousands of other
+#     programs, some of them malware, and antivirus machine-learning models match on it.
 #   * everything else in _internal, so the install folder holds just StellarHub.exe and that one folder.
 import os
 
@@ -43,7 +46,8 @@ exe = EXE(  # noqa: F821
     exclude_binaries=True,
     name="StellarHub",
     icon=os.path.join(ASSETS, "StellarHub.ico"),
-    version=os.path.join(ASSETS, "version_info.txt"),
+    version=os.path.join(ASSETS, "version_info.txt"),  # CompanyName, FileDescription, ProductName... (make_assets.py)
+    manifest=os.path.join(SPECPATH, "StellarHub.manifest"),  # asInvoker, supportedOS, dpiAware (see the file)
     console=False,
     disable_windowed_traceback=True,  # a failing worker process must not pop up a raw Python error dialog
     upx=False,
