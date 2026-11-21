@@ -487,7 +487,8 @@ function ovIdle(el) {
   $('#optState', el).textContent = t('Not analyzed yet');
   $('#optSub', el).textContent = t('The analysis measures junk files, startup apps, services and Windows settings. It is read-only; nothing changes.');
   $('#optRight', el).innerHTML = SH.emptyState({ art: 'first', title: t('Analyze your PC to see what can be improved'),
-    text: t('Each area gets a result: cleanup, startup, services and performance. Then “Optimize everything” does what is safe, with a restore point first.'), cls: 'ov-es' });
+    text: t('Each area gets a result: cleanup, startup, services and performance. Then “Optimize everything” does what is safe, with a restore point first.'), cls: 'ov-es' })
+    + ovFoot();   /* the weekly scheduled-task card belongs here too, before any analysis */
 }
 function paintRing(el) {
   AREAS.forEach(a => { const p = $(`.fg[data-seg="${a.id}"]`, el); if (!p) return; const to = p.dataset.l * (1 - areaFill(a));
