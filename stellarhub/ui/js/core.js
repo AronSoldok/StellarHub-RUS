@@ -273,7 +273,10 @@ const tickers = new Set(); let last = performance.now();
    every extra frame is a full-window composite for the GPU. They run at most ~70 times a second, ~30 on battery. */
 function loop(t) {
   if (t - last < (state.lite ? 28 : 12)) { requestAnimationFrame(loop); return; }
-  const dt = Math.min(.05, (t - last) / 1000); last = t; for (const fn of tickers) { try { fn(dt, t); } catch (e) { console.error(e); tickers.delete(fn); } } requestAnimationFrame(loop); }
+  const dt = Math.min(.05, (t - last) / 1000); last = t; for (const fn of tickers) { try { fn(dt, t); } catch (e) { console.error(e); tickers.delete(fn); } }
+  /* window in the tray or minimized (WebView2 may still deliver frames then): nobody sees the springs, charts or 3D scene, so
+     the loop only checks back a few times a second instead of every frame, and goes back to full speed when it is shown again */
+  if (pageHidden()) setTimeout(() => requestAnimationFrame(loop), 250); else requestAnimationFrame(loop); }
 requestAnimationFrame(loop);
 
 /* ---------- formatting ---------- */
