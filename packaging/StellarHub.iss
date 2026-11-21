@@ -171,7 +171,7 @@ english.StatusWarm=Preparing StellarHub for its first start...
 english.RunWebView=Installing the Microsoft Edge WebView2 Runtime...
 english.RunApp=Open StellarHub now
 english.RunNotes=See what's new in version %1
-english.UninstRemoveData=Also remove your StellarHub settings and Autopilot history?%n%nChoose No to keep them for a future installation.
+english.UninstRemoveData=Also remove your StellarHub settings and scheduled task history?%n%nChoose No to keep them for a future installation.
 
 spanish.AppTagline=El centro de control de tu PC con Windows
 spanish.InfoInstalls=Instala StellarHub. Si Windows aún no tiene Microsoft Edge WebView2 Runtime, también lo descarga de Microsoft y lo instala.
@@ -195,7 +195,7 @@ spanish.StatusWarm=Preparando StellarHub para su primer inicio...
 spanish.RunWebView=Instalando Microsoft Edge WebView2 Runtime...
 spanish.RunApp=Abrir StellarHub ahora
 spanish.RunNotes=Ver las novedades de la versión %1
-spanish.UninstRemoveData=¿Eliminar también tu configuración de StellarHub y el historial de Autopilot?%n%nElige No para conservarlos para una futura instalación.
+spanish.UninstRemoveData=¿Eliminar también tu configuración de StellarHub y el historial de las tareas programadas?%n%nElige No para conservarlos para una futura instalación.
 
 portuguese.AppTagline=A central de controle do seu PC com Windows
 portuguese.InfoInstalls=Instala o StellarHub. Se o Windows ainda não tiver o Microsoft Edge WebView2 Runtime, ele também é baixado da Microsoft e instalado.
@@ -219,7 +219,7 @@ portuguese.StatusWarm=Preparando o StellarHub para a primeira inicialização...
 portuguese.RunWebView=Instalando o Microsoft Edge WebView2 Runtime...
 portuguese.RunApp=Abrir o StellarHub agora
 portuguese.RunNotes=Ver as novidades da versão %1
-portuguese.UninstRemoveData=Remover também as suas configurações do StellarHub e o histórico do Autopilot?%n%nEscolha Não para mantê-los para uma instalação futura.
+portuguese.UninstRemoveData=Remover também as suas configurações do StellarHub e o histórico das tarefas agendadas?%n%nEscolha Não para mantê-los para uma instalação futura.
 
 italian.AppTagline=Il centro di controllo del tuo PC Windows
 italian.InfoInstalls=Installa StellarHub. Se Windows non ha ancora Microsoft Edge WebView2 Runtime, viene scaricato da Microsoft e installato.
@@ -243,7 +243,7 @@ italian.StatusWarm=Preparazione di StellarHub per il primo avvio...
 italian.RunWebView=Installazione di Microsoft Edge WebView2 Runtime...
 italian.RunApp=Apri StellarHub ora
 italian.RunNotes=Scopri le novità della versione %1
-italian.UninstRemoveData=Vuoi rimuovere anche le impostazioni di StellarHub e la cronologia di Autopilot?%n%nScegli No per conservarle per una futura installazione.
+italian.UninstRemoveData=Vuoi rimuovere anche le impostazioni di StellarHub e la cronologia delle attività pianificate?%n%nScegli No per conservarle per una futura installazione.
 
 french.AppTagline=Le centre de contrôle de votre PC Windows
 french.InfoInstalls=Installe StellarHub. Si Windows n'a pas encore Microsoft Edge WebView2 Runtime, il est aussi téléchargé depuis Microsoft et installé.
@@ -267,7 +267,7 @@ french.StatusWarm=Préparation de StellarHub pour son premier démarrage...
 french.RunWebView=Installation de Microsoft Edge WebView2 Runtime...
 french.RunApp=Ouvrir StellarHub maintenant
 french.RunNotes=Voir les nouveautés de la version %1
-french.UninstRemoveData=Supprimer également vos paramètres StellarHub et l'historique d'Autopilot ?%n%nChoisissez Non pour les conserver en vue d'une future installation.
+french.UninstRemoveData=Supprimer également vos paramètres StellarHub et l'historique des tâches planifiées ?%n%nChoisissez Non pour les conserver en vue d'une future installation.
 
 chinesesimplified.AppTagline=您的 Windows 电脑控制中心
 chinesesimplified.InfoInstalls=安装 StellarHub。如果 Windows 尚未安装 Microsoft Edge WebView2 Runtime，也会从 Microsoft 下载并安装。
@@ -291,7 +291,7 @@ chinesesimplified.StatusWarm=正在为 StellarHub 的首次启动做准备...
 chinesesimplified.RunWebView=正在安装 Microsoft Edge WebView2 Runtime...
 chinesesimplified.RunApp=立即打开 StellarHub
 chinesesimplified.RunNotes=查看 %1 版本的新功能
-chinesesimplified.UninstRemoveData=是否同时删除 StellarHub 的设置和 Autopilot 历史记录？%n%n选择“否”可将其保留，供以后安装时使用。
+chinesesimplified.UninstRemoveData=是否同时删除 StellarHub 的设置和计划任务历史记录？%n%n选择“否”可将其保留，供以后安装时使用。
 japanese.AppTagline=Windows PC のコントロール センター
 japanese.InfoInstalls=StellarHub をインストールします。Windows に Microsoft Edge WebView2 Runtime がまだない場合は、Microsoft からダウンロードしてインストールします。
 japanese.InfoRequires=Windows 10 (バージョン 1809) 以降の 64 ビット版が必要です。
@@ -314,7 +314,7 @@ japanese.StatusWarm=StellarHub の初回起動を準備しています...
 japanese.RunWebView=Microsoft Edge WebView2 Runtime をインストールしています...
 japanese.RunApp=今すぐ StellarHub を開く
 japanese.RunNotes=バージョン %1 の新機能を見る
-japanese.UninstRemoveData=StellarHub の設定とオートパイロットの履歴も削除しますか?%n%n今後のインストールのために残す場合は「いいえ」を選んでください。
+japanese.UninstRemoveData=StellarHub の設定とスケジュールされたタスクの履歴も削除しますか?%n%n今後のインストールのために残す場合は「いいえ」を選んでください。
 
 [InstallDelete]
 ; an update replaces the runtime folder completely (the old one is kept as _internal.bak until the new one is in

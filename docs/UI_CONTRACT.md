@@ -121,7 +121,7 @@ if (!h.end({ ok: true, summary: SH.t('{size} in {n} files', { size, n }) })) SH.
 - Several per module (`key`); the newest is shown. The same `key` while one is open returns that one.
 - Exactly one sound: a toast after a sound played in the last 0.7 s (the job's `scan_complete`) stays silent. `kind`
   sets the toast's kind (`'achievement'`, `'warning'`); `toast: false` keeps the badge and the notification but leaves
-  the toast to the module (Autopilot's own has View the log).
+  the toast to the module (Scheduled Tasks' own, the `autopilot` module, has View the log).
 - Work that starts by itself (a list read on opening a tab, Program Updater's light check at start-up, and the
   analyses when "Analyze automatically when opening a module" is on: see below) passes `bg: true`: it is followed exactly the same
   way, but only once it has run for 1.5 s (`grace`), so a quick refresh never flashes a ring and ends without a word.
@@ -141,7 +141,7 @@ Opening a module or a tab never starts an analysis (a scan, a measurement, a che
 the user presses its button (Analyze, Scan, Check now, Check for updates…), with the user's sounds (`scan_start`,
 `scan_complete`) and a user activity (ring, badge and toast with View when it ends elsewhere). Plain reads needed to
 draw a view stay automatic (Program Remover's program list, Driver Updater's drivers, problems and history, App Hangar's
-installed state, Live Monitor, Home), and so do Autopilot's routines and Program Updater's light check at start-up
+installed state, Live Monitor, Home), and so do the routines of Scheduled Tasks and Program Updater's light check at start-up
 (winget only, every 6 h at most, for Home's counts).
 
 - Before the button is pressed the view shows the last results if there are any, marked with their age: `SH.lastRun({
@@ -198,7 +198,7 @@ The interface does less work when "Lighter effects" (setting `lightMode`) says s
 
 ### Registry cleaner (opt-in)
 
-Microsoft advises against registry cleaners, so the one in Super Optimizer is off by default: setting `registryCleaner` (boolean, default `false`), Settings > General > "Registry cleaner". Off: the Registry tab is hidden (see the hidden-tab condition above), the overview has no registry area or ring segment, the analysis does not scan it, and there is no badge or palette action. On: the tab and its area work as always, but the registry is never a step of "Optimize everything" (nor of its undo), and Autopilot has no registry action. Undo never depends on the setting: registry backups stay listed and restorable in Settings > Backups and restore (`engine/backups.py`) with the cleaner off.
+Microsoft advises against registry cleaners, so the one in Super Optimizer is off by default: setting `registryCleaner` (boolean, default `false`), Settings > General > "Registry cleaner". Off: the Registry tab is hidden (see the hidden-tab condition above), the overview has no registry area or ring segment, the analysis does not scan it, and there is no badge or palette action. On: the tab and its area work as always, but the registry is never a step of "Optimize everything" (nor of its undo), and Scheduled Tasks has no registry action. Undo never depends on the setting: registry backups stay listed and restorable in Settings > Backups and restore (`engine/backups.py`) with the cleaner off.
 
 Migration: when `registryCleaner` is not in the saved file (an upgrade from before it existed), `loadSettings` asks the engine `optimizer.registry_backups_exist` (read-only: any folder under `registry/` in the ProgramData or user optimizer data); it becomes `true` only if the user already has registry-fix backups, `false` otherwise, and it is saved so this runs once. Reset settings saves `false` explicitly, so the migration never turns it back on.
 
@@ -228,7 +228,7 @@ SH.logActivity('Drivers updated', { sub: '2 installed', ic: 'drivers', go: 'driv
 ```
 
 - Infrastructure: `engine/jobs.py` (progress, live log, cancel), `engine/ps.py` (PowerShell and consoles in UTF-8, with live output), `engine/telemetry.py` (real telemetry → `SH.tele.push`), `engine/system.py` (PC data, health, displays and screenshots), `engine/removal/` (engine inherited from MiniRevo: programs, icons, leftovers, quarantine, cleanup, startup).
-- Nothing starts `powershell.exe` by itself (start, telemetry, Home's pc_info/health, the drivers count, Autopilot's metered-connection check): those read WMI in-process through `engine/wmi.py` (System.Management via pythonnet: `system._query_wmi`, `system._health_wmi`, `drivers._inventory_wmi`) or COM (`autopilot._metered_com`), keeping the PowerShell script as the fallback if WMI fails. PowerShell is for what the user triggers (Program Updater, Debloat, firewall, Defender scans...); a new background feature must not add a spawn.
+- Nothing starts `powershell.exe` by itself (start, telemetry, Home's pc_info/health, the drivers count, Scheduled Tasks' metered-connection check): those read WMI in-process through `engine/wmi.py` (System.Management via pythonnet: `system._query_wmi`, `system._health_wmi`, `drivers._inventory_wmi`) or COM (`autopilot._metered_com`), keeping the PowerShell script as the fallback if WMI fails. PowerShell is for what the user triggers (Program Updater, Debloat, firewall, Defender scans...); a new background feature must not add a spawn.
 - Install and update modes (`engine/selfupdate.py`): installs are per-user by default (`PrivilegesRequired=lowest` in `StellarHub.iss`, `%LOCALAPPDATA%\Programs`) and update **directly** (no admin, no task). An all-users install updates through the on-demand `StellarHub\Update` task if it exists ("task"); without it the mode is "uac": the first update asks Windows once (only from the Update button or the start-time staged install; `prefetch()` and `start(allow_uac=False)` never prompt, so a new-features version shows the update window instead of staging) and the elevated updater creates the task (`_make_task_if_missing`), so later updates are silent. The installer no longer creates the task; the uninstaller deletes only the tasks that start that copy.
 - `system.pc_info()` answers at once with the last measurement; when it is older than 30 minutes (`STALE_AFTER`) it starts one background refresh (one at a time) and the next call has the new data. Home asks `system.pc_info_fresh` (in the engine's own thread, never blocking the UI) at start if the saved copy is old, when it is shown again and every 10 minutes while open, and updates the header facts and the components only if something changed.
 - Whatever Windows does not provide arrives as `null`: the UI shows "—" (`SH.tele.has`, `SH.tele.fmt`).

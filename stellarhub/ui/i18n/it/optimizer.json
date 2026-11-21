@@ -159,7 +159,7 @@
  "Couldn't save your network settings ({error}). The reset was cancelled.": "Non è stato possibile salvare le impostazioni di rete ({error}). Il ripristino è stato annullato.",
  "Crash dumps and error reports": "Dump di arresto anomalo e segnalazioni errori",
  "Create a restore point": "Crea un punto di ripristino",
- "Create an Autopilot routine": "Crea una routine del Pilota automatico",
+ "Create a scheduled task": "Crea un'attività pianificata",
  "Creating the restore point…": "Creazione del punto di ripristino…",
  "Creating the restore point… (it can take a minute)": "Creazione del punto di ripristino… (può richiedere un minuto)",
  "Debloat": "Alleggerimento",

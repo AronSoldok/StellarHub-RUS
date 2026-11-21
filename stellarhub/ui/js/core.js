@@ -544,7 +544,7 @@ const MODS0 = [
     tabs: [['overview', 'Overview'], ['cpu', 'Processor'], ['gpu', 'Graphics'], ['memory', 'Memory'], ['disk', 'Disks'], ['network', 'Network'], ['stress', 'Stress test'], ['history', 'History']] },
   { id: 'tester', name: 'Device Tester', icon: 'tester', real: true, desc: 'Test your keyboard, screen, speakers, microphone, camera, mouse and game controller.',
     tabs: [['keyboard', 'Keyboard'], ['screen', 'Screen'], ['speakers', 'Speakers'], ['mic', 'Microphone'], ['camera', 'Camera'], ['mouse', 'Mouse'], ['controller', 'Controller']] },
-  { id: 'autopilot', name: 'Autopilot', icon: 'autopilot', real: true, desc: 'Automatic maintenance: you set the rules, StellarHub follows them.',
+  { id: 'autopilot', name: 'Scheduled Tasks', icon: 'autopilot', real: true, desc: 'Automatic maintenance: you set the rules, StellarHub follows them.',
     tabs: [['routines', 'Routines'], ['calendar', 'Calendar'], ['notify', 'Notifications'], ['log', 'Log']] },
 ];
 /* names, descriptions and tab names in the interface language (ids stay as they are) */

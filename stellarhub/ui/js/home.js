@@ -190,7 +190,7 @@ async function loadHealth() {
 function renderNext() {
   const box = $('#nxNext'); if (!box) return;
   const rs = (state.settings.autopilotRoutines || []).filter(r => r.enabled !== false && !r.paused).slice(0, 3);
-  box.innerHTML = rs.length ? rs.map(r => `<button class="nx" data-go="autopilot" data-tab="calendar"><span class="ni">${ic('autopilot')}</span><span class="nt"><b>${esc(r.name || t('Routine'))}</b><span>${esc(r.summary || t('Autopilot routine'))}</span></span></button>`).join('')
+  box.innerHTML = rs.length ? rs.map(r => `<button class="nx" data-go="autopilot" data-tab="calendar"><span class="ni">${ic('autopilot')}</span><span class="nt"><b>${esc(r.name || t('Routine'))}</b><span>${esc(r.summary || t('Scheduled task'))}</span></span></button>`).join('')
     : `<div class="nx-empty"><span>${t('No routines yet.')}</span><button class="btn sm sec" data-go="autopilot" data-tab="routines">${ic('plus')}${t('Create one')}</button></div>`;
 }
 function renderRecent() {

@@ -3,7 +3,7 @@
 StellarHub runs on your PC and works with your PC's own data. It has **no account, no telemetry, no analytics and no
 ads**, and it never sends anything about you, your PC or what you do in it to its author or to anyone else.
 
-Everything it knows (settings, logs, scan results, benchmark history, Autopilot routines) stays in
+Everything it knows (settings, logs, scan results, benchmark history, scheduled tasks) stays in
 `%APPDATA%\StellarHub` and `%LOCALAPPDATA%\StellarHub` on your PC. Backups of changes that affect the whole PC
 (services, system registry keys, the uninstaller's quarantine) are kept in `%ProgramData%\StellarHub`; backups of
 your own settings stay in your user folder, where other accounts on the PC can't read them. Uninstalling asks

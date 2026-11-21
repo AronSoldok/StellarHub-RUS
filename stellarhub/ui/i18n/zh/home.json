@@ -63,7 +63,7 @@
   "none": "无",
   "needs administrator": "需要管理员权限",
   "Routine": "例程",
-  "Autopilot routine": "自动维护例程",
+  "Scheduled task": "计划任务",
   "No routines yet.": "还没有例程。",
   "Create one": "创建一个",
   "What you do with StellarHub will show up here.": "你在 StellarHub 中的操作会显示在这里。",

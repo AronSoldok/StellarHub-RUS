@@ -63,7 +63,7 @@
   "none": "なし",
   "needs administrator": "管理者権限が必要",
   "Routine": "ルーチン",
-  "Autopilot routine": "オートパイロットのルーチン",
+  "Scheduled task": "スケジュールされたタスク",
   "No routines yet.": "ルーチンはまだありません。",
   "Create one": "作成する",
   "What you do with StellarHub will show up here.": "StellarHub で行った操作がここに表示されます。",

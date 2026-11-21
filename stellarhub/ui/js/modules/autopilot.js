@@ -1124,7 +1124,7 @@ SH.module({
 SH.actions.add([
   { t: tr('Create an automatic routine'), go: 'autopilot', tab: 'routines', ic: 'autopilot' },
   { t: tr('See when routines run'), go: 'autopilot', tab: 'calendar', ic: 'calendar' },
-  { t: tr('Change how Autopilot notifies me'), go: 'autopilot', tab: 'notify', ic: 'bell' },
-  { t: tr('See what Autopilot did'), go: 'autopilot', tab: 'log', ic: 'list' },
+  { t: tr('Change how scheduled tasks notify me'), go: 'autopilot', tab: 'notify', ic: 'bell' },
+  { t: tr('See what scheduled tasks did'), go: 'autopilot', tab: 'log', ic: 'list' },
 ]);
 })();

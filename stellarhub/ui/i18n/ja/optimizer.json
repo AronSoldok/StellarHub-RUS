@@ -159,7 +159,7 @@
  "Couldn't save your network settings ({error}). The reset was cancelled.": "ネットワーク設定を保存できませんでした ({error})。リセットはキャンセルされました。",
  "Crash dumps and error reports": "クラッシュ ダンプとエラー レポート",
  "Create a restore point": "復元ポイントを作成",
- "Create an Autopilot routine": "オートパイロットのルーチンを作成",
+ "Create a scheduled task": "スケジュールされたタスクを作成",
  "Creating the restore point…": "復元ポイントを作成しています…",
  "Creating the restore point… (it can take a minute)": "復元ポイントを作成しています… (1 分ほどかかる場合があります)",
  "Debloat": "不要機能の削除",

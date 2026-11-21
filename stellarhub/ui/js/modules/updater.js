@@ -932,7 +932,7 @@ function renderSchedule(el) {
   el.classList.add('fill');
   el.innerHTML = `<div class="u-sch">
     <div class="u-scol u-scroll">
-      <div class="pan u-master" data-asm>${tg('on', t('Update automatically'), t("Autopilot installs what's pending so you don't have to remember."), 'autopilot')}</div>
+      <div class="pan u-master" data-asm>${tg('on', t('Update automatically'), t("A scheduled task installs what's pending so you don't have to remember."), 'autopilot')}</div>
       <div class="u-dep">
       <div class="pan" data-asm><h4>${t('When')}</h4>
         <div class="u-field"><span>${t('Frequency')}</span><div class="seg" data-sseg="freq"><span class="ind"></span>${[['day', t('Every day')], ['week', t('Every week')], ['month', t('Every month')]].map(([v, l]) => `<button data-v="${v}"${s.freq === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div></div>
@@ -954,7 +954,7 @@ function renderSchedule(el) {
     </div>
     <div class="u-scol2"><div class="pan u-next" data-asm><h4>${t('Next automatic update')}</h4><div class="u-nexttxt"></div><div class="u-week"></div>
       <p class="faint u-nfoot">${t('If the PC is off at that time, it runs the next time you turn it on within the window.')}</p></div>
-      <div class="pan u-fp" data-asm><h4>${t('Latest')} <em>${t('automatic runs')}</em></h4><div class="u-scroll"><div class="rows">${auto.length ? auto.map(a => { const x = SH.activityText ? SH.activityText(a) : a; return `<div class="row"><span class="ri ok">${ic('check')}</span><div class="rt"><b>${esc(x.t)}</b><span>${esc(x.sub || '')}</span></div></div>`; }).join('') : `<div class="faint u-none">${t("None yet. They'll show up here when Autopilot runs them.")}</div>`}</div></div></div></div>
+      <div class="pan u-fp" data-asm><h4>${t('Latest')} <em>${t('automatic runs')}</em></h4><div class="u-scroll"><div class="rows">${auto.length ? auto.map(a => { const x = SH.activityText ? SH.activityText(a) : a; return `<div class="row"><span class="ri ok">${ic('check')}</span><div class="rt"><b>${esc(x.t)}</b><span>${esc(x.sub || '')}</span></div></div>`; }).join('') : `<div class="faint u-none">${t("None yet. They'll show up here when a scheduled task runs them.")}</div>`}</div></div></div></div>
   </div>`;
   renderExcl(el); applyMaster(el, false); renderNext(el, false); bandSpring.from.set(s.from); bandSpring.to.set(s.to); bandDirty = true;
   requestAnimationFrame(() => $$('.seg', el).forEach(x => SH.placeSeg(x, true)));
@@ -1012,7 +1012,7 @@ function renderNext(el, animate) {
   const inc = Object.entries(s.inc).filter(([, v]) => v).map(([k]) => CATS[k].l);
   const list = listFmt(inc);
   const html = s.on ? `<b>${nextRun().toLocaleDateString(SH.i18n.locale, { weekday: 'long', day: 'numeric', month: 'long' })}</b><span>${t('between {from} and {to}', { from: hh(s.from), to: hh(s.to) })}</span><p class="muted">${inc.length ? t('Includes {list}.', { list: esc(list) }) : t("You haven't picked anything to update.")}${s.plugged ? ' ' + t('Only when plugged in.') : ''}</p>`
-    : `<b>${t('Off')}</b><p class="muted">${t('You start updates yourself from the Overview. Turn it on above so Autopilot does it on its own.')}</p>`;
+    : `<b>${t('Off')}</b><p class="muted">${t('You start updates yourself from the Overview. Turn it on above so a scheduled task does it for you.')}</p>`;
   if (box.innerHTML !== html) { box.innerHTML = html; if (animate) anim(box, [{ opacity: 0, filter: 'blur(6px)', transform: 'translate3d(0,6px,0)' }, { opacity: 1, filter: 'blur(0px)', transform: 'none' }], { d: 360, e: EASE.spring }); }
   const wk = $('.u-week', el); const nd = (nextRun().getDay() + 6) % 7;
   const days = s.freq === 'day' ? [0, 1, 2, 3, 4, 5, 6] : s.freq === 'week' ? [s.day] : [];

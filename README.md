@@ -99,9 +99,9 @@ live temperatures, clocks and throttling detection. Every run is kept to compare
 Keyboard (laptop, 100 %, TKL, 75 %, 65 % and several layouts), dead pixels, speakers, microphone, camera and
 mouse, with a **CPS test**.
 
-### ◎ Autopilot
-Maintenance routines: you choose when (a time, at startup, on unplugging, when space runs low…), under which
-conditions and what to do.
+### ◎ Scheduled Tasks
+Maintenance tasks that run on their own: you choose when (a time, at startup, on unplugging, when space runs low…),
+under which conditions and what to do.
 
 ## 🎛️ Also included
 
@@ -371,7 +371,7 @@ designs/                   the early design explorations
 
 - [x] Full interface for all 12 modules
 - [x] Real engine: telemetry, drivers, apps, updates, disk, optimizer and monitor
-- [x] Autopilot running routines on its own (while StellarHub is open, also hidden in the tray)
+- [x] Scheduled tasks running on their own (while StellarHub is open, also hidden in the tray)
 - [x] `.exe` installer
 - [x] Seven languages
 - [x] Automatic StellarHub updates from this repository

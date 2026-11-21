@@ -65,7 +65,8 @@ Short labels stay short (buttons, tabs, chips must fit). Sentence case as in Eng
 | Privacy & Security | Privacidad y seguridad | Privacidade e segurança | Privacy e sicurezza | Confidentialité et sécurité | 隐私和安全性 | プライバシーとセキュリティ |
 | Benchmark Testing | Benchmark Testing | Benchmark Testing | Benchmark Testing | Benchmark Testing | 性能测试 | ベンチマーク |
 | Device Tester | Probador de dispositivos | Testador de dispositivos | Test dei dispositivi | Testeur de périphériques | 设备测试 | デバイス テスト |
-| Autopilot | Piloto automático | Piloto automático | Pilota automatico | Pilote automatique | 自动维护 | オートパイロット |
+| Scheduled Tasks (module `autopilot`) | Programar tareas | Agendar tarefas | Attività pianificate | Tâches planifiées | 计划任务 | タスクのスケジュール |
+| a scheduled task (inside sentences) | una tarea programada | uma tarefa agendada | un'attività pianificata | une tâche planifiée | 计划任务 | スケジュールされたタスク |
 | Settings | Ajustes | Configurações | Impostazioni | Paramètres | 设置 | 設定 |
 | Administrator mode | Modo administrador | Modo administrador | Modalità amministratore | Mode administrateur | 管理员模式 | 管理者モード |
 | Normal mode | Modo normal | Modo normal | Modalità normale | Mode normal | 普通模式 | 通常モード |
@@ -84,7 +85,7 @@ Short labels stay short (buttons, tabs, chips must fit). Sentence case as in Eng
 | service | servicio | serviço | servizio | service | 服务 | サービス |
 | registry | registro | registro | registro di sistema | registre | 注册表 | レジストリ |
 | free space | espacio libre | espaço livre | spazio libero | espace libre | 可用空间 | 空き領域 |
-| routine (Autopilot) | rutina | rotina | routine | routine | 例程 | ルーチン |
+| routine (Scheduled Tasks) | rutina | rotina | routine | routine | 例程 | ルーチン |
 | trigger / condition / action | disparador / condición / acción | gatilho / condição / ação | attivatore / condizione / azione | déclencheur / condition / action | 触发器 / 条件 / 操作 | トリガー / 条件 / アクション |
 | dry run | prueba en seco | simulação | prova a secco | simulation | 试运行 | テスト実行 |
 | Undo | Deshacer | Desfazer | Annulla | Annuler | 撤销 | 元に戻す |

@@ -1118,7 +1118,7 @@ def _act(job, a, r):
         st = ((out.get("items") or [{}])[0] or {}).get("st") if isinstance(out, dict) else None
         return ("ok" if st == "done" else "skip"), _m("Defender definitions updated") if st == "done" else _m("Defender isn’t active (another antivirus protects the PC)"), 0, 0
     if k == "restore":
-        res = _job(job, "Restore point", "optimizer", "restore_point", f"StellarHub Autopilot: {r.get('name', '')}") or {}
+        res = _job(job, "Restore point", "optimizer", "restore_point", f"StellarHub Scheduled Tasks: {r.get('name', '')}") or {}
         if res.get("needAdmin"):
             return "skip", _m("skipped: needs administrator mode"), 0, 0
         ok = bool(res.get("ok"))
@@ -1217,11 +1217,11 @@ def _act(job, a, r):
         what, count = p.get("what", "sleep"), int(float(p.get("count") or 0))
         if what in ("restart", "off"):
             subprocess.run(["shutdown", "/r" if what == "restart" else "/s", "/t", str(max(0, count)),
-                            "/c", tc("autopilot", "StellarHub Autopilot. To cancel: shutdown /a")], creationflags=NO_WINDOW)
+                            "/c", tc("autopilot", "StellarHub Scheduled Tasks. To cancel: shutdown /a")], creationflags=NO_WINDOW)
             return "ok", (_m("restart scheduled in {n} s (cancel with shutdown /a)", n=count) if what == "restart"
                           else _m("shutdown scheduled in {n} s (cancel with shutdown /a)", n=count)), 0, 0
         if count:
-            _say_notify(tc("autopilot", "StellarHub Autopilot"), tc("autopilot", "The PC will sleep in {n} s. Move the mouse or press Cancel in StellarHub to stop it.", n=count))
+            _say_notify(tc("autopilot", "StellarHub Scheduled Tasks"), tc("autopilot", "The PC will sleep in {n} s. Move the mouse or press Cancel in StellarHub to stop it.", n=count))
             end = time.time() + count
             while time.time() < end:
                 job.check()
@@ -1346,7 +1346,7 @@ def _maybe_notify(r, st, res, force=False):
         return
     if rn.get("toast", True) is False and rn.get("tray", True) is False:
         return
-    _say_notify(tc("autopilot", "Autopilot: {name}", name=r.get("name") or tc("autopilot", "Routine")), _sep().join(_txt(x) for x in res) or tc("autopilot", "Done"))
+    _say_notify(tc("autopilot", "Scheduled task: {name}", name=r.get("name") or tc("autopilot", "Routine")), _sep().join(_txt(x) for x in res) or tc("autopilot", "Done"))
 
 
 def _sep():
@@ -1356,10 +1356,10 @@ def _sep():
 def _after_power(what, r):
     """"When it finishes: sleep / shut down". Shutting down gives 60 s to cancel (shutdown /a)."""
     if what == "off":
-        subprocess.run(["shutdown", "/s", "/t", "60", "/c", tc("autopilot", "StellarHub Autopilot finished “{name}”. To cancel: shutdown /a", name=r.get("name", ""))],
+        subprocess.run(["shutdown", "/s", "/t", "60", "/c", tc("autopilot", "StellarHub finished the scheduled task “{name}”. To cancel: shutdown /a", name=r.get("name", ""))],
                        creationflags=NO_WINDOW)
     elif what == "sleep":
-        _say_notify(tc("autopilot", "StellarHub Autopilot"), tc("autopilot", "“{name}” finished. The PC will sleep in 60 s unless you use it.", name=r.get("name", "")))
+        _say_notify(tc("autopilot", "StellarHub Scheduled Tasks"), tc("autopilot", "“{name}” finished. The PC will sleep in 60 s unless you use it.", name=r.get("name", "")))
         def later():
             end = time.time() + 60
             while time.time() < end:
@@ -1640,7 +1640,7 @@ def _weekly(st, nt, now):
         parts.append(_m("{n} updated", n=upd))
     if bad:
         parts.append(_m("{n} with problems", n=bad))
-    _say_notify(tc("autopilot", "Autopilot this week"), _sep().join(_txt(x) for x in parts))
+    _say_notify(tc("autopilot", "Scheduled tasks this week"), _sep().join(_txt(x) for x in parts))
 
 
 def _loop():

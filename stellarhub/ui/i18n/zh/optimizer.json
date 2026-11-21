@@ -159,7 +159,7 @@
  "Couldn't save your network settings ({error}). The reset was cancelled.": "无法保存你的网络设置({error})。已取消重置。",
  "Crash dumps and error reports": "崩溃转储和错误报告",
  "Create a restore point": "创建还原点",
- "Create an Autopilot routine": "创建自动维护例程",
+ "Create a scheduled task": "创建计划任务",
  "Creating the restore point…": "正在创建还原点…",
  "Creating the restore point… (it can take a minute)": "正在创建还原点…（可能需要一分钟）",
  "Debloat": "精简",
