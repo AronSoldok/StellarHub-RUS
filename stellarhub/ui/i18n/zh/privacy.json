@@ -443,5 +443,6 @@
   "Check your privacy and security": "检查你的隐私和安全性",
   "The check looks at protection, app permissions, the network, tracking and what starts by itself, and gives a score. Read-only: nothing changes.": "检查会查看保护、应用权限、网络、跟踪以及自行启动的内容，并给出评分。只读，不会更改任何内容。",
   "Last check: {when}": "上次检查：{when}",
-  "These results are from then. Check again to see how your PC is now.": "这些是当时的结果。再次检查，了解电脑现在的状况。"
+  "These results are from then. Check again to see how your PC is now.": "这些是当时的结果。再次检查，了解电脑现在的状况。",
+  "Check my PC": "立即检查"
 }

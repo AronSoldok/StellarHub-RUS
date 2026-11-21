@@ -443,5 +443,6 @@
   "Check your privacy and security": "Verifique sua privacidade e segurança",
   "The check looks at protection, app permissions, the network, tracking and what starts by itself, and gives a score. Read-only: nothing changes.": "A verificação examina a proteção, as permissões dos apps, a rede, o rastreamento e o que inicia sozinho, e dá uma pontuação. Só leitura: nada muda.",
   "Last check: {when}": "Última verificação: {when}",
-  "These results are from then. Check again to see how your PC is now.": "Estes resultados são daquele momento. Verifique de novo para ver como seu PC está agora."
+  "These results are from then. Check again to see how your PC is now.": "Estes resultados são daquele momento. Verifique de novo para ver como seu PC está agora.",
+  "Check my PC": "Verificar agora"
 }

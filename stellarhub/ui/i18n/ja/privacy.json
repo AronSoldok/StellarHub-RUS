@@ -443,5 +443,6 @@
   "Check your privacy and security": "プライバシーとセキュリティをチェック",
   "The check looks at protection, app permissions, the network, tracking and what starts by itself, and gives a score. Read-only: nothing changes.": "チェックでは、保護、アプリのアクセス許可、ネットワーク、追跡、自動で起動するものを確認し、スコアを出します。読み取りのみで、何も変更されません。",
   "Last check: {when}": "前回のチェック: {when}",
-  "These results are from then. Check again to see how your PC is now.": "これは当時の結果です。現在の PC の状態を見るには、もう一度チェックしてください。"
+  "These results are from then. Check again to see how your PC is now.": "これは当時の結果です。現在の PC の状態を見るには、もう一度チェックしてください。",
+  "Check my PC": "今すぐチェック"
 }

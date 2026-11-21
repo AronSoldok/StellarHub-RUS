@@ -225,7 +225,7 @@ function idleTabs() {
     const idle = !has(a) && !loading(a) && !ERR[a];
     el.classList.toggle('pv-unchecked', idle);
     let o = $(':scope > .pv-idle', el);
-    if (idle && !o) { o = document.createElement('div'); o.className = 'pv-idle'; o.innerHTML = `<div class="pan">${SH.emptyState({ art: 'first', title: t('Not checked yet'), text: TAB_TXT[a](), action: { label: t('Check now'), data: 'data-pv-check', icon: 'pvscan', pri: true, big: true } })}</div>`; el.appendChild(o); }
+    if (idle && !o) { o = document.createElement('div'); o.className = 'pv-idle'; o.innerHTML = `<div class="pan">${SH.emptyState({ art: 'first', title: t('Not checked yet'), text: TAB_TXT[a](), action: { label: t('Check my PC'), data: 'data-pv-check', icon: 'pvscan', pri: true, big: true } })}</div>`; el.appendChild(o); }
     else if (!idle && o) o.remove();
   });
 }
@@ -431,7 +431,7 @@ function paintOverview(first) {
   if (!busy && pending.length === AREAS.length && !AREAS.some(a => ERR[a])) {
     /* never checked: an invitation instead of the list */
     const html = SH.emptyState({ art: 'first', title: t('Check your privacy and security'), text: t('The check looks at protection, app permissions, the network, tracking and what starts by itself, and gives a score. Read-only: nothing changes.'),
-      action: { label: t('Check now'), data: 'data-pv-check', icon: 'pvscan', pri: true, big: true }, cls: 'pv-es' });
+      action: { label: t('Check my PC'), data: 'data-pv-check', icon: 'pvscan', pri: true, big: true }, cls: 'pv-es' });
     if (right.dataset.sig !== html) { right.dataset.sig = html; right.innerHTML = html; }
     return;
   }
