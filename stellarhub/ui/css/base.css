@@ -476,7 +476,8 @@ html[data-corners=sharp]{--r-l:8px;--r-m:6px;--r-s:4px;--r-xs:2px}
 html[data-neb=hi] .atmo{filter:brightness(max(1,var(--neb,1))) saturate(max(1,var(--neb,1)))}
 html[data-quick=off] .h-quick{display:none}
 
-.toasts{position:fixed;right:26px;bottom:26px;z-index:70;display:flex;flex-direction:column;align-items:flex-end;gap:var(--sp-sm);pointer-events:none;max-width:min(420px,calc(50vw - 300px))}
+/* --tb / --tw: set by shell.js (placeToasts) so the stack sits beside the dock or above it, never over it */
+.toasts{position:fixed;right:26px;bottom:var(--tb,168px);z-index:70;display:flex;flex-direction:column;align-items:flex-end;gap:var(--sp-sm);pointer-events:none;max-width:var(--tw,min(420px,calc(100vw - 52px)))}
 .toast{max-width:100%}
 .swatch.custom{background:conic-gradient(from 200deg,var(--s),var(--s2),var(--s));display:grid;place-items:center}
 .swatch.custom span{width:18px;height:18px;border-radius:50%;background:rgba(6,10,20,.55);display:grid;place-items:center;color:#fff}

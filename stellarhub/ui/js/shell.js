@@ -810,10 +810,38 @@ $('#noteNever').addEventListener('click', e => e.currentTarget.classList.toggle(
 
 /* ================= toasts ================= */
 /* bottom right, at most 3 at a time; a repeated toast refreshes instead of stacking.
-   Opening/closing the same thing (e.g. the widget) replaces the previous toast of the same group. */
-const MAX_TOASTS = 3;
+   Opening/closing the same thing (e.g. the widget) replaces the previous toast of the same group.
+   They never cover the dock, its magnified icons or their tooltips: beside the dock (bottom-aligned with it) when the
+   window leaves room to its right, otherwise stacked above it, clear of the tallest magnified icon and its tooltip.
+   placeToasts() measures the dock at rest (one layout read) when a toast appears and when the window resizes (the zoom,
+   the controller's hint bar). */
+const MAX_TOASTS = 3, TOAST_EDGE = 26, TOAST_GAP = 18, TOAST_MIN = 300;
+function placeToasts() {
+  const box = $('#toasts'); if (!box) return;
+  const r = dock.getBoundingClientRect(); if (!r.width) return;
+  const last = dks[dks.length - 1].el, tip = $('.tip', last), lr = last.getBoundingClientRect();
+  /* the widest the magnification can make the dock on each side (the pill grows by half the extra width) and how far
+     the last icon's tooltip reaches past its own centre */
+  const grow = BASE * GROW * 1.6, tipHalf = tip ? tip.offsetWidth / 2 : 0;
+  const right = Math.max(r.right + grow, lr.left + lr.width / 2 + grow + tipHalf);
+  const room = innerWidth - TOAST_EDGE - right - TOAST_GAP;
+  let bottom, width;
+  if (room >= TOAST_MIN) { bottom = innerHeight - r.bottom; width = Math.min(420, room); }
+  else {
+    /* above the dock: its top, the tallest magnified icon, the tooltip over it (14 px away) and a gap */
+    const tipH = tip ? tip.offsetHeight + 14 : 44;
+    bottom = innerHeight - r.top + BASE * GROW + tipH + TOAST_GAP;
+    const hints = document.getElementById('padHints'); if (hints && ROOT.classList.contains('pad-hints')) { const h = hints.getBoundingClientRect(); if (h.height) bottom = Math.max(bottom, innerHeight - h.top + TOAST_GAP); }
+    width = Math.min(420, innerWidth - TOAST_EDGE * 2);
+  }
+  box.style.setProperty('--tb', `${Math.round(bottom)}px`); box.style.setProperty('--tw', `${Math.floor(width)}px`);
+  box.dataset.at = room >= TOAST_MIN ? 'side' : 'above';
+}
+let toastPlaceRaf = 0;
+addEventListener('resize', () => { cancelAnimationFrame(toastPlaceRaf); toastPlaceRaf = requestAnimationFrame(placeToasts); });
 function toast(text, o = {}) {
   const box = $('#toasts'); const group = o.group || text;
+  placeToasts();
   const same = [...box.children].find(x => x.dataset.group === group && !x.dataset.dead);
   /* o.kind: 'success', 'warning', 'error', 'unavailable' (or another SH.sound event, e.g. 'update_installed'); none is a
      plain toast, whose sound keeps quiet right after another one */
