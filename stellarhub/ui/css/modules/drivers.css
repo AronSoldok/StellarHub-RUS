@@ -30,6 +30,7 @@ html[data-int=min] #v-drivers .du-radar.on .sweep{animation-duration:4s}
 #v-drivers .du-row{padding:11px 12px;border-radius:var(--r-m);cursor:pointer;transition:background-color calc(150ms*var(--f))}
 #v-drivers .du-row:hover{background:var(--raise2)}
 #v-drivers .du-row.sel{background:color-mix(in oklab,var(--accent) 7%,transparent)}
+#v-drivers .du-row.sel:hover{background:color-mix(in oklab,var(--accent) 11%,var(--raise))}
 #v-drivers .du-row .nm{display:flex;align-items:center;gap:var(--sp-md);min-width:0}
 #v-drivers .du-row .nm .ri{width:34px;height:34px;flex:none;border-radius:var(--r-s);display:grid;place-items:center;background:var(--raise2)}
 #v-drivers .du-row .nm .ri svg{width:var(--ic-m);height:var(--ic-m)}
