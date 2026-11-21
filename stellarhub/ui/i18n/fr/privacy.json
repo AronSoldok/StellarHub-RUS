@@ -431,5 +431,17 @@
   "{n} min": "{n} min",
   "{n} h": "{n} h",
   "Applying…": "Application…",
-  "The closer to the center, the more serious.": "Plus c’est près du centre, plus c’est grave."
+  "The closer to the center, the more serious.": "Plus c’est près du centre, plus c’est grave.",
+  "The check reads Microsoft Defender, the firewall, User Account Control, Secure Boot and encryption. Nothing changes.": "La vérification lit Microsoft Defender, le pare-feu, le Contrôle de compte d'utilisateur, le Démarrage sécurisé et le chiffrement. Rien ne change.",
+  "The check reads which apps can use the camera, the microphone and your location, and when they last did. Nothing changes.": "La vérification lit quelles applications peuvent utiliser la caméra, le micro et votre position, et quand elles l'ont fait la dernière fois. Rien ne change.",
+  "The check reads the open ports, the connections of each app, the Wi-Fi security and the hosts file. Nothing changes.": "La vérification lit les ports ouverts, les connexions de chaque application, la sécurité du Wi-Fi et le fichier hosts. Rien ne change.",
+  "The check reads the Windows settings that share data with Microsoft and advertisers. Nothing changes.": "La vérification lit les paramètres Windows qui partagent des données avec Microsoft et les annonceurs. Rien ne change.",
+  "The check reads the tasks, services, registry entries and browser extensions that start by themselves. Nothing changes.": "La vérification lit les tâches, les services, les entrées du registre et les extensions de navigateur qui démarrent d'eux-mêmes. Rien ne change.",
+  "Not checked yet": "Pas encore vérifié",
+  "last checked {when}": "vérifié {when}",
+  "Check now to see how well Windows protects you. Read-only: nothing changes.": "Vérifiez maintenant pour voir si Windows vous protège bien. Lecture seule : rien ne change.",
+  "Check your privacy and security": "Vérifiez votre confidentialité et votre sécurité",
+  "The check looks at protection, app permissions, the network, tracking and what starts by itself, and gives a score. Read-only: nothing changes.": "La vérification examine la protection, les autorisations des applications, le réseau, le suivi et ce qui démarre tout seul, puis donne un score. Lecture seule : rien ne change.",
+  "Last check: {when}": "Dernière vérification : {when}",
+  "These results are from then. Check again to see how your PC is now.": "Ces résultats datent de ce moment-là. Vérifiez à nouveau pour voir l'état actuel de votre PC."
 }

@@ -431,5 +431,17 @@
   "{n} min": "{n} 分钟",
   "{n} h": "{n} 小时",
   "Applying…": "正在应用…",
-  "The closer to the center, the more serious.": "越靠近中心，问题越严重。"
+  "The closer to the center, the more serious.": "越靠近中心，问题越严重。",
+  "The check reads Microsoft Defender, the firewall, User Account Control, Secure Boot and encryption. Nothing changes.": "检查会读取 Microsoft Defender、防火墙、用户帐户控制、安全启动和加密状态。不会更改任何内容。",
+  "The check reads which apps can use the camera, the microphone and your location, and when they last did. Nothing changes.": "检查会读取哪些应用可以使用摄像头、麦克风和你的位置，以及它们上次使用的时间。不会更改任何内容。",
+  "The check reads the open ports, the connections of each app, the Wi-Fi security and the hosts file. Nothing changes.": "检查会读取开放的端口、每个应用的连接、Wi-Fi 安全性和 hosts 文件。不会更改任何内容。",
+  "The check reads the Windows settings that share data with Microsoft and advertisers. Nothing changes.": "检查会读取与 Microsoft 和广告商共享数据的 Windows 设置。不会更改任何内容。",
+  "The check reads the tasks, services, registry entries and browser extensions that start by themselves. Nothing changes.": "检查会读取自行启动的任务、服务、注册表项和浏览器扩展。不会更改任何内容。",
+  "Not checked yet": "尚未检查",
+  "last checked {when}": "上次检查：{when}",
+  "Check now to see how well Windows protects you. Read-only: nothing changes.": "立即检查，了解 Windows 对你的保护程度。只读，不会更改任何内容。",
+  "Check your privacy and security": "检查你的隐私和安全性",
+  "The check looks at protection, app permissions, the network, tracking and what starts by itself, and gives a score. Read-only: nothing changes.": "检查会查看保护、应用权限、网络、跟踪以及自行启动的内容，并给出评分。只读，不会更改任何内容。",
+  "Last check: {when}": "上次检查：{when}",
+  "These results are from then. Check again to see how your PC is now.": "这些是当时的结果。再次检查，了解电脑现在的状况。"
 }

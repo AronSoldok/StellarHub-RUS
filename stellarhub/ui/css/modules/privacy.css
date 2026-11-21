@@ -112,6 +112,13 @@ html[data-int=min] #v-privacy .pv-radar.scanning~.pv-sw{animation:none;opacity:.
 #v-privacy .pv-cta span{overflow:hidden;text-overflow:ellipsis}
 #v-privacy .pv-ovr{display:flex;flex-direction:column;min-height:0}
 #v-privacy #pvRight{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;padding-right:4px}
+/* nothing checked yet / the last check (SH.lastRun strip on top of its results) */
+#v-privacy .pv-es{flex:1}
+#v-privacy .pv-lr{margin-bottom:12px;flex:none}
+/* a tab whose area was never checked: its layout stays hidden under an invitation to check */
+#v-privacy .tab.pv-unchecked>:not(.pv-idle){visibility:hidden}
+#v-privacy .pv-idle{position:absolute;inset:2px 12px 14px;z-index:5;display:flex}
+#v-privacy .pv-idle>.pan{flex:1;display:grid;place-items:center;min-height:0;overflow:auto}
 #v-privacy .pv-fl{display:flex;flex-direction:column;gap:var(--sp-xs)}
 #v-privacy .pv-f{display:flex;align-items:center;gap:var(--sp-md);padding:11px 12px;border-radius:var(--r-m);position:relative;transition:background-color calc(150ms*var(--f))}
 #v-privacy .pv-f:hover{background:var(--raise2)}

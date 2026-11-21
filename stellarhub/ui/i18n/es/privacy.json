@@ -431,5 +431,17 @@
   "{n} min": "{n} min",
   "{n} h": "{n} h",
   "Applying…": "Aplicando…",
-  "The closer to the center, the more serious.": "Cuanto más cerca del centro, más grave."
+  "The closer to the center, the more serious.": "Cuanto más cerca del centro, más grave.",
+  "The check reads Microsoft Defender, the firewall, User Account Control, Secure Boot and encryption. Nothing changes.": "La comprobación lee Microsoft Defender, el firewall, el Control de cuentas de usuario, el Arranque seguro y el cifrado. No cambia nada.",
+  "The check reads which apps can use the camera, the microphone and your location, and when they last did. Nothing changes.": "La comprobación lee qué aplicaciones pueden usar la cámara, el micrófono y tu ubicación, y cuándo lo hicieron por última vez. No cambia nada.",
+  "The check reads the open ports, the connections of each app, the Wi-Fi security and the hosts file. Nothing changes.": "La comprobación lee los puertos abiertos, las conexiones de cada aplicación, la seguridad de la Wi-Fi y el archivo hosts. No cambia nada.",
+  "The check reads the Windows settings that share data with Microsoft and advertisers. Nothing changes.": "La comprobación lee los ajustes de Windows que comparten datos con Microsoft y con anunciantes. No cambia nada.",
+  "The check reads the tasks, services, registry entries and browser extensions that start by themselves. Nothing changes.": "La comprobación lee las tareas, los servicios, las entradas del registro y las extensiones del navegador que se inician solos. No cambia nada.",
+  "Not checked yet": "Aún sin comprobar",
+  "last checked {when}": "comprobado {when}",
+  "Check now to see how well Windows protects you. Read-only: nothing changes.": "Comprueba ahora para ver lo bien que te protege Windows. Solo lee: no cambia nada.",
+  "Check your privacy and security": "Comprueba tu privacidad y seguridad",
+  "The check looks at protection, app permissions, the network, tracking and what starts by itself, and gives a score. Read-only: nothing changes.": "La comprobación revisa la protección, los permisos de las aplicaciones, la red, el rastreo y lo que se inicia solo, y da una puntuación. Solo lee: no cambia nada.",
+  "Last check: {when}": "Última comprobación: {when}",
+  "These results are from then. Check again to see how your PC is now.": "Estos resultados son de entonces. Vuelve a comprobar para ver cómo está tu PC ahora."
 }

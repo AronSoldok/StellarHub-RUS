@@ -431,5 +431,17 @@
   "{n} min": "{n} 分",
   "{n} h": "{n} 時間",
   "Applying…": "適用中…",
-  "The closer to the center, the more serious.": "中心に近いほど深刻です。"
+  "The closer to the center, the more serious.": "中心に近いほど深刻です。",
+  "The check reads Microsoft Defender, the firewall, User Account Control, Secure Boot and encryption. Nothing changes.": "チェックでは Microsoft Defender、ファイアウォール、ユーザー アカウント制御、セキュア ブート、暗号化を読み取ります。何も変更されません。",
+  "The check reads which apps can use the camera, the microphone and your location, and when they last did. Nothing changes.": "チェックでは、カメラ、マイク、位置情報を使えるアプリと、最後に使った日時を読み取ります。何も変更されません。",
+  "The check reads the open ports, the connections of each app, the Wi-Fi security and the hosts file. Nothing changes.": "チェックでは、開いているポート、アプリごとの接続、Wi-Fi のセキュリティ、hosts ファイルを読み取ります。何も変更されません。",
+  "The check reads the Windows settings that share data with Microsoft and advertisers. Nothing changes.": "チェックでは、Microsoft や広告主とデータを共有する Windows の設定を読み取ります。何も変更されません。",
+  "The check reads the tasks, services, registry entries and browser extensions that start by themselves. Nothing changes.": "チェックでは、自動で起動するタスク、サービス、レジストリ エントリ、ブラウザー拡張機能を読み取ります。何も変更されません。",
+  "Not checked yet": "まだチェックしていません",
+  "last checked {when}": "前回のチェック: {when}",
+  "Check now to see how well Windows protects you. Read-only: nothing changes.": "今すぐチェックして、Windows の保護の状態を確認しましょう。読み取りのみで、何も変更されません。",
+  "Check your privacy and security": "プライバシーとセキュリティをチェック",
+  "The check looks at protection, app permissions, the network, tracking and what starts by itself, and gives a score. Read-only: nothing changes.": "チェックでは、保護、アプリのアクセス許可、ネットワーク、追跡、自動で起動するものを確認し、スコアを出します。読み取りのみで、何も変更されません。",
+  "Last check: {when}": "前回のチェック: {when}",
+  "These results are from then. Check again to see how your PC is now.": "これは当時の結果です。現在の PC の状態を見るには、もう一度チェックしてください。"
 }

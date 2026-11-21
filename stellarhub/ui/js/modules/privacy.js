@@ -188,15 +188,45 @@ function load(area) {
     .finally(() => { delete BUSY[area]; notify(area + ':idle'); });
   BUSY[area] = p; return p;
 }
+/* Opening the module checks nothing: it shows the last check (the engine keeps it, with its date) or invites to check.
+   The check runs when the user presses Check now / Check again, or on opening when Settings > General > "Analyze
+   automatically when opening a module" is on (then quiet and followed as bg, as before). */
 async function start(force) {
   if (started && !force) return; started = true;
   if (await realP) {
     if (!force) { try { const c = await SH.engine('privacy', 'cached'); if (c) { AREAS.forEach(a => { if (c[a] && c[a].data && !D[a]) setData(a, c[a].data, c[a]); }); } } catch (e) { console.error(e); } }
   }
-  /* the first check (opening the module) is followed from anywhere once it has run for a moment (bg) */
+  if (!SH.autoAnalyze()) { notify('idle'); return; }
   const act = SH.activity.start('privacy', { key: 'check', label: t('Checking your system'), go: { tab: 'overview' }, bg: true }); let n = 0;
   Promise.all(AREAS.map(a => load(a).finally(() => act.progress(++n / AREAS.length)))).then(() => {
     const bad = AREAS.find(a => ERR[a]); act.end(bad ? { ok: false, error: ERR[bad] } : { ok: true });
+  });
+}
+/* the check the user asked for (header, the Overview, any tab): scan_start now, scan_complete when every area answered */
+function checkNow(toast) {
+  if (AREAS.some(loading)) return;
+  SH.sound('scan_start');
+  const act = SH.activity.start('privacy', { key: 'check', label: t('Checking again…'), go: { tab: 'overview' } }); let n = 0;
+  Promise.all(AREAS.map(a => load(a).finally(() => act.progress(++n / AREAS.length)))).then(() => { if (!AREAS.some(a => ERR[a])) SH.sound('scan_complete'); act.end({ ok: true }); }, err => act.end({ ok: false, error: err && err.message }));
+  if (toast) SH.toast(t('Checking again…'));
+}
+document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('#v-privacy [data-pv-check]'); if (b && !b.disabled) checkNow(); });
+/* a tab whose area was never checked: its layout stays underneath, covered by an invitation to check */
+const TAB_TXT = {
+  protection: () => t('The check reads Microsoft Defender, the firewall, User Account Control, Secure Boot and encryption. Nothing changes.'),
+  permissions: () => t('The check reads which apps can use the camera, the microphone and your location, and when they last did. Nothing changes.'),
+  network: () => t('The check reads the open ports, the connections of each app, the Wi-Fi security and the hosts file. Nothing changes.'),
+  tracking: () => t('The check reads the Windows settings that share data with Microsoft and advertisers. Nothing changes.'),
+  persistence: () => t('The check reads the tasks, services, registry entries and browser extensions that start by themselves. Nothing changes.'),
+};
+function idleTabs() {
+  $$('#v-privacy .tab[data-tab]').forEach(el => {
+    const a = el.dataset.tab; if (!TAB_TXT[a] || !el.childElementCount) return;
+    const idle = !has(a) && !loading(a) && !ERR[a];
+    el.classList.toggle('pv-unchecked', idle);
+    let o = $(':scope > .pv-idle', el);
+    if (idle && !o) { o = document.createElement('div'); o.className = 'pv-idle'; o.innerHTML = `<div class="pan">${SH.emptyState({ art: 'first', title: t('Not checked yet'), text: TAB_TXT[a](), action: { label: t('Check now'), data: 'data-pv-check', icon: 'pvscan', pri: true, big: true } })}</div>`; el.appendChild(o); }
+    else if (!idle && o) o.remove();
   });
 }
 const loading = a => !!BUSY[a];
@@ -236,7 +266,7 @@ function paintInto(el, html, fresh) {
   el.innerHTML = html;
   if (fresh) anim(el, [{ opacity: 0, transform: 'translate3d(0,10px,0)', filter: 'blur(5px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 420, e: EASE.spring });
 }
-const stamp = a => TS[a] ? (D[a] && D[a]._stale ? t('from {when}, updating…', { when: ago(TS[a]) }) : t('updated {when}', { when: ago(TS[a]) })) : t('checking…');
+const stamp = a => TS[a] ? (D[a] && D[a]._stale ? (loading(a) ? t('from {when}, updating…', { when: ago(TS[a]) }) : t('last checked {when}', { when: ago(TS[a]) })) : t('updated {when}', { when: ago(TS[a]) })) : loading(a) ? t('checking…') : t('not checked yet');
 let modCtx = null;
 const errBox = a => SH.emptyState({ art: 'error', title: t("Couldn't read from Windows"), text: esc(ERR[a] || ''), action: { label: t('Try again'), data: `data-retry="${a}"`, icon: 'restore' } });
 document.addEventListener('click', e => { const b = e.target.closest('#v-privacy [data-retry]'); if (b) { SH.sound('refresh'); load(b.dataset.retry); } });
@@ -333,8 +363,9 @@ let ovEl = null, ovMode = 'list', passOpen = false;
 function ovState() {
   const pending = AREAS.filter(a => !has(a));
   const fs = findings(), sc = score(), fixes = fs.filter(f => f.fix), nChanges = fixes.reduce((a, f) => a + (f.fix.kind === 'tracking' && Array.isArray(f.fix.arg) ? f.fix.arg.length : 1), 0);
-  if (pending.length === AREAS.length) return { title: t('Checking your PC…'), sub: t('Read-only: nothing changes while we look.') };
-  const title = pending.length ? t('Checking your PC…') : sc >= 90 ? t('Well protected') : sc >= 75 ? t('Good, with a few things to look at') : sc >= 55 ? t('Some things need your attention') : t('Your PC needs attention');
+  const busy = AREAS.some(loading);
+  if (pending.length === AREAS.length) return busy ? { title: t('Checking your PC…'), sub: t('Read-only: nothing changes while we look.') } : { title: t('Not checked yet'), sub: t('Check now to see how well Windows protects you. Read-only: nothing changes.') };
+  const title = pending.length && busy ? t('Checking your PC…') : sc >= 90 ? t('Well protected') : sc >= 75 ? t('Good, with a few things to look at') : sc >= 55 ? t('Some things need your attention') : t('Your PC needs attention');
   const sub = !fs.length ? t('Everything we checked is fine. Nothing to do.') : fixes.length ? (nChanges === 1 ? t('1 fix can be applied safely, and undone.') : t('{n} fixes can be applied safely, and undone.', { n: nChanges })) : t('Nothing can be fixed automatically; open each one to see what to do.');
   return { title, sub, fixes, nChanges };
 }
@@ -368,7 +399,7 @@ function renderOverview(el, ctx) {
     const ck = e.target.closest('.pv-plan .check'); if (ck && !ck.disabled) ck.classList.toggle('on');
   });
   paintOverview(true); startSweep();
-  on(a => { if (AREAS.includes(a) || a === 'live' || /:idle$/.test(a)) { if (ovMode === 'list') paintOverview(false); else paintRadar(); const lv = $('#pvLive', el); if (lv) lv.innerHTML = liveHTML(); } });
+  on(a => { if (AREAS.includes(a) || a === 'live' || a === 'idle' || /:(busy|idle)$/.test(a)) { if (ovMode === 'list') paintOverview(false); else paintRadar(); const lv = $('#pvLive', el); if (lv) lv.innerHTML = liveHTML(); } });
   rendered.overview = () => paintOverview(false);
 }
 function paintRadar() {
@@ -376,15 +407,16 @@ function paintRadar() {
   AREAS.forEach(a => { const tn = has(a) ? tone(a) : 'pend';
     [$(`.pv-radar .sec[data-sec="${a}"]`, ovEl), $(`.pv-rl[data-sec="${a}"]`, ovEl)].forEach(el => { if (el) el.dataset.t = tn; }); });
   const done = AREAS.filter(has).length, rd = $('.pv-radar', ovEl);
-  const wasScanning = rd.classList.contains('scanning'), scanning = AREAS.some(loading) || done < AREAS.length;
+  const wasScanning = rd.classList.contains('scanning'), scanning = AREAS.some(loading);
   rd.classList.toggle('scanning', scanning);
   /* when the last area answers, one soft ring spreads out from the center, once (opacity and scale only) */
   if (wasScanning && !scanning && SH.effInt() !== 'min' && !SH.state.lite) { const r = $('.pv-rest', ovEl); if (r) anim(r, [{ opacity: .55, transform: 'scale(.25)' }, { opacity: 0, transform: 'scale(1)' }], { d: 1300, e: EASE.out }); }
   paintBlips();
-  const sc = $('#pvScore', ovEl); const target = done ? score() : 0;
-  if (+sc.dataset.v !== target || !sc._rn) SH.rollNumber(sc, target);
-  $('#pvScoreL', ovEl).textContent = done === AREAS.length ? t('Protection level, out of 100') : t('checking…');
-  const lit = done === AREAS.length ? Math.round(target / (100 / GAUGE_N)) : 0, tn = target >= 75 ? 'ok' : target >= 55 ? 'warn' : 'bad';
+  const sc = $('#pvScore', ovEl); const target = done ? score() : 0, whole = done === AREAS.length || (done && !scanning);
+  if (!done && !scanning) { SH.rollNumber(sc, '—'); sc.dataset.v = ''; }
+  else if (+sc.dataset.v !== target || !sc._rn) SH.rollNumber(sc, target);
+  $('#pvScoreL', ovEl).textContent = whole ? t('Protection level, out of 100') : scanning ? t('checking…') : t('not checked yet');
+  const lit = whole ? Math.round(target / (100 / GAUGE_N)) : 0, tn = target >= 75 ? 'ok' : target >= 55 ? 'warn' : 'bad';
   $$('#pvGauge i', ovEl).forEach((c, k) => { const on = k < lit; if (c.classList.contains('on') !== on || c.dataset.t !== tn) { c.style.transitionDelay = `${(on ? k : GAUGE_N - k) * 22}ms`; c.classList.toggle('on', on); c.dataset.t = tn; } });
 }
 function paintOverview(first) {
@@ -395,9 +427,18 @@ function paintOverview(first) {
   const right = $('#pvRight', ovEl);
   const fs = findings(), ps = passed(), pending = AREAS.filter(a => !has(a));
   const upd = AREAS.filter(has).length ? Math.min(...AREAS.filter(has).map(a => TS[a])) : null;
-  const live = AREAS.some(a => D[a] && D[a]._stale) || pending.length;
-  const head = `<h4 class="pan-h">${t('What we found')} <em>${live ? t('checking…') : upd ? t('updated {when}', { when: ago(upd) }) : ''}</em></h4>`;
+  const busy = AREAS.some(loading), stale = AREAS.some(a => D[a] && D[a]._stale);
+  if (!busy && pending.length === AREAS.length && !AREAS.some(a => ERR[a])) {
+    /* never checked: an invitation instead of the list */
+    const html = SH.emptyState({ art: 'first', title: t('Check your privacy and security'), text: t('The check looks at protection, app permissions, the network, tracking and what starts by itself, and gives a score. Read-only: nothing changes.'),
+      action: { label: t('Check now'), data: 'data-pv-check', icon: 'pvscan', pri: true, big: true }, cls: 'pv-es' });
+    if (right.dataset.sig !== html) { right.dataset.sig = html; right.innerHTML = html; }
+    return;
+  }
+  const head = (stale && !busy ? SH.lastRun({ when: upd * 1000, title: t('Last check: {when}'), text: t('These results are from then. Check again to see how your PC is now.'), action: { label: t('Check again'), data: 'data-pv-check', icon: 'pvscan' }, cls: 'pv-lr' }) : '')
+    + `<h4 class="pan-h">${t('What we found')} <em>${busy ? t('checking…') : upd && !stale ? t('updated {when}', { when: ago(upd) }) : ''}</em></h4>`;
   const pend = pending.map(a => ERR[a] ? `<div class="pv-f info"><span class="pv-fi">${ic(AREA_IC[a])}</span><div class="pv-ft"><b>${AREA_N[a]}</b><span>${esc(t("Couldn't read from Windows"))}: ${esc(ERR[a])}</span></div><div class="pv-fa"><button class="btn sm ghost" data-retry="${a}">${t('Try again')}</button></div></div>`
+    : !loading(a) ? `<div class="pv-f info"><span class="pv-fi">${ic(AREA_IC[a])}</span><div class="pv-ft"><b>${AREA_N[a]}</b><span>${t('Not checked yet')}</span></div></div>`
     : `<div class="pv-f pv-pend"><span class="pv-fi">${ic(AREA_IC[a])}</span><div class="pv-ft"><b>${esc(t('Checking: {area}', { area: AREA_N[a] }))}</b><span class="sk" style="width:${36 + (a.length * 7) % 30}%"></span></div></div>`).join('');
   const ok = !fs.length && !pending.length ? `<div class="pv-allok">${ic('shield')}<div><b>${t('Everything is fine')}</b><span>${t('No problems found in protection, permissions, network, tracking or auto-starts.')}</span></div></div>` : '';
   const pass = ps.length ? `<div class="pv-pass${passOpen ? ' open' : ''}"><button class="pv-ph" id="pvPass">${ic('check')}<span>${ps.length === 1 ? t('1 check passed') : t('{n} checks passed', { n: ps.length })}</span>${ic('chevd')}</button><div class="pv-pl"><div>${ps.map(p => `<span class="pv-pi">${ic('check')}${esc(p)}</span>`).join('')}</div></div></div>` : '';
@@ -678,7 +719,7 @@ function fillNetIcons() {
 function netTick() {
   clearTimeout(netTimer);
   const vis = state.view === 'privacy' && netEl && netEl.classList.contains('on');
-  if (vis && REAL && !loading('network') && TS.network && NOW() - TS.network > 5) load('network');
+  if (vis && REAL && !loading('network') && TS.network && !D.network._stale && NOW() - TS.network > 5) load('network');   /* live only after a check in this session */
   netTimer = setTimeout(netTick, 6000);
 }
 
@@ -831,28 +872,27 @@ function badges() {
   const P = D.permissions; modCtx.setBadge('permissions', P ? P.caps.reduce((a, c) => a + c.apps.filter(x => x.active).length, 0) : 0);
   const S = D.persistence; modCtx.setBadge('persistence', S ? S.items.filter(e => e.risk === 'high' && e.on).length : 0);
 }
-on(a => { if (AREAS.includes(a)) badges(); });
+on(a => { if (AREAS.includes(a)) badges(); if (AREAS.includes(a) || a === 'idle' || /:(busy|idle)$/.test(a)) idleTabs(); });
 SH.module({
   id: 'privacy', real: true,
   actions(el, ctx) {
     modCtx = ctx;
     el.innerHTML = `<button class="btn ghost" data-a="again">${ic('pvscan')}${t('Check again')}</button>`;
-    el.addEventListener('click', e => { if (!e.target.closest('[data-a="again"]')) return; SH.sound('scan_start');
-      const act = SH.activity.start('privacy', { key: 'check', label: t('Checking again…'), go: { tab: 'overview' } }); let n = 0;
-      Promise.all(AREAS.map(a => load(a).finally(() => act.progress(++n / AREAS.length)))).then(() => { if (!AREAS.some(a => ERR[a])) SH.sound('scan_complete'); act.end({ ok: true }); }, err => act.end({ ok: false, error: err && err.message }));
-      SH.toast(t('Checking again…')); });
+    el.addEventListener('click', e => { if (!e.target.closest('[data-a="again"]')) return; checkNow(true); });
     on(a => { const b = $('[data-a="again"]', el); if (b && (a.endsWith(':busy') || a.endsWith(':idle'))) b.disabled = AREAS.some(loading); });
   },
   renderTab(tab, el, ctx) {
     start();
     ({ overview: renderOverview, permissions: renderPermissions, protection: renderProtection, network: renderNetwork, tracking: renderTracking, persistence: renderPersistence })[tab](el, ctx);
+    idleTabs();
   },
   enter() { start(); liveTick(); netTick(); badges(); },
   leave() { clearTimeout(liveTimer); clearTimeout(netTimer); },
   enterTab(tab, el) {
     if (tab === 'overview' && el) { const r = $('.pv-radar', el); if (r) anim(r, [{ transform: 'scale(.9)', opacity: .4 }, { transform: 'none', opacity: 1 }], { d: 620, e: EASE.spring }); if (rendered.overview) rendered.overview(); startSweep(); }
-    if (tab === 'network' && REAL && TS.network && NOW() - TS.network > 4) load('network');
-    if (tab === 'permissions' && REAL && TS.permissions && NOW() - TS.permissions > 20) load('permissions');
+    /* the live views read again on entry, but only after a check in this session (never from the last check's cache) */
+    if (tab === 'network' && REAL && TS.network && !D.network._stale && !loading('network') && NOW() - TS.network > 4) load('network');
+    if (tab === 'permissions' && REAL && TS.permissions && !D.permissions._stale && !loading('permissions') && NOW() - TS.permissions > 20) load('permissions');
   },
 });
 SH.actions.add([

@@ -431,5 +431,17 @@
   "{n} min": "{n} min",
   "{n} h": "{n} h",
   "Applying…": "Applicazione…",
-  "The closer to the center, the more serious.": "Più vicino al centro, più è grave."
+  "The closer to the center, the more serious.": "Più vicino al centro, più è grave.",
+  "The check reads Microsoft Defender, the firewall, User Account Control, Secure Boot and encryption. Nothing changes.": "Il controllo legge Microsoft Defender, il firewall, il Controllo dell'account utente, l'Avvio protetto e la crittografia. Non cambia nulla.",
+  "The check reads which apps can use the camera, the microphone and your location, and when they last did. Nothing changes.": "Il controllo legge quali app possono usare la fotocamera, il microfono e la tua posizione, e quando l'hanno fatto l'ultima volta. Non cambia nulla.",
+  "The check reads the open ports, the connections of each app, the Wi-Fi security and the hosts file. Nothing changes.": "Il controllo legge le porte aperte, le connessioni di ogni app, la sicurezza del Wi-Fi e il file hosts. Non cambia nulla.",
+  "The check reads the Windows settings that share data with Microsoft and advertisers. Nothing changes.": "Il controllo legge le impostazioni di Windows che condividono dati con Microsoft e gli inserzionisti. Non cambia nulla.",
+  "The check reads the tasks, services, registry entries and browser extensions that start by themselves. Nothing changes.": "Il controllo legge le attività, i servizi, le voci del registro di sistema e le estensioni del browser che si avviano da soli. Non cambia nulla.",
+  "Not checked yet": "Non ancora controllato",
+  "last checked {when}": "controllato {when}",
+  "Check now to see how well Windows protects you. Read-only: nothing changes.": "Controlla ora per vedere quanto Windows ti protegge. Solo lettura: non cambia nulla.",
+  "Check your privacy and security": "Controlla la tua privacy e sicurezza",
+  "The check looks at protection, app permissions, the network, tracking and what starts by itself, and gives a score. Read-only: nothing changes.": "Il controllo esamina la protezione, le autorizzazioni delle app, la rete, il tracciamento e ciò che si avvia da solo, e assegna un punteggio. Solo lettura: non cambia nulla.",
+  "Last check: {when}": "Ultimo controllo: {when}",
+  "These results are from then. Check again to see how your PC is now.": "Questi risultati sono di allora. Controlla di nuovo per vedere com'è il tuo PC ora."
 }
