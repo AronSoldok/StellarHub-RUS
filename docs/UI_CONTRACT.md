@@ -57,8 +57,14 @@ Tokens: `--void --deep --raise --raise2 --raise3 --line --line2 --ink --mute --f
 
 ## Sounds
 
-`SH.sound(event, opts)` (core.js) plays `ui/sounds/<event>.ogg`; the 37 events are the keys of `SOUND_EV`, each with
-its group, gain trim (set from the file's loudest 100 ms), minimum gap and priority. `js/sounds.js` already gives every
+`SH.sound(event, opts)` (core.js) plays `ui/sounds/<event>.ogg` (or the file its `f` names); the 37 events are the keys
+of `SOUND_EV`, each with its group, gain trim (set from the file's loudest 100 ms), minimum gap and priority.
+`navigate` (a module change from the dock, the palette or a shortcut; `go()` in shell.js plays it) is two sounds:
+`navigate_click.ogg` at once and, 20 ms later, one of seven soft swooshes (`navigate_swoosh_1..7.ogg`, `SWOOSH` in
+core.js, each with its own trim, about 7 dB under the click) that goes with the view's transition; they take turns, so
+two changes in a row never sound the same. The swoosh follows the click (no click, no swoosh), never cuts another
+sound and stays at intensity `min`, where the transition is shorter but still there. `SH.sound.files(event)` lists
+the files an event plays. `js/sounds.js` already gives every
 module, with no code: a click on buttons, links, dock items and rows (pointer or controller A), `toggle_on/off` on
 `.toggle`, `tab_switch` on `.seg` and `.subnav`, `panel_open/close` for the dialogs in gamepad.js's `MODALS`,
 `dropdown`, `hover`, `unavailable` on a disabled button, `navigate`, `palette_open`, `key_type` while typing in the

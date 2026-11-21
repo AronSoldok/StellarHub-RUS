@@ -41,15 +41,29 @@ def sound_events():
     return list(sound_table())
 
 
+def swooshes():
+    """SWOOSH (core.js): [(file, trim)], the swooshes that follow navigate's click."""
+    block = re.search(r"const SWOOSH = \{.*?files: \[(.*?)\] \};", read("js", "core.js"), re.S).group(1)
+    return [(f, float(g)) for f, g in re.findall(r"\['(\w+)', ([\d.]+)\]", block)]
+
+
+def event_file(ev):
+    return sound_table()[ev].get("f", ev)
+
+
 class SoundFiles(unittest.TestCase):
     def test_every_event_has_its_file_and_credit(self):
         table = sound_table()
         self.assertEqual(len(table), 37)
         files = {f[:-4] for f in os.listdir(SOUNDS) if f.endswith(".ogg")}
-        self.assertEqual(set(table), files)
+        sw = [f for f, _ in swooshes()]
+        self.assertEqual(sw, [f"navigate_swoosh_{i}" for i in range(1, 8)])
+        self.assertEqual(table["navigate"]["f"], "navigate_click")
+        self.assertEqual({d.get("f", ev) for ev, d in table.items()} | set(sw), files)   # no file is left over
+        self.assertNotIn("navigate", files)                                              # the old one is gone
         with open(os.path.join(SOUNDS, "CREDITS.json"), encoding="utf-8") as fh:
             credits = json.load(fh)
-        self.assertEqual(len(credits), 37)
+        self.assertEqual(len(credits), 44)
         self.assertEqual({c["event"] for c in credits}, files)
         for c in credits:
             self.assertIn(c["license"], ("CC0-1.0", "CC-BY-4.0"), c["event"])
@@ -94,7 +108,10 @@ class SoundFiles(unittest.TestCase):
         t = sound_table()
 
         def level(ev):
-            x, sr = sf.read(os.path.join(SOUNDS, ev + ".ogg"), always_2d=True)
+            return raw(event_file(ev)) + 20 * math.log10(t[ev]["g"])
+
+        def raw(name):
+            x, sr = sf.read(os.path.join(SOUNDS, name + ".ogg"), always_2d=True)
             m = x.mean(axis=1)
             w = int(sr * 0.1)
             if len(m) < w:
@@ -102,7 +119,7 @@ class SoundFiles(unittest.TestCase):
             else:
                 c = np.cumsum(np.concatenate([[0.0], m ** 2]))
                 e = float(np.max(c[w:] - c[:-w])) / w
-            return 10 * math.log10(max(e, 1e-18)) + 20 * math.log10(t[ev]["g"])
+            return 10 * math.log10(max(e, 1e-18))
 
         self.assertLess(level("map_hover"), level("hover"))
         self.assertGreater(level("key_type"), level("hover"))
@@ -113,6 +130,11 @@ class SoundFiles(unittest.TestCase):
             self.assertAlmostEqual(level(ev), -24.5, delta=1.5, msg=ev)         # the notifications
         self.assertAlmostEqual(level("toast"), -26.5, delta=1.5)                # a plain toast: a little under those
         self.assertAlmostEqual(level("scan_start"), -25.5, delta=1.5)
+        # navigate's swooshes: all about as loud as each other, well under the click they follow
+        for f, g in swooshes():
+            lv = raw(f) + 20 * math.log10(g)
+            self.assertAlmostEqual(lv, -36, delta=1, msg=f)
+            self.assertLess(lv, level("navigate") - 5, f)
 
     def test_files_are_ogg_vorbis(self):
         for f in os.listdir(SOUNDS):
@@ -302,10 +324,10 @@ globalThis.AudioBuffer = AudioBuffer;
 const param = () => ({ value: 1, cancelScheduledValues: noop, setTargetAtTime: noop });
 globalThis.AudioContext = class { constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; }
   createGain() { return { gain: param(), connect: noop, disconnect: noop }; }
-  createBufferSource() { const s = { connect: noop, stop: noop, start() { setTimeout(() => s.onended && s.onended(), 20); } }; return s; }
-  resume() { return Promise.resolve(); } decodeAudioData() { return Promise.resolve(new AudioBuffer()); } };
-const fetched = [];
-globalThis.fetch = u => { fetched.push(u); return Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) }); };
+  createBufferSource() { const s = { connect: noop, stop: noop, start(when) { started.push({ file: s.buffer && s.buffer.file, when: when || 0 }); setTimeout(() => s.onended && s.onended(), 20); } }; return s; }
+  resume() { return Promise.resolve(); } decodeAudioData(a) { const b = new AudioBuffer(); b.file = a.file; return Promise.resolve(b); } };
+const fetched = [], started = [];
+globalThis.fetch = u => { fetched.push(u); return Promise.resolve({ ok: true, arrayBuffer: () => { const a = new ArrayBuffer(8); a.file = u.replace(/^sounds\/|\.ogg$/g, ''); return Promise.resolve(a); } }); };
 eval(require('fs').readFileSync(process.env.CORE_JS, 'utf8'));
 const played = [], real = SH.sound;
 const rec = (ev, o) => { const r = real(ev, o); if (r) played.push(ev); return r; };
@@ -384,6 +406,35 @@ class Wiring(unittest.TestCase):
         for how in ("backdrop", "x", "esc", "removed"):
             self.assertEqual(out[how], ["panel_close"], how)
         self.assertEqual(out["claimed"], [])
+
+    def test_a_module_change_plays_one_click_and_one_swoosh_that_rotates(self):
+        out = self.run_js(r"""
+          SH.sound.preload(['navigate']); await tick(30);
+          const runs = [];
+          for (let i = 0; i < 9; i++) {
+            fire('pointerdown', { target: nothing }); started.length = 0; played.length = 0;
+            SH.sound('navigate'); await tick(160);
+            runs.push({ played: played.slice(), started: started.map(s => s.file), delayed: started.filter(s => s.when > 0).map(s => s.file) });
+          }
+          /* no gesture: no click and no swoosh either */
+          await tick(1600); started.length = 0; SH.sound('navigate'); await tick(60); const quiet = started.length;
+          /* intensity min: the transition is shorter, the swoosh stays */
+          SH.state.settings.intensity = 'min'; fire('pointerdown', { target: nothing }); started.length = 0; SH.sound('navigate'); await tick(60);
+          out({ runs, quiet, min: started.map(s => s.file), files: SH.sound.files('navigate') });
+        """)
+        sw = []
+        for r in out["runs"]:
+            self.assertEqual(r["played"], ["navigate"])
+            self.assertEqual(len(r["started"]), 2, r)
+            self.assertEqual(r["started"][0], "navigate_click")           # the click at once...
+            self.assertTrue(r["started"][1].startswith("navigate_swoosh_"))
+            self.assertEqual(r["delayed"], [r["started"][1]])            # ...the swoosh a moment later
+            sw.append(r["started"][1])
+        self.assertTrue(all(a != b for a, b in zip(sw, sw[1:])), sw)    # never the same twice in a row
+        self.assertEqual(len(set(sw[:7])), 7, sw)                         # all seven take turns
+        self.assertEqual(out["quiet"], 0)
+        self.assertEqual(len(out["min"]), 2)
+        self.assertEqual(out["files"], ["navigate_click"] + [f"navigate_swoosh_{i}" for i in range(1, 8)])
 
 
 if __name__ == "__main__":

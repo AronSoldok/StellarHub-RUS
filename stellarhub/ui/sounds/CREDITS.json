@@ -160,14 +160,84 @@
   "durationMs": 16
  },
  {
-  "event": "navigate",
-  "id": "navigate.orbital-slide",
+  "event": "navigate_click",
+  "id": "navigate_click.orbital-trackpad",
   "family": "Orbital (original)",
   "license": "CC0-1.0",
   "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
   "sourceUrl": "",
   "attribution": "",
-  "durationMs": 154
+  "durationMs": 30
+ },
+ {
+  "event": "navigate_swoosh_1",
+  "id": "navigate_swoosh.orbital-rise",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 270
+ },
+ {
+  "event": "navigate_swoosh_2",
+  "id": "navigate_swoosh.orbital-fall",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 257
+ },
+ {
+  "event": "navigate_swoosh_3",
+  "id": "navigate_swoosh.orbital-arc",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 284
+ },
+ {
+  "event": "navigate_swoosh_4",
+  "id": "navigate_swoosh.orbital-glint",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 290
+ },
+ {
+  "event": "navigate_swoosh_5",
+  "id": "navigate_swoosh.orbital-pan",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 283
+ },
+ {
+  "event": "navigate_swoosh_6",
+  "id": "navigate_swoosh.orbital-breath",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 278
+ },
+ {
+  "event": "navigate_swoosh_7",
+  "id": "navigate_swoosh.orbital-tonal",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 268
  },
  {
   "event": "palette_open",

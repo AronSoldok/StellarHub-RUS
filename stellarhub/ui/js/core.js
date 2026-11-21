@@ -798,11 +798,12 @@ const chartKit = (() => {
    Returns true when the sound plays (or will, once its file is decoded).
    g: a trim per sound, set from the loudest 100 ms of each file so that the interface sits about 6 dB under the
    notifications and the quiet ones (hover, focus moves, ticks, keys) about 6 dB under the interface (the typing tick,
-   key_type, a little above them; the map tick, map_hover, a little under hover). */
+   key_type, a little above them; the map tick, map_hover, a little under hover).
+   f: the file when it is not named after the event (navigate plays navigate_click.ogg). */
 const SOUND_EV = {
   /* interface */
   click: { c: 'ui', g: .5, gap: 40, tier: 1, user: 1 }, hover: { c: 'ui', g: .16, gap: 70, tier: 0 },
-  tab_switch: { c: 'ui', g: .45, gap: 80, tier: 1, user: 1 }, navigate: { c: 'ui', g: .69, gap: 120, tier: 1, user: 1 },
+  tab_switch: { c: 'ui', g: .45, gap: 80, tier: 1, user: 1 }, navigate: { c: 'ui', g: .5, gap: 120, tier: 1, user: 1, f: 'navigate_click' },
   dropdown: { c: 'ui', g: .45, gap: 80, tier: 1, user: 1 }, palette_open: { c: 'ui', g: .45, gap: 150, tier: 1, user: 1 },
   focus_move: { c: 'ui', g: .2, gap: 45, tier: 0 }, panel_open: { c: 'ui', g: .45, gap: 150, tier: 1, user: 1 },
   panel_close: { c: 'ui', g: .4, gap: 150, tier: 1, user: 1 }, toggle_on: { c: 'ui', g: .45, gap: 60, tier: 1, user: 1 },
@@ -824,6 +825,13 @@ const SOUND_EV = {
   device_disconnected: { c: 'system', g: .46, gap: 1000, tier: 2 }, widget_on: { c: 'system', g: .45, gap: 150, tier: 1 },
   widget_off: { c: 'system', g: .38, gap: 150, tier: 1 }, key_press: { c: 'system', g: .16, gap: 25, tier: 0 },
 };
+/* A module change (navigate) is two sounds: the trackpad click at once and, 20 ms later, a soft swoosh that goes with
+   the view's transition. The seven swooshes take turns, so two changes in a row never sound the same. Each has its own
+   trim from its loudest 100 ms: they sit about 7 dB under the click (-36 against -29 dB). At intensity 'min' the
+   transition is shorter but still there, so the swoosh stays. It follows the click: nothing of its own decides it. */
+const SWOOSH = { delay: .02, n: -1, files: [['navigate_swoosh_1', .53], ['navigate_swoosh_2', .55], ['navigate_swoosh_3', .58],
+  ['navigate_swoosh_4', .57], ['navigate_swoosh_5', .59], ['navigate_swoosh_6', .46], ['navigate_swoosh_7', .54]] };
+const sndFile = ev => SOUND_EV[ev].f || ev;
 const SOUND_CAT = { ui: 'soundUi', alerts: 'soundAlerts', tasks: 'soundTasks', system: 'soundSystem' };
 const snd = { ctx: null, master: null, buf: new Map(), failed: new Map(), last: {}, lastAny: -1e9, hist: [], voices: [], gestureAt: -1e9, act: null };
 function sndCtx() {
@@ -835,15 +843,26 @@ function sndCtx() {
 }
 /* the slider is linear for the eye, the ear wants a curve: half way is about a quarter of the power */
 function sndVolume() { if (!snd.master) return; const v = Math.max(0, Math.min(1, +state.settings.soundVolume || 0)); snd.master.gain.cancelScheduledValues(0); snd.master.gain.value = v * v * 1.6; }
-function sndLoad(ev) {
-  const have = snd.buf.get(ev); if (have) return have;
-  if (performance.now() - (snd.failed.get(ev) ?? -1e9) < 30000) return null;  /* a missing file is not asked for again at every click */
+/* file: the name of an .ogg in ui/sounds (sndFile(ev) for an event) */
+function sndLoad(file) {
+  const have = snd.buf.get(file); if (have) return have;
+  if (performance.now() - (snd.failed.get(file) ?? -1e9) < 30000) return null;  /* a missing file is not asked for again at every click */
   const ctx = sndCtx(); if (!ctx) return null;
-  const p = fetch(`sounds/${ev}.ogg`).then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.arrayBuffer(); })
+  const p = fetch(`sounds/${file}.ogg`).then(r => { if (!r.ok) throw new Error(`${r.status}`); return r.arrayBuffer(); })
     .then(a => ctx.decodeAudioData(a))
-    .then(b => { snd.buf.set(ev, b); return b; }, () => { snd.buf.delete(ev); snd.failed.set(ev, performance.now()); return null; });
-  snd.buf.set(ev, p);
+    .then(b => { snd.buf.set(file, b); return b; }, () => { snd.buf.delete(file); snd.failed.set(file, performance.now()); return null; });
+  snd.buf.set(file, p);
   return p;
+}
+/* plays a file on voice v once it is decoded (at once if it already is); one decoded too late is dropped: a sound must
+   land with what it belongs to. false: the file can't be had. */
+function sndPlay(v, file, o) {
+  const b = snd.buf.get(file);
+  if (b instanceof AudioBuffer) { sndStart(v, b, o); return true; }
+  const p = sndLoad(file);
+  if (!p) { v.ended = true; return false; }
+  p.then(ab => { if (!ab || performance.now() - v.at > 300) { v.ended = true; return; } sndStart(v, ab, o); });
+  return true;
 }
 function sndStart(v, b, o) {
   const ctx = snd.ctx; if (!ctx || v.cancelled) { v.ended = true; return; }
@@ -853,10 +872,10 @@ function sndStart(v, b, o) {
     return;
   }
   const src = ctx.createBufferSource(), g = ctx.createGain();
-  src.buffer = b; g.gain.value = SOUND_EV[v.ev].g * (o.gain ?? 1);
+  src.buffer = b; g.gain.value = v.trim * (o.gain ?? 1);
   src.connect(g); g.connect(snd.master);
   src.onended = () => { v.ended = true; try { g.disconnect(); } catch {} };
-  v.src = src; v.g = g; src.start();
+  v.src = src; v.g = g; src.start(v.delay ? ctx.currentTime + v.delay : 0);
 }
 function sndStop(v, fade = .01) {
   v.cancelled = true; v.ended = true;
@@ -885,15 +904,15 @@ function sound(ev, o = {}) {
   const ctx = sndCtx(); if (!ctx) return false;
   if (ctx.state === 'suspended') ctx.resume().catch(() => {});
   snd.last[ev] = now; snd.lastAny = now; snd.hist.push({ tier: d.tier, at: now });
-  const v = { ev, tier: d.tier, at: now, src: null, g: null, ended: false, cancelled: false };
+  const v = { ev, tier: d.tier, at: now, trim: d.g, src: null, g: null, ended: false, cancelled: false };
   snd.voices.push(v);
-  const b = snd.buf.get(ev);
-  if (b instanceof AudioBuffer) sndStart(v, b, o);
-  else {
-    const p = sndLoad(ev);
-    if (!p) { v.ended = true; return false; }
-    /* a file decoded too late is dropped: a sound must land with what it belongs to */
-    p.then(ab => { if (!ab || performance.now() - now > 300) { v.ended = true; return; } sndStart(v, ab, o); });
+  if (!sndPlay(v, sndFile(ev), o)) return false;
+  if (ev === 'navigate') {
+    /* the swoosh under the click: the next one in turn, as a quiet voice of its own (tier 0: it never cuts anything) */
+    SWOOSH.n = (SWOOSH.n + 1) % SWOOSH.files.length;
+    const [file, trim] = SWOOSH.files[SWOOSH.n];
+    const w = { ev, tier: 0, at: now, trim, delay: SWOOSH.delay, src: null, g: null, ended: false, cancelled: false };
+    snd.voices.push(w); sndPlay(w, file, o);
   }
   return true;
 }
@@ -910,7 +929,9 @@ Object.assign(sound, {
      claim(): this gesture is handled and stays silent (the widget, whose sound comes when its window does). */
   begin() { const n = performance.now(); if (!snd.act || n - snd.act.at > 40) snd.act = { at: n, claimed: false }; return snd.act; },
   claim() { if (snd.act && performance.now() - snd.act.at < 40) snd.act.claimed = true; },
-  preload(list) { if (!sndCtx()) return; (list || Object.keys(SOUND_EV)).forEach(ev => { if (SOUND_EV[ev]) sndLoad(ev); }); },
+  preload(list) { if (!sndCtx()) return; (list || Object.keys(SOUND_EV)).forEach(ev => { if (!SOUND_EV[ev]) return; sndLoad(sndFile(ev)); if (ev === 'navigate') SWOOSH.files.forEach(f => sndLoad(f[0])); }); },
+  /* the files an event plays (navigate: the click and its seven swooshes) */
+  files: ev => !SOUND_EV[ev] ? [] : ev === 'navigate' ? [sndFile(ev), ...SWOOSH.files.map(f => f[0])] : [sndFile(ev)],
   volume: sndVolume,
   /* fades everything out, starting `at` seconds from now (the window closing) */
   fadeOut(at = 0, len = .12) { if (snd.master && snd.ctx) snd.master.gain.setTargetAtTime(0, snd.ctx.currentTime + at, len / 3); },
