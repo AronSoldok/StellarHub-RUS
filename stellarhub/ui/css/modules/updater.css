@@ -68,6 +68,10 @@ html[data-int=min] #v-updater .btn.u-busy svg{animation-duration:2.4s}
 #v-updater .btn.u-busy:disabled{cursor:progress}
 #v-updater .u-groups,#v-updater .u-applist{transition:opacity calc(240ms*var(--f))}
 #v-updater.u-rescan .u-groups,#v-updater.u-rescan .u-applist{opacity:.55}
+/* before any check (or a check of an earlier session): an invitation, or the age of what is shown */
+#v-updater .u-idle{grid-column:1/-1;max-width:none;width:100%;align-self:stretch}
+#v-updater .u-dev>.u-idle{align-self:center}
+#v-updater .u-last{margin:0 0 14px}
 
 /* selection bar */
 #v-updater .u-list .u-selbar{position:static;margin:0 4px 10px;flex:none}

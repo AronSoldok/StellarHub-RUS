@@ -63,7 +63,86 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
 /* ---------------- state ---------------- */
 const S = { items: [], byId: {}, sel: new Set(), ignored: new Set(), pinned: new Set(), apps: null, win: null, dev: null,
-  scanned: false, winScanned: false, devScanned: false, paused: null, reboot: false, errs: {}, prog: {}, acts: {} };
+  scanned: false, winScanned: false, devScanned: false, paused: null, reboot: false, errs: {}, prog: {}, acts: {},
+  /* fromCache[kind]: what is shown comes from the last check of an earlier session (see hydrate) */
+  fromCache: {} };
+/* ---- checks on demand ----
+   Opening the module or a tab searches nothing: it shows the last results (this session's, or the ones kept from the
+   last check, with their age) or invites to check. Searching is the user's: Check for updates (header and empty states),
+   Check now (Windows), Check (development tools). Settings > General > "Analyze automatically when opening a module"
+   brings back the searches on opening. The light check at start-up (winget only, for Home's counts) stays. */
+const CK = k => 'sh.upd.cache.' + k;
+function cachePut(k, d) {
+  const put = v => localStorage.setItem(CK(k), JSON.stringify({ v: 1, lang: SH.i18n && SH.i18n.lang, t: Date.now(), d: v }));
+  try { put(d); } catch { try { put(JSON.parse(JSON.stringify(d, (key, v) => key === 'icon' ? undefined : v))); } catch {} }   /* full storage: without the icons */
+}
+function cacheGet(k) { try { const c = JSON.parse(localStorage.getItem(CK(k)) || 'null'); return c && c.v === 1 && c.d && c.lang === (SH.i18n && SH.i18n.lang) ? c : null; } catch { return null; } }
+let hydrated = false;
+function hydrate() {
+  if (hydrated) return; hydrated = true;
+  const a = !S.scanned && !S.appsScanning && cacheGet('apps'), w = !S.winScanned && !S.winScanning && cacheGet('win'), d = !S.devScanned && !S.devScanning && cacheGet('dev');
+  if (a) { S.apps = a.d; S.noWinget = false; S.scanned = true; S.fromCache.apps = a.t; }
+  if (w) { S.win = w.d; S.winScanned = true; S.reboot = !!w.d.reboot; S.paused = w.d.pause ? Date.parse(w.d.pause) : null; S.fromCache.win = w.t; }
+  if (d) { S.dev = d.d; S.devScanned = true; S.fromCache.dev = d.t; }
+  if (a || w) setItems();
+}
+/* what opening the module or a tab used to search by itself, now only with the automatic setting */
+function autoScan(...kinds) {
+  if (!SH.autoAnalyze()) return;
+  if (kinds.includes('apps')) scanApps(); if (kinds.includes('win')) scanWindows(); if (kinds.includes('dev')) scanDev();
+}
+/* the development tools' own Check (their tab has no other way to search them) */
+function checkDev() { if (S.devScanning) return; SH.sound('scan_start'); scanDev(true, 'user').then(() => { if (!S.errs.dev) SH.sound('scan_complete'); }); paintNotChecked(); }
+const CHECK_BTN = () => ({ label: t('Check for updates'), click: '#v-updater [data-check]', icon: 'refresh', pri: true, big: true });
+const ovSkel = () => CAT_ORDER.map((c, k) => `<div class="pan u-group" data-asm><div class="u-gh"><span class="sk" style="width:32px;height:32px;border-radius:var(--r-s)"></span><span class="sk" style="width:${120 + k * 18}px;height:12px"></span></div>${[0, 1].map(i => `<div class="sk-row" style="border:0;padding:8px 4px"><div class="sk a" style="--dl:${i * .1}s"></div><div class="sk b" style="--w:46%"></div><div class="sk c"></div></div>`).join('')}</div>`).join('');
+const skRows3 = () => `<div class="sk-rows">${[0, 1, 2].map(() => '<div class="sk-row"><div class="sk a"></div><div class="sk b" style="--w:50%"></div></div>').join('')}</div>`;
+/* every place that waits for a check: a skeleton while it runs, an invitation before it ever ran, and above the overview
+   the age of results kept from an earlier session */
+function paintNotChecked() {
+  const v = $(`#v-${ID}`); if (!v) return;
+  const tab = id => $(`.tab[data-tab="${id}"]`, v);
+  const set = (box, html) => { if (box && box.dataset.nc !== html) { box.dataset.nc = html; box.innerHTML = html; } };
+  const ov = tab('overview');
+  if (ov && $('.u-groups', ov)) {
+    if (!S.scanned) {
+      set($('.u-groups', ov), S.appsScanning ? ovSkel() : SH.emptyState({ art: 'first', title: t('Not checked yet'), text: t('Check for updates looks for new versions of your apps (winget), the Microsoft Store and Windows Update. Nothing is installed until you choose.'), action: CHECK_BTN(), cls: 'pan u-idle' }));
+      const cnt = $('.u-cnt', ov); if (cnt && !S.appsScanning) { SH.rollNumber(cnt, '—'); cnt.dataset.nc = '1'; }
+      const sub = $('.u-sub', ov); if (sub && !S.appsScanning && !S.winScanning) sub.textContent = t('Not checked yet.');
+    } else delete $('.u-groups', ov).dataset.nc;
+    const last = $('.u-last', ov);
+    if (last) { const when = S.fromCache.apps; last.innerHTML = when && !S.appsScanning ? SH.lastRun({ when, title: t('Last check: {when}'), text: t('These results are from then. Check again to see what is new.'), action: { label: t('Check for updates'), data: 'data-upd-check', icon: 'refresh' } }) : ''; last.hidden = !last.innerHTML; }
+  }
+  const ap = tab('apps');
+  if (ap && $('.u-applist', ap) && !S.scanned) {
+    set($('.u-applist', ap), S.appsScanning ? skRows3() : SH.emptyState({ art: 'first', title: t('Not checked yet'), text: t('Check for updates to see which of your apps have a new version.'), action: CHECK_BTN() }));
+    set($('.u-unk', ap), S.appsScanning ? skRows3() : `<div class="faint u-none">${t('Not checked yet.')}</div>`);
+  }
+  const st = tab('store');
+  if (st && $('.u-storelist', st) && !S.scanned) {
+    set($('.u-storelist', st), S.appsScanning ? skRows3() : SH.emptyState({ art: 'first', title: t('Not checked yet'), text: t('Check for updates to see which Store apps have a new version.'), action: CHECK_BTN() }));
+    set($('.u-sok', st), S.appsScanning ? skRows3() : `<div class="faint u-none">${t('Not checked yet.')}</div>`);
+  }
+  const rt = tab('runtimes'); if (rt && rt.dataset.ready && !S.scanned) fillRuntimes(rt);
+  const wi = tab('windows');
+  if (wi && $('.u-wl', wi) && !S.winScanned) {
+    const sk = '<div class="sk-row" style="border:0;padding:8px 4px"><div class="sk a"></div><div class="sk b" style="--w:52%"></div><div class="sk c"></div></div>';
+    $$('.u-wl', wi).forEach(b => set(b, S.winScanning ? sk : `<div class="faint u-none">${t('Not checked yet.')}</div>`));
+    set($('.u-hist', wi), S.winScanning ? sk : `<div class="faint u-none">${t('Not checked yet.')}</div>`);
+    const wb = $('.u-wbuild', wi); if (wb && !S.winScanning) wb.textContent = t('Not checked yet. Check now searches Windows Update; it takes a minute or two.');
+    const wc = $('[data-wcheck]', wi); if (wc) wc.classList.toggle('pri', !S.winScanning); if (wc) wc.classList.toggle('sec', !!S.winScanning);
+  }
+  const dv = tab('dev');
+  if (dv && dv.dataset.ready && !S.devScanned) {
+    const box = $('.u-dev', dv);
+    set(box, S.devScanning ? [0, 1, 2].map(() => '<div class="pan u-dcol"><div class="sk" style="height:16px;width:50%"></div><div class="sk" style="height:10px;width:70%;margin-top:12px"></div><div class="sk" style="height:10px;width:60%;margin-top:8px"></div></div>').join('')
+      : SH.emptyState({ art: 'first', title: t('Not checked yet'), text: t('Check now looks for new versions of Python and its packages, Node.js and npm packages, Git and WSL. Nothing is installed until you choose.'), action: { label: t('Check now'), data: 'data-devcheck', icon: 'refresh', pri: true, big: true }, cls: 'pan u-idle' }));
+  }
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('#v-updater [data-upd-check], #v-updater [data-devcheck]'); if (!b || b.disabled) return;
+  if (b.matches('[data-devcheck]')) { checkDev(); return; }
+  const h = $('#v-updater [data-check]'); if (h) h.click();
+});
 const pending = () => S.items.filter(i => !i.done && !S.ignored.has(i.id) && !S.pinned.has(i.id));
 const pendingIn = cat => pending().filter(i => i.cat === cat && !i.optional);
 /* display name: no version tacked on the end (it is shown next to it anyway), and a readable name for package ids */
@@ -106,7 +185,8 @@ function setItems() {
 function publishPending() {
   const n = pending().filter(i => !i.optional).length;
   if (ctxRef) ctxRef.setBadge('overview', n);
-  if (S.scanned && !S.appsScanning && !S.errs.apps && !S.noWinget) SH.setPending('apps', n);
+  /* results from an earlier session's cache are not a new check: Home keeps the date of the last real one */
+  if (S.scanned && !S.fromCache.apps && !S.appsScanning && !S.errs.apps && !S.noWinget) SH.setPending('apps', n);
 }
 function refreshBadge() { publishPending(); }
 
@@ -148,9 +228,9 @@ function setAppsScanning(on) {
 /* how: undefined (started by itself: opening the module or a tab), 'user' or 'quiet' (see scanAct) */
 function scanApps(force, how) {
   if (pA && (!force || S.appsScanning)) { if (S.appsScanning) scanAct('apps', how); return pA; }  // a search already running is reused, never doubled
-  setAppsScanning(true); scanAct('apps', how);
+  setAppsScanning(true); scanAct('apps', how); paintNotChecked();
   pA = (REAL ? SH.job(ID, 'scan_apps', [], { onProgress: m => scanProgress('apps', m) }) : mockScan('apps', 900, MOCK.apps))
-    .then(r => { r = r || { items: [] }; S.noWinget = r.winget === false; S.errs.apps = r.failed ? 'offline' : null; S.apps = S.noWinget ? { items: [] } : r; S.scanned = true; setAppsScanning(false); setItems();
+    .then(r => { r = r || { items: [] }; S.noWinget = r.winget === false; S.errs.apps = r.failed ? 'offline' : null; S.apps = S.noWinget ? { items: [] } : r; S.scanned = true; S.fromCache.apps = 0; if (!S.noWinget && !S.errs.apps) cachePut('apps', r); setAppsScanning(false); setItems();
       const err = S.noWinget ? t("winget isn't available on this PC.") : S.errs.apps ? ERR_MSG.apps(S.errs.apps) : '';
       scanEnd('apps', err ? { ok: false, error: err } : { ok: true, summary: t('{n} pending updates.', { n: pending().filter(i => !i.optional).length }) });
       onData('apps'); return r; })
@@ -159,24 +239,23 @@ function scanApps(force, how) {
 }
 function scanWindows(force, how) {
   if (pW && (!force || S.winScanning)) { if (S.winScanning) scanAct('win', how); return pW; }
-  S.winScanning = true; S.winTold = false; scanAct('win', how); updateWinWait();
+  S.winScanning = true; S.winTold = false; scanAct('win', how); updateWinWait(); paintNotChecked();
   pW = (REAL ? SH.job(ID, 'scan_windows', [], { onProgress: m => scanProgress('win', m) }) : mockScan('win', 4500, MOCK.win))
-    .then(r => { S.errs.win = null; S.win = r; S.winScanned = true; S.winScanning = false; S.reboot = !!r.reboot; S.paused = r.pause ? Date.parse(r.pause) : null; setItems();
+    .then(r => { S.errs.win = null; S.win = r; S.winScanned = true; S.winScanning = false; S.reboot = !!r.reboot; S.paused = r.pause ? Date.parse(r.pause) : null; S.fromCache.win = 0; cachePut('win', r); setItems();
       S.winTold = scanEnd('win', { ok: true, summary: winSummary() }); onData('win'); return r; })
     .catch(e => { S.errs.win = e.message; S.winScanning = false; S.winScanned = true; S.winTold = scanEnd('win', e.cancelled ? { cancelled: true } : { ok: false, error: ERR_MSG.win(e.message) }); onData('win'); });
   return pW;
 }
 function scanDev(force, how) {
   if (pD && (!force || S.devScanning)) { if (S.devScanning) scanAct('dev', how); return pD; }
-  S.devScanning = true; scanAct('dev', how);
+  S.devScanning = true; scanAct('dev', how); paintNotChecked();
   pD = (REAL ? SH.job(ID, 'scan_dev', [], { onProgress: m => scanProgress('dev', m) }) : mockScan('dev', 700, MOCK.dev))
-    .then(r => { S.errs.dev = null; S.dev = r; S.devScanned = true; S.devScanning = false; scanEnd('dev', { ok: true }); onData('dev'); return r; })
+    .then(r => { S.errs.dev = null; S.dev = r; S.devScanned = true; S.devScanning = false; S.fromCache.dev = 0; cachePut('dev', r); scanEnd('dev', { ok: true }); onData('dev'); return r; })
     .catch(e => { S.errs.dev = e.message; S.devScanned = true; S.devScanning = false; scanEnd('dev', e.cancelled ? { cancelled: true } : { ok: false, error: e.message }); onData('dev'); });
   return pD;
 }
-const ensureScan = () => scanApps();
 function onData(kind) {
-  rerenderAll(); publishPending(); updateWinWait();
+  rerenderAll(); publishPending(); updateWinWait(); paintNotChecked();
   const v = $(`#v-${ID}`); if (!v) return;
   if (kind === 'win') { const w = $('.tab[data-tab="windows"]', v); if (w && w.dataset.ready) fillWindows(w); }
   if (kind !== 'dev') { const st = $('.tab[data-tab="store"]', v); if (st && st.dataset.ready) fillStore(st); const rt = $('.tab[data-tab="runtimes"]', v); if (rt && rt.dataset.ready) fillRuntimes(rt); }
@@ -543,6 +622,7 @@ function renderOverview(el) {
         <div><div class="big"><span class="u-cnt">0</span><small>${t('pending updates')}</small></div>
         <p class="muted u-sub">${t('Looking for updates…')}</p></div>
       </div>
+      <div class="u-last" hidden></div>
       <div class="u-wwait"><span></span><div class="bar"><span></span></div></div>
       ${selBar()}
       <div class="u-errs"></div>
@@ -557,9 +637,9 @@ function renderOverview(el) {
   </div>`;
   renderQueue(false);
   const groups = $('.u-groups', el);
-  if (!S.scanned) groups.innerHTML = CAT_ORDER.map((c, k) => `<div class="pan u-group" data-asm><div class="u-gh"><span class="sk" style="width:32px;height:32px;border-radius:var(--r-s)"></span><span class="sk" style="width:${120 + k * 18}px;height:12px"></span></div>${[0, 1].map(i => `<div class="sk-row" style="border:0;padding:8px 4px"><div class="sk a" style="--dl:${i * .1}s"></div><div class="sk b" style="--w:46%"></div><div class="sk c"></div></div>`).join('')}</div>`).join('');
-  ensureScan(); scanWindows(); updateWinWait();
+  hydrate(); autoScan('apps', 'win'); updateWinWait();
   if (S.scanned) { fillGroups(el, true); updateOverviewCounts(true); }
+  paintNotChecked();
 }
 function fillGroups(el, animate) {
   const groups = $('.u-groups', el); if (!groups) return;
@@ -583,7 +663,7 @@ function groupHTML(c) {
 function updateOverviewCounts(first) {
   const el = $(`#v-${ID} .tab[data-tab="overview"]`); if (!el || !S.scanned) return;
   const p = pending().filter(i => !i.optional); const known = p.filter(i => i.mb != null); const tot = known.reduce((a, i) => a + i.mb, 0);
-  const cnt = $('.u-cnt', el); if (cnt && +(cnt.dataset.v || 0) !== p.length) SH.countUp(cnt, p.length, first ? 900 : 400);
+  const cnt = $('.u-cnt', el); if (cnt && (+(cnt.dataset.v || 0) !== p.length || cnt.dataset.nc)) { delete cnt.dataset.nc; SH.countUp(cnt, p.length, first ? 900 : 400); }
   const when = S.apps && S.apps.ts ? ago(S.apps.ts * 1000) : t('just now');
   const sub = $('.u-sub', el); if (sub && !S.appsScanning) sub.textContent = [p.length ? (known.length && tot ? t('{size} known to download.', { size: mb(tot) }) : '') : S.errs.apps || S.noWinget ? t("Your apps couldn't be checked.") : t('Everything is up to date.'), t('Last checked {when}.', { when }), S.winScanning ? t('Windows Update is still searching.') : ''].filter(Boolean).join(' ');
   $$('.u-group', el).forEach(g => { const c = g.dataset.cat; const n = pendingIn(c).length; const chip = $('.u-gc', g); if (!chip) return; const txt = n ? t('{n} pending', { n }) : t('Up to date');
@@ -613,7 +693,7 @@ function renderApps(el) {
   requestAnimationFrame(() => SH.placeSeg($('.u-filt', el), true));
   $('.u-search input', el).addEventListener('input', e => { appsQuery = e.target.value.trim().toLowerCase(); refreshAppsFilter(true); });
   $('.u-filt', el).addEventListener('click', e => { const b = e.target.closest('button[data-f]'); if (!b || b.classList.contains('on')) return; $$('.u-filt button', el).forEach(x => x.classList.toggle('on', x === b)); SH.placeSeg($('.u-filt', el)); appsFilter = b.dataset.f; refreshAppsFilter(true); });
-  ensureScan().then(() => refreshAppsFilter(true));
+  hydrate(); autoScan('apps'); refreshAppsFilter(true); paintNotChecked();
 }
 function fillUnknown(el) {
   const box = $('.u-unk', el); if (!box || !S.apps) return;
@@ -668,8 +748,9 @@ function renderWindows(el) {
   renderPause($('.u-pbody', el));
   const sk = '<div class="sk-row" style="border:0;padding:8px 4px"><div class="sk a"></div><div class="sk b" style="--w:52%"></div><div class="sk c"></div></div>';
   $$('.u-wl', el).forEach(b => { b.innerHTML = sk; });
-  scanWindows(); updateWinWait();
+  hydrate(); autoScan('win'); updateWinWait();
   if (S.winScanned) fillWindows(el);
+  paintNotChecked();
 }
 function fillWindows(el) {
   const w = S.win; updateWinWait();
@@ -723,7 +804,7 @@ function renderStore(el) {
         <div class="u-scroll"><div class="rows u-sok"></div></div></div>
     </aside></div>`;
   if (REAL) SH.engine(ID, 'store_auto').then(r => { if (!r) return; const tg = $('[data-storeauto]', el); tg.classList.toggle('on', !!r.on); $('.u-sab', el).textContent = r.on ? t('On in Windows') : t('Off in Windows'); }).catch(() => {});
-  ensureScan().then(() => fillStore(el));
+  hydrate(); autoScan('apps'); fillStore(el); paintNotChecked();
   el.addEventListener('click', async e => {
     const tg = e.target.closest('[data-storeauto]'); if (!tg) return; const on = !tg.classList.contains('on');
     SH.sound(on ? 'toggle_on' : 'toggle_off');  /* the switch flips only after the engine answers */
@@ -752,11 +833,13 @@ function renderRuntimes(el) {
       <div class="pan u-fp" data-asm><h4>${t('Up to date')} <em class="u-rtn"></em></h4><div class="u-scroll"><div class="rows u-rtok"></div></div></div>
       <div class="pan u-rtnote" data-asm><h4>${t('What these are')}</h4><p class="muted">${t("Shared pieces that games and apps need to run. Updating them doesn't change your apps, it just makes them safer.")}</p></div>
     </aside></div>`;
-  ensureScan(); scanWindows();
+  hydrate(); autoScan('apps', 'win');
   fillRuntimes(el);
 }
 function fillRuntimes(el) {
   const box = $('.u-cards', el); if (!box) return;
+  if (!S.scanned && !S.appsScanning) { box.innerHTML = SH.emptyState({ art: 'first', title: t('Not checked yet'), text: t('Check for updates to see which shared components (.NET, Visual C++, WebView2…) have a new version.'), action: CHECK_BTN(), cls: 'pan u-idle' });
+    const ok = $('.u-rtok', el); if (ok) ok.innerHTML = `<div class="faint u-none">${t('Not checked yet.')}</div>`; return; }
   if (!S.scanned) { box.innerHTML = [0, 1, 2].map(() => '<div class="pan u-card"><div class="sk" style="height:14px;width:60%"></div><div class="sk" style="height:10px;width:40%;margin-top:10px"></div></div>').join(''); return; }
   const card = (it, extra = '') => `<div class="pan u-card" data-item="${esc(it.id)}">
       <div class="u-ch">${tile(it)}<div class="u-cht"><b>${esc(dn(it.name))}</b><span class="muted">${esc(it.pub || '')}</span></div>${it.cat === 'security' ? `<span class="chip warn">${t('Security')}</span>` : ''}</div>
@@ -783,8 +866,8 @@ function fillRuntimes(el) {
 function renderDev(el) {
   el.dataset.ready = '1';
   el.innerHTML = `<div class="u-dev">${[0, 1, 2].map(() => '<div class="pan u-dcol"><div class="sk" style="height:16px;width:50%"></div><div class="sk" style="height:10px;width:70%;margin-top:12px"></div><div class="sk" style="height:10px;width:60%;margin-top:8px"></div></div>').join('')}</div>`;
-  ensureScan(); scanDev();
-  if (S.devScanned) fillDev(el);
+  hydrate(); autoScan('apps', 'dev');
+  if (S.devScanned) fillDev(el); else paintNotChecked();
   el.addEventListener('click', e => {
     if (queueClicks(e)) return;
     const one = e.target.closest('[data-one]'); if (one) { if (enqueue([one.dataset.one])) { one.disabled = true; one.innerHTML = `<span class="u-spin"></span>${t('Queued')}`; SH.toast(t('{name} added to the queue.', { name: S.byId[one.dataset.one].name }), { action: { label: t('See the queue'), run: goOverview } }); } return; }
@@ -986,9 +1069,9 @@ SH.module({
       const all = e.target.closest('[data-allh]');
       if (all) {
         if (all.disabled) return;
-        if (!S.scanned || S.appsScanning) {        // the first search is still running: wait for it, visibly
+        if (!S.scanned || S.appsScanning) {        // never checked, or a search still running: (look and) wait for it, visibly
           const html = all.innerHTML; all.disabled = true; all.innerHTML = `<span class="u-spin"></span>${t('Looking for updates…')}`;
-          try { await ensureScan(); } finally { all.disabled = false; all.innerHTML = html; }
+          try { await scanApps(false, 'user'); } finally { all.disabled = false; all.innerHTML = html; }
         }
         if (S.noWinget || S.errs.apps) { SH.toast(S.noWinget ? t("winget isn't available on this PC.") : ERR_MSG.apps(S.errs.apps), { kind: 'error' }); return; }
         updateAll(); return;
@@ -1017,7 +1100,7 @@ SH.module({
     if (tab === 'overview') { renderQueue(false); updateOverviewCounts(); }
     if (tab === 'apps') refreshAppsFilter(false);
   },
-  enter() { ensureScan(); },
+  enter() { hydrate(); autoScan('apps'); },
   leave() { closeMenu(); },
 });
 /* light background check (winget only, read-only) so Home knows how many there are */

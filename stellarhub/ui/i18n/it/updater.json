@@ -309,5 +309,15 @@
   "Checking development tools…": "Controllo degli strumenti di sviluppo…",
   "No Windows updates found.": "Nessun aggiornamento di Windows trovato.",
   "1 Windows update found.": "Trovato 1 aggiornamento di Windows.",
-  "{n} Windows updates found.": "Trovati {n} aggiornamenti di Windows."
+  "{n} Windows updates found.": "Trovati {n} aggiornamenti di Windows.",
+  "Not checked yet": "Non ancora controllato",
+  "Last check: {when}": "Ultimo controllo: {when}",
+  "Check for updates looks for new versions of your apps (winget), the Microsoft Store and Windows Update. Nothing is installed until you choose.": "Cerca aggiornamenti cerca nuove versioni delle tue app (winget), di Microsoft Store e di Windows Update. Non viene installato nulla finché non scegli.",
+  "Not checked yet.": "Non ancora controllato.",
+  "These results are from then. Check again to see what is new.": "Questi risultati sono di allora. Controlla di nuovo per vedere cosa c'è di nuovo.",
+  "Check for updates to see which of your apps have a new version.": "Cerca aggiornamenti per vedere quali delle tue app hanno una nuova versione.",
+  "Check for updates to see which Store apps have a new version.": "Cerca aggiornamenti per vedere quali app dello Store hanno una nuova versione.",
+  "Not checked yet. Check now searches Windows Update; it takes a minute or two.": "Non ancora controllato. Controlla ora cerca in Windows Update; richiede un paio di minuti.",
+  "Check now looks for new versions of Python and its packages, Node.js and npm packages, Git and WSL. Nothing is installed until you choose.": "Controlla ora cerca nuove versioni di Python e dei suoi pacchetti, di Node.js e dei pacchetti npm, di Git e di WSL. Non viene installato nulla finché non scegli.",
+  "Check for updates to see which shared components (.NET, Visual C++, WebView2…) have a new version.": "Cerca aggiornamenti per vedere quali componenti condivisi (.NET, Visual C++, WebView2…) hanno una nuova versione."
 }

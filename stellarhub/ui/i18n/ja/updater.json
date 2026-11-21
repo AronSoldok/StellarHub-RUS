@@ -309,5 +309,15 @@
   "Checking development tools…": "開発ツールを確認しています…",
   "No Windows updates found.": "Windows の更新プログラムは見つかりませんでした。",
   "1 Windows update found.": "Windows の更新プログラムが 1 件見つかりました。",
-  "{n} Windows updates found.": "Windows の更新プログラムが {n} 件見つかりました。"
+  "{n} Windows updates found.": "Windows の更新プログラムが {n} 件見つかりました。",
+  "Not checked yet": "まだチェックしていません",
+  "Last check: {when}": "前回のチェック: {when}",
+  "Check for updates looks for new versions of your apps (winget), the Microsoft Store and Windows Update. Nothing is installed until you choose.": "[更新を確認] では、アプリ (winget)、Microsoft Store、Windows Update の新しいバージョンを探します。選ぶまで何もインストールされません。",
+  "Not checked yet.": "まだチェックしていません。",
+  "These results are from then. Check again to see what is new.": "これは当時の結果です。新しいものを確認するには、もう一度チェックしてください。",
+  "Check for updates to see which of your apps have a new version.": "更新を確認して、新しいバージョンがあるアプリを調べましょう。",
+  "Check for updates to see which Store apps have a new version.": "更新を確認して、新しいバージョンがある Store アプリを調べましょう。",
+  "Not checked yet. Check now searches Windows Update; it takes a minute or two.": "まだチェックしていません。[今すぐ確認] で Windows Update を検索します。1、2 分かかります。",
+  "Check now looks for new versions of Python and its packages, Node.js and npm packages, Git and WSL. Nothing is installed until you choose.": "[今すぐ確認] では Python とそのパッケージ、Node.js と npm パッケージ、Git、WSL の新しいバージョンを探します。選ぶまで何もインストールされません。",
+  "Check for updates to see which shared components (.NET, Visual C++, WebView2…) have a new version.": "更新を確認して、新しいバージョンがある共有コンポーネント (.NET、Visual C++、WebView2…) を調べましょう。"
 }

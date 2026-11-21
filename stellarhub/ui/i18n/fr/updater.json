@@ -309,5 +309,15 @@
   "Checking development tools…": "Vérification des outils de développement…",
   "No Windows updates found.": "Aucune mise à jour Windows trouvée.",
   "1 Windows update found.": "1 mise à jour Windows trouvée.",
-  "{n} Windows updates found.": "{n} mises à jour Windows trouvées."
+  "{n} Windows updates found.": "{n} mises à jour Windows trouvées.",
+  "Not checked yet": "Pas encore vérifié",
+  "Last check: {when}": "Dernière vérification : {when}",
+  "Check for updates looks for new versions of your apps (winget), the Microsoft Store and Windows Update. Nothing is installed until you choose.": "Rechercher des mises à jour cherche de nouvelles versions de vos applications (winget), du Microsoft Store et de Windows Update. Rien n'est installé tant que vous ne choisissez pas.",
+  "Not checked yet.": "Pas encore vérifié.",
+  "These results are from then. Check again to see what is new.": "Ces résultats datent de ce moment-là. Vérifiez à nouveau pour voir les nouveautés.",
+  "Check for updates to see which of your apps have a new version.": "Recherchez des mises à jour pour voir lesquelles de vos applications ont une nouvelle version.",
+  "Check for updates to see which Store apps have a new version.": "Recherchez des mises à jour pour voir quelles applications du Store ont une nouvelle version.",
+  "Not checked yet. Check now searches Windows Update; it takes a minute or two.": "Pas encore vérifié. Vérifier maintenant interroge Windows Update ; cela prend une ou deux minutes.",
+  "Check now looks for new versions of Python and its packages, Node.js and npm packages, Git and WSL. Nothing is installed until you choose.": "Vérifier maintenant recherche de nouvelles versions de Python et de ses paquets, de Node.js et des paquets npm, de Git et de WSL. Rien n'est installé tant que vous ne choisissez pas.",
+  "Check for updates to see which shared components (.NET, Visual C++, WebView2…) have a new version.": "Recherchez des mises à jour pour voir quels composants partagés (.NET, Visual C++, WebView2…) ont une nouvelle version."
 }
