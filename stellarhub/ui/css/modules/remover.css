@@ -218,7 +218,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .hunt .res .rd-top{margin-bottom:14px}
 @media (max-width:1250px){
   #v-remover .rv-cols{grid-template-columns:minmax(0,1fr) 84px 92px}
-  #v-remover .rv-cols>:nth-child(2){display:none}
+  #v-remover .tab:not(.rv-batch) .rv-cols>:nth-child(2){display:none}  /* the Version column (in Batch the 2nd is the name) */
   #v-remover .rv-batch .rv-cols{grid-template-columns:28px minmax(0,1fr) 84px}
   #v-remover .rv-batch .rv-cols>:nth-child(4){display:none}
   #v-remover .mcards{grid-template-columns:1fr}
