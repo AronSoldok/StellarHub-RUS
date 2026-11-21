@@ -12,6 +12,7 @@
 #v-optimizer .ring .bg{fill:none;stroke:var(--raise2);stroke-width:10;stroke-linecap:round}
 #v-optimizer .ring .fg{fill:none;stroke:var(--accent2);stroke-width:10;stroke-linecap:round;transition:stroke calc(400ms*var(--f))}
 #v-optimizer .ring .fg.bad{stroke:var(--accent)}
+#v-optimizer .ring .fg.old{opacity:.5}
 #v-optimizer .ring .core{fill:color-mix(in oklab,var(--accent2) 4%,transparent);stroke:var(--line)}
 /* the scanning light: a conic gradient (a soft tail that fades out and a thin bright leading edge) seen through a ring mask,
    turned by transform only, so it runs on the compositor; it sits under the segments and lights the track as it passes */
@@ -54,6 +55,14 @@ html[data-int=min] #v-optimizer .ring.scanning~.ring-sw{animation:none;opacity:.
 #v-optimizer .ov-auto>svg:last-child{color:var(--faint);transition:transform calc(200ms*var(--f))}
 #v-optimizer .ov-auto:hover>svg:last-child{transform:translateX(3px);color:var(--ink)}
 #v-optimizer #optRight{display:flex;flex-direction:column;min-height:100%}
+/* before an analysis in this session: the last one (its age on top) or an invitation */
+#v-optimizer .ov-lr{margin-bottom:12px}
+#v-optimizer .ov-es{flex:1}
+/* a measurement tab that has not been analyzed, and one showing its last result (SH.lastRun strip on top) */
+#v-optimizer .opt-idle{height:100%;min-height:320px;display:grid;place-items:center;box-sizing:border-box}
+#v-optimizer .tab.opt-stale{display:flex;flex-direction:column;gap:var(--sp-md)}
+#v-optimizer .tab.opt-stale>.lastrun{flex:none}
+#v-optimizer .tab.opt-stale>:not(.lastrun):not(.opt-upd){flex:1;min-height:0;height:auto}
 #v-optimizer .plan{display:flex;flex-direction:column;gap:var(--sp-xs)}
 #v-optimizer .pstep{display:flex;align-items:center;gap:var(--sp-md);padding:12px;border-radius:var(--r-m);transition:background-color calc(150ms*var(--f))}
 #v-optimizer .pstep:hover{background:var(--raise2)}

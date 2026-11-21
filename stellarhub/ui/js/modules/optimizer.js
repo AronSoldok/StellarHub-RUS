@@ -248,7 +248,8 @@ function hydrate(a) {
   try { AREA[a].put(c.d); raw[a] = c.d; sig[a] = JSON.stringify(c.d); ready[a] = 'cache'; return true; } catch (e) { return false; }
 }
 function load(area, force) {
-  if (!REAL) return Promise.resolve();
+  /* sample mode: the data is already there; reading it takes a moment, like the real thing, and marks it analyzed */
+  if (!REAL) { if (!loaded[area] || force) loaded[area] = wait(380 + Math.random() * 320).then(() => { ready[area] = true; return false; }); return loaded[area]; }
   if (!loaded[area] || force) loaded[area] = AREA[area].fetch().then(r => {
     const s = JSON.stringify(r), changed = s !== sig[area]; sig[area] = s;
     raw[area] = r; AREA[area].put(r); ready[area] = true; if (AREA[area].cache) cachePut(area, r); return changed;
@@ -276,7 +277,7 @@ const API = {
       await Promise.all(Object.entries(areas).map(([a, ls]) => Promise.all(ls.map(l => load(l, true).catch(() => {}))).then(() => onArea && onArea(a))));
       return;
     }
-    for (const a of ['clean', 'startup', 'services', ...(regOn() ? ['registry'] : []), 'performance']) { await wait(520 + Math.random() * 380); onArea && onArea(a); }
+    for (const a of ['clean', 'startup', 'services', ...(regOn() ? ['registry'] : []), 'performance']) { await wait(520 + Math.random() * 380); (a === 'startup' ? ['startup', 'boot'] : [a]).forEach(x => { ready[x] = true; }); onArea && onArea(a); }
   },
   /* cleans; onCat(c) gets each category once it is done, onStatus(d) the live numbers (deleted, total, freed,
      current, rate, eta) several times a second; ctl.cancel() is filled in so the caller can stop it */
@@ -423,6 +424,9 @@ function ringSVG() {
 const ovFoot = () => `<div class="ov-foot"><div class="ov-fi"><span class="faint">${t('Last optimization')}</span><b>${lastRun ? t('Today, just now') : t('Never from StellarHub')}</b></div><div class="ov-fi"><span class="faint">${t('Free space on C:')}</span><b>${SH.fmtInt(freeC() + (lastRun && !REAL ? lastRun.freed / 1e9 : 0))} GB</b></div><div class="ov-fi"><span class="faint">${DB.boots.length ? t('Average boot') : t('BIOS time')}</span><b>${DB.boots.length ? fmt1(bootAvg() - bootSaved()) + ' s' : DB.bios ? fmt1(DB.bios) + ' s' : '—'}</b></div><button class="ov-auto" data-go-auto>${ic('autopilot')}<span><b>${t('Do it automatically every week')}</b>${t('Create an Autopilot routine')}</span>${ic('chev')}</button></div>`;
 const findingsHTML = () => `<h4 class="pan-h">${t('What we found')} <em>${t('just now')}</em></h4><div class="rows">${AREAS.map(a => `<div class="row ov-row" data-area="${a.id}"><span class="ri">${ic(a.ic)}</span><span class="rt"><b>${a.n}</b><span>${esc(a.txt())}</span></span><span class="ov-bar ${tone(a)}"><i style="transform:scaleX(${areaFill(a)})"></i></span><span class="ov-v ${tone(a)}">${valTxt(a)}</span><button class="btn sm ghost" data-tab="${a.tab}">${t('Review')}</button></div>`).join('')}</div>${ovFoot()}`;
 let ovEl = null, ovMode = 'findings', running = false, ovStale = false;
+/* analyzing: the Overview's analysis is running; ovFresh: it ran in this session (until then the Overview shows the last
+   one from the cache, with its age, or invites to analyze) */
+let analyzing = false, ovFresh = false;
 /* turning the registry cleaner on or off changes the areas of the overview (and its ring): drawn again, now or the next time it is shown */
 SH.on('setting', d => { if (d.key === 'registryCleaner') { ovStale = true; if (SH.state.view === 'optimizer') redrawOverview(); } });
 function redrawOverview() { if (!ovStale || !ovEl || !modCtx || running || undoing) return; ovStale = false; ovEl.innerHTML = ''; ovMode = 'findings'; renderOverview(ovEl, modCtx); }
@@ -433,17 +437,57 @@ function renderOverview(el, ctx) {
       <div class="ring-wrap">${ringSVG()}<div class="ring-c"><b id="optScore">0</b><span id="optScoreLbl">${t('analyzing…')}</span></div></div>
       <div class="ov-state" id="optState">${t('Checking your system')}</div>
       <div class="ov-sub muted" id="optSub">${t('This is read-only; nothing changes.')}</div>
+      <button class="btn pri lg ov-cta" id="optGo" hidden>${ic('scan')}${t('Analyze')}</button>
       <button class="btn pri lg ov-cta" id="optAll" disabled>${ic('sparkle')}${t('Optimize everything')}</button>
       <button class="btn ghost sm" id="optRescan" hidden>${ic('scan')}${t('Analyze again')}</button>
     </div>
-    <div class="pan ov-r" data-asm><div id="optRight"><h4 class="pan-h">${t('What we found')} <em>${t('in progress')}</em></h4><div class="rows">${AREAS.map(a => `<div class="row ov-row pending" data-area="${a.id}"><span class="ri">${ic(a.ic)}</span><span class="rt"><b>${a.n}</b><span class="sk" style="display:block;height:9px;width:${40 + Math.round(Math.random() * 30)}%;margin-top:7px"></span></span><span class="ov-bar"><i style="transform:scaleX(0)"></i></span><span class="ov-v"></span><button class="btn sm ghost" data-tab="${a.tab}" disabled>${t('Review')}</button></div>`).join('')}</div>${ovFoot()}</div></div></div>`;
+    <div class="pan ov-r" data-asm><div id="optRight">${pendingHTML()}</div></div></div>`;
   $('#optAll', el).addEventListener('click', () => showPlan(el));
   $('#optRescan', el).addEventListener('click', () => analyze(el, true));
+  $('#optGo', el).addEventListener('click', () => analyze(el, true));
   if (el._ovClick) el.removeEventListener('click', el._ovClick);
   el._ovClick = e => { if (e.target.closest('[data-go-auto]')) { SH.go('autopilot', { tab: 'routines' }); return; } const b = e.target.closest('[data-tab]'); if (b && !b.disabled) ctx.setTab(b.dataset.tab); };
   el.addEventListener('click', el._ovClick);
-  analyze(el);
-  rendered.overview = () => { if (ovMode === 'findings' && !running) { const r = $('#optRight', el); if (r && !$('.ov-row.pending', r)) r.innerHTML = findingsHTML(); } paintRing(el); };
+  if (ovFresh) ovFindings(el); else if (SH.autoAnalyze()) analyze(el); else ovIdle(el);
+  rendered.overview = () => { if (!ovFresh || analyzing) return; if (ovMode === 'findings' && !running) { const r = $('#optRight', el); if (r && !$('.ov-row.pending', r)) r.innerHTML = findingsHTML(); } paintRing(el); };
+}
+/* the rows while the analysis reads each area: skeletons, then each one live (ovLive) */
+const pendingHTML = () => `<h4 class="pan-h">${t('What we found')} <em>${t('in progress')}</em></h4><div class="rows">${AREAS.map(a => `<div class="row ov-row pending" data-area="${a.id}"><span class="ri">${ic(a.ic)}</span><span class="rt"><b>${a.n}</b><span class="sk" style="display:block;height:9px;width:${40 + Math.round(Math.random() * 30)}%;margin-top:7px"></span></span><span class="ov-bar"><i style="transform:scaleX(0)"></i></span><span class="ov-v"></span><button class="btn sm ghost" data-tab="${a.tab}" disabled>${t('Review')}</button></div>`).join('')}</div>${ovFoot()}`;
+/* the last analysis, kept to show it next time (its texts are already in the interface language) */
+function ovCachePut() {
+  cachePut('overview', { score, rows: AREAS.map(a => ({ id: a.id, txt: a.txt(), val: String(valTxt(a)), tone: tone(a), fill: areaFill(a), bad: !!a.bad() })) });
+}
+/* the Overview of the analysis that ran in this session (drawn again after the registry setting changes) */
+function ovFindings(el) {
+  $('#optGo', el).hidden = true; $('#optAll', el).hidden = false; $('#optAll', el).disabled = false; $('#optRescan', el).hidden = false;
+  $('.ring', el).classList.remove('scanning'); SH.rollNumber($('#optScore', el), score); $('#optScoreLbl', el).textContent = t('out of 100');
+  $('#optState', el).textContent = score >= 85 ? t('Your PC is in good shape') : t('There is room to improve');
+  $('#optSub', el).textContent = score >= 85 ? t('Nothing urgent. Analyze again whenever you like.') : t('“Optimize everything” would get you to about {n} points.', { n: REAL ? projected() : 91 });
+  $('#optRight', el).innerHTML = findingsHTML(); paintRing(el);
+}
+/* Opening the module analyzes nothing: the last analysis (with its age) or an invitation, and the Analyze button */
+function ovIdle(el) {
+  const c = cacheGet('overview'), d = c && c.d, sc = $('#optScore', el), lbl = $('#optScoreLbl', el);
+  $('#optGo', el).hidden = false; $('#optAll', el).hidden = true; $('#optRescan', el).hidden = true; $('.ring', el).classList.remove('scanning');
+  const rows = d && Array.isArray(d.rows) ? d.rows.filter(r => r && AREAS.some(a => a.id === r.id)) : null;
+  if (rows && rows.length) {
+    SH.rollNumber(sc, +d.score || 0); lbl.textContent = t('out of 100');
+    $('#optState', el).textContent = d.score >= 85 ? t('Your PC was in good shape') : t('There was room to improve');
+    $('#optSub', el).textContent = t('From the last analysis. Analyze to see how your PC is now; it is read-only.');
+    const by = Object.fromEntries(rows.map(r => [r.id, r]));
+    const TONES = ['ok', 'warn', 'bad'], tn = r => TONES.includes(r.tone) ? r.tone : '';
+    $('#optRight', el).innerHTML = SH.lastRun({ when: c.t, title: t('Last analysis: {when}'), text: t('These results are from then. Analyze to measure again.'), cls: 'ov-lr' })
+      + `<div class="rows">${AREAS.map(a => { const r = by[a.id]; return r ? `<div class="row ov-row" data-area="${a.id}"><span class="ri">${ic(a.ic)}</span><span class="rt"><b>${a.n}</b><span>${esc(r.txt)}</span></span><span class="ov-bar ${tn(r)}"><i style="transform:scaleX(${Math.max(0, Math.min(1, +r.fill || 0))})"></i></span><span class="ov-v ${tn(r)}">${esc(r.val)}</span><button class="btn sm ghost" data-tab="${a.tab}">${t('Review')}</button></div>`
+        : `<div class="row ov-row" data-area="${a.id}"><span class="ri">${ic(a.ic)}</span><span class="rt"><b>${a.n}</b><span class="faint">${t('Not analyzed yet')}</span></span><span class="ov-bar"><i style="transform:scaleX(0)"></i></span><span class="ov-v"></span><button class="btn sm ghost" data-tab="${a.tab}">${t('Review')}</button></div>`; }).join('')}</div>${ovFoot()}`;
+    AREAS.forEach(a => { const p = $(`.fg[data-seg="${a.id}"]`, el), r = by[a.id]; if (!p) return; const to = p.dataset.l * (1 - (r ? Math.max(0, Math.min(1, +r.fill || 0)) : 0));
+      anim(p, [{ strokeDashoffset: p.dataset.l }, { strokeDashoffset: to }], { d: 900 }); p.style.strokeDashoffset = to; p.classList.toggle('bad', !!(r && r.bad)); p.classList.add('old'); });
+    return;
+  }
+  SH.rollNumber(sc, '—'); lbl.textContent = t('not analyzed yet');
+  $('#optState', el).textContent = t('Not analyzed yet');
+  $('#optSub', el).textContent = t('The analysis measures junk files, startup apps, services and Windows settings. It is read-only; nothing changes.');
+  $('#optRight', el).innerHTML = SH.emptyState({ art: 'first', title: t('Analyze your PC to see what can be improved'),
+    text: t('Each area gets a result: cleanup, startup, services and performance. Then “Optimize everything” does what is safe, with a restore point first.'), cls: 'ov-es' });
 }
 function paintRing(el) {
   AREAS.forEach(a => { const p = $(`.fg[data-seg="${a.id}"]`, el); if (!p) return; const to = p.dataset.l * (1 - areaFill(a));
@@ -456,7 +500,11 @@ async function analyze(el, again) {
   const act = SH.activity.start('optimizer', { key: 'analyze', label: t('Analyzing your PC'), go: { tab: 'overview' }, bg: !again });
   $('#optAll', el).disabled = true; $('#optRescan', el).hidden = true; ring.classList.add('scanning');
   $('#optState', el).textContent = t('Checking your system'); $('#optSub', el).textContent = t('This is read-only; nothing changes.'); lbl.textContent = t('analyzing…'); SH.rollNumber(sc, 0);
-  if (again) { ovMode = 'findings'; const r = $('#optRight', el); r.innerHTML = findingsHTML(); $$('.ov-row', r).forEach(x => { x.classList.add('pending'); $('button', x).disabled = true; });
+  analyzing = true; $('#optGo', el).hidden = true; $('#optAll', el).hidden = false; $$('.fg', el).forEach(p => p.classList.remove('old'));
+  AN_TABS.forEach(tb => { const T = tabEls[tb]; if (T && T.state !== 'fresh' && !tabBusy[tb]) showTab(tb); });   /* the tabs show that they are being read */
+  if (again && !ovFresh) { ovMode = 'findings'; $('#optRight', el).innerHTML = pendingHTML();
+    $$('.fg', el).forEach(p => { anim(p, [{ strokeDashoffset: getComputedStyle(p).strokeDashoffset }, { strokeDashoffset: p.dataset.l }], { d: 300 }); p.style.strokeDashoffset = p.dataset.l; }); }
+  else if (again) { ovMode = 'findings'; const r = $('#optRight', el); r.innerHTML = findingsHTML(); $$('.ov-row', r).forEach(x => { x.classList.add('pending'); $('button', x).disabled = true; });
     $$('.fg', el).forEach(p => { anim(p, [{ strokeDashoffset: getComputedStyle(p).strokeDashoffset }, { strokeDashoffset: p.dataset.l }], { d: 300 }); p.style.strokeDashoffset = p.dataset.l; }); }
   let done = 0;
   await API.analyze(id => {
@@ -470,13 +518,15 @@ async function analyze(el, again) {
     SH.rollNumber(sc, Math.round(score * done / AREAS.length));
     if (act) act.progress(done / AREAS.length);
   });
+  analyzing = false; ovFresh = true;
   if (REAL) { score = calcScore(); const r = $('#optRight', el); if (r && ovMode === 'findings') r.innerHTML = findingsHTML(); paintRing(el); }
+  ovCachePut();
   ring.classList.remove('scanning'); SH.rollNumber(sc, score); lbl.textContent = t('out of 100');
   const em = $('#optRight .pan-h em', el); if (em) em.textContent = t('just now');
   $('#optState', el).textContent = score >= 85 ? t('Your PC is in good shape') : t('There is room to improve');
   $('#optSub', el).textContent = score >= 85 ? t('Nothing urgent. Analyze again whenever you like.') : t('“Optimize everything” would get you to about {n} points.', { n: REAL ? projected() : 91 });
-  if (modCtx) { modCtx.setBadge('clean', DB.clean.filter(c => c.size > 1e7).length); if (regOn()) modCtx.setBadge('registry', regCount()); }
-  AREAS.forEach(a => refresh(a.id));
+  badges();
+  AREAS.forEach(a => { const T = tabEls[a.tab]; if (T) { if (T.state === 'fresh') refresh(a.tab); else showTab(a.tab); } else refresh(a.id); });
   $('#optAll', el).disabled = false; $('#optRescan', el).hidden = false;
   if (again) SH.sound('scan_complete');
   if (act) { const junk = DB.clean.filter(c => c.def).reduce((a, c) => a + c.size, 0);
@@ -1581,13 +1631,77 @@ function renderDebloat(el, ctx) {
 let modCtx = null;
 /* what each tab needs from Windows */
 const NEED = { clean: ['clean'], startup: ['startup', 'boot'], services: ['services'], registry: ['registry'], performance: ['performance'], debloat: ['dbApps', 'dbTweaks'] };
+/* ---- analyses on demand ----
+   Cleanup, Startup, Services and Registry are measurements: opening their tab reads nothing. They are measured when the
+   user presses Analyze (on the tab, or on the Overview, which measures them all). Startup and Services can show their
+   last result from the cache, marked with its age; cleanup sizes and the registry list are never shown stale.
+   Settings > General > "Analyze automatically when opening a module" brings back the reading on entry. */
+const AN_TABS = ['clean', 'startup', 'services', 'registry'];
+const tabEls = {}, tabBusy = {};          /* tab -> { el, ctx, fn, state: 'fresh' | 'cache' | 'busy' | 'idle' } */
+const fresh = tab => NEED[tab].every(a => ready[a] === true);
+const AN_TXT = {
+  clean: () => t('Analyze measures temporary files, caches, dumps and the Recycle Bin. Nothing is deleted until you choose what to clean.'),
+  startup: () => t('Analyze reads the apps that start with Windows and how much each one slows the start. Nothing changes.'),
+  services: () => t('Analyze reads the Windows services and which ones you could set to manual. Nothing changes.'),
+  registry: () => t('Analyze looks for entries that point to programs and files that are gone. Nothing is fixed until you choose to.'),
+};
+function badges() {
+  if (!modCtx) return;
+  modCtx.setBadge('clean', ready.clean === true ? DB.clean.filter(c => c.size > 1e7).length : 0);
+  if (regOn()) modCtx.setBadge('registry', ready.registry === true ? regCount() : 0);
+}
+/* draws a measurement tab in the state it is in: measured, from the cache (with its age), being measured, or not yet */
+function showTab(tab) {
+  const T = tabEls[tab]; if (!T) return; const { el, ctx, fn } = T;
+  el.classList.remove('opt-stale'); setUpd(el, false);
+  if (fresh(tab)) { T.state = 'fresh'; el.innerHTML = ''; fn(el, ctx); SH.assemble(el, 0, 30); return; }
+  if (tabBusy[tab] || analyzing) { T.state = 'busy'; el.innerHTML = skelHTML(tab); return; }
+  if (REAL && NEED[tab].every(hydrate)) {
+    T.state = 'cache'; el.innerHTML = ''; fn(el, ctx);
+    const when = Math.min(...NEED[tab].map(a => (cacheGet(a) || {}).t || Date.now()));
+    el.insertAdjacentHTML('afterbegin', SH.lastRun({ when, title: t('Last analysis: {when}'), text: t('These results are from then. Analyze to read them again.'), action: { label: t('Analyze'), data: `data-opt-an="${tab}"`, icon: 'scan' }, cls: 'opt-lr' }));
+    el.classList.add('opt-stale'); SH.assemble(el, 0, 30); return;
+  }
+  T.state = 'idle';
+  el.innerHTML = `<div class="pan opt-idle">${SH.emptyState({ art: 'first', title: t('Not analyzed yet'), text: AN_TXT[tab](), action: { label: t('Analyze'), data: `data-opt-an="${tab}"`, icon: 'scan', pri: true, big: true } })}</div>`;
+}
+/* measures one tab (its Analyze button; auto: opened with the automatic setting on, as before: quiet and followed as bg) */
+async function analyzeTab(tab, auto) {
+  const T = tabEls[tab]; if (!T || tabBusy[tab]) return;
+  const act = auto && SH.activity.busy('optimizer') ? null : SH.activity.start('optimizer', { key: 'read:' + tab, label: LOAD_TXT[tab] || t('Checking your system'), go: { tab }, bg: !!auto });
+  const keep = auto && T.state === 'cache';
+  tabBusy[tab] = true;
+  if (keep) setUpd(T.el, true); else { T.el.classList.remove('opt-stale'); T.el.innerHTML = skelHTML(tab); T.state = 'busy'; }
+  try { await Promise.all(NEED[tab].map(a => load(a, true))); }
+  catch (e) {
+    tabBusy[tab] = false; const told = !!act && act.end({ ok: false, error: e.message });
+    if (keep) { setUpd(T.el, false); if (!told) SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message }), { kind: 'error' }); return; }
+    T.state = 'error'; T.el.classList.remove('opt-stale');
+    T.el.innerHTML = SH.emptyState({ art: 'error', title: t("Couldn't read from Windows"), text: esc(e.message), action: { label: t('Try again'), data: `data-opt-an="${tab}"`, icon: 'restore' } });
+    return;
+  }
+  tabBusy[tab] = false;
+  if (!auto) SH.sound('scan_complete');
+  const junk = tab === 'clean' ? DB.clean.filter(c => c.def).reduce((a, c) => a + c.size, 0) : 0;
+  if (act) act.end({ ok: true, summary: junk >= 5e7 ? t('{size} can be freed', { size: gb(junk) }) : undefined });
+  showTab(tab); badges(); refresh('overview');
+}
+/* the Analyze buttons of the tabs (empty state, the strip above cached results, Try again) */
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('#v-optimizer [data-opt-an]'); if (!b || b.disabled) return;
+  if (tabBusy[b.dataset.optAn]) return;
+  SH.sound('scan_start'); analyzeTab(b.dataset.optAn);
+});
 SH.module({
   id: 'optimizer',
   actions(el, ctx) {
     modCtx = ctx;
     el.innerHTML = `<button class="btn ghost" data-a="rescan">${ic('scan')}${t('Analyze')}</button><button class="btn pri" data-a="all">${ic('sparkle')}${t('Optimize everything')}</button>`;
-    el.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b) return; if (b.dataset.a === 'rescan') SH.sound.claim(); ctx.setTab('overview');
-      setTimeout(() => { const t = ctx.tabEl('overview'); const btn = t && $(b.dataset.a === 'all' ? '#optAll' : '#optRescan', t); if (btn && !btn.disabled && !btn.hidden) btn.click(); }, 300); });
+    /* "Optimize everything" before any analysis in this session: it analyzes first (the plan needs current numbers) */
+    el.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b) return; if (b.dataset.a === 'rescan' || !ovFresh) SH.sound.claim(); ctx.setTab('overview');
+      setTimeout(async () => { const tb = ctx.tabEl('overview'); if (!tb || analyzing) return;
+        if (b.dataset.a === 'all' && !ovFresh) { const go = $('#optGo', tb); if (!go || go.hidden) return; await analyze(tb, true); const all = $('#optAll', tb); if (all && !all.disabled && ovMode === 'findings') all.click(); return; }
+        const btn = $(b.dataset.a === 'all' ? '#optAll' : (ovFresh ? '#optRescan' : '#optGo'), tb); if (btn && !btn.disabled && !btn.hidden) btn.click(); }, 300); });
   },
   real: true,
   /* Every tab draws at once: from the cache of the last visit if there is one (and reads Windows again in the
@@ -1596,6 +1710,11 @@ SH.module({
     const fn = ({ overview: renderOverview, clean: renderClean, startup: renderStartup, services: renderServices, registry: renderRegistry, repair: renderRepair, performance: renderPerformance, debloat: renderDebloat })[tab];
     const need = NEED[tab];
     if (!need) { fn(el, ctx); return; }
+    if (AN_TABS.includes(tab)) {
+      tabEls[tab] = { el, ctx, fn, state: '' }; await realP; showTab(tab);
+      if (tabEls[tab].state !== 'fresh' && !analyzing && SH.autoAnalyze()) analyzeTab(tab, true);
+      return;
+    }
     el.innerHTML = skelHTML(tab);
     if (!(await realP)) { el.innerHTML = ''; fn(el, ctx); return; }
     const draw = () => { el.innerHTML = ''; fn(el, ctx); SH.assemble(el, 0, 30); };
@@ -1617,7 +1736,7 @@ SH.module({
     /* fresh data differs from the cached one: drawn again, without the entrance animation */
     if (changed && !el.querySelector('.db.prev, .cl-busy')) { el.innerHTML = ''; fn(el, ctx); anim(el, [{ opacity: .55 }, { opacity: 1 }], { d: 250 }); }
   },
-  enter() { if (!modCtx) return; redrawOverview(); modCtx.setBadge('clean', DB.clean.filter(c => c.size > 0).length); regOn() && modCtx.setBadge('registry', regCount()); },
+  enter() { if (!modCtx) return; redrawOverview(); badges(); },
   enterTab(tab, el) { if (tab !== 'overview' || !el) return; const r = $('.ring', el); if (r) anim(r, [{ transform: 'rotate(-24deg) scale(.94)', opacity: .5 }, { transform: 'none', opacity: 1 }], { d: 620, e: EASE.spring }); },
 });
 SH.actions.add([

@@ -924,5 +924,19 @@
   "{size} can be freed": "Se pueden liberar {size}",
   "Analyzing your PC": "Analizando tu PC",
   "Score: {n} out of 100": "Puntuación: {n} de 100",
-  "Cleaning": "Limpiando"
+  "Cleaning": "Limpiando",
+  "Your PC was in good shape": "Tu PC estaba en buen estado",
+  "There was room to improve": "Había margen de mejora",
+  "From the last analysis. Analyze to see how your PC is now; it is read-only.": "Del último análisis. Analiza para ver cómo está tu PC ahora; solo lee, no cambia nada.",
+  "These results are from then. Analyze to measure again.": "Estos resultados son de entonces. Analiza para medir de nuevo.",
+  "Not analyzed yet": "Aún sin analizar",
+  "not analyzed yet": "aún sin analizar",
+  "The analysis measures junk files, startup apps, services and Windows settings. It is read-only; nothing changes.": "El análisis mide los archivos basura, las aplicaciones de inicio, los servicios y los ajustes de Windows. Solo lee; no cambia nada.",
+  "Analyze your PC to see what can be improved": "Analiza tu PC para ver qué se puede mejorar",
+  "Each area gets a result: cleanup, startup, services and performance. Then “Optimize everything” does what is safe, with a restore point first.": "Cada área recibe un resultado: limpieza, arranque, servicios y rendimiento. Después, “Optimizar todo” hace lo que es seguro, con un punto de restauración antes.",
+  "Analyze measures temporary files, caches, dumps and the Recycle Bin. Nothing is deleted until you choose what to clean.": "Analizar mide los archivos temporales, las cachés, los volcados y la papelera de reciclaje. No se borra nada hasta que elijas qué limpiar.",
+  "Analyze reads the apps that start with Windows and how much each one slows the start. Nothing changes.": "Analizar lee las aplicaciones que se inician con Windows y cuánto ralentiza cada una el arranque. No cambia nada.",
+  "Analyze reads the Windows services and which ones you could set to manual. Nothing changes.": "Analizar lee los servicios de Windows y cuáles podrías poner en manual. No cambia nada.",
+  "Analyze looks for entries that point to programs and files that are gone. Nothing is fixed until you choose to.": "Analizar busca entradas que apuntan a programas y archivos que ya no existen. No se corrige nada hasta que lo elijas.",
+  "These results are from then. Analyze to read them again.": "Estos resultados son de entonces. Analiza para volver a leerlos."
 }
