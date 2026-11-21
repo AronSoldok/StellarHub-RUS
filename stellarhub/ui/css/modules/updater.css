@@ -70,7 +70,14 @@ html[data-int=min] #v-updater .btn.u-busy svg{animation-duration:2.4s}
 #v-updater.u-rescan .u-groups,#v-updater.u-rescan .u-applist{opacity:.55}
 /* before any check (or a check of an earlier session): an invitation, or the age of what is shown */
 #v-updater .u-idle{grid-column:1/-1;max-width:none;width:100%;align-self:stretch}
-#v-updater .u-dev>.u-idle{align-self:center}
+/* an idle card fills its column down to the dock, its content centred (Overview, Components, Development) */
+#v-updater .u-ovl{display:flex;flex-direction:column}
+#v-updater .u-ovl>.u-groups:has(>.u-idle){flex:1 0 auto;display:flex;flex-direction:column}
+#v-updater .u-groups>.u-idle{flex:1 0 auto;margin:0}
+#v-updater .u-cards:has(>.u-idle){grid-template-rows:minmax(100%,1fr)}
+/* a list with nothing in it yet (or an empty result): its message sits in the middle of the panel */
+#v-updater .u-scroll>.rows:has(>.es:only-child){min-height:100%;justify-content:center}
+#v-updater .u-scroll>.rows:has(>.u-none:only-child),#v-updater .u-wl:has(>.u-none:only-child){min-height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
 #v-updater .u-last{margin:0 0 14px}
 
 /* selection bar */
@@ -333,7 +340,7 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-cbtns{display:flex;justify-content:flex-end;gap:var(--sp-sm)}
 
 /* development: long package lists with their own scroll */
-#v-updater .u-dev{height:100%;min-height:0;grid-template-rows:minmax(0,1fr);align-items:start}
+#v-updater .u-dev{height:100%;min-height:0;grid-template-rows:minmax(0,1fr);align-items:stretch}
 #v-updater .u-dcol{min-height:0;max-height:100%;overflow:hidden}
 #v-updater .u-dcol>.u-dsub{flex:none}
 #v-updater .u-dsub:has(.u-pkwrap){flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
@@ -395,5 +402,8 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
   #v-updater .u-name{min-width:120px}
   #v-updater .u-ov,#v-updater .u-apps,#v-updater .u-rt{grid-template-columns:minmax(0,1fr) clamp(240px,24vw,300px)}
 }
-/* layout: a panel next to others takes the height of its content (up to the available height, then it scrolls inside) so a short list never leaves an empty frame */
-#v-updater .u-apps>.pan,#v-updater .u-rt>.pan,#v-updater .u-sch>.pan,#v-updater .u-wcols>.pan{align-self:start;max-height:100%}
+/* layout: every column reaches the dock (a short list scrolls inside a full-height panel instead of leaving an empty
+   band under it); the three Windows groups share the main column's height */
+#v-updater .u-apps>.pan,#v-updater .u-rt>.pan,#v-updater .u-sch>.pan,#v-updater .u-wcols>.pan{align-self:stretch;min-height:0}
+#v-updater .u-wmain.u-scroll>.pan{flex:1 0 auto;display:flex;flex-direction:column}
+#v-updater .u-wmain>.pan>.u-wl{flex:1 0 auto}
