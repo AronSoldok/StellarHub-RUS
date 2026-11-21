@@ -281,7 +281,6 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .hv-stats div{padding:12px;border-radius:var(--r-m);background:var(--raise);border:1px solid var(--line)}
 #v-remover .hv-stats b{display:block;font:500 var(--fs-n1) var(--display);letter-spacing:-.03em}
 #v-remover .hv-stats span{font-size:var(--fs-sm);color:var(--mute)}
-#v-remover .hv-side{align-self:start}
 #v-remover .hv-legend{margin-top:0;padding-top:18px;display:flex;flex-direction:column;gap:var(--sp-sm);font-size:var(--fs-sm);color:var(--mute)}
 #v-remover .hv-legend span{display:flex;align-items:center;gap:var(--sp-sm)}
 #v-remover .hv-legend i{width:10px;height:10px;border-radius:50%;flex:none}
@@ -310,6 +309,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 /* files in use leave at the next restart */
 #v-remover .rm-restart, .rm-restart { display:flex; gap:var(--sp-sm); align-items:flex-start; margin-top:10px; padding:10px 12px; border-radius:var(--r-s); background:color-mix(in srgb, var(--warn) 12%, transparent); color:var(--ink); font-size:var(--fs-body); line-height:1.45; }
 .rm-restart svg { flex:none; width:var(--ic-m); height:var(--ic-m); color:var(--warn); margin-top:1px; }
-/* layout: a panel next to others takes the height of its content (up to the available height, then it scrolls inside) so a short list never leaves an empty frame */
-#v-remover .hv-grid>.pan,#v-remover .qz-grid>.pan{align-self:start;max-height:100%}
-#v-remover .wv-listp{align-self:start}
+/* layout: every panel reaches the dock and lines up with its neighbour (a short list scrolls inside a full-height
+   panel instead of leaving an empty band under it); the watched-installs list takes the whole width */
+#v-remover .hv-grid>.pan,#v-remover .qz-grid>.pan{align-self:stretch;min-height:0}
+#v-remover .wv-listp{align-self:stretch}
