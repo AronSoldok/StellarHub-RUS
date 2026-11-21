@@ -452,7 +452,8 @@ function paintRing(el) {
 async function analyze(el, again) {
   const sc = $('#optScore', el), lbl = $('#optScoreLbl', el), ring = $('.ring', el);
   if (again) SH.sound('scan_start');  /* "Analyze again": the user's scan (the first analysis on entry stays quiet) */
-  const act = again ? SH.activity.start('optimizer', { key: 'analyze', label: t('Analyzing your PC'), go: { tab: 'overview' } }) : null;
+  /* followed from anywhere: "Analyze again" at once, the first analysis on entry (bg) once it has run for a moment */
+  const act = SH.activity.start('optimizer', { key: 'analyze', label: t('Analyzing your PC'), go: { tab: 'overview' }, bg: !again });
   $('#optAll', el).disabled = true; $('#optRescan', el).hidden = true; ring.classList.add('scanning');
   $('#optState', el).textContent = t('Checking your system'); $('#optSub', el).textContent = t('This is read-only; nothing changes.'); lbl.textContent = t('analyzing…'); SH.rollNumber(sc, 0);
   if (again) { ovMode = 'findings'; const r = $('#optRight', el); r.innerHTML = findingsHTML(); $$('.ov-row', r).forEach(x => { x.classList.add('pending'); $('button', x).disabled = true; });
@@ -971,7 +972,7 @@ function renderServices(el) {
     SH.toast(t('Restoring services…'), g);
     try {
       if (REAL) {
-        await engJob('services_undo_job', [bid], { onProgress: m => { if (m.kind === 'progress' && m.text) SH.toast(m.text, g); } });
+        await engJob('services_undo_job', [bid], { bg: true, label: t('Restoring services…'), onProgress: m => { if (m.kind === 'progress' && m.text) SH.toast(m.text, g); } });
         SH.toast(t('Checking again…'), g);
         await load('services', true);
       } else { await wait(900); DB.services.forEach(s => s.cur = s.orig); }
@@ -1041,7 +1042,7 @@ function renderRegistry(el) {
     regBusy = true; let ok = false;
     try {
       if (REAL) {
-        await engJob('registry_undo_job', [bid], { onProgress: m => { if (m.kind === 'progress' && m.text) say(m.text); } });
+        await engJob('registry_undo_job', [bid], { bg: true, label: t('Restoring registry entries…'), onProgress: m => { if (m.kind === 'progress' && m.text) say(m.text); } });
         if (last.regBackup === bid) last.regBackup = null;
         say(t('Checking again…')); await rescan();
       } else { await wait(900); say(t('Checking again…')); await wait(500); }
@@ -1085,7 +1086,7 @@ function renderRegistry(el) {
       try {
         if (REAL) {
           const ids = [...sel]; let r;
-          try { r = await engJob('registry_fix', [ids], { onProgress: m => { if (m.pct > .02) busyBtn(b, t('Fixing… {pct}%', { pct: Math.round(m.pct * 100) })); } }); }
+          try { r = await engJob('registry_fix', [ids], { bg: true, label: t('Fixing entries…'), onProgress: m => { if (m.pct > .02) busyBtn(b, t('Fixing… {pct}%', { pct: Math.round(m.pct * 100) })); } }); }
           catch (e) { SH.toast(e.message, { kind: 'error' }); return; }
           last.regBackup = r.backup || null;
           for (const row of $$('.rg-it', el).filter(x => sel.has(x.dataset.k))) { anim(row, [{ opacity: 1, transform: 'none' }, { opacity: .25, transform: 'translate3d(18px,0,0)' }], { d: 260 }); }
@@ -1432,7 +1433,7 @@ function renderDebloat(el, ctx) {
     const a = (DBX.removed || []).find(x => x.name === name); if (!a) return;
     busyBtn(btn, t('Reinstalling…'));
     let r;
-    if (REAL) { try { r = await jobD('reinstall', [name]); } catch (err) { freeBtn(btn); SH.toast(t("Couldn't reinstall {name}: {error}", { name: a.label, error: err.message }), { kind: 'error' }); return; } }
+    if (REAL) { try { r = await jobD('reinstall', [name], { bg: true, label: t('Reinstalling…') }); } catch (err) { freeBtn(btn); SH.toast(t("Couldn't reinstall {name}: {error}", { name: a.label, error: err.message }), { kind: 'error' }); return; } }
     else { await wait(900); r = a.restore === 'none' ? { ok: false, gone: true } : { ok: true }; if (r.ok) DBX.removed = DBX.removed.filter(x => x !== a); }
     if (r && r.ok) { SH.toast(t('{name} is back.', { name: a.label }), { kind: 'success' }); if (REAL) SH.logActivity(t('{name} reinstalled', { name: a.label }), { ic: 'download', go: 'optimizer', tab: 'debloat' }); }
     else if (r && r.store) SH.toast(t('The Microsoft Store page of {name} is open: install it from there.', { name: a.label }), { ms: 8000 });
@@ -1454,7 +1455,7 @@ function renderDebloat(el, ctx) {
     btn.disabled = true; btn.innerHTML = `<span class="opt-spin sm"></span>${t('Undoing…')}`;
     let r;
     if (REAL) {
-      try { r = await jobD('undo_all', [], { onProgress: m => { if (m.text) btn.innerHTML = `<span class="opt-spin sm"></span>${esc(m.text)}`; } }); }
+      try { r = await jobD('undo_all', [], { bg: true, label: t('Undoing…'), onProgress: m => { if (m.text) btn.innerHTML = `<span class="opt-spin sm"></span>${esc(m.text)}`; } }); }
       catch (err) { SH.toast(err.message, { kind: 'error' }); btn.innerHTML = `${ic('undo')}${t('Undo all debloat')}`; sync(); return; }
       await reload('dbTweaks', 'dbApps');
     } else {
@@ -1601,9 +1602,13 @@ SH.module({
     const cached = need.every(hydrate);
     if (cached) { draw(); setUpd(el, true); }
     let changed = false;
-    try { changed = (await Promise.all(need.map(n => load(n)))).some(Boolean); }
+    /* reading Windows for a tab is followed from anywhere once it runs for a moment (bg), unless something of the
+       module (the analysis, which reads the same areas) is already followed */
+    const act = SH.activity.busy('optimizer') ? null : SH.activity.start('optimizer', { key: 'read:' + tab, label: t('Checking your system'), go: { tab }, bg: true });
+    try { changed = (await Promise.all(need.map(n => load(n)))).some(Boolean); if (act) act.end({ ok: true }); }
     catch (e) {
-      if (cached) { setUpd(el, false); SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message }), { kind: 'error' }); return; }
+      const told = !!act && act.end({ ok: false, error: e.message });
+      if (cached) { setUpd(el, false); if (!told) SH.toast(t("Couldn't refresh from Windows: {error}", { error: e.message }), { kind: 'error' }); return; }
       el.innerHTML = SH.emptyState({ art: 'error', title: t("Couldn't read from Windows"), text: esc(e.message), action: { label: t('Try again'), id: 'optRetry', icon: 'restore' } });
       $('#optRetry', el).addEventListener('click', () => { el.innerHTML = ''; this.renderTab(tab, el, ctx); }); return;
     }

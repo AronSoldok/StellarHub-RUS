@@ -253,6 +253,9 @@ function ensureReal(force) {
     return PROGRAMS;
   })();
   realPromise.catch(() => { realPromise = null; });
+  /* the first read (opening the module) is followed from anywhere once it runs for a moment; the refreshes after an
+     uninstall or a restore stay silent */
+  if (!force) SH.activity.follow('remover', realPromise, { key: 'list', label: T('Reading programs…'), go: { tab: 'programs' } }).catch(() => {});
   return realPromise;
 }
 /* after drawing: missing icons, Store apps and real sizes, in batches */
@@ -575,7 +578,7 @@ function openFlow(progs, opts = {}) {
     for (const [key, ids] of byKey) {
       if (!ids.length) { SH.engine('remover', 'forget_scan', key).catch(() => {}); continue; }
       try {
-        const r = await SH.job('remover', 'remove', [key, ids], { onProgress: m => { const t = $('.t', foot); if (t && m.text) t.textContent = T('Moving to the quarantine: {item}', { item: m.text }); } });
+        const r = await SH.job('remover', 'remove', [key, ids], { bg: true, label: T('Moving to the quarantine…'), onProgress: m => { const t = $('.t', foot); if (t && m.text) t.textContent = T('Moving to the quarantine: {item}', { item: m.text }); } });
         out.ok += r.ok || 0; out.failed += r.failed || 0; out.freed += r.freed || 0; if (r.session) out.sessions.push(r.session); out.errors.push(...(r.errors || []));
         if (r.restart_required) out.restart = true; out.lost += r.reboot_unrestorable || 0;
       } catch (e) { out.failed += ids.length; out.errors.push(jobErr(e)); }

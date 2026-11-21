@@ -305,5 +305,9 @@
   "{n} apps, {m} optional": "{n} app, {m} facoltative",
   "Couldn't check for updates (no internet?)": "Impossibile cercare aggiornamenti (nessuna connessione a internet?)",
   "{name} could not be updated": "Impossibile aggiornare: {name}",
-  "Installing updates": "Installazione degli aggiornamenti"
+  "Installing updates": "Installazione degli aggiornamenti",
+  "Checking development tools…": "Controllo degli strumenti di sviluppo…",
+  "No Windows updates found.": "Nessun aggiornamento di Windows trovato.",
+  "1 Windows update found.": "Trovato 1 aggiornamento di Windows.",
+  "{n} Windows updates found.": "Trovati {n} aggiornamenti di Windows."
 }

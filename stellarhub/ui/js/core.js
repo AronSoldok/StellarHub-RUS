@@ -104,12 +104,13 @@ on('job', m => {
 });
 /* o.sound: 'scan' for a scan the user started (scan_start now, scan_complete when it ends well, a soft tick at 25, 50
    and 75 % if it runs long), 'task' for another long task the user started (only the ticks). Background refreshes
-   leave it out and stay silent. */
+   leave it out and stay silent. o.bg: long work the module started by itself (silent, followed as a bg activity once
+   it runs past the grace period, see SH.activity). */
 function job(mod, fn, args = [], o = {}) {
   let id = null, cancelWanted = false;
   /* the activity this job's progress goes to (SH.activity): the caller's own, or one of its own for a user-started job */
   let act = o.activity && typeof o.activity === 'object' ? o.activity : null, own = null;
-  if (o.sound || act) {
+  if (o.sound || act || o.bg) {
     const t0 = performance.now(), op = o.onProgress; let mark = 0;
     if (o.sound === 'scan') sound('scan_start');
     o = { ...o, onProgress(m) {
@@ -131,7 +132,7 @@ function job(mod, fn, args = [], o = {}) {
     if (r === undefined) { res(undefined); return; }
     if (!r.ok) { rej(new Error(r.error)); return; }
     id = r.id;
-    if (!act && o.sound && o.activity !== false && !activity.busy(mod)) act = own = actStart(mod, { key: 'job:' + fn, label: o.label, auto: true, cancel: () => p.cancel() });
+    if (!act && (o.sound || o.bg) && o.activity !== false && !activity.busy(mod)) act = own = actStart(mod, { key: 'job:' + fn, label: o.label, auto: true, bg: !o.sound, cancel: () => p.cancel() });
     const w = { res: v => { if (o.sound === 'scan') sound('scan_complete'); finish(v); res(v); }, rej: e => { finish(undefined, e); rej(e); }, o }; jobWaiters.set(id, w); if (cancelWanted) call('job_cancel', id);
     const early = jobEarly.get(id);
     if (early) { jobEarly.delete(id); for (const m of early) { if (m.kind === 'end') jobWaiters.delete(id); jobDeliver(w, m); } }
@@ -559,20 +560,24 @@ function setPending(key, n) {
   state.settings.pending = undefined; setSetting('pending', p); emit('pending', p);
 }
 
-/* ---------- activities: long work the user started, followed from anywhere ----------
+/* ---------- activities: long work of a module, followed from anywhere ----------
    const h = SH.activity.start('storage', { key: 'scan', label: SH.t('Scanning'), go: { tab: 'map' } });
    h.progress(.38, SH.t('Reading C:\\Users'));   // 0..1, or null while it cannot be measured (the ring then orbits)
    h.end({ ok: true, summary: SH.t('{size} can be freed', { size }) })   // or { ok: false, error } or { cancelled: true }
    While the user is elsewhere the dock ring, Home's rows and the taskbar button follow it; when it ends there, end() says
    so (a toast with View, or a tray notification while the window is hidden), leaves a badge on the dock icon until the
    module is visited, and answers true. A module whose own result toast would say the same skips it then:
-   if (!h.end({ ok: true, summary })) SH.toast(...).   Only work the user started: background refreshes pass user: false
-   (or nothing at all). SH.job feeds it by itself for user-started jobs (sound: 'scan' | 'task') when the module has no
-   activity of its own open; o.activity: a handle the job's progress goes to, or false for none. */
+   if (!h.end({ ok: true, summary })) SH.toast(...).
+   Work a module starts by itself (the scan on opening Storage, the check on opening Program Updater) passes bg: true:
+   it is followed the same way, but only once it has run for ACT_GRACE ms, so a quick refresh never flashes a ring and
+   ends without a word. A bg one the user then starts again (the same key) becomes user-started. user: false is never
+   shown at all. SH.job feeds it by itself for user-started jobs (sound: 'scan' | 'task') and for bg: true jobs when the
+   module has no activity of its own open; o.activity: a handle the job's progress goes to, or false for none. */
 const ACT_ALIAS = { debloat: 'optimizer' };
 const ACT_EXTRA = { backups: { name: 'Backups and restore', icon: 'restore' } };
 const acts = new Map(), actDone = new Map();
 let actSeq = 0, actTimer = 0;
+const ACT_GRACE = 1500;  /* ms a bg activity runs before it shows anywhere */
 const actMod = m => ACT_ALIAS[m] || m;
 const actInfo = mod => { const m = MODS.find(x => x.id === mod), x = ACT_EXTRA[mod]; return m ? { name: m.name, icon: m.icon } : x ? { name: t(x.name), icon: x.icon } : { name: String(mod), icon: 'dots' }; };
 /* the window is out of sight (in the tray or minimized). Python says so ('window', from Api._tele_refresh) because
@@ -581,7 +586,8 @@ let winHidden = false;
 const pageHidden = () => document.hidden || winHidden;
 /* the user is looking at that module (its own result UI answers): no toast, no badge */
 const actHere = mod => { mod = actMod(mod); if (pageHidden()) return false; return mod === 'backups' ? !!state.setOpen : state.view === mod; };
-const actView = a => ({ id: a.id, mod: a.mod, key: a.key, label: a.label, text: a.text, pct: a.pct, at: a.at, user: a.user, cancel: !!a.cancel });
+/* user: it is shown (started by the user, or by the module and running past the grace period); bg: the module started it */
+const actView = a => ({ id: a.id, mod: a.mod, key: a.key, label: a.label, text: a.text, pct: a.pct, at: a.at, user: a.shown, bg: a.bg, cancel: !!a.cancel });
 /* many progress updates a second become one 'activity' event every ~90 ms (also while hidden, when frames stop) */
 function actFlush(now) {
   if (now) { clearTimeout(actTimer); actTimer = 0; emit('activity'); actTaskbar(); return; }
@@ -589,8 +595,13 @@ function actFlush(now) {
 }
 function actStart(mod, o = {}) {
   mod = actMod(mod); const key = o.key || 'main';
-  for (const a of acts.values()) if (a.mod === mod && a.key === key) { if (o.label) a.label = o.label; if (o.go) a.go = o.go; actFlush(); return a.h; }
-  const a = { id: ++actSeq, mod, key, label: o.label || t('Working…'), text: '', pct: null, at: Date.now(), user: o.user !== false, go: o.go || null, cancel: o.cancel || null, auto: !!o.auto };
+  for (const a of acts.values()) if (a.mod === mod && a.key === key) {
+    if (o.label) a.label = o.label; if (o.go) a.go = o.go; if (o.cancel) a.cancel = o.cancel;
+    if (a.bg && !o.bg && o.user !== false) { a.bg = false; actShow(a); }  /* the user asked for what was already running */
+    actFlush(); return a.h;
+  }
+  const user = o.user !== false, bg = user && !!o.bg;
+  const a = { id: ++actSeq, mod, key, label: o.label || t('Working…'), text: '', pct: null, at: Date.now(), user, bg, shown: false, timer: 0, go: o.go || null, cancel: o.cancel || null, auto: !!o.auto };
   a.h = {
     id: a.id, mod,
     get open() { return acts.has(a.id); },
@@ -602,18 +613,26 @@ function actStart(mod, o = {}) {
     label(l) { if (l) { a.label = String(l); actFlush(); } return a.h; },
     end: r => actEnd(a, r || {}),
   };
-  acts.set(a.id, a); if (a.user) actDone.delete(mod);
-  emit('activity:start', actView(a)); actFlush(true);
+  acts.set(a.id, a);
+  if (bg) a.timer = setTimeout(() => { a.timer = 0; if (acts.has(a.id)) actShow(a); }, o.grace ?? ACT_GRACE);
+  else if (user) actShow(a);
+  else { emit('activity:start', actView(a)); actFlush(true); }
   return a.h;
 }
+/* from now on the dock, Home, the palette and the taskbar follow it */
+function actShow(a) {
+  if (a.shown) return; a.shown = true; clearTimeout(a.timer); a.timer = 0;
+  actDone.delete(a.mod); emit('activity:start', actView(a)); actFlush(true);
+}
 function actEnd(a, r) {
-  if (!acts.has(a.id)) return false; acts.delete(a.id);
+  if (!acts.has(a.id)) return false; acts.delete(a.id); clearTimeout(a.timer); a.timer = 0;
   const cancelled = !!r.cancelled, ok = !cancelled && r.ok !== false && !r.error;
-  const tell = a.user && !cancelled && r.quiet !== true && !actHere(a.mod);
+  /* a bg one that ended inside its grace period was never shown: it ends without a word */
+  const tell = a.shown && !cancelled && r.quiet !== true && !actHere(a.mod);
   const go = { ...(a.go || {}), ...(r.go || {}) };
   const error = r.error ? String(r.error.message || r.error) : '';
   if (tell && state.view !== a.mod) actDone.set(a.mod, { mod: a.mod, ok, summary: r.summary ? String(r.summary) : '', error, go, at: Date.now() });
-  if (a.user && !ok && !cancelled) actTbErr = Date.now() + 2600;
+  if (a.shown && !ok && !cancelled) actTbErr = Date.now() + 2600;
   emit('activity:end', { ...actView(a), ok, cancelled, told: tell });
   actFlush(true);
   if (tell && !(r.toast === false && !pageHidden())) {  /* toast: false: the module says it itself (the badge and the tray notification stay) */
@@ -637,11 +656,11 @@ function actTell(a, ok, r, error, go) {
   const quiet = performance.now() - sound.last < 700;
   SH.toast(text, { kind: ok ? (r.kind || 'success') : 'error', silent: quiet, ms: 9000, group: 'act:' + a.mod, action: { label: t('View'), run: () => actOpen(a.mod, go) } });
 }
-/* StellarHub's taskbar button follows every user-started activity at once: indeterminate while any of them cannot be
+/* StellarHub's taskbar button follows every shown activity at once: indeterminate while any of them cannot be
    measured, red for a moment when one fails, nothing when all are done. Sent only when it changes. */
 let actTbSent = '', actTbErr = 0, actTbTimer = 0;
 function actTaskbar() {
-  const run = [...acts.values()].filter(a => a.user);
+  const run = [...acts.values()].filter(a => a.shown);
   let st = 'none', v = 0;
   if (Date.now() < actTbErr) { st = 'error'; v = 1; clearTimeout(actTbTimer); actTbTimer = setTimeout(actTaskbar, actTbErr - Date.now() + 20); }
   else if (run.length) { if (run.some(a => a.pct == null)) st = 'indeterminate'; else { st = 'normal'; v = run.reduce((s, a) => s + a.pct, 0) / run.length; } }
@@ -654,11 +673,20 @@ on('view', d => { if (d && actDone.delete(d.to)) actFlush(true); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { actTbSent = ''; actTaskbar(); } });
 on('window', d => { winHidden = !(d && d.shown); if (!winHidden) { actTbSent = ''; actTaskbar(); } });
 on('shown', d => { winHidden = !(d && d.shown); });  /* the start: opened hidden in the tray, or on screen */
+/* a promise of long work the module started by itself (a list read on opening a tab), followed as a bg activity:
+   SH.activity.follow('drivers', DATA.drivers(), { key: 'list', label, go: { tab: 'all' }, summary: v => '' }) returns
+   the same promise. Rejected: the activity says it failed ({ cancelled: true } errors say nothing). */
+function actFollow(mod, p, o = {}) {
+  const h = actStart(mod, { ...o, bg: o.bg !== false });
+  Promise.resolve(p).then(v => { let sum = ''; try { sum = o.summary ? o.summary(v) || '' : ''; } catch {} h.end({ ok: true, summary: sum }); },
+    e => h.end(e && e.cancelled ? { cancelled: true } : { ok: false, error: (e && e.message) || String(e || '') }));
+  return p;
+}
 const activity = {
-  start: actStart,
+  start: actStart, follow: actFollow,
   /* running activities, the newest first; of(mod): the one to show for a module (the newest), with how many run there */
   list: () => [...acts.values()].map(actView).reverse(),
-  of(mod) { mod = actMod(mod); let best = null, n = 0; for (const a of acts.values()) if (a.mod === mod && a.user) { n++; best = a; } return best ? { ...actView(best), count: n } : null; },
+  of(mod) { mod = actMod(mod); let best = null, n = 0; for (const a of acts.values()) if (a.mod === mod && a.shown) { n++; best = a; } return best ? { ...actView(best), count: n } : null; },
   busy: mod => { mod = actMod(mod); for (const a of acts.values()) if (a.mod === mod) return true; return false; },
   /* finished while the user was elsewhere and not looked at yet */
   done: mod => actDone.get(actMod(mod)) || null,

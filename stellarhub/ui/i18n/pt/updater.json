@@ -305,5 +305,9 @@
   "{n} apps, {m} optional": "{n} apps, {m} opcionais",
   "Couldn't check for updates (no internet?)": "Não foi possível verificar atualizações (sem internet?)",
   "{name} could not be updated": "Não foi possível atualizar: {name}",
-  "Installing updates": "Instalando atualizações"
+  "Installing updates": "Instalando atualizações",
+  "Checking development tools…": "Verificando as ferramentas de desenvolvimento…",
+  "No Windows updates found.": "Nenhuma atualização do Windows encontrada.",
+  "1 Windows update found.": "1 atualização do Windows encontrada.",
+  "{n} Windows updates found.": "{n} atualizações do Windows encontradas."
 }

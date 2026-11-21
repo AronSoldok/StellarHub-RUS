@@ -212,6 +212,120 @@ class Registry(unittest.TestCase):
         self.assertEqual(out["toasts"], ["2 drivers installed."])
         self.assertTrue(out["badge"])
 
+    # ---- work a module starts by itself (bg): followed once it runs past the grace period ----
+
+    def test_started_by_itself_shows_after_the_grace_period_and_tells_when_it_ends_elsewhere(self):
+        out = self.run_js(r"""
+          SH.state.view = 'storage';
+          const h = SH.activity.start('storage', { key: 'scan', label: 'Scanning C:', go: { tab: 'map' }, bg: true, grace: 120 });
+          h.progress(.3);
+          await tick(20);
+          const early = { of: SH.activity.of('storage'), user: SH.activity.list().filter(a => a.user).length, tb: calls.filter(c => c[0] === 'taskbar_progress').pop() };
+          await tick(200);
+          SH.state.view = 'home';                           // the user leaves Storage
+          const late = SH.activity.of('storage');
+          await tick(120);
+          const tb = calls.filter(c => c[0] === 'taskbar_progress').pop();
+          const told = h.end({ ok: true, summary: '312 GB in 1,204,551 files' });
+          out({ early, late, tb, told, toasts, badge: SH.activity.done('storage') });
+        """)
+        self.assertIsNone(out["early"]["of"])               # inside the grace period: nothing shows anywhere
+        self.assertEqual(out["early"]["user"], 0)
+        self.assertNotEqual((out["early"].get("tb") or [None, "none"])[1], "normal")
+        self.assertEqual(out["late"]["key"], "scan")        # past it: the dock ring, Home and the palette follow it
+        self.assertTrue(out["late"]["bg"])
+        self.assertAlmostEqual(out["late"]["pct"], 0.3)
+        self.assertEqual(out["tb"][1:], ["normal", 0.3])
+        self.assertTrue(out["told"])
+        self.assertEqual([(t["text"], t["action"]) for t in out["toasts"]], [("Storage Checker finished: 312 GB in 1,204,551 files", "View")])
+        self.assertEqual(out["badge"]["go"], {"tab": "map"})
+
+    def test_a_quick_refresh_that_starts_by_itself_never_shows(self):
+        out = self.run_js(r"""
+          SH.state.view = 'home';
+          await tick(20);
+          const before = calls.filter(c => c[0] === 'taskbar_progress').length;
+          const h = SH.activity.start('privacy', { key: 'check', bg: true });
+          h.progress(.5);
+          await tick(200);
+          const mid = SH.activity.of('privacy');
+          const told = h.end({ ok: false, error: 'x' });
+          await tick(400);
+          out({ mid, told, toasts, done: SH.activity.doneAll(), tb: calls.filter(c => c[0] === 'taskbar_progress').slice(before).map(c => c[1]) });
+        """)
+        self.assertIsNone(out["mid"])
+        self.assertFalse(out["told"])
+        self.assertEqual(out["toasts"], [])
+        self.assertEqual(out["done"], [])
+        self.assertNotIn("normal", out["tb"])
+        self.assertNotIn("error", out["tb"])                # a failure nobody saw does not flash the taskbar red
+
+    def test_the_default_grace_period_is_about_a_second_and_a_half(self):
+        out = self.run_js(r"""
+          SH.state.view = 'home';
+          const h = SH.activity.start('updater', { key: 'scan:win', bg: true });
+          await tick(1200); const a = !!SH.activity.of('updater');
+          await tick(450); const b = !!SH.activity.of('updater');
+          h.end({ cancelled: true });
+          out({ a, b, toasts });
+        """)
+        self.assertFalse(out["a"])
+        self.assertTrue(out["b"])
+        self.assertEqual(out["toasts"], [])
+
+    def test_the_user_asking_for_what_already_runs_makes_it_theirs_at_once(self):
+        out = self.run_js(r"""
+          SH.state.view = 'home';
+          const bg = SH.activity.start('storage', { key: 'scan', label: 'Scanning C:', bg: true });
+          const mine = SH.activity.start('storage', { key: 'scan', label: 'Scanning D:' });
+          out({ same: bg === mine, of: SH.activity.of('storage') });
+        """)
+        self.assertTrue(out["same"])
+        self.assertEqual(out["of"]["label"], "Scanning D:")
+        self.assertFalse(out["of"]["bg"])
+
+    def test_a_bg_job_follows_itself_silently(self):
+        out = self.run_js(r"""
+          SH.state.view = 'home';
+          const p = SH.job('optimizer', 'registry_fix', [[1, 2]], { bg: true, label: 'Fixing entries' });
+          await tick(20);
+          const jid = 'j' + (calls.findIndex(c => c[0] === 'engine_job') + 1);
+          SH.emit('job', { id: jid, kind: 'progress', pct: .4, text: 'Fixing 4 of 10' });
+          await tick(1600);
+          const mid = SH.activity.of('optimizer');
+          SH.emit('job', { id: jid, kind: 'end', state: 'done', result: { ok: true } });
+          await p; await tick(400);
+          // a job of a module that already follows something adds nothing
+          const own = SH.activity.start('drivers', { label: 'Looking for new drivers' });
+          SH.job('drivers', 'delete_backup', ['x'], { bg: true });
+          await tick(20);
+          out({ mid, toasts: toasts.map(t => t.text), list: SH.activity.list().map(a => a.mod) });
+        """)
+        self.assertEqual(out["mid"]["label"], "Fixing entries")
+        self.assertEqual(out["mid"]["text"], "Fixing 4 of 10")
+        self.assertTrue(out["mid"]["bg"])
+        self.assertEqual(out["toasts"], ["Super Optimizer finished."])
+        self.assertEqual(out["list"], ["drivers"])
+
+    def test_follow_a_promise(self):
+        out = self.run_js(r"""
+          SH.state.view = 'home';
+          let ok, bad, gone;
+          const p1 = new Promise(r => { ok = r; }), p2 = new Promise((_, r) => { bad = r; }), p3 = new Promise((_, r) => { gone = r; });
+          const same = SH.activity.follow('drivers', p1, { key: 'list', label: 'Reading drivers again', go: { tab: 'all' }, summary: v => v.length + ' drivers', grace: 30 }) === p1;
+          SH.activity.follow('hangar', p2, { key: 'scan', grace: 30 }).catch(() => {});
+          SH.activity.follow('remover', p3, { key: 'list', grace: 30 }).catch(() => {});
+          await tick(80);
+          const running = SH.activity.list().filter(a => a.user).map(a => a.mod).sort();
+          ok([1, 2, 3]); bad(new Error('winget broke')); gone(Object.assign(new Error('cancelled'), { cancelled: true }));
+          await tick(50);
+          out({ same, running, toasts: toasts.map(t => [t.text, t.kind]), left: SH.activity.list().length });
+        """)
+        self.assertTrue(out["same"])
+        self.assertEqual(out["running"], ["drivers", "hangar", "remover"])
+        self.assertEqual(out["toasts"], [["Driver Updater finished: 3 drivers", "success"], ["App Hangar could not finish: winget broke", "error"]])
+        self.assertEqual(out["left"], 0)
+
 
 class _FakeCom:
     def __init__(self, log, fail=0):

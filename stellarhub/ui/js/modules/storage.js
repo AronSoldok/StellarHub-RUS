@@ -684,9 +684,10 @@ function setArc(dial, p, instant) {
 /* user: the user started it (the caller already played scan_start in the click); the scan on entering the Map stays silent */
 async function runScan(user) {
   if (TM.scanning) return; TM.scanning = true; scanProg = null;
-  /* the scan the user started is followed from anywhere (dock ring, Home, taskbar); the one on entering the Map is not */
+  /* followed from anywhere (dock ring, Home, taskbar): the scan the user started at once, the one on entering the Map
+     (bg) once it has run for a moment */
   const what = !ST.real || !ST.target ? 'C:' : /^[A-Za-z]:\\?$/.test(ST.target) ? ST.target.slice(0, 2) : ST.target.split('\\').filter(Boolean).pop();
-  const act = user ? SH.activity.start(ID, { key: 'scan', label: T('Scanning {name}', { name: what }), go: { tab: 'map' }, cancel: () => API.cancel() }) : null;
+  const act = SH.activity.start(ID, { key: 'scan', label: T('Scanning {name}', { name: what }), go: { tab: 'map' }, cancel: () => API.cancel(), bg: !user });
   const el = $(`#v-${ID} .tab[data-tab="map"]`); const sc = el && $('.st-scan', el);
   if (sc) {
     sc.classList.remove('done'); sc.classList.add('busy');

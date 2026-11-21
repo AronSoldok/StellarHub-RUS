@@ -63,7 +63,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 
 /* ---------------- state ---------------- */
 const S = { items: [], byId: {}, sel: new Set(), ignored: new Set(), pinned: new Set(), apps: null, win: null, dev: null,
-  scanned: false, winScanned: false, devScanned: false, paused: null, reboot: false, errs: {}, prog: {} };
+  scanned: false, winScanned: false, devScanned: false, paused: null, reboot: false, errs: {}, prog: {}, acts: {} };
 const pending = () => S.items.filter(i => !i.done && !S.ignored.has(i.id) && !S.pinned.has(i.id));
 const pendingIn = cat => pending().filter(i => i.cat === cat && !i.optional);
 /* display name: no version tacked on the end (it is shown next to it anyway), and a readable name for package ids */
@@ -112,33 +112,66 @@ function refreshBadge() { publishPending(); }
 
 /* ---------------- searches (real inside the app) ---------------- */
 let pA = null, pW = null, pD = null;
-function scanProgress(kind, m) { S.prog[kind] = m; if (S.checkAct && m && m.text) S.checkAct.progress(null, m.text); const el = $(`#v-${ID} .u-sub`); if (el && (kind === 'apps' ? S.appsScanning : !S.scanned)) el.textContent = m.text || t('Searching…'); updateWinWait(); }
+/* Each search is followed from anywhere (SH.activity, its own key): one the user asked for ('user') at once, one that
+   started by itself (opening the module or a tab) once it has run for a moment (bg). Inside the user's Check
+   (S.checkAct) they add nothing; the light check at start-up and the refresh after installing stay silent ('quiet').
+   A search already running is reused: the user asking for it makes it theirs, opening the module follows a quiet one. */
+const SCAN_ACT = { apps: [() => t('Looking for updates…'), 'overview'], win: [() => t('Searching Windows Update…'), 'windows'], dev: [() => t('Checking development tools…'), 'dev'] };
+function scanAct(kind, how) {
+  if (how === 'quiet' || S.checkAct) return;
+  const cur = S.acts[kind]; if (cur && cur.open && how !== 'user') return;
+  const [label, tab] = SCAN_ACT[kind];
+  S.acts[kind] = SH.activity.start(ID, { key: 'scan:' + kind, label: label(), go: { tab }, bg: how !== 'user' });
+}
+/* true: it ended while the user was elsewhere and the toast with View already said how it went */
+function scanEnd(kind, r) {
+  const a = S.acts[kind]; delete S.acts[kind]; if (!a) return false;
+  return a.end(S.checkAct ? { ...r, quiet: true } : r);
+}
+function winSummary() {
+  const n = ((S.win && S.win.updates) || []).filter(u => !u.optional).length;
+  return n === 0 ? t('No Windows updates found.') : n === 1 ? t('1 Windows update found.') : t('{n} Windows updates found.', { n });
+}
+/* sample mode: the searches take a moment and report progress, as the real ones do (Windows Update the longest) */
+function mockScan(kind, ms, data) {
+  const t0 = performance.now(), text = SCAN_ACT[kind][0]();
+  return new Promise(res => { const iv = setInterval(() => { const k = (performance.now() - t0) / ms; if (k >= 1) { clearInterval(iv); res(data()); } else scanProgress(kind, { kind: 'progress', pct: .1 + k * .8, text }); }, 250); });
+}
+function scanProgress(kind, m) {
+  S.prog[kind] = m; if (S.checkAct && m && m.text) S.checkAct.progress(null, m.text);
+  const a = S.acts[kind]; if (a && m) a.progress(typeof m.pct === 'number' && m.pct > 0 ? m.pct : null, m.text || null); const el = $(`#v-${ID} .u-sub`); if (el && (kind === 'apps' ? S.appsScanning : !S.scanned)) el.textContent = m.text || t('Searching…'); updateWinWait(); }
 /* while the apps search runs again, the lists keep the previous results but look dimmed */
 function setAppsScanning(on) {
   S.appsScanning = on; const v = $(`#v-${ID}`); if (v) v.classList.toggle('u-rescan', on && S.scanned);
   if (on && S.scanned) { const el = $(`#v-${ID} .u-sub`); if (el) el.textContent = t('Looking for updates…'); }
 }
-function scanApps(force) {
-  if (pA && (!force || S.appsScanning)) return pA;      // a search already running is reused, never doubled
-  setAppsScanning(true);
-  pA = (REAL ? SH.job(ID, 'scan_apps', [], { onProgress: m => scanProgress('apps', m) }) : wait(900).then(MOCK.apps))
-    .then(r => { r = r || { items: [] }; S.noWinget = r.winget === false; S.errs.apps = r.failed ? 'offline' : null; S.apps = S.noWinget ? { items: [] } : r; S.scanned = true; setAppsScanning(false); setItems(); onData('apps'); return r; })
-    .catch(e => { S.errs.apps = e.message; S.scanned = true; setAppsScanning(false); S.apps = S.apps || { items: [] }; setItems(); onData('apps'); });
+/* how: undefined (started by itself: opening the module or a tab), 'user' or 'quiet' (see scanAct) */
+function scanApps(force, how) {
+  if (pA && (!force || S.appsScanning)) { if (S.appsScanning) scanAct('apps', how); return pA; }  // a search already running is reused, never doubled
+  setAppsScanning(true); scanAct('apps', how);
+  pA = (REAL ? SH.job(ID, 'scan_apps', [], { onProgress: m => scanProgress('apps', m) }) : mockScan('apps', 900, MOCK.apps))
+    .then(r => { r = r || { items: [] }; S.noWinget = r.winget === false; S.errs.apps = r.failed ? 'offline' : null; S.apps = S.noWinget ? { items: [] } : r; S.scanned = true; setAppsScanning(false); setItems();
+      const err = S.noWinget ? t("winget isn't available on this PC.") : S.errs.apps ? ERR_MSG.apps(S.errs.apps) : '';
+      scanEnd('apps', err ? { ok: false, error: err } : { ok: true, summary: t('{n} pending updates.', { n: pending().filter(i => !i.optional).length }) });
+      onData('apps'); return r; })
+    .catch(e => { S.errs.apps = e.message; S.scanned = true; setAppsScanning(false); S.apps = S.apps || { items: [] }; setItems(); scanEnd('apps', e.cancelled ? { cancelled: true } : { ok: false, error: ERR_MSG.apps(e.message) }); onData('apps'); });
   return pA;
 }
-function scanWindows(force) {
-  if (pW && (!force || S.winScanning)) return pW;
-  S.winScanning = true; updateWinWait();
-  pW = (REAL ? SH.job(ID, 'scan_windows', [], { onProgress: m => scanProgress('win', m) }) : wait(1600).then(MOCK.win))
-    .then(r => { S.errs.win = null; S.win = r; S.winScanned = true; S.winScanning = false; S.reboot = !!r.reboot; S.paused = r.pause ? Date.parse(r.pause) : null; setItems(); onData('win'); return r; })
-    .catch(e => { S.errs.win = e.message; S.winScanning = false; S.winScanned = true; onData('win'); });
+function scanWindows(force, how) {
+  if (pW && (!force || S.winScanning)) { if (S.winScanning) scanAct('win', how); return pW; }
+  S.winScanning = true; S.winTold = false; scanAct('win', how); updateWinWait();
+  pW = (REAL ? SH.job(ID, 'scan_windows', [], { onProgress: m => scanProgress('win', m) }) : mockScan('win', 4500, MOCK.win))
+    .then(r => { S.errs.win = null; S.win = r; S.winScanned = true; S.winScanning = false; S.reboot = !!r.reboot; S.paused = r.pause ? Date.parse(r.pause) : null; setItems();
+      S.winTold = scanEnd('win', { ok: true, summary: winSummary() }); onData('win'); return r; })
+    .catch(e => { S.errs.win = e.message; S.winScanning = false; S.winScanned = true; S.winTold = scanEnd('win', e.cancelled ? { cancelled: true } : { ok: false, error: ERR_MSG.win(e.message) }); onData('win'); });
   return pW;
 }
-function scanDev(force) {
-  if (pD && !force) return pD;
-  pD = (REAL ? SH.job(ID, 'scan_dev', [], { onProgress: m => scanProgress('dev', m) }) : wait(700).then(MOCK.dev))
-    .then(r => { S.errs.dev = null; S.dev = r; S.devScanned = true; onData('dev'); return r; })
-    .catch(e => { S.errs.dev = e.message; S.devScanned = true; onData('dev'); });
+function scanDev(force, how) {
+  if (pD && (!force || S.devScanning)) { if (S.devScanning) scanAct('dev', how); return pD; }
+  S.devScanning = true; scanAct('dev', how);
+  pD = (REAL ? SH.job(ID, 'scan_dev', [], { onProgress: m => scanProgress('dev', m) }) : mockScan('dev', 700, MOCK.dev))
+    .then(r => { S.errs.dev = null; S.dev = r; S.devScanned = true; S.devScanning = false; scanEnd('dev', { ok: true }); onData('dev'); return r; })
+    .catch(e => { S.errs.dev = e.message; S.devScanned = true; S.devScanning = false; scanEnd('dev', e.cancelled ? { cancelled: true } : { ok: false, error: e.message }); onData('dev'); });
   return pD;
 }
 const ensureScan = () => scanApps();
@@ -213,7 +246,7 @@ async function runQueueReal() {
     if (cur.cancelAfter) { Q.list.forEach(q => { if (q.st === 'queued') { q.st = 'cancel'; updQRow(q); } }); break; }
   }
   Q.running = false; renderQueueHead(); finishedToast(); publishPending();
-  if (Q.list.some(q => q.st === 'done' && q.it.kind === 'winget')) setTimeout(() => scanApps(true), 1500);
+  if (Q.list.some(q => q.st === 'done' && q.it.kind === 'winget')) setTimeout(() => scanApps(true, 'quiet'), 1500);
 }
 /* --- sample: simulation --- */
 function stepQueue() {
@@ -936,12 +969,12 @@ function bindCommon(el) {
     const gt = e.target.closest('[data-gotab]'); if (gt) { ctxRef.setTab(gt.dataset.gotab); return; }
     const un = e.target.closest('[data-unhide]'); if (un) { const row = un.closest('.u-row'); await unhide(un.dataset.unhide); if (row && row.isConnected) collapseRow(row); return; }
     const url = e.target.closest('[data-url]'); if (url) { const r = await SH.call('open_url', url.dataset.url); if (r === undefined) SH.toast(t("The publisher's website would open here.")); return; }
-    const rs = e.target.closest('[data-rescan]'); if (rs) { SH.sound('refresh'); const k = rs.dataset.rescan; if (k === 'apps') scanApps(true); else if (k === 'win') scanWindows(true); else scanDev(true); return; }
+    const rs = e.target.closest('[data-rescan]'); if (rs) { SH.sound('refresh'); const k = rs.dataset.rescan; if (k === 'apps') scanApps(true, 'user'); else if (k === 'win') scanWindows(true, 'user'); else scanDev(true, 'user'); return; }
     const pw = e.target.closest('.u-pw button'); if (pw && !pw.classList.contains('on')) { $$('.u-pw button', el).forEach(x => x.classList.toggle('on', x === pw)); SH.placeSeg($('.u-pw', el)); pauseWeeks = +pw.dataset.w;
       const b = $('[data-pause]', el); b.innerHTML = `${ic('pause')}${pauseLabel()}`; return; }
     if (e.target.closest('[data-pause]')) { if (await doPause(pauseWeeks, el)) SH.toast(t('Windows updates paused.'), { action: { label: t('Undo'), sound: 'undo', run: () => doPause(0, el) } }); return; }
     if (e.target.closest('[data-resume]')) { if (await doPause(0, el)) SH.toast(t('Updates resumed.')); return; }
-    const wc = e.target.closest('[data-wcheck]'); if (wc) { if (wc.disabled || S.winScanning) return; SH.sound('scan_start'); scanWindows(true).then(() => SH.toast(S.errs.win ? ERR_MSG.win(S.errs.win) : S.items.some(i => i.kind === 'wu' || i.id === 'kb-cu') ? t('There are pending Windows updates.') : t('Windows is up to date.'), { kind: S.errs.win ? 'error' : 'scan_complete' })); }
+    const wc = e.target.closest('[data-wcheck]'); if (wc) { if (wc.disabled || S.winScanning) return; SH.sound('scan_start'); scanWindows(true, 'user').then(() => { if (!S.winTold) SH.toast(S.errs.win ? ERR_MSG.win(S.errs.win) : S.items.some(i => i.kind === 'wu' || i.id === 'kb-cu') ? t('There are pending Windows updates.') : t('Windows is up to date.'), { kind: S.errs.win ? 'error' : 'scan_complete' }); }); }
   });
 }
 SH.module({
@@ -966,6 +999,7 @@ SH.module({
         const html = c.innerHTML; c.disabled = true; c.classList.add('u-busy'); c.innerHTML = `${ic('refresh')}${t('Checking…')}`;
         SH.sound('scan_start');  /* one start and one end for the programs and Windows checks together (the toast below) */
         const act = S.checkAct = SH.activity.start(ID, { key: 'check', label: t('Looking for updates…'), go: { tab: 'overview' } });
+        for (const k of Object.keys(S.acts)) { S.acts[k].end({ quiet: true }); delete S.acts[k]; }  /* searches already running are now part of this check */
         try { await Promise.all([scanApps(true), scanWindows(true)]); } finally { c.disabled = false; c.classList.remove('u-busy'); c.innerHTML = html; S.checkAct = null; }
         const err = S.noWinget ? t("winget isn't available on this PC.") : S.errs.apps ? ERR_MSG.apps(S.errs.apps) : '';
         const msg = err || t('{n} pending updates.', { n: pending().filter(i => !i.optional).length });
@@ -989,7 +1023,7 @@ SH.module({
 /* light background check (winget only, read-only) so Home knows how many there are */
 SH.on('boot', () => setTimeout(() => {
   if (!REAL) return; const p = (state.settings.pending || {}).apps;
-  if (!p || Date.now() - p.at > 6 * 3600e3) scanApps();
+  if (!p || Date.now() - p.at > 6 * 3600e3) scanApps(false, 'quiet');
 }, 9000));
 SH.actions.add([
   { t: t('See the update queue'), go: ID, tab: 'overview', ic: 'download' },

@@ -72,7 +72,8 @@ function job(fn, args, onProgress, sound) {
 }
 async function loadStatus() {
   await SH.apiReady;
-  const r = REAL ? await job('status').catch(e => ({ error: e.message, admin: SH.state.admin, drives: [], points: [] }))
+  /* reading System Protection can take a while: followed from anywhere once it runs for a moment */
+  const r = REAL ? await SH.activity.follow('backups', job('status'), { key: 'status', label: t('Reading the restore points') }).catch(e => ({ error: e.message, admin: SH.state.admin, drives: [], points: [] }))
     : (await wait(650), JSON.parse(JSON.stringify(SAMPLE.status)));
   cache.status = r || { error: t('the engine failed'), admin: SH.state.admin, drives: [], points: [] };
   if (live()) { paintHero(); paintPoints(); }

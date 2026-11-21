@@ -305,5 +305,9 @@
   "{n} apps, {m} optional": "{n} 個のアプリ、オプション {m} 個",
   "Couldn't check for updates (no internet?)": "更新を確認できませんでした (インターネットに接続されていない可能性があります)",
   "{name} could not be updated": "{name} を更新できませんでした",
-  "Installing updates": "更新プログラムをインストール中"
+  "Installing updates": "更新プログラムをインストール中",
+  "Checking development tools…": "開発ツールを確認しています…",
+  "No Windows updates found.": "Windows の更新プログラムは見つかりませんでした。",
+  "1 Windows update found.": "Windows の更新プログラムが 1 件見つかりました。",
+  "{n} Windows updates found.": "Windows の更新プログラムが {n} 件見つかりました。"
 }

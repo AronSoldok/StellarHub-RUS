@@ -507,7 +507,8 @@ async function renderAll(el) {
   const scroll = $('#daScroll', el); let q = '', age = 'all', selected = null, ALL = [], busyOp = false;
   wireSeg($('.seg', el), v => { age = v; filter(); });
   async function load(fresh) {
-    try { ALL = await DATA.drivers(fresh); } catch (e) { scroll.innerHTML = errBox(e.message, true); return; }
+    /* reading every driver can take a while: followed from anywhere once it runs for a moment */
+    try { ALL = await SH.activity.follow('drivers', DATA.drivers(fresh), { key: 'list', label: t('Reading drivers again'), go: { tab: 'all' } }); } catch (e) { scroll.innerHTML = errBox(e.message, true); return; }
     const order = Object.keys(CLS); const keys = [...new Set(ALL.map(d => d.cls))].sort((a, b) => (order.indexOf(a.toUpperCase()) + 1 || 99) - (order.indexOf(b.toUpperCase()) + 1 || 99));
     const groups = keys.map(k => ({ key: k, label: clsInfo(k)[0], icon: clsInfo(k)[1], items: ALL.filter(d => d.cls === k) }));
     scroll.innerHTML = groups.map((g, gi) => `<div class="da-grp${gi < 2 ? ' open' : ''}" data-g="${g.key}"><button class="da-gh">${ic('chev', 'i cv')}<span class="ri">${ic(g.icon)}</span><b>${esc(g.label)}</b><span class="n">${g.items.length}</span></button>
@@ -617,7 +618,7 @@ async function renderAll(el) {
 /* ================= Problems ================= */
 async function renderProblems(el) {
   el.innerHTML = `<div class="du-wrap"><div class="pan dp-hero" data-asm>${ringSVG('ring', 'var(--accent2)')}<div><h3>${t('Checking your devices')}</h3><p>${t('One moment.')}</p></div></div><div class="dp-grid"><div class="pan" data-asm>${skRows(4)}</div><div class="pan" data-asm>${skRows(3)}</div></div></div>`;
-  let P; try { P = await DATA.problems(); } catch (e) { el.innerHTML = `<div class="du-wrap"><div class="pan">${errBox(e.message)}</div></div>`; return; }
+  let P; try { P = await SH.activity.follow('drivers', DATA.problems(), { key: 'problems', label: t('Checking your devices'), go: { tab: 'problems' } }); } catch (e) { el.innerHTML = `<div class="du-wrap"><div class="pan">${errBox(e.message)}</div></div>`; return; }
   const bad = P.errors.length;
   const errRow = x => `<div class="row" data-id="${esc(x.id)}"><span class="ri" style="color:var(--warn)">${ic('alert')}</span><span class="rt"><b>${esc(x.name)}</b><span>${esc(x.why)} ${t('Code {code}.', { code: x.code })}</span></span><button class="btn sm sec" data-act="search">${t('Find a driver')}</button><button class="btn sm ghost" data-act="devmgmt" title="${t('Open in Device Manager')}">${ic('external')}</button></div>`;
   const disRow = x => `<div class="row" data-id="${esc(x.id)}"><span class="ri">${ic('power')}</span><span class="rt"><b>${esc(x.name)}</b><span>${t('Disabled. It will not work until you enable it.')}</span></span><button class="btn sm sec" data-act="enable">${t('Enable')}</button></div>`;
@@ -807,7 +808,7 @@ async function renderBackup(el) {
     SH.sound('delete');
     busyBtn(btn, t('Removing…'));
     let r;
-    try { r = REAL ? await SH.job('drivers', 'delete_packages', [pick.map(o => o.inf)], { onProgress: m => { if (m.text) $('#dsSum', el).textContent = m.text; } }) : { ok: true, results: pick.map(o => ({ inf: o.inf, ok: true })), freedMb: mb }; }
+    try { r = REAL ? await SH.job('drivers', 'delete_packages', [pick.map(o => o.inf)], { bg: true, label: t('Removing…'), onProgress: m => { if (m.text) $('#dsSum', el).textContent = m.text; } }) : { ok: true, results: pick.map(o => ({ inf: o.inf, ok: true })), freedMb: mb }; }
     catch (er) { r = { ok: false, msg: er.message }; }
     if (needAdmin(r, t('to remove packages from the driver store.'))) { freeBtn(btn); dsSync(); return; }
     const okN = ((r && r.results) || []).filter(x => x.ok).length, bad = ((r && r.results) || []).filter(x => !x.ok);
@@ -852,7 +853,7 @@ async function renderBackup(el) {
       busyBtn(b, ''); const p = $('.p', row), pHTML = p.innerHTML; p.innerHTML = `${SPIN}<span>${esc(t('Moving to the Recycle Bin…'))}</span>`;
       let ok = false;
       try {
-        const r = REAL ? await SH.job('drivers', 'delete_backup', [bk.path]) : (await wait(1200), { ok: true });
+        const r = REAL ? await SH.job('drivers', 'delete_backup', [bk.path], { bg: true, label: t('Removing…') }) : (await wait(1200), { ok: true });
         if (r && r.ok) { ok = true; if (!REAL) API.backups.splice(API.backups.indexOf(bk), 1); LIST[i] = null; removeRow(row, rows); $('#dbCount', el).textContent = LIST.filter(Boolean).length; SH.toast(t('Backup sent to the Recycle Bin.')); }
         else SH.toast(t('It did not work: {msg}', { msg: (r && r.msg) || '' }), { kind: 'error' });
       } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message }), { kind: 'error' }); }
@@ -864,7 +865,7 @@ async function renderBackup(el) {
 /* ================= History ================= */
 async function renderHistory(el) {
   el.innerHTML = `<div class="pan" data-asm>${skRows(6)}</div>`;
-  let H; try { H = await DATA.history(); } catch (e) { el.innerHTML = `<div class="pan">${errBox(e.message)}</div>`; return; }
+  let H; try { H = await SH.activity.follow('drivers', DATA.history(), { key: 'history', label: t('Reading the history…'), go: { tab: 'history' } }); } catch (e) { el.innerHTML = `<div class="pan">${errBox(e.message)}</div>`; return; }
   /* month headings and days in the interface language */
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const monthOf = (y, m) => cap(new Date(+y, +m - 1, 1).toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' }));

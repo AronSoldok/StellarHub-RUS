@@ -78,10 +78,11 @@ notification (success, error, a finished scan) replaces a click that began in th
 the window is hidden. Settings: `sounds`, `soundVolume`, `soundUi`, `soundAlerts`, `soundTasks`, `soundSystem`
 (Settings > Sound); lighter effects and intensity `min` mute nothing.
 
-## Long work the user started (activities)
+## Long work (activities)
 
-Anything long the user started (a scan, an analysis, a cleanup, a queue of installs, a test, a routine, a backup) is
-an activity, so it can be followed from anywhere (`SH.activity`, core.js):
+Anything long a module does (a scan, an analysis, a cleanup, a queue of installs, a test, a routine, a backup, and
+also what starts by itself when a module or a tab opens) is an activity, so it can be followed from anywhere
+(`SH.activity`, core.js):
 
 ```js
 const h = SH.activity.start('storage', { key: 'scan', label: SH.t('Scanning {name}', { name }), go: { tab: 'map' } });
@@ -102,9 +103,18 @@ if (!h.end({ ok: true, summary: SH.t('{size} in {n} files', { size, n }) })) SH.
 - Exactly one sound: a toast after a sound played in the last 0.7 s (the job's `scan_complete`) stays silent. `kind`
   sets the toast's kind (`'achievement'`, `'warning'`); `toast: false` keeps the badge and the notification but leaves
   the toast to the module (Autopilot's own has View the log).
-- Only what the user started: a refresh on entering a view passes nothing. `SH.job(..., { sound: 'scan' | 'task' })`
-  opens one by itself (its progress and text, a generic summary) unless the module already has one open;
-  `{ activity: h }` sends a job's progress to the module's own, `{ activity: false }` opts out.
+- Work that starts by itself (Storage's scan on opening the Map, Program Updater's searches, Super Optimizer's first
+  analysis, Privacy's first check, a list read on opening a tab) passes `bg: true`: it is followed exactly the same
+  way, but only once it has run for 1.5 s (`grace`), so a quick refresh never flashes a ring and ends without a word.
+  It plays no start or end sound of its own (the toast when it ends elsewhere does). The user starting the same `key`
+  while it runs makes it theirs at once. A refresh the user never needs to hear about (the light check at start-up,
+  the list read again after an install) opens nothing; `user: false` is never shown.
+- `SH.activity.follow(mod, promise, { key, label, go, summary: v => text })` follows a promise as a `bg` activity and
+  returns it (rejected: it failed; an error with `cancelled: true`: nothing).
+- `SH.job(..., { sound: 'scan' | 'task' })` opens one by itself (its progress and text, a generic summary) unless the
+  module already has one open; `{ bg: true, label }` does the same for a job without a sound (work the module started
+  by itself, or a secondary step); `{ activity: h }` sends a job's progress to the module's own, `{ activity: false }`
+  opts out.
 
 ## Lighter effects
 

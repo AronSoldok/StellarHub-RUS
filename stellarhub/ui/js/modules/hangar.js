@@ -324,12 +324,16 @@ function applyInstalled(r) {
   if (r.winget === false) S.winget = false;
   refreshInstalledMarks();
 }
-function scanInstalled(force) {
+/* how: undefined (opening the module: followed from anywhere once it runs for a moment), 'user' (Check again: at once;
+   S.scanTold says the toast with View already told how it went) or 'quiet' (the refresh after installing) */
+function scanInstalled(force, how) {
   if (pInst && !force) return pInst;
-  S.scanning = true; S.scanErr = null; updScan();
+  S.scanning = true; S.scanErr = null; S.scanTold = false; updScan();
+  const act = how === 'quiet' ? null : SH.activity.start(ID, { key: 'scan', label: t("Checking what's installed…"), bg: how !== 'user' });
   pInst = (REAL ? SH.job(ID, 'scan_installed', [APPS.map(a => [a.id, a.name])]) : wait(900).then(() => ({ installed: MOCK_INSTALLED, ts: Date.now() / 1000 })))
-    .then(r => { S.scanning = false; applyInstalled(r); updScan(); return r; })
-    .catch(e => { S.scanning = false; S.scanErr = e.message; updScan(); });
+    .then(r => { S.scanning = false; applyInstalled(r); updScan();
+      if (act) S.scanTold = act.end({ ok: true, summary: t('{n} apps from the catalog are installed.', { n: APPS.filter(a => S.inst.has(a.id)).length }) }); return r; })
+    .catch(e => { S.scanning = false; S.scanErr = e.message; updScan(); if (act) S.scanTold = act.end(e.cancelled ? { cancelled: true } : { ok: false, error: e.message }); });
   return pInst;
 }
 let booted = false;
@@ -497,6 +501,8 @@ async function wingetSearch(q, force) {
   S.ws = { q, items: null, busy: true, err: null, job: null, more: 0 }; updWs();
   const p = REAL ? SH.job(ID, 'search', [q]) : wait(800).then(() => ({ q, items: MOCK_SEARCH.filter(x => fold(`${x.name} ${x.id}`).includes(fold(q))) }));
   S.ws.job = p.cancel ? p : null;
+  /* a slow winget search is followed from anywhere once it runs for a moment; a newer one cancels it silently */
+  SH.activity.follow(ID, p, { key: 'search:' + q, label: t('Searching winget…'), summary: r => { const n = ((r && r.items) || []).length; return n === 1 ? t('1 result') : t('{n} results', { n }); } }).catch(() => {});
   let r; try { r = await p; } catch (e) { if (S.ws.q !== q) return; if (e.cancelled) return; S.ws.busy = false; S.ws.err = e.message; updWs(); return; }
   if (S.ws.q !== q) return;
   const ql = fold(q);
@@ -700,7 +706,7 @@ function queueEnded() {
     SH.logActivity(done.length === 1 ? t('{name} installed', { name: done[0].a.name }) : t('{n} apps installed', { n: done.length }), { sub: done.slice(0, 3).map(q => q.a.name).join(', ') + (done.length > 3 ? '…' : ''), ic: ID, go: ID, tab: 'history' }); }
   finishedToast();
   S.hist = null; const h = $(`#v-${ID} .tab[data-tab="history"]`); if (h && h.dataset.ready) loadHistory(h);
-  if (REAL && done.length) setTimeout(() => scanInstalled(true), 1200);
+  if (REAL && done.length) setTimeout(() => scanInstalled(true, 'quiet'), 1200);
 }
 function finishedToast() {
   const c = counts(); if (c.queued || c.run) return;
@@ -1078,7 +1084,7 @@ SH.module({
     el.addEventListener('click', e => {
       if (e.target.closest('[data-hgo]')) { startInstall(); return; }
       const r = e.target.closest('[data-rescan]'); if (r) { SH.sound('refresh'); anim($('svg', r), [{ transform: 'rotate(0)' }, { transform: 'rotate(360deg)' }], { d: 900, e: EASE.io });
-        scanInstalled(true).then(() => SH.toast(t('{n} apps from the catalog are installed.', { n: APPS.filter(a => S.inst.has(a.id)).length }), { group: 'hg-scan' })); }
+        scanInstalled(true, 'user').then(() => { if (!S.scanTold) SH.toast(t('{n} apps from the catalog are installed.', { n: APPS.filter(a => S.inst.has(a.id)).length }), { group: 'hg-scan' }); }); }
     });
   },
   renderTab(tab, el) {

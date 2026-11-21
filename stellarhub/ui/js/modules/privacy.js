@@ -193,7 +193,11 @@ async function start(force) {
   if (await realP) {
     if (!force) { try { const c = await SH.engine('privacy', 'cached'); if (c) { AREAS.forEach(a => { if (c[a] && c[a].data && !D[a]) setData(a, c[a].data, c[a]); }); } } catch (e) { console.error(e); } }
   }
-  AREAS.forEach(a => load(a));
+  /* the first check (opening the module) is followed from anywhere once it has run for a moment (bg) */
+  const act = SH.activity.start('privacy', { key: 'check', label: t('Checking your system'), go: { tab: 'overview' }, bg: true }); let n = 0;
+  Promise.all(AREAS.map(a => load(a).finally(() => act.progress(++n / AREAS.length)))).then(() => {
+    const bad = AREAS.find(a => ERR[a]); act.end(bad ? { ok: false, error: ERR[bad] } : { ok: true });
+  });
 }
 const loading = a => !!BUSY[a];
 const has = a => !!D[a];
