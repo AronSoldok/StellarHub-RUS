@@ -332,8 +332,14 @@ html[data-int=min] #v-benchmark .bm-run svg{animation:none}
 #v-benchmark .bm-ns b{text-align:right;font:500 var(--fs-h3) var(--display);letter-spacing:-.02em}
 #v-benchmark .bm-nticks{position:absolute;left:calc(14px + 110px + 12px);right:calc(14px + 110px + 12px);bottom:8px;height:14px}
 #v-benchmark .bm-nticks span{position:absolute;transform:translateX(-50%);font-size:var(--fs-cap);color:var(--faint)}
-/* layout: a panel next to others takes the height of its content (up to the available height, then it scrolls inside) so a short list never leaves an empty frame */
-#v-benchmark .bm-ct:not(:has(.bm-r3,.bm-gw,.bm-charts,.bm-stage,.bm-live)) .bm-main{align-self:start;max-height:100%}
-#v-benchmark .bm-ct:not(:has(.bm-r3,.bm-gw,.bm-charts,.bm-stage,.bm-live)) .bm-side{align-self:start}
-#v-benchmark .bm-ct:not(:has(.bm-r3,.bm-gw,.bm-charts,.bm-stage,.bm-live)) .bm-hist{flex:none}
-#v-benchmark .bm-ov:not(:has(.bm-live)) .bm-mid{grid-template-rows:auto auto;align-content:start}
+/* layout: every column reaches the dock (Memory, Disks and Network have short results: their panel and the side column
+   still line up with the bottom; the results list fills what the note leaves); in the Overview the reading takes the
+   height the component list leaves */
+#v-benchmark .bm-ct .bm-main,#v-benchmark .bm-ct .bm-side{align-self:stretch;min-height:0}
+/* the last panel of the side column (the results, or the stress test's status) takes the height left; the ones above
+   it keep theirs (never squeezed under it), and in a short window the test's body scrolls instead of its blocks
+   overlapping */
+#v-benchmark .bm-ct .bm-side>:is(.bm-hist,.bm-sst){flex:1 1 auto;min-height:0}
+#v-benchmark .bm-ct .bm-side>.pan:not(.bm-hist,.bm-sst){flex:none}
+#v-benchmark .bm-body>*{flex-shrink:0}
+#v-benchmark .bm-ov:not(:has(.bm-live)) .bm-mid{grid-template-rows:auto minmax(0,1fr);align-content:stretch}
