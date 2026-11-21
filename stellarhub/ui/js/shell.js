@@ -13,7 +13,7 @@ makeStars(240);
 const shooters = []; let nextShot = performance.now() + 4000;
 const warp = new Spring(0, 70, 13);
 const mouse = { x: new Spring(0, 40, 12), y: new Spring(0, 40, 12) };
-function sizeStars() { DPR = Math.min(state.lite ? 1 : 1.5, devicePixelRatio || 1); SW = innerWidth; SH_ = innerHeight; cv.width = SW * DPR; cv.height = SH_ * DPR; starDirty = true; }
+function sizeStars() { DPR = Math.min(state.lite ? 1 : 1.5, devicePixelRatio || 1); SW = innerWidth; SH_ = innerHeight; cv.width = Math.round(SW * DPR); cv.height = Math.round(SH_ * DPR); starDirty = true; }
 let starDirty = true, starAcc = 0, starCleared = false;
 sizeStars(); addEventListener('resize', sizeStars); SH.on('power', sizeStars);
 addEventListener('pointermove', e => { if (!(innerWidth > 0 && innerHeight > 0)) return; mouse.x.t = (e.clientX / innerWidth - .5) * 2; mouse.y.t = (e.clientY / innerHeight - .5) * 2; });

@@ -136,7 +136,7 @@ new ResizeObserver(() => requestAnimationFrame(fit)).observe(document.getElement
 function draw(r) {
   if (!r.c.offsetParent) return; // small version: no charts
   const box = r.c.getBoundingClientRect(); const w = Math.max(10, box.width), h = Math.max(10, box.height);
-  const d = Math.min(2, devicePixelRatio || 1); if (r.c.width !== Math.round(w * d) || r.c.height !== Math.round(h * d)) { r.c.width = w * d; r.c.height = h * d; }
+  const d = Math.min(2, devicePixelRatio || 1); if (r.c.width !== Math.round(w * d) || r.c.height !== Math.round(h * d)) { r.c.width = Math.round(w * d); r.c.height = Math.round(h * d); }
   const ctx = r.ctx; ctx.setTransform(d, 0, 0, d, 0, 0); ctx.clearRect(0, 0, w, h);
   const data = SH.tele.hist[r.s.h].slice(-48);
   const fixed = typeof r.s.max === 'function' ? r.s.max(SH.tele.v) : r.s.max;

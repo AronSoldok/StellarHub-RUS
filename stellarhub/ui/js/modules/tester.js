@@ -516,7 +516,7 @@ tickers.add(dt => {
   const rms = Math.sqrt(sum / mic.buf.length); const db = 20 * Math.log10(Math.max(rms, 1e-5)); const lv = Math.max(0, Math.min(1, (db + 60) / 60));
   mic.lvl += (lv - mic.lvl) * Math.min(1, dt * 18); mic.peak = Math.max(mic.peak - dt * .35, lv);
   $('#mcLvl', mic.el).style.transform = `scaleX(${mic.lvl.toFixed(3)})`; $('#mcPeak', mic.el).style.left = (mic.peak * 100).toFixed(1) + '%'; $('#mcDb', mic.el).textContent = db < -59 ? '−∞' : Math.round(db);
-  const c = $('#mcWave', mic.el); const w = c.clientWidth, h = c.clientHeight; const d = Math.min(2, devicePixelRatio || 1); if (c.width !== Math.round(w * d)) { c.width = w * d; c.height = h * d; }
+  const c = $('#mcWave', mic.el); const w = c.clientWidth, h = c.clientHeight; const d = Math.min(2, devicePixelRatio || 1); if (c.width !== Math.round(w * d)) { c.width = Math.round(w * d); c.height = Math.round(h * d); }
   const x = c.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, w, h);
   const col = getComputedStyle(SH.ROOT).getPropertyValue('--accent2').trim() || '#9ED6FF';
   x.strokeStyle = 'rgba(170,200,245,.12)'; x.beginPath(); x.moveTo(0, h / 2); x.lineTo(w, h / 2); x.stroke();
@@ -638,7 +638,7 @@ SH.on('boot', () => { cps.best = +(state.settings.cpsBest || 0); const b = cps.e
 function drawCps() {
   const c = cps.el && $('#cpsCv', cps.el); if (!c) return;
   const w = c.clientWidth, h = c.clientHeight, d = Math.min(2, devicePixelRatio || 1); if (!w) return;
-  if (c.width !== Math.round(w * d)) { c.width = w * d; c.height = h * d; }
+  if (c.width !== Math.round(w * d)) { c.width = Math.round(w * d); c.height = Math.round(h * d); }
   const x = c.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, w, h);
   const N = 10, bins = Array(N).fill(0); cps.clicks.forEach(t => { const i = Math.min(N - 1, Math.floor(t / (CPS_WIN / N))); bins[i]++; });
   const max = Math.max(4, ...bins), bw = w / N, col = getComputedStyle(SH.ROOT).getPropertyValue('--accent').trim() || '#FF7A66';
@@ -686,7 +686,7 @@ tickers.add(() => {
     if (hz > (ms.hzMax || 0)) { ms.hzMax = hz; $('#msHzMax', ms.el).textContent = t('best {n} Hz', { n: SH.fmtInt(hz) }); } }
   const life = isMin() ? 150 : 700; while (ms.pts.length && now - ms.pts[0].t > life) { ms.pts.shift(); ms.dirty = true; }
   if (!ms.dirty) return; ms.dirty = ms.pts.length > 0;
-  const c = $('#msCv', ms.el); const w = c.clientWidth, h = c.clientHeight, d = Math.min(2, devicePixelRatio || 1); if (c.width !== Math.round(w * d)) { c.width = w * d; c.height = h * d; }
+  const c = $('#msCv', ms.el); const w = c.clientWidth, h = c.clientHeight, d = Math.min(2, devicePixelRatio || 1); if (c.width !== Math.round(w * d)) { c.width = Math.round(w * d); c.height = Math.round(h * d); }
   const x = c.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0); x.clearRect(0, 0, w, h);
   const col = getComputedStyle(SH.ROOT).getPropertyValue('--accent2').trim() || '#9ED6FF'; x.lineCap = 'round';
   for (let i = 1; i < ms.pts.length; i++) { const a = ms.pts[i - 1], b = ms.pts[i]; const k = 1 - (now - b.t) / life; x.strokeStyle = col; x.globalAlpha = Math.max(0, k); x.lineWidth = 1 + k * 4; x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke(); }

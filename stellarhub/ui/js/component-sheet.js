@@ -105,7 +105,7 @@ function update() {
 SH.tele.on(update);
 function drawChart(t) {
   if (!open || !chart) return; const k = CFG[open].chart; const c = chart, r = c.getBoundingClientRect(); if (!r.width) return;
-  const d = Math.min(2, devicePixelRatio || 1); if (c.width !== Math.round(r.width * d)) { c.width = r.width * d; c.height = r.height * d; }
+  const d = Math.min(2, devicePixelRatio || 1); if (c.width !== Math.round(r.width * d)) { c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); }
   const ctx = c.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0); ctx.clearRect(0, 0, r.width, r.height);
   const data = T.hist[k.key].slice(-86); const mx = typeof k.max === 'function' ? k.max() : k.max; const max = mx || Math.max(1, ...data) * 1.15;
   const frac = state.settings.intensity === 'min' ? 0 : Math.min(1, (t - lastTick) / ((+state.settings.teleRate || 1000))); const step = r.width / (data.length - 3);
