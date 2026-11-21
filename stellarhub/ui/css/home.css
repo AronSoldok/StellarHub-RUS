@@ -103,6 +103,11 @@ html[data-int=min] .pend.act.ind .ring{animation:none}
 .pend.act:is(.ok,.err) .ap{color:var(--faint)}
 
 .healthp{flex:none;padding:14px 18px}
+/* it opens Live Monitor > Health: the same calm hover as the rows (a raised fill and a lighter edge) */
+.healthp[data-go]{cursor:pointer;transition:border-color calc(160ms*var(--f))}
+.healthp[data-go]::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--raise);opacity:0;pointer-events:none;transition:opacity calc(160ms*var(--f))}
+.healthp[data-go]:hover{border-color:var(--line2)}
+.healthp[data-go]:hover::after{opacity:1}
 .healthp .hh{display:flex;align-items:center;gap:14px}
 .healthp svg.g{width:46px;height:46px;transform:rotate(-90deg);flex:none}
 .healthp .hh b{display:block;font-weight:600;font-size:13.5px}

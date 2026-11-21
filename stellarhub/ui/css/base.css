@@ -154,6 +154,11 @@ body.frameless:not(.win-max) .rz{display:block}
 .toggle{width:42px;height:24px;flex:none;border-radius:var(--r-pill);background:var(--raise2);border:1px solid var(--line2);position:relative;transition:background-color calc(220ms*var(--f))}
 .toggle i{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--mute);box-shadow:0 2px 5px -1px rgba(0,0,0,.5);transition:transform calc(300ms*var(--f)) var(--e-snap),background-color calc(200ms*var(--f)),width calc(160ms*var(--f))}
 .toggle:active i{width:22px}
+/* hover: the switch's edge and thumb light up a little (off), the coral track deepens (on) */
+.toggle{transition:background-color calc(220ms*var(--f)),border-color calc(160ms*var(--f))}
+.toggle:hover{border-color:color-mix(in oklab,var(--ink) 34%,transparent)}
+.toggle:not(.on):hover i{background:color-mix(in oklab,var(--ink) 80%,var(--mute))}
+.toggle.on:hover{background:color-mix(in oklab,var(--accent) 42%,transparent)}
 .toggle.on{background:color-mix(in oklab,var(--accent) 32%,transparent);border-color:var(--acc-line)}
 .toggle.on i{transform:translateX(18px);background:var(--accent)}
 .toggle.on:active i{transform:translateX(14px)}
@@ -208,6 +213,8 @@ body.frameless:not(.win-max) .rz{display:block}
 .field input::placeholder{color:var(--faint)}
 .field.csel{color:var(--ink)}
 .field .csel{background:none;border:0;height:auto;padding:0;border-radius:0;flex:1;min-width:0}
+.field:has(>.csel:not(:disabled)):hover{border-color:var(--line2)}
+.field:has(>.csel){cursor:pointer}
 .bar{height:6px;border-radius:var(--r-s);background:var(--raise2);overflow:hidden}
 .bar>span{display:block;height:100%;width:100%;transform-origin:0 50%;border-radius:var(--r-s);background:var(--accent2);will-change:transform;transform:scaleX(var(--v,0));transition:transform calc(700ms*var(--f)) cubic-bezier(.16,1,.3,1)}
 .bar.acc>span{background:var(--accent)} .bar.ok>span{background:var(--ok)} .bar.warn>span{background:var(--warn)} .bar.bad>span{background:var(--bad)}

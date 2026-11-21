@@ -50,7 +50,7 @@ function render() {
 
   <aside class="h-col">
     <div class="pan pending" data-intro><h4>${t('To review')}</h4><div id="actRows" class="act-rows"></div><div id="pendList"></div></div>
-    <div class="pan healthp" data-intro>
+    <div class="pan healthp" data-intro data-go="monitor" data-tab="health" role="button" tabindex="0" aria-label="${t('System health')}">
       <div class="hh">
         <svg class="g" viewBox="0 0 40 40"><circle cx="20" cy="20" r="16" fill="none" style="stroke:var(--raise2)" stroke-width="4"/><circle id="healthArc" cx="20" cy="20" r="16" fill="none" style="stroke:var(--accent2)" stroke-width="4" stroke-linecap="round" stroke-dasharray="100.5" stroke-dashoffset="100.5"/></svg>
         <div><b id="hTitle">${t('Checking the system…')}</b><span id="hSub">${t('One moment')}</span></div>
@@ -106,6 +106,8 @@ tickers.add(dt => {
   if (!built || (state.view !== 'home' && !SH.homeAnimating)) return;
   rows.forEach(r => { if (r.s.idle && r.drawn) return; r.s.step(dt); if (Math.abs(r.s.v - r.s.t) < .002 && Math.abs(r.s.vel) < .06) r.s.set(r.s.t); /* the last half pixel of the tail is not worth a repaint per frame */ const tf = `scaleX(${r.s.v.toFixed(3)})`; if (tf !== r.tf) { r.tf = tf; r.bar.style.transform = tf; } r.drawn = true; });
 });
+/* the health card is a link to Live Monitor > Health: Enter or Space opens it like a click */
+home.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.healthp[data-go]')) { e.preventDefault(); e.target.click(); } });
 home.addEventListener('click', e => {
   const v = e.target.closest('.vit[data-comp]'); if (v) { SH.openComponent(v.dataset.comp, v); return; }
   const a = e.target.closest('[data-act-go]'); if (a) { SH.activity.open(a.dataset.actGo, { tab: a.dataset.tab || '' }); return; }

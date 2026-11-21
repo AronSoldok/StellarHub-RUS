@@ -179,6 +179,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .qs{border-radius:var(--r-m);border:1px solid var(--line);background:var(--raise);margin-bottom:8px}
 #v-remover .qs-h{display:grid;grid-template-columns:22px 34px minmax(0,1fr) 120px 150px auto;gap:var(--sp-md);align-items:center;width:100%;text-align:left;padding:10px 14px;border-radius:var(--r-m);transition:background-color calc(150ms*var(--f))}
 #v-remover .qs-h:hover{background:var(--raise2)}
+#v-remover .qs-h{cursor:pointer}
 #v-remover .qs-h .cv{color:var(--faint);transition:transform calc(260ms*var(--f)) var(--e-snap)}
 #v-remover .qs.open .qs-h .cv{transform:rotate(90deg)}
 #v-remover .qs-h .rt b{display:block;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
