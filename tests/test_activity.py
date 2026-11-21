@@ -2,6 +2,7 @@
 the page), the taskbar progress helper (stellarhub/taskbar.py) and the tray notification click."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -532,6 +533,117 @@ class TrayClick(unittest.TestCase):
         t.icon.notify.assert_called_once_with("done", "StellarHub")
         t.notify("plain")
         self.assertIsNone(t.icon._sh_click)
+
+
+def _src(*p):
+    with open(os.path.join(UI, *p), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def _body(src, start):
+    """The text of a block that starts at `start` (a function or method header ending in '{'), up to its closing brace."""
+    i = src.index(start) + len(start) - 1
+    depth = 0
+    for j in range(i, len(src)):
+        depth += {"{": 1, "}": -1}.get(src[j], 0)
+        if depth == 0:
+            return src[i:j + 1]
+    raise AssertionError(start)
+
+
+class OnDemand(unittest.TestCase):
+    """2.0.0: opening a module or a tab starts no analysis (Storage's scan, Super Optimizer's analysis and measurements,
+    Privacy's check, Program Updater's searches); the user's button does, with its sounds and activity. The old
+    behaviour is a setting, off by default. (The sample-mode walk in a real browser checks the same from the outside.)"""
+
+    def test_the_setting_exists_off_and_translated(self):
+        core = _src("js", "core.js")
+        self.assertIn("autoAnalyze: false", re.search(r"const DEFAULTS = \{.*?\n\};", core, re.S).group(0))
+        self.assertIn("tog('autoAnalyze'", _src("js", "shell.js"))
+
+    def test_opening_starts_nothing_unless_asked(self):
+        st = _src("js", "modules", "storage.js")
+        enter = _body(st, "  enterTab(tab) {")
+        self.assertNotIn("runScan(", enter)                                     # the Map waits for Scan
+        self.assertIn("SH.autoAnalyze()", _body(st, "async function openMap() {"))
+        opt = _src("js", "modules", "optimizer.js")
+        ov = _body(opt, "function renderOverview(el, ctx) {")
+        self.assertIn("else if (SH.autoAnalyze()) analyze(el); else ovIdle(el);", ov)
+        rt = _body(opt, "  async renderTab(tab, el, ctx) {")
+        self.assertIn("SH.autoAnalyze()) analyzeTab(tab, true)", rt)
+        self.assertEqual(re.findall(r"'(\w+)'", re.search(r"const AN_TABS = \[(.*?)\]", opt).group(1)), ["clean", "startup", "services", "registry"])
+        pv = _src("js", "modules", "privacy.js")
+        self.assertIn("if (!SH.autoAnalyze()) { notify('idle'); return; }", _body(pv, "async function start(force) {"))
+        up = _src("js", "modules", "updater.js")
+        self.assertNotIn("ensureScan", up)
+        auto = _body(up, "function autoScan(...kinds) {")
+        self.assertTrue(auto.startswith("{\n  if (!SH.autoAnalyze()) return;"), auto)
+        for fn in ("renderOverview(el)", "renderApps(el)", "renderWindows(el)", "renderStore(el)", "renderRuntimes(el)", "renderDev(el)"):
+            body = _body(up, f"function {fn} {{")
+            self.assertNotRegex(body, r"\bscan(Apps|Windows|Dev)\(", fn)        # only through autoScan
+
+    def test_the_buttons_are_the_users_with_their_sounds(self):
+        opt = _src("js", "modules", "optimizer.js")
+        an = _body(opt, "async function analyzeTab(tab, auto) {")
+        self.assertIn("bg: !!auto", an)
+        self.assertIn("if (!auto) SH.sound('scan_complete')", an)
+        self.assertIn("SH.sound('scan_start'); analyzeTab(b.dataset.optAn)", opt)
+        pv = _body(_src("js", "modules", "privacy.js"), "function checkNow(toast) {")
+        self.assertIn("SH.sound('scan_start')", pv)
+        self.assertNotIn("bg: true", pv)
+        up = _body(_src("js", "modules", "updater.js"), "function checkDev() {")
+        self.assertIn("scanDev(true, 'user')", up)
+        st = _src("js", "modules", "storage.js")
+        self.assertIn("SH.sound('scan_start'); runScan(true)", st)
+
+    def test_cached_results_are_not_a_new_check(self):
+        up = _src("js", "modules", "updater.js")
+        self.assertIn("S.scanned && !S.fromCache.apps && !S.appsScanning", _body(up, "function publishPending() {"))
+        pv = _src("js", "modules", "privacy.js")
+        self.assertIn("!D.network._stale", _body(pv, "function netTick() {"))
+
+    def test_new_sentences_are_translated(self):
+        keys = set()
+        for f in ("core.js", "shell.js", "modules/storage.js", "modules/optimizer.js", "modules/privacy.js", "modules/updater.js"):
+            src = _src("js", *f.split("/"))
+            keys |= {k for k in re.findall(r"(?<![\w.])(?:SH\.t|t|T)\('((?:[^'\\]|\\.)*)'", src)
+                     if re.search(r"Last (analysis|check|scan): \{when\}|Not (analyzed|checked) yet|Analyze automatically|These results are from then|^Check now looks|^The check reads|See what takes up space", k)}
+        self.assertGreaterEqual(len(keys), 15)
+        for lang in ("es", "pt", "it", "fr", "zh", "ja"):
+            d = {}
+            for f in os.listdir(os.path.join(UI, "i18n", lang)):
+                with open(os.path.join(UI, "i18n", lang, f), "rb") as fh:
+                    raw = fh.read()
+                self.assertFalse(raw.startswith(b"\xef\xbb\xbf"), f"{lang}/{f}")
+                d.update(json.loads(raw.decode("utf-8")))
+            self.assertEqual(sorted(k for k in keys if not d.get(k)), [], lang)
+            for k in keys:
+                self.assertEqual(sorted(re.findall(r"\{\w+\}", d[k])), sorted(re.findall(r"\{\w+\}", k)), (lang, k))
+
+
+@unittest.skipUnless(shutil.which("node"), "needs Node.js")
+class LastRun(unittest.TestCase):
+    """SH.ago and SH.lastRun (core.js): the age of results kept from an earlier analysis and the strip above them."""
+    run_js = Registry.run_js
+
+    def test_ages_and_strip(self):
+        out = self.run_js(r"""
+          const now = Date.now(), m = 60e3, h = 3600e3, d = 864e5;
+          const ages = [now - 20e3, now - 5 * m, now - 2 * h, now - 30 * h, now - 3 * d, 0].map(SH.ago);
+          const strip = SH.lastRun({ when: now - 2 * h, title: 'Last check: {when}', text: 'From then', action: { label: 'Check now', data: 'data-x', icon: 'refresh' } });
+          const plain = SH.lastRun({ when: now - 5 * m });
+          const es = SH.emptyState({ art: 'first', title: 'T', action: { label: 'Go', pri: true, big: true } });
+          out({ ages, strip, plain, es, auto: SH.autoAnalyze() });
+        """)
+        self.assertEqual(out["ages"], ["just now", "5 min ago", "2 h ago", "yesterday", "3 days ago", "never"])
+        self.assertIn('Last check: <span class="lr-when"', out["strip"])
+        self.assertIn(">2 h ago</span>", out["strip"])
+        self.assertIn('<button class="btn pri sm" data-x>', out["strip"])
+        self.assertIn("<span>From then</span>", out["strip"])
+        self.assertIn("Last analysis: ", out["plain"])
+        self.assertNotIn("<button", out["plain"])
+        self.assertIn('class="btn pri"', out["es"])                              # big: a full-size primary button
+        self.assertFalse(out["auto"])
 
 
 if __name__ == "__main__":

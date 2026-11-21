@@ -122,8 +122,8 @@ if (!h.end({ ok: true, summary: SH.t('{size} in {n} files', { size, n }) })) SH.
 - Exactly one sound: a toast after a sound played in the last 0.7 s (the job's `scan_complete`) stays silent. `kind`
   sets the toast's kind (`'achievement'`, `'warning'`); `toast: false` keeps the badge and the notification but leaves
   the toast to the module (Autopilot's own has View the log).
-- Work that starts by itself (Storage's scan on opening the Map, Program Updater's searches, Super Optimizer's first
-  analysis, Privacy's first check, a list read on opening a tab) passes `bg: true`: it is followed exactly the same
+- Work that starts by itself (a list read on opening a tab, Program Updater's light check at start-up, and the
+  analyses when "Analyze automatically when opening a module" is on: see below) passes `bg: true`: it is followed exactly the same
   way, but only once it has run for 1.5 s (`grace`), so a quick refresh never flashes a ring and ends without a word.
   It plays no start or end sound of its own (the toast when it ends elsewhere does). The user starting the same `key`
   while it runs makes it theirs at once. A refresh the user never needs to hear about (the light check at start-up,
@@ -134,6 +134,31 @@ if (!h.end({ ok: true, summary: SH.t('{size} in {n} files', { size, n }) })) SH.
   module already has one open; `{ bg: true, label }` does the same for a job without a sound (work the module started
   by itself, or a secondary step); `{ activity: h }` sends a job's progress to the module's own, `{ activity: false }`
   opts out.
+
+## Analyses on demand
+
+Opening a module or a tab never starts an analysis (a scan, a measurement, a check, a search for updates): it runs when
+the user presses its button (Analyze, Scan, Check now, Check for updates…), with the user's sounds (`scan_start`,
+`scan_complete`) and a user activity (ring, badge and toast with View when it ends elsewhere). Plain reads needed to
+draw a view stay automatic (Program Remover's program list, Driver Updater's drivers, problems and history, App Hangar's
+installed state, Live Monitor, Home), and so do Autopilot's routines and Program Updater's light check at start-up
+(winget only, every 6 h at most, for Home's counts).
+
+- Before the button is pressed the view shows the last results if there are any, marked with their age: `SH.lastRun({
+  when, title, text, action, cls })` (core.js) is the strip that goes above them (a clock, "Last analysis: 2 h ago" or
+  the module's own sentence with `{when}`, and the primary button); `SH.ago(ms)` is the age alone. Without results it
+  shows `SH.emptyState({ art: 'first', … })` saying what the analysis does, with the button (`action.big` for a
+  full-size one). Measurements that must not be shown stale (cleanup sizes, the registry list, the treemap) say "Not
+  analyzed yet" instead.
+- Where the last results come from: Storage Checker, the engine's snapshot of the last scan of the drive
+  (`storage.last_scan`: date, size and files; the map itself needs a new scan) or the scan this process already has
+  (`storage.published`, after a page reload); Super Optimizer, `localStorage` (`sh.opt.cache.*`: the Overview, Startup
+  and Services); Privacy & Security, the engine's cache (`privacy.cached`); Program Updater, `localStorage`
+  (`sh.upd.cache.apps|win|dev`, the icons dropped if storage is full). Results from an earlier session are never
+  published as a new check (`SH.setPending` keeps the date of the last real one), and the live views of Privacy
+  (network, permissions) refresh by themselves only after a check in this session.
+- Settings > General > "Analyze automatically when opening a module" (`autoAnalyze`, default off; `SH.autoAnalyze()`)
+  brings back the old behaviour: the analysis starts on opening, quietly and followed as `bg`.
 
 ## Lighter effects
 
