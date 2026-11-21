@@ -814,7 +814,7 @@ const SOUND_EV = {
   warning: { c: 'alerts', g: .5, gap: 300, tier: 2 }, error: { c: 'alerts', g: .45, gap: 300, tier: 2 },
   unavailable: { c: 'alerts', g: .45, gap: 400, tier: 2 }, achievement: { c: 'alerts', g: .55, gap: 1500, tier: 3 },
   /* tasks */
-  scan_start: { c: 'tasks', g: .5, gap: 500, tier: 1 }, scan_complete: { c: 'tasks', g: .34, gap: 700, tier: 2 },
+  scan_start: { c: 'tasks', g: .5, gap: 500, tier: 1 }, scan_complete: { c: 'tasks', g: .92, gap: 300, tier: 2 },
   progress_tick: { c: 'tasks', g: .25, gap: 400, tier: 0 }, refresh: { c: 'tasks', g: .45, gap: 300, tier: 1, user: 1 },
   delete: { c: 'tasks', g: .5, gap: 200, tier: 1, user: 1 }, undo: { c: 'tasks', g: .5, gap: 200, tier: 1, user: 1 },
   copy: { c: 'tasks', g: .45, gap: 200, tier: 1, user: 1 }, screenshot: { c: 'tasks', g: .5, gap: 300, tier: 2 },

@@ -291,13 +291,13 @@
  },
  {
   "event": "scan_complete",
-  "id": "scan_complete.orbital-chord",
+  "id": "scan_complete.orbital-tick-up",
   "family": "Orbital (original)",
   "license": "CC0-1.0",
   "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
   "sourceUrl": "",
   "attribution": "",
-  "durationMs": 645
+  "durationMs": 247
  },
  {
   "event": "scan_start",

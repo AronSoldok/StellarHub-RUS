@@ -96,6 +96,12 @@ class SoundFiles(unittest.TestCase):
         self.assertEqual(t["map_hover"]["gap"], 35)
         self.assertNotIn("user", t["map_hover"])               # a hover, like hover itself
 
+    def test_scan_complete_fits_its_short_file(self):
+        """The tick-up (247 ms) may come again after 300 ms; the old 645 ms chord needed 700."""
+        t = sound_table()["scan_complete"]
+        self.assertEqual(t["gap"], 300)
+        self.assertEqual((t["c"], t["tier"]), ("tasks", 2))
+
     def test_gain_trims_follow_the_loudest_100_ms(self):
         """Played level = the file's loudest 100 ms + its trim: the typing tick sits between the quiet sounds and the
         interface, the map tick under hover, and the replaced files where their family is."""
