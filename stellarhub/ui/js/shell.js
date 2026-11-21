@@ -301,12 +301,16 @@ addEventListener('keydown', e => { if (e.altKey && (e.key === 'ArrowLeft' || e.k
 
 /* ================= camera navigation ================= */
 let navToken = 0; SH.homeAnimating = false;
+let pendingGo = null; SH.on('boot', () => { const g = pendingGo; pendingGo = null; if (g) setTimeout(() => go(g[0], g[1]), 0); });
 const viewEl = n => $('#v-' + n);
 function go(name, opts = {}) {
   if (name === 'settings') { openSettings(opts.section); return; }
   if (name === 'admin') { askAdmin(); return; }
   const m = modById(name); if (!m) return;
   if (name === state.view) { if (opts.tab) setTab(name, opts.tab); return; }
+  /* before the boot has built the module views there is nothing to show yet (it used to throw half way, leaving state.view on a view that was never shown):
+     remember the last request and take it when the boot is done */
+  if (!viewEl(name)) { if (!SH.booted) pendingGo = [name, opts]; return; }
   const token = ++navToken; const fromName = state.view, from = viewEl(fromName), to = viewEl(name);
   if (!opts.silent) SH.sound('navigate');  /* opts.silent: the start route, which is not the user's doing */
   const fromDef = registry.modules[fromName]; if (fromDef) { try { fromDef.leave && fromDef.leave(); fromDef.leaveTab && fromDef.leaveTab(modState[fromName].tab); } catch (e) { console.error(e); } }
