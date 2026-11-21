@@ -426,5 +426,7 @@
   "{name} finished": "{name} ha finito",
   "{name} did not finish": "{name} non ha finito",
   "Notification sound": "Suono di notifica",
-  "The notification sound is “UI_Single_Set 2_01” from “UI Utility Pack Vol 1” by JC Sounds on OpenGameArt, licensed under CC BY 4.0; trimmed, faded and loudness-normalized.": "Il suono di notifica è “UI_Single_Set 2_01” da “UI Utility Pack Vol 1” di JC Sounds su OpenGameArt, con licenza CC BY 4.0; tagliato, con dissolvenza e volume normalizzato."
+  "The notification sound is “UI_Single_Set 2_01” from “UI Utility Pack Vol 1” by JC Sounds on OpenGameArt, licensed under CC BY 4.0; trimmed, faded and loudness-normalized.": "Il suono di notifica è “UI_Single_Set 2_01” da “UI Utility Pack Vol 1” di JC Sounds su OpenGameArt, con licenza CC BY 4.0; tagliato, con dissolvenza e volume normalizzato.",
+  "Analyze automatically when opening a module": "Analizza automaticamente all'apertura di un modulo",
+  "Storage Checker, Super Optimizer, Privacy & Security and Program Updater check the PC as soon as you open them. Off: they show the last results and wait for you to press Analyze.": "Analisi dello spazio, Super ottimizzatore, Privacy e sicurezza e Aggiornamento programmi controllano il PC appena li apri. Disattivato: mostrano gli ultimi risultati e aspettano che tu prema Analizza."
 }

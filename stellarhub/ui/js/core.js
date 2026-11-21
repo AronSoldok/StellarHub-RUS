@@ -25,6 +25,9 @@ const DEFAULTS = {
   widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetLayout: 'grid',
   starCount: 400, starSpeed: 1.5, starBright: 1.2, widgetMode: 'full', widgetWasOpen: false, alwaysAdmin: false, twinkle: true, shooting: true, nebula: 1, animSpeed: 1, panelAlpha: 1.75, corners: 'mid',
   countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', measurePing: true, lastView: 'home', batterySaver: true, lightMode: 'auto', registryCleaner: false,
+  /* analyses (Storage's scan, Super Optimizer's analysis, Privacy's check, Program Updater's searches) run only when the
+     user presses their button; true brings back the old behaviour of running them as soon as the module opens */
+  autoAnalyze: false,
 };
 const state = { view: 'home', admin: false, palOpen: false, setOpen: false, version: '0.2.0', settings: { ...DEFAULTS }, lite: false };
 const FACT = { max: 1, normal: .72, min: .3 };
@@ -434,6 +437,7 @@ const P = {
   file: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
   calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
   restore: '<path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.5"/><path d="M4 4v4.5h4.5"/><path d="M12 8v4l3 2"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   download: '<path d="M12 4v11m-4.5-4.5L12 15l4.5-4.5"/><path d="M4.5 19.5h15"/>', upload: '<path d="M12 20V9m-4.5 4.5L12 9l4.5 4.5"/><path d="M4.5 4.5h15"/>',
   target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4"/><path d="M12 1.5v4M12 18.5v4M1.5 12h4M18.5 12h4"/>',
   eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>',
@@ -472,9 +476,30 @@ const ES_ART = {
 const ES_STARS = '<path class="t" d="M14 14v6M11 17h6M104 58v5M101.5 60.5h5"/><circle class="t f" cx="27" cy="62" r="1.2"/><circle class="t f" cx="94" cy="12" r="1.2"/><circle class="t f" cx="8" cy="40" r="1"/><circle class="t f" cx="113" cy="38" r="1"/>';
 const emptyArt = (art = 'none') => `<svg class="es-art" viewBox="0 0 120 76" aria-hidden="true">${ES_STARS}${ES_ART[art] || ES_ART.none}</svg>`;
 const emptyState = ({ art = 'none', title = '', text = '', action, small = false, cls = '' } = {}) => {
-  const a = action && action.label ? `<div class="es-act"><button class="btn ${action.pri ? 'pri' : 'sec'} sm"${action.id ? ` id="${action.id}"` : ''}${action.go ? ` data-es-go="${action.go}"` : ''}${action.click ? ` data-es-click="${action.click}"` : ''}${action.data ? ' ' + action.data : ''}>${action.icon ? ic(action.icon) : ''}${esc(action.label)}</button></div>` : '';
+  const a = action && action.label ? `<div class="es-act"><button class="btn ${action.pri ? 'pri' : 'sec'}${action.big ? '' : ' sm'}"${action.id ? ` id="${action.id}"` : ''}${action.go ? ` data-es-go="${action.go}"` : ''}${action.click ? ` data-es-click="${action.click}"` : ''}${action.data ? ' ' + action.data : ''}>${action.icon ? ic(action.icon) : ''}${esc(action.label)}</button></div>` : '';
   return `<div class="empty es es-${art}${small ? ' es-sm' : ''}${cls ? ' ' + cls : ''}">${emptyArt(art)}${title ? `<b>${title}</b>` : ''}${text ? `<p>${text}</p>` : ''}${a}</div>`;
 };
+
+/* ---------- analyses on demand: a module never analyzes by itself when it opens (unless autoAnalyze is on) ----------
+   SH.ago(ms): "just now", "5 min ago", "2 h ago", "yesterday", "3 days ago".
+   SH.lastRun({ when, title?, text?, action, cls }) returns the strip that sits above results kept from an earlier
+   analysis: a clock, "Last analysis: 2 h ago" (title is the sentence with {when}; text is an optional second line) and
+   the primary button (action: { label, id?, data?, icon? }; listen to it yourself). when is in ms (0/null: no date).
+   SH.autoAnalyze(): the user asked for the old behaviour (Settings > General). */
+const ago = ms => {
+  if (!ms) return t('never');
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 90) return t('just now'); if (s < 3600) return t('{n} min ago', { n: Math.round(s / 60) }); if (s < 86400) return t('{n} h ago', { n: Math.round(s / 3600) });
+  const d = Math.round(s / 86400); return d === 1 ? t('yesterday') : t('{n} days ago', { n: d });
+};
+const lastRun = ({ when, title, text = '', action, cls = '' } = {}) => {
+  const head = (title || t('Last analysis: {when}')).replace('{when}', `<span class="lr-when" data-when="${+when || 0}">${esc(ago(when))}</span>`);
+  const b = action && action.label ? `<button class="btn pri sm"${action.id ? ` id="${action.id}"` : ''}${action.data ? ' ' + action.data : ''}>${action.icon ? ic(action.icon) : ''}${esc(action.label)}</button>` : '';
+  return `<div class="lastrun${cls ? ' ' + cls : ''}" role="status"><span class="lr-i">${ic('clock')}</span><div class="lr-t"><b>${head}</b>${text ? `<span>${text}</span>` : ''}</div>${b}</div>`;
+};
+/* the ages shown keep up while the app stays open */
+setInterval(() => { if (document.hidden) return; document.querySelectorAll('.lr-when[data-when]').forEach(e => { const v = +e.dataset.when; if (v) { const s = ago(v); if (e.textContent !== s) e.textContent = s; } }); }, 60000);
+const autoAnalyze = () => !!state.settings.autoAnalyze;
 
 /* ---------- the PC (sample data; inside the app it is replaced by the real data from Python) ----------
    Component names, titles, values and typeName arrive translated; the row LABELS (rows[i][0]) stay in English because
@@ -947,7 +972,7 @@ const compIcon = c => !c ? 'cpu' : c.id === 'sys' ? 'windows'
 window.SH = Object.assign(window.SH || {}, {
   $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, effInt, on, emit, call, apiReady, loadSettings, setSetting, compIcon,
   engine, job, activity, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, rollNumber, fitText, esc,
-  ic, icons, emptyState, emptyArt, chartKit, PC, MODS, modById, registry, module, homeVariant, actions,
+  ic, icons, emptyState, emptyArt, ago, lastRun, autoAnalyze, chartKit, PC, MODS, modById, registry, module, homeVariant, actions,
   go: () => {}, toast: () => {}, openComponent: () => {}, sfScan, sound,
   /* the window coming in after the start screen, and going away when StellarHub closes, updates or reopens as
      administrator (app.py calls these): a short fade instead of a cut */

@@ -424,5 +424,7 @@
   "{name} finished": "{name} が完了しました",
   "{name} did not finish": "{name} は完了しませんでした",
   "Notification sound": "通知音",
-  "The notification sound is “UI_Single_Set 2_01” from “UI Utility Pack Vol 1” by JC Sounds on OpenGameArt, licensed under CC BY 4.0; trimmed, faded and loudness-normalized.": "通知音は、OpenGameArt で公開されている JC Sounds の「UI Utility Pack Vol 1」に含まれる「UI_Single_Set 2_01」です (CC BY 4.0 ライセンス)。トリミング、フェード、音量の正規化を行っています。"
+  "The notification sound is “UI_Single_Set 2_01” from “UI Utility Pack Vol 1” by JC Sounds on OpenGameArt, licensed under CC BY 4.0; trimmed, faded and loudness-normalized.": "通知音は、OpenGameArt で公開されている JC Sounds の「UI Utility Pack Vol 1」に含まれる「UI_Single_Set 2_01」です (CC BY 4.0 ライセンス)。トリミング、フェード、音量の正規化を行っています。",
+  "Analyze automatically when opening a module": "モジュールを開いたときに自動で分析する",
+  "Storage Checker, Super Optimizer, Privacy & Security and Program Updater check the PC as soon as you open them. Off: they show the last results and wait for you to press Analyze.": "ストレージ分析、スーパー最適化、プライバシーとセキュリティ、プログラム更新は、開いた時点で PC をチェックします。オフ: 前回の結果を表示し、[分析] を押すまで待ちます。"
 }

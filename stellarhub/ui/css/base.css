@@ -259,6 +259,14 @@ body.frameless:not(.win-max) .rz{display:block}
 .es-sm .es-art{width:100px;height:63px;margin-bottom:var(--sp-sm)}
 .es-sm b{font-size:var(--fs-body)}
 .es-sm p{font-size:var(--fs-sm)}
+/* results kept from an earlier analysis (SH.lastRun): their age and the button that analyzes again */
+.lastrun{display:flex;align-items:center;gap:var(--sp-sm);padding:8px 10px 8px 12px;border-radius:var(--r-m);border:1px solid color-mix(in oklab,var(--accent2) 22%,var(--line));background:color-mix(in oklab,var(--accent2) 6%,var(--raise));min-width:0}
+.lastrun .lr-i{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:var(--r-s);color:var(--accent2);background:color-mix(in oklab,var(--accent2) 12%,transparent)}
+.lastrun .lr-i svg{width:var(--ic-m);height:var(--ic-m)}
+.lastrun .lr-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.lastrun .lr-t b{font-weight:600;font-size:var(--fs-sm);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lastrun .lr-t span{font-size:var(--fs-cap);color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lastrun .btn{flex:none}
 
 /* loading skeletons */
 .sk{position:relative;overflow:hidden;background:var(--raise);border-radius:var(--r-s)}
