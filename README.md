@@ -12,14 +12,25 @@ Live hardware stats, drivers, apps, disk space, cleanup and hardware tests, in o
 
 ![StellarHub home screen](docs/img/home.png)
 
+<table>
+<tr>
+<td width="50%"><img src="docs/img/start-screen.png" alt="The start screen: the StellarHub planet, its ring lights up while it loads" width="100%"></td>
+<td width="50%"><img src="docs/img/home-3d.png" alt="Home in 3D: your PC as a model you can rotate" width="100%"></td>
+</tr>
+<tr>
+<td align="center"><sub>The start screen: the planet's ring lights up while it loads</sub></td>
+<td align="center"><sub>Home in 3D: your PC as a model you can rotate (desktops get a tower)</sub></td>
+</tr>
+</table>
+
 </div>
 
 ## 📑 Contents
 
 - [What it is](#-what-it-is)
+- [Screenshots](#-screenshots)
 - [Modules](#-modules)
 - [Also included](#-also-included)
-- [Screenshots](#-screenshots)
 - [Getting started](#-getting-started)
 - [Keyboard shortcuts](#-keyboard-shortcuts)
 - [Controller support](#-controller-support)
@@ -40,6 +51,37 @@ peripheral tester.
 Everything works with **real data from your PC**, everything that changes the system is **reversible** whenever
 possible, and the interface is designed to be a pleasure to use: smooth animations, a configurable starfield and
 no cluttered screens.
+
+## 🖼️ Screenshots
+
+<table>
+<tr>
+<td width="50%" valign="top"><img src="docs/img/live-monitor.png" alt="Live Monitor" width="100%"><br><b>Live Monitor</b><br><sub>CPU, GPU, memory, disks, network and battery in real time</sub></td>
+<td width="50%" valign="top"><img src="docs/img/storage-checker.png" alt="Storage Checker" width="100%"><br><b>Storage Checker</b><br><sub>What every folder takes up, on a map you can explore</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/img/program-remover.png" alt="Program Remover" width="100%"><br><b>Program Remover</b><br><sub>Uninstall and clear the leftovers, with a quarantine to undo</sub></td>
+<td width="50%" valign="top"><img src="docs/img/settings.png" alt="Settings" width="100%"><br><b>Settings</b><br><sub>Theme, colors, size, sounds, language and almost everything else</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/img/super-optimizer.png" alt="Super Optimizer" width="100%"><br><b>Super Optimizer</b><br><sub>Cleanup, startup, services and performance, always reversible</sub></td>
+<td width="50%" valign="top"><img src="docs/img/privacy.png" alt="Privacy &amp; Security" width="100%"><br><b>Privacy &amp; Security</b><br><sub>What can see you, what is open and how well Windows protects you</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/img/program-updater.png" alt="Program Updater" width="100%"><br><b>Program Updater</b><br><sub>Apps, Windows, Store and components in one queue</sub></td>
+<td width="50%" valign="top"><img src="docs/img/driver-updater.png" alt="Driver Updater" width="100%"><br><b>Driver Updater</b><br><sub>Drivers from Windows Update, signed by Microsoft</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/img/app-hangar.png" alt="App Hangar" width="100%"><br><b>App Hangar</b><br><sub>Pick apps from a catalog and install them all at once</sub></td>
+<td width="50%" valign="top"><img src="docs/img/benchmark.png" alt="Benchmark Testing" width="100%"><br><b>Benchmark Testing</b><br><sub>Score every component and stress-test your PC</sub></td>
+</tr>
+<tr>
+<td width="50%" valign="top"><img src="docs/img/device-tester.png" alt="Device Tester" width="100%"><br><b>Device Tester</b><br><sub>Keyboard, screen, speakers, microphone, camera, mouse and controller</sub></td>
+<td width="50%" valign="top"><img src="docs/img/scheduled-tasks.png" alt="Scheduled Tasks" width="100%"><br><b>Scheduled Tasks</b><br><sub>Maintenance that runs on its own, on your rules</sub></td>
+</tr>
+</table>
+
+> Screenshots were taken with sample data.
 
 ## 🧩 Modules
 
@@ -130,18 +172,6 @@ under which conditions and what to do.
   no GPU at all.
 - **Seven languages**: English, Español, Português (Brasil), Italiano, Français, 简体中文 and 日本語. It follows the Windows
   language by default and can be changed in *Settings > General*.
-
-## 🖼️ Screenshots
-
-| Live Monitor | Storage Checker |
-|---|---|
-| ![Live Monitor](docs/img/live-monitor.png) | ![Storage Checker](docs/img/storage-checker.png) |
-
-| Program Remover | Settings |
-|---|---|
-| ![Program Remover](docs/img/program-remover.png) | ![Settings](docs/img/settings.png) |
-
-> Screenshots were taken with sample data.
 
 ## 🚀 Getting started
 
