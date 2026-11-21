@@ -121,13 +121,25 @@
  },
  {
   "event": "hover",
-  "id": "hover.freesound-ui-hover",
-  "family": "Freesound: unfa",
+  "id": "hover_soft.orbital-low-glass",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/orbital_synth.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 70,
+  "note": "level raised to the primary hover's loudness"
+ },
+ {
+  "event": "hover_soft",
+  "id": "hover_soft.freesound-hover-muted",
+  "family": "Freesound: unfa (derived)",
   "license": "CC0-1.0",
   "author": "unfa",
   "sourceUrl": "https://freesound.org/people/unfa/sounds/565131/",
   "attribution": "",
-  "durationMs": 115
+  "durationMs": 60,
+  "note": "a touch quieter (-1.5 dB)"
  },
  {
   "event": "key_press",

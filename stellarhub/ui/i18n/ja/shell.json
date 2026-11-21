@@ -416,7 +416,7 @@
   "Opening and quitting, administrator mode, updates, controllers, the widget and the keyboard test.": "起動と終了、管理者モード、更新、コントローラー、ウィジェット、キーボード テスト。",
   "Play a sample": "サンプルを再生",
   "Hear how loud they are.": "音量を確認できます。",
-  "Orbital, an original set made for StellarHub (CC0). The hover sound is “UI hover” by unfa on Freesound (CC0).": "Orbital（StellarHub のために作られたオリジナル、CC0）。ホバー音は Freesound の unfa による「UI hover」（CC0）です。",
+  "Orbital, an original set made for StellarHub (CC0). The soft hover sound is based on “UI hover” by unfa on Freesound (CC0).": "Orbital（StellarHub のために作られたオリジナル、CC0）。控えめなホバー音は Freesound の unfa による「UI hover」（CC0）をもとにしています。",
   "Change the sound volume": "サウンドの音量を変更",
   "{name} finished: {summary}": "{name} が完了しました: {summary}",
   "{name} could not finish: {error}": "{name} を完了できませんでした: {error}",

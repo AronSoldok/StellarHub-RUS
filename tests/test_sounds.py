@@ -54,7 +54,7 @@ def event_file(ev):
 class SoundFiles(unittest.TestCase):
     def test_every_event_has_its_file_and_credit(self):
         table = sound_table()
-        self.assertEqual(len(table), 37)
+        self.assertEqual(len(table), 38)
         files = {f[:-4] for f in os.listdir(SOUNDS) if f.endswith(".ogg")}
         sw = [f for f, _ in swooshes()]
         self.assertEqual(sw, [f"navigate_swoosh_{i}" for i in range(1, 8)])
@@ -63,14 +63,20 @@ class SoundFiles(unittest.TestCase):
         self.assertNotIn("navigate", files)                                              # the old one is gone
         with open(os.path.join(SOUNDS, "CREDITS.json"), encoding="utf-8") as fh:
             credits = json.load(fh)
-        self.assertEqual(len(credits), 44)
+        self.assertEqual(len(credits), 45)
         self.assertEqual({c["event"] for c in credits}, files)
         for c in credits:
             self.assertIn(c["license"], ("CC0-1.0", "CC-BY-4.0"), c["event"])
             if c["license"] != "CC0-1.0":  # attribution licences carry their credit, shown in About and the README
                 self.assertTrue(c["attribution"] and c["sourceUrl"], c["event"])
+        # the primary hover is an Orbital original; unfa's "UI hover" is the base of the secondary one
         hover = next(c for c in credits if c["event"] == "hover")
-        self.assertIn("freesound.org/people/unfa/sounds/565131", hover["sourceUrl"])
+        self.assertEqual((hover["license"], hover["sourceUrl"]), ("CC0-1.0", ""))
+        self.assertIn("Orbital", hover["family"])
+        soft = next(c for c in credits if c["event"] == "hover_soft")
+        self.assertIn("freesound.org/people/unfa/sounds/565131", soft["sourceUrl"])
+        self.assertEqual(soft["license"], "CC0-1.0")
+        self.assertNotIn("f", table["hover_soft"])                                       # its own file
 
     def test_attribution_credits_are_shown(self):
         with open(os.path.join(SOUNDS, "CREDITS.json"), encoding="utf-8") as fh:
@@ -95,6 +101,15 @@ class SoundFiles(unittest.TestCase):
         self.assertEqual(t["key_type"]["user"], 1)
         self.assertEqual(t["map_hover"]["gap"], 35)
         self.assertNotIn("user", t["map_hover"])               # a hover, like hover itself
+
+    def test_hover_soft_is_a_quiet_interface_tick(self):
+        """The secondary elements' hover: Interface group, never cuts anything, needs no gesture (it is a hover) and
+        comes at most every 90 ms."""
+        t = sound_table()
+        self.assertEqual((t["hover_soft"]["c"], t["hover_soft"]["tier"], t["hover_soft"]["gap"]), ("ui", 0, 90))
+        self.assertNotIn("user", t["hover_soft"])
+        self.assertGreater(t["hover_soft"]["gap"], t["hover"]["gap"])
+        self.assertIn("'hover_soft'", read("js", "sounds.js"))                          # preloaded with the common ones
 
     def test_scan_complete_fits_its_short_file(self):
         """The tick-up (247 ms) may come again after 300 ms; the old 645 ms chord needed 700."""
@@ -128,6 +143,9 @@ class SoundFiles(unittest.TestCase):
             return 10 * math.log10(max(e, 1e-18))
 
         self.assertLess(level("map_hover"), level("hover"))
+        # the secondary hover sits clearly under the primary one (about 8 dB)
+        self.assertAlmostEqual(level("hover") - level("hover_soft"), 8, delta=1.2)
+        self.assertAlmostEqual(level("hover"), -45.1, delta=1)                          # where the old hover was
         self.assertGreater(level("key_type"), level("hover"))
         self.assertLess(level("key_type"), level("click") - 6)
         for ev in ("navigate", "tab_switch"):
@@ -441,6 +459,50 @@ class Wiring(unittest.TestCase):
         self.assertEqual(out["quiet"], 0)
         self.assertEqual(len(out["min"]), 2)
         self.assertEqual(out["files"], ["navigate_click"] + [f"navigate_swoosh_{i}" for i in range(1, 8)])
+
+    def test_hover_soft_only_for_secondary_elements_and_throttled(self):
+        out = self.run_js(r"""
+          /* a tiny DOM: closest/matches/contains on a token per element */
+          const elt = (token, parent = null) => { const e = { token, parent, disabled: false, getAttribute: () => null,
+            matches: s => s.split(',').map(x => x.trim()).includes(token),
+            closest(s) { return this.matches(s) ? this : parent ? parent.closest(s) : null; },
+            contains(x) { for (let n = x; n; n = n.parent) if (n === this) return true; return false; } }; return e; };
+          const panel = elt('.pan'), card = elt('.btn', panel), inner = elt('.toggle', card), tab = elt('[role=tab]', panel),
+            tab2 = elt('[role=tab]', panel), row = elt('[data-go]', panel), label = elt('span', tab), text = elt('p', panel);
+          SH.sound.preload(['hover', 'hover_soft']); await tick(30);
+          const move = () => fire('pointermove', { movementX: 2, movementY: 1, target: panel });
+          const enter = (el, from = panel) => { move(); fire('pointerover', { target: el, relatedTarget: from }); };
+          const take = async (fn, ms = 120) => { played.length = 0; await fn(); await tick(ms); return played.slice(); };
+          const r = {};
+          r.soft = await take(() => enter(tab));
+          r.row = await take(() => enter(row));
+          r.primary = await take(() => enter(card));
+          r.intoNested = await take(() => enter(inner, card));        /* from the card onto its switch: the card spoke */
+          r.nestedFromOutside = await take(() => enter(inner));       /* straight onto the switch: the card's hover */
+          r.inside = await take(() => enter(label, tab));             /* moving inside a tab */
+          r.text = await take(() => enter(text));
+          r.afterHover = await take(async () => { enter(card); await tick(30); enter(tab); });
+          r.burst = await take(async () => { enter(tab); await tick(30); enter(tab2); await tick(30); enter(tab); await tick(100); enter(tab2); });
+          r.scroll = await take(() => { fire('wheel', {}); enter(tab); }, 300);
+          r.still = await take(async () => { move(); await tick(90); fire('pointerover', { target: tab2, relatedTarget: panel }); });
+          r.touch = await take(() => { move(); fire('pointerover', { target: tab, relatedTarget: panel, pointerType: 'touch' }); });
+          r.files = SH.sound.files('hover_soft');
+          r.started = started.filter(s => /hover/.test(s.file)).map(s => s.file).slice(-1);
+          out(r);
+        """)
+        self.assertEqual(out["soft"], ["hover_soft"])
+        self.assertEqual(out["row"], ["hover_soft"])
+        self.assertEqual(out["primary"], ["hover"])
+        self.assertEqual(out["intoNested"], [])
+        self.assertEqual(out["nestedFromOutside"], ["hover"])
+        self.assertEqual(out["inside"], [])
+        self.assertEqual(out["text"], [])
+        self.assertEqual(out["afterHover"], ["hover"])                    # never right after a hover
+        self.assertEqual(out["burst"], ["hover_soft", "hover_soft"])     # 90 ms apart at least
+        self.assertEqual(out["scroll"], [])
+        self.assertEqual(out["still"], [])
+        self.assertEqual(out["touch"], [])
+        self.assertEqual(out["files"], ["hover_soft"])
 
 
 if __name__ == "__main__":

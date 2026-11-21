@@ -416,7 +416,7 @@
   "Opening and quitting, administrator mode, updates, controllers, the widget and the keyboard test.": "Abrir y salir, modo administrador, actualizaciones, mandos, el widget y la prueba del teclado.",
   "Play a sample": "Reproducir una muestra",
   "Hear how loud they are.": "Escucha a qué volumen suenan.",
-  "Orbital, an original set made for StellarHub (CC0). The hover sound is “UI hover” by unfa on Freesound (CC0).": "Orbital, un conjunto original creado para StellarHub (CC0). El sonido al pasar el ratón es «UI hover», de unfa en Freesound (CC0).",
+  "Orbital, an original set made for StellarHub (CC0). The soft hover sound is based on “UI hover” by unfa on Freesound (CC0).": "Orbital, un conjunto original creado para StellarHub (CC0). El sonido suave al pasar el ratón parte de «UI hover», de unfa en Freesound (CC0).",
   "Change the sound volume": "Cambiar el volumen de los sonidos",
   "{name} finished: {summary}": "{name} terminó: {summary}",
   "{name} could not finish: {error}": "{name} no pudo terminar: {error}",

@@ -12,6 +12,9 @@
      not while an IME is composing), at most every 30 ms.
    - hover: entering a dock item, a button, a Home tile or a row that is a button, with a real mouse movement (never
      when the page scrolls under a still pointer), at most every 70 ms.
+   - hover_soft: the same for everything else that can be clicked (tabs, segmented choices, switches, checkboxes, rows
+     and cards that act, selects, links), much quieter and at most every 90 ms; never for an element inside one that
+     plays hover, nor right after a hover.
    - unavailable: pressing a disabled button.
    - app_start / admin_granted: once when the window first appears (not after a reload, not when it starts hidden).
    Preloading: the sounds a first click needs are fetched and decoded in idle time after the first paint. */
@@ -21,7 +24,7 @@ const { $$, state } = SH;
 const sound = SH.sound;
 
 /* ---------- preload ---------- */
-const COMMON = ['click', 'hover', 'tab_switch', 'navigate', 'toggle_on', 'toggle_off', 'panel_open', 'panel_close', 'dropdown',
+const COMMON = ['click', 'hover', 'hover_soft', 'tab_switch', 'navigate', 'toggle_on', 'toggle_off', 'panel_open', 'panel_close', 'dropdown',
   'palette_open', 'toast', 'success', 'error', 'warning', 'unavailable', 'app_exit', 'focus_move'];
 const idle = fn => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 4000 }) : setTimeout(fn, 1200));
 const soundsOn = () => state.settings.sounds !== false && +state.settings.soundVolume > 0;
@@ -125,19 +128,27 @@ addEventListener('keydown', e => {
   sound('key_type');
 }, { passive: true });
 
-/* ---------- hover ---------- */
+/* ---------- hover ----------
+   PRIMARY plays hover. SOFT is every other thing that can be clicked: it plays hover_soft, unless it sits inside a
+   primary element (that one already spoke when the pointer came in) or a hover has just played. */
 const HOVER = '.dk, .btn, .bt, button.row, .row[role=button], .row[tabindex="0"], .vcard, .tool, .lang';
-let movedAt = -1e9, scrolledAt = -1e9;
+const SOFT = 'button, a[href], [role=button], [role=tab], [role=option], [role=menuitem], [role=switch], [role=checkbox], .toggle, .check, summary, label[for], select, .csel, [data-go], [tabindex="0"]';
+const SOFT_GAP = 90;
+let movedAt = -1e9, scrolledAt = -1e9, hoverAt = -1e9;
 addEventListener('pointermove', e => { if (e.isTrusted && (e.movementX || e.movementY)) movedAt = performance.now(); }, { capture: true, passive: true });
 addEventListener('scroll', () => { scrolledAt = performance.now(); }, { capture: true, passive: true });
 addEventListener('wheel', () => { scrolledAt = performance.now(); }, { capture: true, passive: true });
 document.addEventListener('pointerover', e => {
   if (e.pointerType !== 'mouse' || e.buttons || !e.isTrusted) return;
-  const el = e.target.closest && e.target.closest(HOVER); if (!el || el.disabled) return;
+  const t = e.target; if (!t || !t.closest) return;
+  const prim = t.closest(HOVER);
+  const el = prim || t.closest(SOFT); if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
   if (e.relatedTarget && el.contains(e.relatedTarget)) return;   /* moving inside it, not entering */
   const now = performance.now();
   if (now - movedAt > 60 || now - scrolledAt < 250) return;      /* the page moved under a still pointer */
   if (document.documentElement.classList.contains('pad-mode')) return;
-  sound('hover');
+  if (prim) { if (sound('hover')) hoverAt = now; return; }
+  if (now - hoverAt < SOFT_GAP) return;                           /* a primary one just spoke */
+  sound('hover_soft');
 }, { passive: true });
 })();

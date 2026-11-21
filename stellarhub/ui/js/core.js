@@ -812,7 +812,8 @@ const chartKit = (() => {
    - settings: `sounds` (all of them), `soundVolume` (0-1) and one switch per group (soundUi, soundAlerts, soundTasks,
      soundSystem). Lighter effects and intensity "minimum" mute nothing.
    - nothing plays while the page is hidden (the window in the tray or minimized), except app_exit.
-   - every event has a minimum gap between two plays (hover 70 ms, click 40 ms, most others 120 ms or more).
+   - every event has a minimum gap between two plays (hover 70 ms, hover_soft 90 ms, click 40 ms, most others 120 ms
+     or more).
    - one sound per gesture. Interface sounds (`user`) need a click, a key or a controller press in the last 1.5 s, so
      code that changes a tab or a view by itself stays quiet. Within 100 ms the first interface sound wins; a more
      important one (a notification, a finished scan) cuts whatever less important one began in those 100 ms, and a
@@ -823,11 +824,13 @@ const chartKit = (() => {
    Returns true when the sound plays (or will, once its file is decoded).
    g: a trim per sound, set from the loudest 100 ms of each file so that the interface sits about 6 dB under the
    notifications and the quiet ones (hover, focus moves, ticks, keys) about 6 dB under the interface (the typing tick,
-   key_type, a little above them; the map tick, map_hover, a little under hover).
+   key_type, a little above them; the map tick, map_hover, a little under hover; hover_soft, the tick of the secondary
+   elements, about 8 dB under hover).
    f: the file when it is not named after the event (navigate plays navigate_click.ogg). */
 const SOUND_EV = {
   /* interface */
-  click: { c: 'ui', g: .5, gap: 40, tier: 1, user: 1 }, hover: { c: 'ui', g: .16, gap: 70, tier: 0 },
+  click: { c: 'ui', g: .5, gap: 40, tier: 1, user: 1 }, hover: { c: 'ui', g: .165, gap: 70, tier: 0 },
+  hover_soft: { c: 'ui', g: .21, gap: 90, tier: 0 },
   tab_switch: { c: 'ui', g: .45, gap: 80, tier: 1, user: 1 }, navigate: { c: 'ui', g: .5, gap: 120, tier: 1, user: 1, f: 'navigate_click' },
   dropdown: { c: 'ui', g: .45, gap: 80, tier: 1, user: 1 }, palette_open: { c: 'ui', g: .45, gap: 150, tier: 1, user: 1 },
   focus_move: { c: 'ui', g: .2, gap: 45, tier: 0 }, panel_open: { c: 'ui', g: .45, gap: 150, tier: 1, user: 1 },

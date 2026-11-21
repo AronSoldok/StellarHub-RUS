@@ -57,7 +57,7 @@ Tokens: `--void --deep --raise --raise2 --raise3 --line --line2 --ink --mute --f
 
 ## Sounds
 
-`SH.sound(event, opts)` (core.js) plays `ui/sounds/<event>.ogg` (or the file its `f` names); the 37 events are the keys
+`SH.sound(event, opts)` (core.js) plays `ui/sounds/<event>.ogg` (or the file its `f` names); the 38 events are the keys
 of `SOUND_EV`, each with its group, gain trim (set from the file's loudest 100 ms), minimum gap and priority.
 `navigate` (a module change from the dock, the palette or a shortcut; `go()` in shell.js plays it) is two sounds:
 `navigate_click.ogg` at once and, 20 ms later, one of seven soft swooshes (`navigate_swoosh_1..7.ogg`, `SWOOSH` in
@@ -67,7 +67,9 @@ sound and stays at intensity `min`, where the transition is shorter but still th
 the files an event plays. `js/sounds.js` already gives every
 module, with no code: a click on buttons, links, dock items and rows (pointer or controller A), `toggle_on/off` on
 `.toggle`, `tab_switch` on `.seg` and `.subnav`, `panel_open/close` for the dialogs in gamepad.js's `MODALS`,
-`dropdown`, `hover`, `unavailable` on a disabled button, `navigate`, `palette_open`, `key_type` while typing in the
+`dropdown`, `hover` (dock items, buttons, Home tiles, rows that are buttons), `hover_soft` (every other clickable
+thing: tabs, segmented choices, switches, checkboxes, rows and cards that act, selects, links; never one inside a
+`hover` element, never right after a hover), `unavailable` on a disabled button, `navigate`, `palette_open`, `key_type` while typing in the
 palette, `toast` and the start/exit sounds. A module adds only what means something specific:
 
 - `SH.toast(text, { kind: 'success' | 'warning' | 'error' | 'unavailable' })` (no kind: a plain toast, which keeps
@@ -85,7 +87,9 @@ fade-out starts (an animation to `opacity: 0` on it or on one of its children), 
 before it goes. The palette and the settings sheet play their own; a close that leads somewhere (a palette item, a
 "go to module" button) stays quiet with `SH.sound.claim()` and lets the destination sound.
 
-Interface events (group `soundUi`): `click`, `hover`, `tab_switch`, `navigate`, `dropdown`, `palette_open`,
+Interface events (group `soundUi`): `click`, `hover` (70 ms apart), `hover_soft` (90 ms apart, about 8 dB under
+hover; both only when the pointer enters from outside with a real mouse movement, never while the page scrolls or in
+controller mode), `tab_switch`, `navigate`, `dropdown`, `palette_open`,
 `focus_move`, `panel_open`, `panel_close`, `toggle_on`, `toggle_off`, `key_type` (a printable key or Backspace in the
 palette search: not modifiers, not held-key repeats, not during IME composition; 30 ms apart) and `map_hover` (35 ms
 apart, quieter than hover).
