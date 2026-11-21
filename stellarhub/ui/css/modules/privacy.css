@@ -381,6 +381,7 @@ html[data-int=min] #v-privacy .pv-bspin{animation-duration:2.4s}
 #v-privacy .pv-q{width:260px;height:32px;margin-left:auto;flex:none}
 #v-privacy .pv-q svg{width:var(--ic-m);height:var(--ic-m)}
 #v-privacy .pv-th:has(.pv-kseg) h4{display:none}
+#v-privacy .pv-th:has(.pv-kseg){flex-wrap:wrap;row-gap:8px}  /* a long translation of the filters: the search box drops to its own row instead of leaving the panel */
 #v-privacy .pv-pscols,#v-privacy .pv-pr0{display:grid;grid-template-columns:minmax(0,1fr) 170px 104px 26px;gap:var(--sp-md);align-items:center}
 #v-privacy .pv-pscols{padding:0 10px 8px 52px;font-size:var(--fs-cap);color:var(--faint);border-bottom:1px solid var(--line)}
 #v-privacy .pv-pslist{flex:1;min-height:0;overflow:auto;padding-top:4px}
@@ -438,6 +439,7 @@ html[data-int=min] #v-privacy .pv-bspin{animation-duration:2.4s}
   #v-privacy .pv-acols{grid-template-columns:minmax(0,1fr) 110px 64px 84px 36px}
   #v-privacy .pv-ar{grid-template-columns:32px minmax(0,1fr) 110px 64px 84px 36px}
   #v-privacy .pv-nstats{gap:var(--sp-xl)}
+  #v-privacy .pv-nstats span{white-space:normal}  /* four counters side by side: a long label wraps instead of running into the next one */
   #v-privacy .pv-q{width:200px}
 }
 @media (max-height:780px){
