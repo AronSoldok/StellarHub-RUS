@@ -580,7 +580,7 @@ function idleCover(el) {
   const map = $('.st-map', el), box = $('.st-idle', el); if (!map || !box) return;
   map.classList.add('idle'); $('.st-scan', el).classList.add('done');
   const tgt = (ST.target || 'C:\\').replace(/\\$/, ''), L = ST.last;
-  const html = (L ? SH.lastRun({ when: L.when, title: T('Last scan: {when}'), text: T('{size} in {n} files', { size: fmtB(L.size), n: fmtInt(L.files) }), cls: 'st-lr' }) : '')
+  const html = (L ? SH.lastRun({ when: L.when, title: T('Last scan: {when}'), text: T('{size} in {n} files', { size: fmtB(L.size), n: fmtInt(L.files) }), cls: 'st-last' }) : '')
     + SH.emptyState({ art: 'first', title: T('See what takes up space on {target}', { target: esc(tgt) }),
       text: L ? T('The map shows the result of a new scan: it reads every folder again, so it is always current. Nothing is changed.') : T('The scan reads every folder and draws a map of the drive: the bigger the block, the more space it takes. Nothing is changed.'),
       action: { label: T('Scan {target}', { target: tgt }), data: 'data-goscan', icon: 'search', pri: true, big: true } });
