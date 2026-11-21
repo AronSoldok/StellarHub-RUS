@@ -222,6 +222,18 @@ html[data-int=min] #v-privacy .pv-radar.scanning~.pv-sw{animation:none;opacity:.
 #v-privacy .pv-pgrid>*{break-inside:avoid;margin-bottom:14px}
 #v-privacy .pv-pc{display:flex;flex-direction:column;gap:var(--sp-md);min-height:100%}
 #v-privacy .pv-pc.wide{grid-row:span 2}
+/* wide windows: the six cards in three columns that all reach the dock (the last card of each column takes the height
+   left, its link at the bottom) instead of three ragged columns over an empty band; the skeleton keeps the columns */
+@media (min-width:1301px){
+  #v-privacy .tab:has(>.pv-pr>.pv-pgrid>[data-card])>.pv-pr{min-height:100%;display:flex;flex-direction:column}
+  #v-privacy .pv-pgrid:has(>[data-card]){column-count:auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:auto auto 1fr;
+    gap:14px var(--sp-md);flex:1 0 auto;grid-template-areas:"av uac rep" "av dev rep" "fw enc wu"}
+  #v-privacy .pv-pgrid:has(>[data-card])>*{margin:0;min-height:0}
+  #v-privacy .pv-pgrid>[data-card=av]{grid-area:av} #v-privacy .pv-pgrid>[data-card=fw]{grid-area:fw}
+  #v-privacy .pv-pgrid>[data-card=uac]{grid-area:uac} #v-privacy .pv-pgrid>[data-card=dev]{grid-area:dev}
+  #v-privacy .pv-pgrid>[data-card=enc]{grid-area:enc} #v-privacy .pv-pgrid>[data-card=rep]{grid-area:rep}
+  #v-privacy .pv-pgrid>[data-card=wu]{grid-area:wu}
+}
 #v-privacy .pv-pch{display:flex;align-items:center;gap:var(--sp-md)}
 #v-privacy .pv-pch .ri{width:34px;height:34px;flex:none;border-radius:var(--r-s);display:grid;place-items:center;background:var(--raise2);color:var(--accent2)}
 #v-privacy .pv-pch .ri svg{width:var(--ic-m);height:var(--ic-m)}
@@ -459,5 +471,6 @@ html[data-int=min] #v-privacy .pv-bspin{animation-duration:2.4s}
   #v-privacy .pv-st{margin-top:10px}
 }
 #v-privacy [hidden]{display:none!important}
-/* layout: a panel next to others takes the height of its content (up to the available height, then it scrolls inside) so a short list never leaves an empty frame */
-#v-privacy .pv-pm>.pan:last-child,#v-privacy .pv-tr>.pan:last-child{align-self:start;max-height:100%}
+/* layout: the panels of App permissions and Tracking reach the dock beside their neighbour (a short list scrolls inside
+   a full-height panel instead of leaving an empty band under it) */
+#v-privacy .pv-pm>.pan:last-child,#v-privacy .pv-tr>.pan:last-child{align-self:stretch;min-height:0}
