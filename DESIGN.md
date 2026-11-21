@@ -147,8 +147,9 @@ Source of truth: `stellarhub/ui/css/base.css` (`:root` tokens) and `docs/UI_CONT
 ## Layout
 - Shell: top bar (62 px), content between it and the dock (`--dockspace`), modules inset 30 px.
 - Module: one header everywhere (`.mhead`: title and one-line description on the left, actions on the right), the tab bar
-  (`.subnav`) 18 px below it, then panels. Panels fill the width: grids use `repeat(auto-fit, minmax(...))`, side panels
-  size to their content, nothing hangs in a corner with empty space beside it. Gaps 10-26 px; tight inside a group,
+  (`.subnav`) 18 px below it, then panels. Panels fill the width and the height: grids use `repeat(auto-fit, minmax(...))`,
+  every column reaches the dock and lines up with its neighbours (lists scroll inside), empty and idle states fill
+  their panel with the content centred; nothing hangs in a corner with empty space beside or under it. Gaps 10-26 px; tight inside a group,
   generous between groups. Minimum window 1100 x 700 must not wrap or overlap.
 - Density "compact" and corner presets (soft / mid / sharp) remap the same pieces.
 
@@ -174,7 +175,9 @@ for 12-14 px marks inside filled badges). Seven sizes: `--ic-xs` 12, `--ic-s` 14
   danger; `sm` and `lg`.
 - Tabs (`.subnav`) and segmented controls (`.seg`): a sliding glass indicator moved by a spring.
 - Dock: the active module is marked by a small coral planet on an ice orbit, the brand mark in miniature.
-- Toasts: dark glass with a small planet as the signifier, action in coral.
+- Toasts: dark glass with a small planet as the signifier, action in coral; beside the dock or above it, never over it.
+- Hover: every clickable element answers calmly (a raised fill, a lighter edge or ink colour, the pointer cursor); the
+  primary ones (dock, buttons, tiles, button rows) also tick with `hover`, the rest with the quieter `hover_soft`.
 - Live indicators: steady dots with a ring; only indeterminate progress sweeps loop.
 
 ## Empty states

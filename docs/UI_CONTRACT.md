@@ -44,7 +44,15 @@ SH.module({
 
 - Empty states: always `SH.emptyState({ art, title, text, action, small, cls })` (returns HTML, `.empty.es`). `art` is `ok` (all done), `none` (nothing found), `first` (nothing yet / first use) or `error`. `action` renders one button: `{ label, id?, data?, go: 'module/tab', click: '#selector', icon?, pri? }`. `SH.emptyArt(art)` is the bare illustration for covers that keep their own layout. Never write a bare sentence in a blank panel.
 - Canvas charts share `SH.chartKit` (grid, y/x labels, tooltip, cursor): `grid(x,L,R,T,B,n)`, `ticks(x,L,T,B,n,hi,lo,fmt)`, `xlabels(x,L,R,h,a,b)`, `tip(x,px,W,T,[[color,text],...])`, `cursor(x,px,T,B)`; reserve `chartKit.xpad` px under the plot for the x labels.
-- Panels beside others hug their content (`align-self:start; max-height:100%`), grids use `repeat(auto-fit, minmax(...))`: no empty frames, no cell hanging in a corner.
+- Panels reach the dock: the columns of a tab stretch to its bottom and line up with their neighbours (a short list
+  scrolls inside a full-height panel instead of leaving an empty band under it), and an empty or idle state fills its
+  panel or column with its content centred. Grids use `repeat(auto-fit, minmax(...))`: no cell hanging in a corner.
+- Hover: everything that can be clicked (buttons, tabs, rows and cards that act, switches, checkboxes, selects) shows a
+  calm hover in the shared language (a raised fill, a lighter edge or ink colour, the pointer cursor); plain text never.
+- Toasts (`SH.toast`) never cover the dock: shell.js places the stack beside it when the window leaves room, otherwise
+  above it, clear of the magnified icons and their tooltips.
+- `SH.lastRun` lays out its own children (a fixed 28 px clock, then the text column): a module's `cls` only adds
+  spacing, and must not be a class the module already uses for something else.
 
 Tokens: `--void --deep --raise --raise2 --raise3 --line --line2 --ink --mute --faint --accent --accent2 --on-accent --ok --warn --bad --display --text --r-l --r-m --r-s --r-xs --r-pill --sp-xs..--sp-xl --fs-cap..--fs-h1 --fs-n1..--fs-n4 --ic-xs..--ic-3xl --ic-w --f` (multiply CSS durations by `var(--f)`). Module CSS uses the tokens for radii, type sizes and icon sizes, never literals (the corner presets reach every module that way).
 
