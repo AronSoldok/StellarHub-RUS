@@ -404,5 +404,7 @@ Built with [pywebview](https://github.com/r0x0r/pywebview) (BSD-3), [psutil](htt
 and [Onest](https://github.com/simpals/onest) fonts (SIL Open Font License 1.1).
 
 Sounds: **Orbital**, an original set made for StellarHub (CC0), except the hover sound,
-["UI hover"](https://freesound.org/people/unfa/sounds/565131/) by unfa on Freesound (CC0). The list is in
-[`stellarhub/ui/sounds/CREDITS.json`](stellarhub/ui/sounds/CREDITS.json).
+["UI hover"](https://freesound.org/people/unfa/sounds/565131/) by unfa on Freesound (CC0), and the notification
+sound, "UI_Single_Set 2_01.wav" from ["UI Utility Pack Vol 1"](https://opengameart.org/content/jc-sounds-ui-utility-pack-vol-1)
+by JC Sounds, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (modified: trimmed, faded and
+loudness-normalized). The list is in [`stellarhub/ui/sounds/CREDITS.json`](stellarhub/ui/sounds/CREDITS.json).

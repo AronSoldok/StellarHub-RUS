@@ -422,5 +422,7 @@
   "{name} could not finish: {error}": "{name} を完了できませんでした: {error}",
   "Needs a look": "確認が必要です",
   "{name} finished": "{name} が完了しました",
-  "{name} did not finish": "{name} は完了しませんでした"
+  "{name} did not finish": "{name} は完了しませんでした",
+  "Notification sound": "通知音",
+  "The notification sound is “UI_Single_Set 2_01” from “UI Utility Pack Vol 1” by JC Sounds on OpenGameArt, licensed under CC BY 4.0; trimmed, faded and loudness-normalized.": "通知音は、OpenGameArt で公開されている JC Sounds の「UI Utility Pack Vol 1」に含まれる「UI_Single_Set 2_01」です (CC BY 4.0 ライセンス)。トリミング、フェード、音量の正規化を行っています。"
 }

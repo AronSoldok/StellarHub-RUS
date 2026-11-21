@@ -421,8 +421,10 @@ function openPal() {
   anim($('#pal'), [{ opacity: 0, transform: 'translate3d(0,-14px,0) scale(.95)', filter: 'blur(8px)' }, { opacity: 1, transform: 'translate3d(0,0,0) scale(1)', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
   const inp = $('#palIn'); inp.value = ''; renderPal(''); setTimeout(() => inp.focus(), 10);
 }
-function closePal() {
+/* quiet: what comes next makes its own sound (the item run from it, the settings sheet opening) */
+function closePal(quiet) {
   if (!state.palOpen) return; state.palOpen = false; const o = $('#palO');
+  if (quiet !== true) SH.sound('panel_close');
   anim($('.scrim', o), [{ opacity: 1 }, { opacity: 0 }], { d: 160 });
   const a = anim($('#pal'), [{ opacity: 1, transform: 'translate3d(0,0,0) scale(1)', filter: 'blur(0px)' }, { opacity: 0, transform: 'translate3d(0,-8px,0) scale(.97)', filter: 'blur(4px)' }], { d: 160 });
   a.finished.then(() => { if (!state.palOpen) o.classList.remove('on'); }).catch(() => {});
@@ -432,7 +434,7 @@ $('#palIn').addEventListener('input', e => renderPal(e.target.value));
 $('#palRes').addEventListener('click', e => { const b = e.target.closest('.it'); if (b) runItem(palList[+b.dataset.i]); });
 $('#palRes').addEventListener('pointermove', e => { const b = e.target.closest('.it'); if (b && +b.dataset.i !== palIdx) setPalIdx(+b.dataset.i); });
 /* the item's own sound follows (the view it opens, the settings sheet...): the click on it stays silent */
-function runItem(it) { if (!it) return; SH.sound.claim(); closePal(); setTimeout(() => { if (it.run) it.run(); else go(it.go, { tab: it.tab, section: it.section }); }, 90 * motion()); }
+function runItem(it) { if (!it) return; SH.sound.claim(); closePal(true); setTimeout(() => { if (it.run) it.run(); else go(it.go, { tab: it.tab, section: it.section }); }, 90 * motion()); }
 SH.openPalette = openPal;
 
 /* ================= settings ================= */
@@ -558,6 +560,7 @@ function sectionHTML(id) {
       <div class="set"><div class="lbl"><div>${t('Languages')}<span>${t('How much code there is in each.')}</span></div></div><div id="langs" class="langs"><div class="sk" style="height:10px"></div></div></div>
       <div class="set inline"><div class="lbl"><div>${t('Built with')}<span>${t('Python, pywebview and WebView2; three.js for the 3D model; Unbounded and Onest fonts.')}</span></div></div></div>
       <div class="set inline"><div class="lbl"><div>${t('Sounds')}<span>${t('Orbital, an original set made for StellarHub (CC0). The hover sound is “UI hover” by unfa on Freesound (CC0).')}</span></div></div><button class="btn sec" data-act="freesound">${ic('external')}Freesound</button></div>
+      <div class="set inline"><div class="lbl"><div>${t('Notification sound')}<span>${t('The notification sound is “UI_Single_Set 2_01” from “UI Utility Pack Vol 1” by JC Sounds on OpenGameArt, licensed under CC BY 4.0; trimmed, faded and loudness-normalized.')}</span></div></div><button class="btn sec" data-act="jcsounds">${ic('external')}OpenGameArt</button></div>
       <div class="set inline"><div class="lbl"><div>${t('This PC')}<span>${esc(SH.PC.model)}, ${esc(SH.PC.os)}</span></div></div></div>`;
   }
   return '';
@@ -612,6 +615,7 @@ async function runAct(a) {
   }
   else if (a === 'github') { if (await SH.call('open_url', 'https://github.com/estebanarosemena/StellarHub') === undefined) window.open('https://github.com/estebanarosemena/StellarHub'); }
   else if (a === 'freesound') { const u = 'https://freesound.org/people/unfa/sounds/565131/'; if (await SH.call('open_url', u) === undefined) window.open(u); }
+  else if (a === 'jcsounds') { const u = 'https://opengameart.org/content/jc-sounds-ui-utility-pack-vol-1'; if (await SH.call('open_url', u) === undefined) window.open(u); }
   else if (a === 'soundsample') SH.sound('success', { preview: true });
   else if (a === 'autozoom') {
     const v = String(autoZoom); const s = $('.seg[data-key="zoom"]', sheet);
@@ -729,7 +733,7 @@ function applyLook() {
 function applyAll() { applyLook(); applyZoom(); syncAllTabs(); SH.power && SH.power.set(SH.power.forced); }
 SH.on('power', () => applyLook());
 function openSettings(section) {
-  if (state.palOpen) closePal();
+  if (state.palOpen) closePal(true);
   if (!state.setOpen) SH.sound('panel_open');
   state.setOpen = true; const o = $('#setO'); o.classList.add('on');
   anim($('.scrim', o), [{ opacity: 0 }, { opacity: 1 }], { d: 240 });

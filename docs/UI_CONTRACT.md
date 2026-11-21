@@ -57,12 +57,12 @@ Tokens: `--void --deep --raise --raise2 --raise3 --line --line2 --ink --mute --f
 
 ## Sounds
 
-`SH.sound(event, opts)` (core.js) plays `ui/sounds/<event>.ogg`; the 35 events are the keys of `SOUND_EV`, each with
-its group, gain trim, minimum gap and priority. `js/sounds.js` already gives every module, with no code: a click on
-buttons, links, dock items and rows (pointer or controller A), `toggle_on/off` on `.toggle`, `tab_switch` on `.seg`
-and `.subnav`, `panel_open/close` for the dialogs in gamepad.js's `MODALS`, `dropdown`, `hover`, `unavailable` on a
-disabled button, `navigate`, `palette_open`, `toast` and the start/exit sounds. A module adds only what means
-something specific:
+`SH.sound(event, opts)` (core.js) plays `ui/sounds/<event>.ogg`; the 37 events are the keys of `SOUND_EV`, each with
+its group, gain trim (set from the file's loudest 100 ms), minimum gap and priority. `js/sounds.js` already gives every
+module, with no code: a click on buttons, links, dock items and rows (pointer or controller A), `toggle_on/off` on
+`.toggle`, `tab_switch` on `.seg` and `.subnav`, `panel_open/close` for the dialogs in gamepad.js's `MODALS`,
+`dropdown`, `hover`, `unavailable` on a disabled button, `navigate`, `palette_open`, `key_type` while typing in the
+palette, `toast` and the start/exit sounds. A module adds only what means something specific:
 
 - `SH.toast(text, { kind: 'success' | 'warning' | 'error' | 'unavailable' })` (no kind: a plain toast, which keeps
   quiet right after another sound); an Undo action carries `sound: 'undo'`.
@@ -70,6 +70,19 @@ something specific:
   25/50/75 % when it runs long); `sound: 'task'` for another long user task (ticks only). Background refreshes pass
   nothing.
 - `SH.sound('delete' | 'undo' | 'refresh' | 'copy' | 'achievement')` at that moment.
+- `SH.sound('map_hover')` for a pointer that moves onto a different tile of a map (Storage's treemap): only on a real
+  mouse movement, never while the map zooms, reveals or the wheel turns.
+
+Dialogs: every one closes with exactly one `panel_close` however it closes (its X or Cancel, a click on the backdrop,
+Esc, the controller's B). For the `MODALS` dialogs sounds.js does it: a dialog counts as closed the moment its
+fade-out starts (an animation to `opacity: 0` on it or on one of its children), so a new dialog needs only to fade out
+before it goes. The palette and the settings sheet play their own; a close that leads somewhere (a palette item, a
+"go to module" button) stays quiet with `SH.sound.claim()` and lets the destination sound.
+
+Interface events (group `soundUi`): `click`, `hover`, `tab_switch`, `navigate`, `dropdown`, `palette_open`,
+`focus_move`, `panel_open`, `panel_close`, `toggle_on`, `toggle_off`, `key_type` (a printable key or Backspace in the
+palette search: not modifiers, not held-key repeats, not during IME composition; 30 ms apart) and `map_hover` (35 ms
+apart, quieter than hover).
 
 Rules: one sound per user action. Interface sounds need a click, key or controller press in the last 1.5 s, and the
 first one within 100 ms wins, so a sound that belongs to a click must be played synchronously in the click handler

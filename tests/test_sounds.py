@@ -24,25 +24,95 @@ def read(*p):
         return fh.read()
 
 
+def sound_table():
+    """SOUND_EV (core.js): {event: {c, g, gap, tier, user?, f?, cut?}}."""
+    block = re.search(r"const SOUND_EV = \{(.*?)\n\};", read("js", "core.js"), re.S).group(1)
+    out = {}
+    for ev, body in re.findall(r"(\w+): \{ (c: '[^}]*)\}", block):
+        d = {}
+        for k, v in re.findall(r"(\w+): ('[^']*'|[\d.]+)", body):
+            d[k] = v.strip("'") if v.startswith("'") else float(v)
+        out[ev] = d
+    return out
+
+
 def sound_events():
     """The event names in SOUND_EV (core.js)."""
-    block = re.search(r"const SOUND_EV = \{(.*?)\n\};", read("js", "core.js"), re.S).group(1)
-    return re.findall(r"(\w+): \{ c: '", block)
+    return list(sound_table())
 
 
 class SoundFiles(unittest.TestCase):
     def test_every_event_has_its_file_and_credit(self):
-        evs = sound_events()
-        self.assertEqual(len(evs), 35)
+        table = sound_table()
+        self.assertEqual(len(table), 37)
         files = {f[:-4] for f in os.listdir(SOUNDS) if f.endswith(".ogg")}
-        self.assertEqual(set(evs), files)
+        self.assertEqual(set(table), files)
         with open(os.path.join(SOUNDS, "CREDITS.json"), encoding="utf-8") as fh:
             credits = json.load(fh)
+        self.assertEqual(len(credits), 37)
         self.assertEqual({c["event"] for c in credits}, files)
         for c in credits:
-            self.assertEqual(c["license"], "CC0-1.0", c["event"])
+            self.assertIn(c["license"], ("CC0-1.0", "CC-BY-4.0"), c["event"])
+            if c["license"] != "CC0-1.0":  # attribution licences carry their credit, shown in About and the README
+                self.assertTrue(c["attribution"] and c["sourceUrl"], c["event"])
         hover = next(c for c in credits if c["event"] == "hover")
         self.assertIn("freesound.org/people/unfa/sounds/565131", hover["sourceUrl"])
+
+    def test_attribution_credits_are_shown(self):
+        with open(os.path.join(SOUNDS, "CREDITS.json"), encoding="utf-8") as fh:
+            credits = [c for c in json.load(fh) if c["license"] == "CC-BY-4.0"]
+        self.assertTrue(credits)
+        shell = read("js", "shell.js")
+        with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as fh:
+            readme = fh.read()
+        for c in credits:
+            self.assertIn(c["author"], shell, c["event"])
+            self.assertIn(c["sourceUrl"], shell, c["event"])
+            self.assertIn(c["author"], readme, c["event"])
+            self.assertIn(c["sourceUrl"], readme, c["event"])
+            self.assertIn("CC BY 4.0", readme)
+
+    def test_typing_and_map_ticks(self):
+        t = sound_table()
+        for ev in ("key_type", "map_hover"):
+            self.assertEqual(t[ev]["c"], "ui", ev)             # Interface group (soundUi)
+            self.assertEqual(t[ev]["tier"], 0, ev)             # never cuts or blocks another sound
+        self.assertEqual(t["key_type"]["gap"], 30)
+        self.assertEqual(t["key_type"]["user"], 1)
+        self.assertEqual(t["map_hover"]["gap"], 35)
+        self.assertNotIn("user", t["map_hover"])               # a hover, like hover itself
+
+    def test_gain_trims_follow_the_loudest_100_ms(self):
+        """Played level = the file's loudest 100 ms + its trim: the typing tick sits between the quiet sounds and the
+        interface, the map tick under hover, and the replaced files where their family is."""
+        try:
+            import numpy as np
+            import soundfile as sf
+        except ImportError:
+            self.skipTest("needs numpy and soundfile")
+        import math
+        t = sound_table()
+
+        def level(ev):
+            x, sr = sf.read(os.path.join(SOUNDS, ev + ".ogg"), always_2d=True)
+            m = x.mean(axis=1)
+            w = int(sr * 0.1)
+            if len(m) < w:
+                e = float(np.sum(m ** 2)) / w
+            else:
+                c = np.cumsum(np.concatenate([[0.0], m ** 2]))
+                e = float(np.max(c[w:] - c[:-w])) / w
+            return 10 * math.log10(max(e, 1e-18)) + 20 * math.log10(t[ev]["g"])
+
+        self.assertLess(level("map_hover"), level("hover"))
+        self.assertGreater(level("key_type"), level("hover"))
+        self.assertLess(level("key_type"), level("click") - 6)
+        for ev in ("navigate", "tab_switch"):
+            self.assertAlmostEqual(level(ev), -29, delta=2.5, msg=ev)           # the interface
+        for ev in ("scan_complete", "success", "error"):
+            self.assertAlmostEqual(level(ev), -24.5, delta=1.5, msg=ev)         # the notifications
+        self.assertAlmostEqual(level("toast"), -26.5, delta=1.5)                # a plain toast: a little under those
+        self.assertAlmostEqual(level("scan_start"), -25.5, delta=1.5)
 
     def test_files_are_ogg_vorbis(self):
         for f in os.listdir(SOUNDS):
@@ -190,7 +260,8 @@ class Translations(unittest.TestCase):
         sec = re.search(r"case 'sound': return `(.*?)`;", shell, re.S).group(1)
         keys = {a or b for a, b in self.KEYS.findall(sec)}
         about = re.search(r"case 'about': return `(.*?)`;", shell, re.S).group(1)
-        keys |= {k for k in (a or b for a, b in self.KEYS.findall(about)) if "Orbital" in k}
+        keys |= {k for k in (a or b for a, b in self.KEYS.findall(about)) if "Orbital" in k or "JC Sounds" in k}
+        keys |= {"Notification sound"}
         keys |= {"Sound", "Change the sound volume"}
         self.assertGreaterEqual(len(keys), 14)
         for lang in ("es", "pt", "it", "fr", "zh", "ja"):
@@ -203,6 +274,116 @@ class Translations(unittest.TestCase):
                 d.update(json.loads(raw.decode("utf-8")))
             missing = sorted(k for k in keys if not d.get(k))
             self.assertEqual(missing, [], lang)
+
+
+# core.js + sounds.js in Node: a tiny event bus for window/document, a Web Audio stand-in that "plays" every buffer,
+# and a recorder around SH.sound that lists what really played.
+WIRING = r"""
+const L = {};
+const listen = (type, fn, o) => { (L[type] ||= []).push({ fn, capture: o === true || !!(o && o.capture) }); };
+/* capture listeners first, then the target's own handler (h), then bubbling ones: enough for these tests */
+const fire = (type, e, h) => { e = { type, isTrusted: true, detail: 1, button: 0, buttons: 0, pointerType: 'mouse', clientX: 5, clientY: 5, ...e };
+  for (const l of (L[type] || []).filter(l => l.capture)) l.fn(e); if (h) h(e); for (const l of (L[type] || []).filter(l => !l.capture)) l.fn(e); return e; };
+globalThis.window = globalThis;
+const noop = () => {};
+const el = () => ({ dataset: {}, style: { setProperty: noop }, animate: () => ({ finished: Promise.resolve(), cancel: noop }), classList: { add: noop, remove: noop, toggle: noop, contains: () => false } });
+let DIALOGS = [];
+globalThis.document = { documentElement: el(), hidden: false, addEventListener: listen, querySelector: () => null,
+  querySelectorAll: s => s.includes('.cs-o') ? DIALOGS : [] };
+globalThis.addEventListener = listen; globalThis.removeEventListener = noop;
+globalThis.matchMedia = () => ({ matches: false });
+globalThis.requestAnimationFrame = noop; globalThis.setInterval = () => 0;
+globalThis.MutationObserver = class { observe() {} };
+globalThis.chrome = { webview: {} };
+globalThis.pywebview = { api: new Proxy({}, { get: (_, n) => n === 'then' ? undefined : () => true }) };
+globalThis.SH = { t: s => s };
+class AudioBuffer {}
+globalThis.AudioBuffer = AudioBuffer;
+const param = () => ({ value: 1, cancelScheduledValues: noop, setTargetAtTime: noop });
+globalThis.AudioContext = class { constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; }
+  createGain() { return { gain: param(), connect: noop, disconnect: noop }; }
+  createBufferSource() { const s = { connect: noop, stop: noop, start() { setTimeout(() => s.onended && s.onended(), 20); } }; return s; }
+  resume() { return Promise.resolve(); } decodeAudioData() { return Promise.resolve(new AudioBuffer()); } };
+const fetched = [];
+globalThis.fetch = u => { fetched.push(u); return Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) }); };
+eval(require('fs').readFileSync(process.env.CORE_JS, 'utf8'));
+const played = [], real = SH.sound;
+const rec = (ev, o) => { const r = real(ev, o); if (r) played.push(ev); return r; };
+Object.assign(rec, real); Object.defineProperty(rec, 'last', { get: () => real.last }); SH.sound = rec;
+eval(require('fs').readFileSync(process.env.SOUNDS_JS, 'utf8'));
+const tick = ms => new Promise(r => setTimeout(r, ms));
+const out = x => { process.stdout.write(JSON.stringify(x)); process.exit(0); };
+/* a dialog element: visible; fading out once close() starts its animation to opacity 0 */
+const dialog = () => { const d = { isConnected: true, children: [], anims: [], checkVisibility: () => true, getAnimations() { return this.anims; } };
+  d.close = () => { d.anims = [{ playState: 'running', effect: { getKeyframes: () => [{ opacity: 1 }, { opacity: 0 }] } }]; }; return d; };
+const nothing = { closest: () => null };
+"""
+
+
+@unittest.skipUnless(shutil.which("node"), "needs Node.js")
+class Wiring(unittest.TestCase):
+    def run_js(self, body):
+        code = WIRING + "(async () => {\n" + body + "\n})().catch(e => { console.log(String(e && e.stack || e)); process.exit(3); });"
+        env = dict(os.environ, CORE_JS=os.path.join(UI, "js", "core.js"), SOUNDS_JS=os.path.join(UI, "js", "sounds.js"))
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        src = os.path.join(d, "wiring.js")
+        with open(src, "w", encoding="utf-8") as fh:
+            fh.write(code)
+        r = subprocess.run(["node", src], capture_output=True, text=True, timeout=60, env=env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return json.loads(r.stdout)
+
+    def test_typing_in_the_palette_ticks_once_per_key(self):
+        out = self.run_js(r"""
+          const pal = { id: 'palIn', value: 'ab' }, other = { id: 'daQ', value: 'x' };
+          const key = (k, x = {}) => fire('keydown', { key: k, target: pal, keyCode: 65, ...x });
+          for (const k of 'stellarhub') { key(k); await tick(36); }
+          const typed = played.filter(e => e === 'key_type').length;
+          played.length = 0;
+          key('Shift', { shiftKey: true }); await tick(36); key('Control', { ctrlKey: true }); await tick(36);
+          key('k', { ctrlKey: true }); await tick(36); key('ArrowDown'); await tick(36); key('Enter'); await tick(36);
+          key('a', { repeat: true }); await tick(36); key('a', { isComposing: true }); await tick(36); key('Process', { keyCode: 229 }); await tick(36);
+          fire('keydown', { key: 'a', target: other }); await tick(36);
+          fire('keydown', { key: 'a', target: pal, isTrusted: false }); await tick(36);
+          const quiet = played.slice();
+          key('Backspace'); await tick(36); pal.value = ''; key('Backspace'); await tick(36);
+          const back = played.slice();
+          played.length = 0;
+          for (let i = 0; i < 10; i++) key('x');    // ten keys at once: the 30 ms gap keeps one
+          out({ typed, quiet, back, burst: played.length, files: fetched.filter(f => /key/.test(f)) });
+        """)
+        self.assertEqual(out["typed"], 10)
+        self.assertEqual(out["quiet"], [])
+        self.assertEqual(out["back"], ["key_type"])          # Backspace on an empty field says nothing
+        self.assertEqual(out["burst"], 1)
+        self.assertEqual(out["files"], ["sounds/key_type.ogg"])
+
+    def test_a_dialog_closes_with_one_panel_close_however_it_closes(self):
+        out = self.run_js(r"""
+          const res = {};
+          const close = async (name, how) => {
+            /* the dialog is open (its own panel_open has come and gone) */
+            const d = dialog(); DIALOGS = [d]; fire('pointerdown', { target: nothing }); await tick(600); played.length = 0;
+            fire('pointerdown', { target: nothing }); await tick(5);
+            await how(d); await tick(500); res[name] = played.slice(); DIALOGS = []; await tick(200);
+          };
+          /* the backdrop: nothing clickable under the pointer, the dialog's own handler starts its fade */
+          await close('backdrop', async d => { fire('click', { target: nothing }, () => d.close()); });
+          /* its X: a button; the dialog closes in its handler, before the page-wide click sound */
+          const x = { disabled: false, dataset: {}, matches: () => false, closest: () => x };
+          await close('x', async d => { fire('click', { target: x }, () => d.close()); });
+          /* Esc */
+          await close('esc', async d => { fire('keydown', { key: 'Escape', target: nothing }, () => d.close()); });
+          /* removed at once instead of fading */
+          await close('removed', async d => { fire('click', { target: nothing }, () => { d.isConnected = false; DIALOGS = []; }); });
+          /* a close that leads somewhere claims the click: the destination makes the sound */
+          await close('claimed', async d => { fire('click', { target: x }, () => { SH.sound.claim(); d.close(); }); });
+          out(res);
+        """)
+        for how in ("backdrop", "x", "esc", "removed"):
+            self.assertEqual(out[how], ["panel_close"], how)
+        self.assertEqual(out["claimed"], [])
 
 
 if __name__ == "__main__":

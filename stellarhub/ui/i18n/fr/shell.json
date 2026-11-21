@@ -424,5 +424,7 @@
   "{name} could not finish: {error}": "{name} n’a pas pu terminer : {error}",
   "Needs a look": "À vérifier",
   "{name} finished": "{name} a terminé",
-  "{name} did not finish": "{name} n’a pas terminé"
+  "{name} did not finish": "{name} n’a pas terminé",
+  "Notification sound": "Son de notification",
+  "The notification sound is “UI_Single_Set 2_01” from “UI Utility Pack Vol 1” by JC Sounds on OpenGameArt, licensed under CC BY 4.0; trimmed, faded and loudness-normalized.": "Le son de notification est « UI_Single_Set 2_01 », tiré de « UI Utility Pack Vol 1 » de JC Sounds sur OpenGameArt, sous licence CC BY 4.0 ; raccourci, avec fondu et volume normalisé."
 }

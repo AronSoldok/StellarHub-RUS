@@ -5,7 +5,11 @@
    - click: a pointer (or controller) activation of a button, link, dock item, tab or row, unless something more specific
      already sounded for that same click (a toggle, a tab, the dock, a dropdown, a dialog, a delete...).
    - toggle_on / toggle_off: any .toggle or [role=switch]; tab_switch: a segmented control (.seg) changing its choice.
-   - panel_open / panel_close: a dialog (the ones gamepad.js traps the focus in) opening or closing, after a click or a key.
+   - panel_open / panel_close: a dialog (the ones gamepad.js traps the focus in) opening or closing, after a click or a key:
+     exactly one panel_close however it closes (its X or Cancel, a click on the backdrop, Esc, the controller's B). A
+     dialog counts as closed the moment its fade-out starts. The palette and the settings sheet play their own (shell.js).
+   - key_type: a printable key or Backspace typed in the command palette's search (not modifiers, not held-key repeats,
+     not while an IME is composing), at most every 30 ms.
    - hover: entering a dock item, a button, a Home tile or a row that is a button, with a real mouse movement (never
      when the page scrolls under a still pointer), at most every 70 ms.
    - unavailable: pressing a disabled button.
@@ -43,7 +47,14 @@ SH.on('shown', ({ shown }) => {
 /* ---------- dialogs ---------- */
 const MODALS = '.su-ov, .cs-o.on, .hg-dlg, .mdlg, .bk-dq-o, .dq-o';
 const vis = el => el.checkVisibility ? el.checkVisibility({ checkVisibilityCSS: true }) : !!el.offsetParent;
-const dialogs = () => $$(MODALS).filter(vis);
+/* every dialog closes with a short fade (on itself, or on its backdrop and box) before it is removed: from the moment
+   that fade starts it is closed, so a click on its X, Cancel or backdrop sounds at once instead of a click */
+const fadesOut = a => {
+  if (a.playState !== 'running' || !a.effect || !a.effect.getKeyframes) return false;
+  const k = a.effect.getKeyframes(); return k.length > 1 && k[k.length - 1].opacity !== undefined && +k[k.length - 1].opacity === 0;
+};
+const closing = el => [el, ...el.children].some(x => x.getAnimations && x.getAnimations().some(fadesOut));
+const dialogs = () => $$(MODALS).filter(el => vis(el) && !closing(el));
 let known = [];
 /* +1 a dialog opened, -1 one closed, 0 nothing changed (the list is remembered for the next call) */
 function dialogChange() {
@@ -55,7 +66,7 @@ function dialogChange() {
 let gestAt = 0, checks = [];
 function afterGesture() {
   gestAt = performance.now(); checks.forEach(clearTimeout);
-  checks = [90, 420].map(ms => setTimeout(() => {
+  checks = [0, 90, 420].map(ms => setTimeout(() => {
     const c = dialogChange(); if (!c) return;
     if (sound.last > gestAt) return;  /* that gesture already made its sound */
     sound(c > 0 ? 'panel_open' : 'panel_close');
@@ -79,14 +90,16 @@ addEventListener('click', e => {
 }, true);
 addEventListener('click', e => {
   const p = pre.get(e);
-  if (!p || p.act.claimed || !p.el || performance.now() - deadAt < 800) { dialogChange(); return; }
+  if (!p || p.act.claimed || performance.now() - deadAt < 800) { dialogChange(); return; }
   /* real input only: a pointer, a key (Enter or Space on a button), or the controller's A. A click made by code is not. */
   const pad = SH.sound.viaPad === true, trusted = e.isTrusted || pad, pointer = e.detail > 0 || pad;
   if (!trusted) return;  /* (the check after the gesture still hears a dialog it opened or closed: the controller's B) */
   const el = p.el, c = dialogChange();
-  if (el.disabled) return;
+  if (el && el.disabled) return;
+  /* also a click on nothing clickable: the backdrop that closes a dialog */
   if (c > 0) { sound('panel_open'); return; }
   if (c < 0) { sound('panel_close'); return; }
+  if (!el) return;
   if (el.matches(TOGGLE)) { const on = el.classList.contains('on') || el.getAttribute('aria-checked') === 'true'; sound(on ? 'toggle_on' : 'toggle_off'); return; }
   if (el.matches(CHOICE)) { if (!p.wasOn) sound('tab_switch'); return; }  /* the choice already made: nothing to say */
   if (pointer) sound('click');
@@ -102,6 +115,15 @@ addEventListener('pointerdown', e => {
   const b = $$('button[disabled], .btn[disabled], [role=button][aria-disabled="true"]').find(el => !el.closest('.view:not(.is-on), [inert]') && hit(el) && vis(el));
   if (b) { deadAt = performance.now(); sound('unavailable'); }
 }, { capture: true, passive: true });
+
+/* ---------- typing in the command palette ---------- */
+addEventListener('keydown', e => {
+  const f = e.target; if (!f || f.id !== 'palIn' || !e.isTrusted) return;
+  if (e.isComposing || e.keyCode === 229 || e.key === 'Process' || e.repeat) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'Backspace' ? !f.value : [...e.key].length !== 1) return;  /* Shift, arrows, Enter... say nothing */
+  sound('key_type');
+}, { passive: true });
 
 /* ---------- hover ---------- */
 const HOVER = '.dk, .btn, .bt, button.row, .row[role=button], .row[tabindex="0"], .vcard, .tool, .lang';

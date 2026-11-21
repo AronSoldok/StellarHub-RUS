@@ -544,15 +544,17 @@ function renderMap(el) {
   }).observe(wrap);
   TM.cv.addEventListener('pointermove', e => {
     const r = TM.cv.getBoundingClientRect(); const kx = r.width ? TM.cv.clientWidth / r.width : 1, ky = r.height ? TM.cv.clientHeight / r.height : 1;
-    TM.mx = (e.clientX - r.left) * kx; TM.my = (e.clientY - r.top) * ky; hoverAt(TM.mx, TM.my);
+    /* only a real mouse movement may tick (map_hover), never a map moving under a still pointer */
+    const moved = e.isTrusted && e.pointerType === 'mouse' && !e.buttons && !!(e.movementX || e.movementY);
+    TM.mx = (e.clientX - r.left) * kx; TM.my = (e.clientY - r.top) * ky; hoverAt(TM.mx, TM.my, moved);
   });
-  TM.cv.addEventListener('pointerleave', () => { if (TM.hover) { TM.hover = TM.hoverTop = null; TM.tipA.t = 0; TM.dirty = true; renderInfo(); } });
+  TM.cv.addEventListener('pointerleave', () => { TM.tickHit = null; if (TM.hover) { TM.hover = TM.hoverTop = null; TM.tipA.t = 0; TM.dirty = true; renderInfo(); } });
   TM.cv.addEventListener('click', () => {
     if (TM.A || !TM.ready) return;
     if (TM.hoverTop && TM.hoverTop.dir) zoomTo(deepen(TM.hoverTop));
     else if (TM.hover && !TM.hover.free) { TM.sel = TM.hover; TM.dirty = true; renderInfo(); }
   });
-  TM.cv.addEventListener('wheel', e => { if (TM.A || !TM.ready) return; e.preventDefault();
+  TM.cv.addEventListener('wheel', e => { TM.wheelAt = performance.now(); if (TM.A || !TM.ready) return; e.preventDefault();
     if (e.deltaY < 0 && TM.hoverTop && TM.hoverTop.dir) zoomTo(TM.hoverTop); else if (e.deltaY > 0 && TM.cur.parent) zoomTo(TM.cur.parent); }, { passive: false });
   el.addEventListener('click', e => {
     if (e.target.closest('[data-up]')) { if (TM.cur && TM.cur.parent) zoomTo(TM.cur.parent); return; }
@@ -568,7 +570,9 @@ function renderMap(el) {
   if (TM.ready) { $('.st-scan', el).classList.add('done'); relayout(); renderCrumbs(); renderInfo(); renderLegend(); }
 }
 function deepen(n) { while (n.dir && n.kids.length && n.kids[0].dir && n.kids[0].size / n.size > .985) n = n.kids[0]; return n; }
-function hoverAt(x, y) {
+/* moved: a real mouse movement; then a different tile under the pointer plays a very short tick (not during a zoom, a
+   reveal or right after the wheel; the engine keeps them at least 35 ms apart) */
+function hoverAt(x, y, moved) {
   if (TM.A || !TM.ready) return;
   let hit = null; for (let i = TM.leaves.length - 1; i >= 0; i--) { const r = TM.leaves[i].r; if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) { hit = TM.leaves[i].n; break; } }
   let top = hit; while (top && top.parent !== TM.cur) top = top.parent;
@@ -580,6 +584,7 @@ function hoverAt(x, y) {
   } else TM.tipA.t = 0;
   if (hit === TM.hover) return;
   TM.hover = hit; TM.hoverTop = top; TM.dirty = true;
+  if (hit && hit !== TM.tickHit && moved && performance.now() - (TM.wheelAt || -1e9) > 250) { TM.tickHit = hit; SH.sound('map_hover'); }
   if (hit && hit.free) {
     const dk = API.disk();
     tip.innerHTML = `<b>${T('Free space')}</b><span class="faint">${T("What's still unused on the drive")}</span><span><i style="background:#3A4660"></i>${T('{size}, {pct} of the drive', { size: fmtB(hit.size), pct: pct(hit.size / dk.total) })}</span>`;

@@ -160,7 +160,8 @@ function close(instant) {
 }
 root.addEventListener('click', e => {
   if (e.target === scrim || e.target.closest('.cs-x')) { close(); return; }
-  const b = e.target.closest('[data-m]'); if (b) { close(); setTimeout(() => SH.go(b.dataset.m, { tab: b.dataset.tab }), 160 * SH.motion()); }
+  /* the module it opens makes the sound (navigate), not the sheet closing on the way */
+  const b = e.target.closest('[data-m]'); if (b) { SH.sound.claim(); close(); setTimeout(() => SH.go(b.dataset.m, { tab: b.dataset.tab }), 160 * SH.motion()); }
 });
 addEventListener('keydown', e => { if (open && e.key === 'Escape') { e.stopImmediatePropagation(); close(); } }, true);
 SH.on('view', () => { if (open) close(true); });
