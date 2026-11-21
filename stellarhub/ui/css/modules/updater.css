@@ -190,7 +190,8 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-hist .ri svg{width:var(--ic-s);height:var(--ic-s)}
 
 /* components */
-#v-updater .u-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:auto;gap:var(--sp-md);align-content:start;padding:2px 6px 12px 2px}
+/* the component cards share the column's height (their footer stays at the bottom), so a few cards never leave an empty band */
+#v-updater .u-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:auto;gap:var(--sp-md);align-content:stretch;padding:2px 6px 12px 2px}
 #v-updater .u-cards>.u-card{min-height:min-content}
 #v-updater .u-card{display:flex;flex-direction:column;padding:16px;transition:transform calc(220ms*var(--f)) var(--e-snap),border-color calc(200ms*var(--f))}
 #v-updater .u-card:hover{transform:translateY(-3px);border-color:var(--line2)}
@@ -204,6 +205,8 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-cfoot .u-ver{flex:1}
 #v-updater .u-card .u-act{width:auto}
 #v-updater .u-card.is-bios{grid-column:span 2;border-color:color-mix(in oklab,var(--accent) 30%,transparent)}
+/* the BIOS card takes what is left of its row: the whole row when it starts one, never leaving a cell empty beside it */
+#v-updater .u-card.is-bios:nth-child(3n+1){grid-column:1/-1}
 #v-updater .u-rtnote{flex:none}
 #v-updater .u-rtnote p{font-size:var(--fs-sm);line-height:1.5}
 #v-updater .u-warnp{display:flex;gap:var(--sp-sm);align-items:flex-start;margin-top:10px;padding:9px 10px;border-radius:var(--r-s);background:color-mix(in oklab,var(--warn) 9%,transparent);color:var(--warn);font-size:var(--fs-sm)}
@@ -365,6 +368,7 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-ver span{overflow:visible;text-overflow:clip}
 @media (max-width:1400px){
   #v-updater .u-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #v-updater .u-card.is-bios:nth-child(odd){grid-column:1/-1}
 }
 @media (max-width:1280px){
   #v-updater .u-row .u-ver{width:min(200px,22%)}
