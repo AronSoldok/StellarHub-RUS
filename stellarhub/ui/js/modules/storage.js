@@ -170,7 +170,9 @@ const tree = () => TREE || mockTree();
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
 /* ---------------- real engine ---------------- */
-const ST = { real: null, drives: [], target: null, info: null, job: null, dups: null, dupJob: null, cmp: undefined, types: null, big: null };
+const ST = { real: null, drives: [], target: null, info: null, job: null, dups: null, dupJob: null, cmp: undefined, types: null, big: null,
+  /* done: a scan finished (or the one the engine already had was taken); last: the last scan of the target ({ when, size, files }) */
+  done: false, last: null };
 async function isReal() {
   if (ST.real === null) {
     try { const d = await SH.engine('storage', 'drives'); ST.real = d !== undefined; ST.drives = d || []; } catch (e) { console.error(e); ST.real = false; }
@@ -526,6 +528,7 @@ function renderMap(el) {
             <div class="st-sv"><b class="st-sn">0</b><span>${T('files read')}</span></div></div>
           <div class="st-sp faint">${T('Preparing the scan…')}</div><div class="st-ss muted">&nbsp;</div>
           <button class="btn sm ghost st-cancel" data-cancel>${ic('x')}${T('Cancel')}</button></div></div>
+        <div class="st-idle"></div>
       </div>
     </div>
     <aside class="st-side">
@@ -560,14 +563,53 @@ function renderMap(el) {
     if (e.target.closest('[data-up]')) { if (TM.cur && TM.cur.parent) zoomTo(TM.cur.parent); return; }
     const cb = e.target.closest('[data-crumb]'); if (cb) { const n = nodeById(cb.dataset.crumb); if (n) zoomTo(n); return; }
     if (e.target.closest('[data-cancel]')) { API.cancel(); return; }
+    if (e.target.closest('[data-goscan]')) { if (TM.scanning) return; SH.sound('scan_start'); runScan(true).then(() => rerenderOthers()); return; }
     const fr = e.target.closest('[data-free]'); if (fr) { const on = !fr.classList.contains('on'); fr.classList.toggle('on', on); SH.setSetting('storageShowFree', on); if (TM.ready && !TM.A) { const old = TM.leaves; relayout(); morphFrom(old); } return; }
     const lg = e.target.closest('[data-leg]'); if (lg) { TM.hiLock = TM.hiLock === lg.dataset.leg ? null : lg.dataset.leg; TM.dirty = true; markLegend(); return; }
     const act = e.target.closest('[data-info]'); if (act) infoAction(act.dataset.info);
   });
   el.addEventListener('pointerover', e => { const lg = e.target.closest('[data-leg]'); TM.hiType = lg ? lg.dataset.leg : null; TM.dirty = true; });
   el.addEventListener('pointerout', e => { if (e.target.closest('[data-leg]') && !e.relatedTarget?.closest?.('[data-leg]')) { TM.hiType = null; TM.dirty = true; } });
-  if (!TM.ready) sideSkeleton();
+  if (!TM.ready && !TM.scanning) idleCover(el); else if (!TM.ready) sideSkeleton();
   if (TM.ready) { $('.st-scan', el).classList.add('done'); relayout(); renderCrumbs(); renderInfo(); renderLegend(); }
+}
+/* Before any scan the map waits for the user (scanning a whole drive is heavy): a cover that says what the scan does,
+   with the date and size of the last one if there is one, and the Scan button. The side panels come with the scan. */
+function idleCover(el) {
+  el = el || RENDERED.map; if (!el) return;
+  const map = $('.st-map', el), box = $('.st-idle', el); if (!map || !box) return;
+  map.classList.add('idle'); $('.st-scan', el).classList.add('done');
+  const tgt = (ST.target || 'C:\\').replace(/\\$/, ''), L = ST.last;
+  const html = (L ? SH.lastRun({ when: L.when, title: T('Last scan: {when}'), text: T('{size} in {n} files', { size: fmtB(L.size), n: fmtInt(L.files) }), cls: 'st-lr' }) : '')
+    + SH.emptyState({ art: 'first', title: T('See what takes up space on {target}', { target: esc(tgt) }),
+      text: L ? T('The map shows the result of a new scan: it reads every folder again, so it is always current. Nothing is changed.') : T('The scan reads every folder and draws a map of the drive: the bigger the block, the more space it takes. Nothing is changed.'),
+      action: { label: T('Scan {target}', { target: tgt }), data: 'data-goscan', icon: 'search', pri: true, big: true } });
+  if (box.dataset.sig !== html) { box.dataset.sig = html; box.innerHTML = html; }
+}
+/* opening the Map: the scan this process already has (the page was reloaded) is shown as it is; otherwise the last
+   scan's date and size are read (a small file) and the map waits for Scan. Nothing scans by itself unless the user
+   asked for that in Settings > General. */
+let idleAsked = false;
+async function openMap() {
+  if (TM.ready || TM.scanning) return;
+  const real = await isReal();
+  if (real && !idleAsked) {
+    idleAsked = true;
+    let pub = null; try { pub = await SH.engine('storage', 'published'); } catch (e) { console.error(e); }
+    if (pub && pub.root && !TM.ready && !TM.scanning) { showPublished(pub); return; }
+  }
+  if (real) { try { ST.last = await SH.engine('storage', 'last_scan', ST.target) || null; } catch (e) { console.error(e); ST.last = null; } }
+  if (TM.ready || TM.scanning) return;
+  if (SH.autoAnalyze()) { runScan().then(() => rerenderOthers()); return; }
+  idleCover();
+}
+function showPublished(r) {
+  NODES.clear(); TREE = adopt(r.root, null); ST.info = r.info; if (r.info && r.info.target) ST.target = r.info.target;
+  ST.types = ST.big = null; ST.cmp = undefined; ST.dups = null; ST.done = true;
+  TM.root = TM.cur = TREE; TM.ready = true; TM.sel = null; TM.hover = TM.hoverTop = null;
+  const el = RENDERED.map; if (el) { const m = $('.st-map', el); if (m) m.classList.remove('idle'); $('.st-scan', el).classList.add('done'); }
+  const ib = $(`#v-${ID} .st-info`); if (ib) ib.dataset.k = ''; const lb = $(`#v-${ID} .st-leg`); if (lb) lb.dataset.k = '';
+  relayout(); renderCrumbs(); renderInfo(); renderLegend(); paintActions(); rerenderOthers();
 }
 function deepen(n) { while (n.dir && n.kids.length && n.kids[0].dir && n.kids[0].size / n.size > .985) n = n.kids[0]; return n; }
 /* moved: a real mouse movement; then a different tile under the pointer plays a very short tick (not during a zoom, a
@@ -694,6 +736,7 @@ async function runScan(user) {
   const what = !ST.real || !ST.target ? 'C:' : /^[A-Za-z]:\\?$/.test(ST.target) ? ST.target.slice(0, 2) : ST.target.split('\\').filter(Boolean).pop();
   const act = SH.activity.start(ID, { key: 'scan', label: T('Scanning {name}', { name: what }), go: { tab: 'map' }, cancel: () => API.cancel(), bg: !user });
   const el = $(`#v-${ID} .tab[data-tab="map"]`); const sc = el && $('.st-scan', el);
+  const mapEl = el && $('.st-map', el); if (mapEl) mapEl.classList.remove('idle');
   if (sc) {
     sc.classList.remove('done'); sc.classList.add('busy');
     $$('.st-dial, .st-sp, .st-ss, .st-cancel', sc).forEach(x => { x.getAnimations().forEach(a => a.cancel()); });
@@ -727,7 +770,7 @@ async function runScan(user) {
     if (act) act.end(e && e.cancelled ? { cancelled: true } : { ok: false, error: (e && e.message) || '' });
     if (e && e.cancelled) {
       if (wasReady && TM.root) { TM.ready = true; relayout(); if (sc) anim(sc, [{ opacity: 1 }, { opacity: 0 }], { d: 260 }).finished.then(() => sc.classList.add('done')).catch(() => {}); }
-      else if (sc) { setPathText($('.st-sp', sc), T('Scan cancelled.')); $('.st-ss', sc).textContent = T('Press Scan to start again.'); }
+      else idleCover();
       SH.toast(T('Scan cancelled.')); return;
     }
     if (sc) { setPathText($('.st-sp', sc), T("Couldn't scan.")); $('.st-ss', sc).textContent = (e && e.message) || ''; }
@@ -735,6 +778,7 @@ async function runScan(user) {
   }
   if (dial) { dial.classList.add('det'); setArc(dial, 1); }
   if (user) SH.sound('scan_complete');
+  ST.done = true; ST.last = null;
   if (act) act.end({ ok: true, summary: T('{size} in {n} files', { size: fmtB(t.size), n: fmtInt(t.fc) }) });
   TM.root = t; if (!TM.cur || !isAnc(t, TM.cur)) TM.cur = t;
   TM.scanning = false; TM.ready = true; TM.sel = null; TM.hover = TM.hoverTop = null; relayout();
@@ -760,7 +804,7 @@ async function runScan(user) {
 /* ---------------- Folders ---------------- */
 let treeTarget = null; const openSet = new Set();
 /* before a scan (in real mode) the other tabs invite you to run one */
-const needScan = () => ST.real && !TREE;
+const needScan = () => !ST.done;
 /* while the Map tab is scanning, the other tabs say so (with the progress) instead of offering to scan again */
 function paintScanWait() {
   $$(`#v-${ID} .st-first.st-wait`).forEach(box => {
@@ -1195,7 +1239,7 @@ SH.module({
     ctxRef = ctx; actEl = el; paintActions();
     isReal().then(r => { if (r) paintActions(); });
     el.addEventListener('click', async e => {
-      if (e.target.closest('[data-scan]')) { if (TM.scanning) return; SH.sound('scan_start'); if (curTab !== 'map') ctx.setTab('map'); setTimeout(() => runScan(true).then(() => { if (ST.real) rerenderOthers(); }), curTab === 'map' ? 0 : 260); return; }
+      if (e.target.closest('[data-scan]')) { if (TM.scanning) return; SH.sound('scan_start'); if (curTab !== 'map') ctx.setTab('map'); setTimeout(() => runScan(true).then(() => rerenderOthers()), curTab === 'map' ? 0 : 260); return; }
       const b = e.target.closest('[data-drv]'); if (!b || TM.scanning) return;
       if (b.dataset.drv === 'pick') {
         if (!await isReal()) { SH.toast(T('Choosing a folder only works inside the app.')); return; }
@@ -1209,8 +1253,8 @@ SH.module({
   renderTab(tab, el) { RENDERED[tab] = el; RENDER[tab](el); },
   enterTab(tab) {
     curTab = tab;
-    if (tab === 'map') { TM.dirty = true; if (!TM.ready && !TM.scanning) setTimeout(() => runScan().then(() => { if (ST.real) rerenderOthers(); }), 250 * SH.motion()); else { renderLegend(); markLegend(); } }
-    else if (ST.real && RENDERED[tab] && (TREE ? $('.st-first [data-goscan]', RENDERED[tab]) : ($('.st-first [data-goscan]', RENDERED[tab]) && TM.scanning) || ($('.st-first.st-wait', RENDERED[tab]) && !TM.scanning))) RENDER[tab](RENDERED[tab]);
+    if (tab === 'map') { TM.dirty = true; if (!TM.ready && !TM.scanning) openMap(); else { renderLegend(); markLegend(); } }
+    else if (RENDERED[tab] && (ST.done ? $('.st-first [data-goscan]', RENDERED[tab]) : ($('.st-first [data-goscan]', RENDERED[tab]) && TM.scanning) || ($('.st-first.st-wait', RENDERED[tab]) && !TM.scanning))) RENDER[tab](RENDERED[tab]);
     if (tab === 'tree' && treeTarget) { const n = treeTarget; treeTarget = null; setTimeout(() => revealInTree(n), 120); }
   },
   leaveTab() { TM.hover = TM.hoverTop = null; TM.tipA.set(0); },

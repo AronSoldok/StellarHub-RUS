@@ -208,5 +208,9 @@
   "Scanning {name}": "正在扫描 {name}",
   "{size} in {n} files": "{n} 个文件，共 {size}",
   "Looking for duplicates": "正在查找重复文件",
-  "No duplicates found": "未找到重复文件"
+  "No duplicates found": "未找到重复文件",
+  "Last scan: {when}": "上次扫描：{when}",
+  "See what takes up space on {target}": "查看 {target} 上占用空间的内容",
+  "The map shows the result of a new scan: it reads every folder again, so it is always current. Nothing is changed.": "地图显示的是新扫描的结果：它会重新读取每个文件夹，因此始终是最新的。不会更改任何内容。",
+  "The scan reads every folder and draws a map of the drive: the bigger the block, the more space it takes. Nothing is changed.": "扫描会读取每个文件夹并绘制驱动器地图：块越大，占用的空间越多。不会更改任何内容。"
 }

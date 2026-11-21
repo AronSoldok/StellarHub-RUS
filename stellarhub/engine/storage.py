@@ -20,7 +20,8 @@ from pathlib import Path
 
 from ..i18n import tr
 
-EXPORTS = {"drives", "pick_folder", "view", "info", "types", "largest", "compare", "reveal", "trash", "restore", "can_delete"}
+EXPORTS = {"drives", "pick_folder", "view", "info", "published", "last_scan", "types", "largest", "compare", "reveal", "trash",
+           "restore", "can_delete"}
 JOBS = {"scan", "duplicates"}
 
 FILE_MIN = 1024 * 1024         # smaller files are grouped per folder (saves memory with millions of them)
@@ -745,6 +746,35 @@ def _save_snapshot(s):
         os.replace(f + ".tmp", f)
     except Exception as e:  # comparing is an extra: it never breaks the scan
         print("storage snapshot:", e)
+
+
+def published():
+    """The scan the Storage Checker shows, if this process already has one (the page was reloaded, e.g. after a
+    language change): its root and info, exactly what the scan job returns, or None. Nothing is read from the disk."""
+    s = _cur["scan"]
+    if s is None:
+        return None
+    return {"root": view(s.root.id, 3), "info": info()}
+
+
+def last_scan(target="C:\\"):
+    """When the last scan of `target` ran and what it found (the snapshot kept for Compare, also written by Autopilot's
+    private scans), or None. A small file read: opening the Storage Checker shows it instead of scanning again."""
+    try:
+        if len(target) == 2 and target[1] == ":":      # "C:" alone would be the current folder of that drive
+            target += "\\"
+        target = os.path.abspath(target)
+        f = os.path.join(DATA, _key(target) + ".json")
+        if not os.path.exists(f):
+            return None
+        with open(f, encoding="utf-8") as fh:
+            last = (json.load(fh) or {}).get("last") or {}
+        if not last.get("when"):
+            return None
+        return {"target": last.get("target") or target, "when": int(last["when"] * 1000), "size": last.get("size") or 0,
+                "files": last.get("files") or 0}
+    except (OSError, ValueError, TypeError, KeyError):
+        return None
 
 
 def compare():

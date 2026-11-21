@@ -208,5 +208,9 @@
   "Scanning {name}": "Verificando {name}",
   "{size} in {n} files": "{size} em {n} arquivos",
   "Looking for duplicates": "Procurando duplicados",
-  "No duplicates found": "Nenhum duplicado encontrado"
+  "No duplicates found": "Nenhum duplicado encontrado",
+  "Last scan: {when}": "Última verificação: {when}",
+  "See what takes up space on {target}": "Veja o que ocupa espaço em {target}",
+  "The map shows the result of a new scan: it reads every folder again, so it is always current. Nothing is changed.": "O mapa mostra o resultado de uma nova verificação: ela lê cada pasta de novo, então está sempre atualizada. Nada é alterado.",
+  "The scan reads every folder and draws a map of the drive: the bigger the block, the more space it takes. Nothing is changed.": "A verificação lê cada pasta e desenha um mapa da unidade: quanto maior o bloco, mais espaço ele ocupa. Nada é alterado."
 }

@@ -208,5 +208,9 @@
   "Scanning {name}": "{name} をスキャン中",
   "{size} in {n} files": "{n} 個のファイルで {size}",
   "Looking for duplicates": "重複ファイルを検索中",
-  "No duplicates found": "重複ファイルは見つかりませんでした"
+  "No duplicates found": "重複ファイルは見つかりませんでした",
+  "Last scan: {when}": "前回のスキャン: {when}",
+  "See what takes up space on {target}": "{target} の容量を使っているものを確認",
+  "The map shows the result of a new scan: it reads every folder again, so it is always current. Nothing is changed.": "マップには新しいスキャンの結果が表示されます。すべてのフォルダーを読み直すので、常に最新です。何も変更されません。",
+  "The scan reads every folder and draws a map of the drive: the bigger the block, the more space it takes. Nothing is changed.": "スキャンはすべてのフォルダーを読み取り、ドライブのマップを描きます。ブロックが大きいほど容量を使っています。何も変更されません。"
 }

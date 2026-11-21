@@ -41,6 +41,15 @@
 /* every piece has a fixed size: changing numbers and paths can't push the block sideways */
 #v-storage .st-scan{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;background:rgba(6,10,20,.6);overflow:hidden;contain:strict}
 #v-storage .st-scan.done{display:none}
+/* before the first scan: a cover with the Scan button over the empty map; the side panels and the path bar come with the scan */
+#v-storage .st-idle{position:absolute;inset:0;z-index:5;display:none;flex-direction:column;align-items:center;justify-content:center;gap:var(--sp-sm);padding:var(--sp-lg);overflow:auto;
+  background:radial-gradient(ellipse at 50% 45%,color-mix(in oklab,var(--accent2) 7%,transparent),transparent 65%)}
+#v-storage .st-map.idle .st-idle{display:flex}
+#v-storage .st-map.idle{grid-template-columns:minmax(0,1fr)}
+#v-storage .st-map.idle .st-side,#v-storage .st-map.idle .st-bar{display:none}
+#v-storage .st-map.idle canvas{cursor:default}
+#v-storage .st-idle .lastrun{width:min(480px,100%);flex:none}
+#v-storage .st-idle .es{padding-block:var(--sp-md)}
 #v-storage .st-sbox{display:flex;flex-direction:column;align-items:center;gap:6px;width:min(520px,90%);flex:none;contain:layout}
 #v-storage .st-dial{position:relative;width:250px;height:250px;flex:none;display:grid;place-items:center;margin-bottom:4px}
 /* the scan ring: a quiet track and ONE comet arc (a conic gradient with a long fading tail) turned by transform on its own

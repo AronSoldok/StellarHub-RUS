@@ -178,6 +178,30 @@ class Scans(unittest.TestCase):
         self.assertIs(seen[0], pub)                 # still there while scanning
         self.assertIsNot(storage._cur["scan"], pub)  # swapped when done
 
+    def test_opening_shows_the_last_scan_without_scanning(self):
+        """2.0.0: the Storage Checker no longer scans on opening. It shows the scan this process already has
+        (published) or the date and size of the last one (last_scan, from the Compare snapshot, which Autopilot's
+        private scans also write); neither reads the disk."""
+        storage._cur["scan"] = None
+        self.assertIsNone(storage.published())
+        with mock.patch.object(storage, "_scan_locked") as sl:
+            self.assertIsNone(storage.last_scan(self.d))                   # never scanned
+            sl.assert_not_called()
+        t0 = time.time()
+        storage.scan_private(FakeJob(), self.d)                             # Autopilot's: not published, but dated
+        self.assertIsNone(storage.published())
+        last = storage.last_scan(self.d)
+        self.assertEqual((last["files"], last["size"]), (1, 2 * 1024 * 1024))
+        self.assertGreaterEqual(last["when"], int(t0 * 1000) - 1000)
+        self.assertEqual(os.path.normcase(last["target"]), os.path.normcase(os.path.abspath(self.d)))
+        r = storage.scan(FakeJob(), self.d)
+        pub = storage.published()
+        self.assertEqual(pub["info"]["files"], r["info"]["files"])
+        self.assertEqual(pub["root"]["id"], r["root"]["id"])
+        with open(os.path.join(storage.DATA, storage._key(os.path.abspath(self.d)) + ".json"), "w", encoding="utf-8") as fh:
+            fh.write("{not json")
+        self.assertIsNone(storage.last_scan(self.d))                       # a damaged snapshot: no date, no error
+
     def test_duplicates_skip_programs_and_games(self):
         # the temp folder itself lives under AppData, which the real rules skip: leave that marker out for this test
         for p in (mock.patch.object(storage, "SKIP_PROGRAMS", tuple(x for x in storage.SKIP_PROGRAMS if x != "\\appdata\\")),
