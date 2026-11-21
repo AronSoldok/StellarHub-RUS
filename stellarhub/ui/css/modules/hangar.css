@@ -254,7 +254,7 @@ html[data-int=min] #v-hangar .hg-qrow.st-inst .hg-qbar>span{animation:none}
 #v-hangar .hg-qc.c-ok i{background:var(--ok)} #v-hangar .hg-qc.c-bad i{background:var(--bad)} #v-hangar .hg-qc.c-acc i{background:var(--accent2)}
 #v-hangar .hg-qc span{flex:1;min-width:0;font-size:var(--fs-cap);color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-hangar .hg-qc b{font:500 var(--fs-lg) var(--display);letter-spacing:-.02em}
-#v-hangar .hg-qsum{padding:16px 18px;flex:none}
+#v-hangar .hg-qsum{padding:16px 18px;flex:1 0 auto}
 #v-hangar .hg-qsum h4{color:var(--ink);font-size:var(--fs-body);margin-bottom:6px}
 #v-hangar .hg-qsum p.muted{font-size:var(--fs-sm);line-height:1.5}
 #v-hangar .hg-sbtns{display:flex;flex-wrap:wrap;gap:var(--sp-sm);margin-top:14px}
@@ -264,8 +264,10 @@ html[data-int=min] #v-hangar .hg-qrow.st-inst .hg-qbar>span{animation:none}
 
 /* ---------------- history ---------------- */
 #v-hangar .hg-h{display:grid;grid-template-columns:minmax(0,1fr) clamp(260px,22vw,320px);gap:var(--sp-md);height:100%;min-height:0}
-#v-hangar .hg-hmain{overflow:auto;min-height:0;padding:2px 6px 12px 2px}
-#v-hangar .hg-hlist{display:flex;flex-direction:column;gap:var(--sp-md)}
+#v-hangar .hg-hmain{overflow:auto;min-height:0;padding:2px 6px 12px 2px;display:flex;flex-direction:column}
+/* the columns reach the dock: the last run (or the empty state) and the summary stretch down to it */
+#v-hangar .hg-hlist{display:flex;flex-direction:column;gap:var(--sp-md);flex:1 0 auto}
+#v-hangar .hg-hlist>:last-child{flex:1 0 auto}
 #v-hangar .hg-run{padding:14px 16px}
 #v-hangar .hg-rh{display:flex;align-items:center;gap:var(--sp-md);flex-wrap:wrap;row-gap:var(--sp-sm)}
 #v-hangar .hg-ri{width:38px;height:38px;flex:none;border-radius:var(--r-s);display:grid;place-items:center;color:var(--accent);background:color-mix(in oklab,var(--accent) 12%,transparent);border:1px solid color-mix(in oklab,var(--accent) 24%,transparent)}
@@ -289,7 +291,7 @@ html[data-int=min] #v-hangar .hg-qrow.st-inst .hg-qbar>span{animation:none}
 #v-hangar .hg-rerr svg{width:var(--ic-s);height:var(--ic-s);color:var(--bad);margin-top:2px}
 #v-hangar .hg-rerr b{font-weight:500;color:var(--ink);white-space:nowrap}
 #v-hangar .hg-hside{display:flex;flex-direction:column;gap:var(--sp-md);min-height:0}
-#v-hangar .hg-hstat{padding:16px 18px}
+#v-hangar .hg-hstat{padding:16px 18px;flex:1 0 auto}
 #v-hangar .hg-hbig{margin:6px 0 14px}
 #v-hangar .hg-hbig .muted{display:block;font-size:var(--fs-sm);margin-top:6px}
 #v-hangar .hg-hrows>div{display:flex;justify-content:space-between;gap:var(--sp-sm);padding:9px 0;border-top:1px solid var(--line);font-size:var(--fs-sm)}
