@@ -51,6 +51,30 @@ class TickKeepsWhatARunSaved(unittest.TestCase):
         self.assertIn("r1", st.get("retry") or {})
 
 
+class OneOddRoutine(unittest.TestCase):
+    """The routines file can be edited by any program running as the user: one routine whose condition can't be read
+    (days written as text) must not stop the check of all the others, nor the saving of the state."""
+
+    def test_the_other_routines_still_run(self):
+        d = tempfile.mkdtemp(prefix="sh_test_")
+        self.addCleanup(shutil.rmtree, d, True)
+        sp = os.path.join(d, "settings.json")
+        with open(sp, "w", encoding="utf-8") as fh:
+            json.dump({"autopilotRoutines": [
+                {"id": "odd", "name": "Odd", "acts": [{"k": "wait"}], "triggers": [{"k": "daily"}],
+                 "conds": [{"k": "days", "p": {"days": "135"}}]},
+                {"id": "ok", "name": "OK", "acts": [{"k": "wait"}], "triggers": [{"k": "daily"}]}],
+                "autopilotNotify": {"weekly": False, "noGame": False}}, fh)
+        with mock.patch.object(autopilot, "_settings_path", return_value=sp), \
+                mock.patch.object(autopilot, "fullscreen_state", return_value=0), \
+                mock.patch.object(autopilot, "_check_triggers", return_value=autopilot._m("it's time")), \
+                mock.patch.object(autopilot, "_enqueue") as enq, \
+                mock.patch.object(autopilot, "_save_state") as save:
+            autopilot._tick()
+        self.assertEqual([c.args[0] for c in enq.call_args_list], ["ok"])
+        save.assert_called_once()
+
+
 class ElevatedRoutines(unittest.TestCase):
     """Routines live in a file any program running as the user can edit: from an elevated StellarHub they must not
     reach beyond the user's own programs, nor run "as you" with administrator rights."""

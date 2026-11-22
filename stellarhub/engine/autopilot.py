@@ -1634,7 +1634,11 @@ def _tick_locked():
             reason = None
         if not reason or rid in _running:
             continue
-        ok, ev = _conds_ok(r, ctx)
+        try:
+            ok, ev = _conds_ok(r, ctx)
+        except Exception as e:  # noqa: BLE001  one routine's odd condition must not stop the check of all the others
+            print("[autopilot condition]", e)
+            continue
         if not ok:
             failed = [d for _c, o, d in ev if not o]
             res = _m("Skipped: {reason}", reason=failed[0] if failed else _m("a condition was not met"))
