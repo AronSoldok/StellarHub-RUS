@@ -55,6 +55,18 @@ class Locations(unittest.TestCase):
         self.assertTrue(ident.refs_location(loc))
         self.assertFalse(ident.refs_location(loc + "Bar\\x.exe"))  # FooBar is not Foo
 
+    def test_a_sibling_folder_with_a_longer_name_is_not_ours(self):
+        # "Microsoft VS Code" must not claim the shortcuts, PATH entries or services of "Microsoft VS Code Insiders"
+        loc = os.path.join(self.tmp, "Foo")
+        os.makedirs(os.path.join(self.tmp, "Foo Bar", "bin"))
+        os.makedirs(loc)
+        ident = Identity({"id": "a", "name": "Foo App", "location": loc})
+        self.assertFalse(ident.refs_location(os.path.join(self.tmp, "Foo Bar", "bin")))
+        self.assertFalse(ident.refs_location(f'"{os.path.join(self.tmp, "Foo Bar", "foo.exe")}" --tray'))
+        self.assertFalse(ident.refs_location(os.path.join(self.tmp, "Foo Bar")))
+        self.assertTrue(ident.refs_location(f"{loc} --tray"))     # an unquoted argument still counts
+        self.assertTrue(ident.refs_location(f'"{loc}\\foo.exe" --tray'))
+
     def test_nested_program_references_go_to_the_deepest(self):
         steam = os.path.join(self.tmp, "Steam")
         game = os.path.join(steam, "steamapps", "common", "game")

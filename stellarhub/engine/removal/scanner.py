@@ -270,10 +270,19 @@ def _contains_path(t, loc):
     i = t.find(loc)
     while i != -1:
         end = i + len(loc)
-        if end == len(t) or t[end] in '\\"\', ;|':
+        if end == len(t) or t[end] in '\\"\',;|' or (t[end] == " " and not _longer_name_exists(t, i, end)):
             return True
         i = t.find(loc, i + 1)
     return False
+
+
+def _longer_name_exists(t, i, end):
+    r"""A space after the folder may end it (an unquoted argument: "C:\Foo --tray") or be part of a longer name: a
+    sibling folder such as "...\Microsoft VS Code Insiders\bin" read for "...\Microsoft VS Code". True when that longer
+    name exists: it is another folder, and its shortcuts, PATH entries or services are not this program's."""
+    m = re.match(r'[^\\"\',;|]*', t[end:])
+    longer = t[i:end + m.end()].rstrip()
+    return len(longer) > end - i and os.path.exists(longer)
 
 
 class Scanner:
