@@ -732,5 +732,6 @@
   "The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.": "DNS 缓存已清除，但例程永远不会完全重置网络。请在“超级优化”中手动运行。",
   "autopilot|Asks you": "会询问你",
   "Skipped: needs administrator mode": "已跳过：需要管理员模式",
-  "autopilot|Administrator": "管理员"
+  "autopilot|Administrator": "管理员",
+  "skipped: this command runs as you, and StellarHub is running as administrator. Open StellarHub in normal mode to run it, or set it to run as administrator": "已跳过：此命令以你的身份运行，而 StellarHub 正以管理员身份运行。请在普通模式下打开 StellarHub 来运行它，或将其设置为以管理员身份运行"
 }

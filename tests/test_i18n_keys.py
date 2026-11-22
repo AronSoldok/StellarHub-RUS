@@ -65,6 +65,28 @@ def uses():
     return out
 
 
+def py_uses():
+    """The engine's literal keys: tr('…'), tc('ctx', '…'), privacy's _L('…') and the Scheduled Tasks log's _m('…')
+    (shown through SH.tc('autopilot', …))."""
+    import ast
+    out = []
+    for f in glob.glob(os.path.join(ROOT, "stellarhub", "**", "*.py"), recursive=True):
+        with open(f, encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+        for n in ast.walk(tree):
+            if not isinstance(n, ast.Call) or not n.args:
+                continue
+            name = n.func.id if isinstance(n.func, ast.Name) else n.func.attr if isinstance(n.func, ast.Attribute) else None
+            a = [x.value if isinstance(x, ast.Constant) and isinstance(x.value, str) else None for x in n.args[:2]]
+            if name in ("tr", "_L") and a[0] is not None:
+                out.append((f, n.lineno, None, a[0]))
+            elif name == "_m" and a[0] is not None:
+                out.append((f, n.lineno, "autopilot", a[0]))
+            elif name == "tc" and len(a) > 1 and a[0] is not None and a[1] is not None:
+                out.append((f, n.lineno, a[0], a[1]))
+    return out
+
+
 PH = lambda s: sorted(set(re.findall(r"\{(\w+)\}", s)))
 TAGS = lambda s: sorted(re.findall(r"</?[a-zA-Z]+[^>]*>", s))
 
@@ -82,6 +104,14 @@ class Keys(unittest.TestCase):
         for lang, d in self.dicts.items():
             missing = sorted({f"{os.path.relpath(f, UI)}:{ln} {k!r}" for f, ln, ctx, k in self.uses
                               if re.search(r"[A-Za-z]", k) and not ((ctx and d.get(ctx + "|" + k)) or d.get(k))})
+            self.assertEqual(missing, [], lang)
+
+    def test_every_engine_message_is_translated(self):
+        found = py_uses()
+        self.assertGreater(len(found), 500)
+        for lang, d in self.dicts.items():
+            missing = sorted({f"{os.path.relpath(f, ROOT)}:{ln} {k!r}" for f, ln, ctx, k in found   # ('{error}' alone has no words)
+                              if re.search(r"[A-Za-z]", re.sub(r"\{\w+\}", "", k)) and not ((ctx and d.get(ctx + "|" + k)) or d.get(k))})
             self.assertEqual(missing, [], lang)
 
     def test_translations_keep_placeholders_and_tags(self):

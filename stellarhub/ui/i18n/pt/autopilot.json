@@ -732,5 +732,6 @@
   "The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.": "O cache DNS foi limpo, mas uma rotina nunca redefine a rede por completo. Faça isso no Super Otimizador.",
   "autopilot|Asks you": "Pergunta a você",
   "Skipped: needs administrator mode": "Ignorado: precisa do modo administrador",
-  "autopilot|Administrator": "Administrador"
+  "autopilot|Administrator": "Administrador",
+  "skipped: this command runs as you, and StellarHub is running as administrator. Open StellarHub in normal mode to run it, or set it to run as administrator": "ignorado: este comando é executado com o seu usuário, e o StellarHub está sendo executado como administrador. Abra o StellarHub no modo normal para executá-lo ou configure-o para ser executado como administrador"
 }

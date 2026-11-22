@@ -732,5 +732,6 @@
   "The DNS cache was flushed, but a full network reset is never run by a routine. Run it from Super Optimizer.": "DNS キャッシュはフラッシュされましたが、ネットワークの完全リセットはルーチンでは実行されません。スーパー最適化から実行してください。",
   "autopilot|Asks you": "確認あり",
   "Skipped: needs administrator mode": "スキップ: 管理者モードが必要です",
-  "autopilot|Administrator": "管理者"
+  "autopilot|Administrator": "管理者",
+  "skipped: this command runs as you, and StellarHub is running as administrator. Open StellarHub in normal mode to run it, or set it to run as administrator": "スキップ: このコマンドはあなたのユーザーとして実行されますが、StellarHub は管理者として実行中です。実行するには StellarHub を通常モードで開くか、管理者として実行するように設定してください"
 }
