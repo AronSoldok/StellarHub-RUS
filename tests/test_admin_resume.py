@@ -95,6 +95,21 @@ class Ticket(unittest.TestCase):
         resume.save(good())
         self.assertIsNone(resume.take(token))  # a second take in the same copy gets nothing
 
+    def test_a_short_spelling_of_the_folder_is_the_same_file(self):
+        """GitHub's runner has TEMP as C:\\Users\\RUNNER~1\\...: the 8.3 spelling of a folder is not a link."""
+        import ctypes
+        long_dir = os.path.join(self.d, "a folder with a long name")
+        os.makedirs(long_dir)
+        buf = ctypes.create_unicode_buffer(1024)
+        n = ctypes.windll.kernel32.GetShortPathNameW(long_dir, buf, 1024)
+        short = buf.value[:n] if 0 < n < 1024 else ""
+        if not short or os.path.normcase(short) == os.path.normcase(long_dir):
+            self.skipTest("no 8.3 names on this drive")
+        with mock.patch.object(config, "DATA_DIR", short):
+            token = resume.save(good())
+            self.assertEqual(resume.take(token)["action"], "drivers.install")
+            self.assertFalse(os.path.exists(resume.path()))
+
     def test_the_normal_copy_stamps_the_time_itself(self):
         resume.save(good(at=1))  # whatever the page said
         with open(resume.path(), encoding="ascii") as fh:

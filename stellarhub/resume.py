@@ -167,6 +167,19 @@ def discard():
         pass
 
 
+def _long_path(p):
+    """p absolute, with any 8.3 short names (RUNNER~1) in their long form. Links and junctions are NOT followed: a path
+    through one keeps its own spelling, so it never matches the handle's final path."""
+    from ctypes import wintypes
+    p = os.path.abspath(p)
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.GetLongPathNameW.restype = wintypes.DWORD
+    k32.GetLongPathNameW.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+    buf = ctypes.create_unicode_buffer(1024)
+    n = k32.GetLongPathNameW(p, buf, 1024)
+    return buf.value if 0 < n < 1024 else p
+
+
 def _read_and_delete(p):
     """The file's bytes, read and then deleted through one handle that is checked to be the plain file at `p` (not a
     link, a junction on the way, a folder or a file with other names), so an elevated copy never deletes or reads
@@ -196,8 +209,9 @@ def _read_and_delete(p):
         n = k32.GetFinalPathNameByHandleW(h, buf, 1024, 0)
         final = buf.value[:n] if 0 < n < 1024 else ""
         final = final[4:] if final.startswith("\\\\?\\") else final
-        if os.path.normcase(final) != os.path.normcase(os.path.realpath(p)) or \
-                os.path.normcase(os.path.realpath(p)) != os.path.normcase(os.path.abspath(p)):
+        # the path Windows resolved (junctions and links followed, long names) against the path asked for, with its
+        # 8.3 short names spelled out but nothing followed (GetLongPathNameW): C:\Users\RUNNER~1\... is the same file
+        if not final or os.path.normcase(final) != os.path.normcase(_long_path(p)):
             return None  # a junction or link somewhere on the way: the file is not where it says
         data = ctypes.create_string_buffer(info.sizeLow or 1)
         got = wintypes.DWORD(0)
