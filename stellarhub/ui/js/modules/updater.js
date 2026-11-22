@@ -476,17 +476,22 @@ function queueClicks(e) {
 function confirmRun(ids, label, go) {
   const list = ids.map(id => S.byId[id] || id).filter(Boolean);
   if (!REAL || list.length <= 1) { go(); return; }
-  const v = $(`#v-${ID}`); let d = $('.u-confirm', v); if (d) d.remove();
+  const v = $(`#v-${ID}`); let d = $('.u-confirm', v); if (d) { if (d._off) d._off(); d.remove(); }
   d = document.createElement('div'); d.className = 'u-confirm';
   const adm = list.filter(i => i.admin && !state.admin).length, reb = list.some(i => i.reboot);
-  d.innerHTML = `<div class="u-cbox pan"><h3>${esc(label)}</h3>
+  d.innerHTML = `<div class="u-cbox pan" role="dialog" aria-modal="true"><h3>${esc(label)}</h3>
     <p class="muted">${t('{n} updates will be installed, one after another. Open programs may close while they install and Windows may ask for permission on some of them.', { n: list.length })}${reb ? ' ' + t('Some need a restart at the end.') : ''}${adm ? ' ' + t('{n} need admin mode.', { n: adm }) : ''}</p>
     <div class="u-clist">${list.slice(0, 8).map(i => `<div>${tile(i)}<span>${esc(i.name)}</span>${vers(i)}</div>`).join('')}${list.length > 8 ? `<div class="faint">${t('and {n} more', { n: list.length - 8 })}</div>` : ''}</div>
     <div class="u-cbtns"><button class="btn ghost" data-cno>${t('Not now')}</button><button class="btn pri" data-cyes>${ic('download')}${t('Update')}</button></div></div>`;
   v.appendChild(d);
   anim(d, [{ opacity: 0 }, { opacity: 1 }], { d: 200 }); anim($('.u-cbox', d), [{ opacity: 0, transform: 'translate3d(0,14px,0) scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring });
-  const close = () => anim(d, [{ opacity: 1 }, { opacity: 0 }], { d: 160 }).finished.then(() => d.remove()).catch(() => d.remove());
-  d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-cno]')) close(); if (e.target.closest('[data-cyes]')) { close(); go(); } });
+  /* Esc (and the controller's B, which sends it) closes the dialog instead of going back to Home behind it; a second
+     click on Update while it fades out does not run it again */
+  let shut = false;
+  const close = () => { if (shut) return false; shut = true; removeEventListener('keydown', key, true); anim(d, [{ opacity: 1 }, { opacity: 0 }], { d: 160 }).finished.then(() => d.remove()).catch(() => d.remove()); return true; };
+  const key = e => { if (e.key === 'Escape' && d.isConnected && !shut && state.view === ID && !state.palOpen && !state.setOpen) { e.preventDefault(); e.stopImmediatePropagation(); close(); } };
+  addEventListener('keydown', key, true); d._off = () => removeEventListener('keydown', key, true);
+  d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-cno]')) close(); if (e.target.closest('[data-cyes]') && close()) go(); });
 }
 function updateAll() { const ids = pending().filter(i => !i.optional).map(i => i.id); if (!ids.length) { SH.toast(t('Everything is up to date.')); return; } confirmRun(ids, t('Update all'), () => { goOverview(); enqueue(ids); }); }
 function goOverview() { if (ctxRef) ctxRef.setTab('overview'); }

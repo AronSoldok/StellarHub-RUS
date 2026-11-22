@@ -72,7 +72,7 @@ const rectOf = el => el.getBoundingClientRect();
 const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[tabindex]:not([tabindex="-1"]),[role=button],[role=tab],[role=option],[role=switch],[role=checkbox],[role=menuitem]';
 const GUESS = 'div,li,tr,td,label,article,section,canvas,img,span,p,h3,h4';
 const SKIP = '.winctl,.rz,#padRing,#padHints,#padPanel,#padTip,#boot,.tip,.csel-hidden';
-const OVERLAYS = ['.csel-pop', '.su-ov', '.cs-o.on', '.sc-ov', '.hg-dlg', '.mdlg', '.bk-dq-o', '.dq-o'];
+const OVERLAYS = ['.csel-pop', '.su-ov', '.cs-o.on', '.sc-ov', '.hg-dlg', '.mdlg', '.bk-dq-o', '.dq-o', '.u-confirm'];
 const nativeEl = el => /^(A|BUTTON|INPUT|SELECT|TEXTAREA|SUMMARY|LABEL)$/.test(el.tagName);
 
 /* the topmost open overlay (dialog, sheet, palette, popup), or the whole page */
@@ -737,7 +737,7 @@ function releaseCapture() { capture = null; if (mode) { ring.classList.add('on')
    Generic: whichever dialog is open on top (palette, settings, component sheet, update, confirmations, dialogs inside
    a module) gets the rest of the app made inert, Tab stays inside it, and when it closes the focus goes back to
    what opened it. Works for keyboard users too, with or without a controller. */
-const MODALS = ['.su-ov', '.cs-o.on', '.hg-dlg', '.mdlg', '.bk-dq-o', '.dq-o'];
+const MODALS = ['.su-ov', '.cs-o.on', '.hg-dlg', '.mdlg', '.bk-dq-o', '.dq-o', '.u-confirm'];
 const KEEP = '#toasts,#padRing,#padHints,#padPanel,#padTip,script,style,link';
 let modal = null, opener = null, inerted = [], lastFocus = null, modalTimer = 0;
 function modalTop() {
