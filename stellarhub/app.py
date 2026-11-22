@@ -58,6 +58,7 @@ def main():
     _phase("webview imported")
 
     api = Api()
+    api._visible = not launch.hidden  # before anything can show the window (a second copy's "show" via listen_single)
     _phase("api built")
     title = tr("StellarHub (administrator)") if is_admin() else "StellarHub"
     from .chrome import Chrome
@@ -86,7 +87,6 @@ def main():
     window.events.closing += api._on_closing
     for ev in (window.events.minimized, window.events.restored, window.events.maximized):
         ev += api._win_state
-    startup.let_windows_shut_down(api)
 
     from .tray import Tray
     api._tray = Tray(api)
@@ -106,7 +106,6 @@ def main():
     from .engine import jobs
     jobs.set_emitter(lambda ev, data: api._js(f"window.SH && SH.emit({json.dumps(ev)}, {json.dumps(data)})",
                                               lossy=isinstance(data, dict) and data.get("kind") == "progress"))
-    api._visible = not launch.hidden
     attach_telemetry(api, window)
 
     # Autopilot: runs the routines while the app is open, also hidden in the tray
@@ -122,6 +121,9 @@ def main():
     window.events.loaded += lambda: _phase("page loaded")
     _phase("engine attached")
     startup.refresh_ui_cache()
+    # last before the window: it needs .NET (pythonnet), which the prefetch thread is still loading. Here the work above
+    # (tray, engine, telemetry, UI cache) overlaps with that load instead of queueing after it (~0.2 s off the start)
+    startup.let_windows_shut_down(api)
     startup.set_browser_args()  # sounds may play without a click (the start sound)
     _phase("window created, starting webview")
     webview.start(gui="edgechromium", debug=launch.debug, http_server=True, http_port=startup.ui_port(),

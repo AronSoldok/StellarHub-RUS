@@ -113,11 +113,11 @@ def watch_ui(window, busy_fn=None, every=2.0, limit=8.0):
     within `limit` seconds (Windows would call it "not responding"), or an evaluate_js has waited that long for the
     page, every thread's stack goes to the log once per freeze. Costs nothing while the window is healthy."""
     def run():
-        from System import Action
         form = None
         while form is None:
             form = getattr(window, "native", None)
             time.sleep(0.5)
+        from System import Action  # (only once the window exists: .NET may still be loading before that)
         stuck = False
         while True:
             ev = threading.Event()
