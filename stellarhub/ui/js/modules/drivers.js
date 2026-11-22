@@ -35,12 +35,15 @@ const agoText = ts => { if (!ts) return t('never'); const s = (Date.now() - ts *
 /* our own confirmation dialog (no confirm()) */
 function ask(title, body, ok = t('Continue'), danger = false) {
   return new Promise(res => {
+    /* one question at a time: a double click on Install (or Remove...) asked twice, and one Enter answered both, so
+       the same drivers were installed twice at once; the second click now gets "no" */
+    if ($$('#v-drivers .dq-o').some(x => !x.dataset.closing)) { res(false); return; }
     const o = document.createElement('div'); o.className = 'dq-o';
     o.innerHTML = `<div class="dq-s"></div><div class="dq" role="dialog" aria-modal="true"><h3>${esc(title)}</h3><p>${body}</p><div class="dq-a"><button class="btn ghost" data-n>${t('Cancel')}</button><button class="btn ${danger ? 'danger' : 'pri'}" data-y>${esc(ok)}</button></div></div>`;
     $('#v-drivers').appendChild(o);
     anim($('.dq-s', o), [{ opacity: 0 }, { opacity: 1 }], { d: 200 });
     anim($('.dq', o), [{ opacity: 0, transform: 'translate3d(0,12px,0) scale(.96)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
-    const done = v => { anim(o, [{ opacity: 1 }, { opacity: 0 }], { d: 160 }).finished.then(() => o.remove()).catch(() => o.remove()); document.removeEventListener('keydown', key, true); res(v); };
+    const done = v => { if (o.dataset.closing) return; o.dataset.closing = '1'; anim(o, [{ opacity: 1 }, { opacity: 0 }], { d: 160 }).finished.then(() => o.remove()).catch(() => o.remove()); document.removeEventListener('keydown', key, true); res(v); };
     /* Enter answers yes, but not on Cancel (focused with Tab, Enter there means Cancel) and not a held key repeating
        (the Enter that opened the dialog, kept down, would confirm "Disable the device" by itself) */
     const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); done(false); } if (e.key === 'Enter') { e.preventDefault(); if (e.repeat) return; const a = document.activeElement; done(!(a && o.contains(a) && a.closest('[data-n]'))); } };
