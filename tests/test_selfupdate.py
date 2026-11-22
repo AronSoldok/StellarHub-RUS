@@ -684,3 +684,53 @@ class HelpersAndPortableData(unittest.TestCase):
             os.environ.pop("STELLARHUB_PORTABLE_DATA", None)
             self.assertEqual(paths.data_dir(), os.path.join(dst, "Data"))
         self.assertFalse(os.path.exists(os.path.join(new, "Data")))
+
+
+class InstallNowDuringABackgroundDownload(ServedUpdates):
+    """Through the update task, a click on Update while the background download runs only follows that run (Windows
+    doesn't start a second copy of a running task): the update.now flag makes it install instead of stopping at
+    "staged"."""
+
+    def prefetching(self):
+        os.makedirs(os.path.dirname(su._prefetch_flag()), exist_ok=True)
+        open(su._prefetch_flag(), "w").close()
+
+    def test_without_a_click_it_stays_staged(self):
+        self.serve()
+        self.prefetching()
+        code, st, popen = self.run_it()
+        self.assertEqual(st["st"], "staged")
+        popen.assert_not_called()
+
+    def test_a_click_meanwhile_installs_it_now(self):
+        self.serve()
+        self.prefetching()
+        open(su._now_flag(), "w").close()
+        with mock.patch.object(su, "_admin", return_value=False):
+            code, st, popen = self.run_it()
+        self.assertEqual((code, st["st"]), (0, "installing"))
+        self.assertFalse(os.path.exists(su._now_flag()))
+
+    def test_the_click_through_the_task_leaves_the_flag_and_the_background_one_does_not(self):
+        for p in (mock.patch.object(su, "FROZEN", True), mock.patch.object(su, "_portable", lambda: False),
+                  mock.patch.object(su, "per_machine", lambda: True), mock.patch.object(su, "_admin", lambda: False),
+                  mock.patch.object(su, "_task_exists", lambda: True), mock.patch.object(su, "_updater_answered", lambda at: True),
+                  mock.patch.dict(os.environ, {"LOCALAPPDATA": self.tmp})):
+            p.start()
+            self.addCleanup(p.stop)
+        with mock.patch.object(su.subprocess, "run", return_value=mock.Mock(returncode=0)):
+            self.assertTrue(su.prefetch()["ok"])
+            self.assertFalse(os.path.exists(su._now_flag()))
+            self.assertEqual(su.start(allow_uac=True)["mode"], "task")
+            self.assertTrue(os.path.exists(su._now_flag()))
+            su.prefetch()  # a later background download never inherits it
+            self.assertFalse(os.path.exists(su._now_flag()))
+
+    def test_a_run_that_installs_anyway_consumes_a_stale_flag(self):
+        self.serve()
+        os.makedirs(os.path.dirname(su._now_flag()), exist_ok=True)
+        open(su._now_flag(), "w").close()
+        with mock.patch.object(su, "_admin", return_value=False):
+            code, st, popen = self.run_it()
+        self.assertEqual(st["st"], "installing")
+        self.assertFalse(os.path.exists(su._now_flag()))

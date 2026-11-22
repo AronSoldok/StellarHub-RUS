@@ -40,8 +40,10 @@ published .sha256 files are only for people. TRUSTED_KEYS is a list so the key c
 signed with the old key whose TRUSTED_KEYS also holds the new one.
 
 The elevated updater never takes instructions from the user's side: it asks GitHub itself, only for this
-repository, only for a newer version, and only runs a file whose signature is valid. The one thing it reads from the
-user's profile is a "cancel" flag.
+repository, only for a newer version, and only runs a file whose signature is valid, held open from its last check
+until it runs. What it reads from the user's profile are three flags (cancel, background download, install now): they
+can stop it, or change when a verified update is installed, never what. In an installed copy running elevated the test
+switches in the environment (STELLARHUB_UPDATE_DIR / _URL, STELLARHUB_PORTABLE...) are ignored (paths.env).
 """
 import ctypes
 import hashlib
@@ -100,6 +102,15 @@ def _prefetch_flag():
     cancel flag, the only thing the updater reads from the user's side, and all it can do is stop earlier."""
     from .. import paths
     return os.path.join(paths.local_dir(), "update.prefetch")
+
+
+def _now_flag():
+    """Present when the user asked to install now while a background download may be running through the update
+    task: Windows doesn't start a second copy of a running task, so that click would only follow the background run,
+    which stops at "staged". This flag makes it go on to "ready" instead. Like the other flags, all it can do is change
+    WHEN a downloaded and verified update is installed, never what is installed."""
+    from .. import paths
+    return os.path.join(paths.local_dir(), "update.now")
 
 
 def _cancel_flag():
@@ -428,6 +439,12 @@ def start(allow_uac=True):
         if m in ("direct", "portable"):
             subprocess.Popen([exe, "--self-update"], creationflags=DETACHED | NO_WINDOW, close_fds=True, cwd=install_dir())
         elif m == "task":
+            if allow_uac:  # the user's click (not the background download): see _now_flag
+                try:
+                    os.makedirs(os.path.dirname(_now_flag()), exist_ok=True)
+                    open(_now_flag(), "w").close()
+                except OSError:
+                    pass
             r = subprocess.run(["schtasks", "/run", "/tn", TASK], capture_output=True, creationflags=NO_WINDOW, timeout=20)
             if r.returncode != 0 or not _updater_answered(at):
                 from .. import schtask
@@ -629,6 +646,8 @@ def run_updater():
     d = update_dir()
     prefetch = os.path.exists(_prefetch_flag())
     _rm(_prefetch_flag())
+    if not prefetch:
+        _rm(_now_flag())  # this run installs anyway
     try:
         os.makedirs(d, exist_ok=True)
     except OSError:
@@ -676,6 +695,9 @@ def run_updater():
                 _write_state(st="failed", ver=ver, why="signature")
                 return 4
             os.replace(part, exe)
+        if prefetch and os.path.exists(_now_flag()):  # the user asked for it meanwhile: installed now, not staged
+            _rm(_now_flag())
+            prefetch = False
         if prefetch:  # downloaded and checked: it is installed the next time StellarHub opens (app.py)
             _write_state(st="staged", ver=ver)
             return 0
@@ -843,6 +865,7 @@ def prefetch():
     m = mode()
     if m not in ("direct", "portable", "task"):
         return {"ok": False, "mode": m}
+    _rm(_now_flag())  # an old one must not turn this background download into an install
     try:
         os.makedirs(os.path.dirname(_prefetch_flag()), exist_ok=True)
         open(_prefetch_flag(), "w").close()
