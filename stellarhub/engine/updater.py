@@ -377,11 +377,11 @@ def scan_apps(job):
         if not u.get("available"):
             continue
         p = _match(u)
-        # "Unknown"/"desconocido" (Spanish winget) or "< x": winget can't read the installed version, so "updating"
-        # just reinstalls the latest one every time (a long-standing winget complaint). Shown, but optional:
-        # not in "Update all" nor in the pending count.
+        # "Unknown" (winget writes it in the system language: "desconocido", "Inconnu", "Unbekannt"...) or "< x":
+        # winget can't read the installed version, so "updating" just reinstalls the latest one every time (a
+        # long-standing winget complaint). Shown, but optional: not in "Update all" nor in the pending count.
         ver = u.get("version") or ""
-        unk = ver.lower() in ("", "unknown", "desconocido") or ver.startswith("<")
+        unk = unknown_version(ver)
         items.append({"id": u["id"], "wid": u["id"], "kind": "winget", "name": u["name"].replace("…", "").strip(),
                       "pub": (p or {}).get("publisher") or (u.get("source") == "msstore" and "Microsoft Store") or "",
                       "from": "unknown" if unk else ver, "unknownVersion": unk, "optional": unk,
@@ -485,6 +485,12 @@ def pin(wid):
     return {"ok": True, "out": out[-300:]}
 
 
+def unknown_version(ver):
+    """True when winget could not read the installed version: empty, "< x", or a word with no digit in any language."""
+    ver = (ver or "").strip()
+    return not re.search(r"\d", ver) or ver.startswith("<")
+
+
 def unpin(wid):
     out = _winget(["pin", "remove", "--id", wid, "--exact"], timeout=60) or ""
     return {"ok": True, "out": out[-300:]}
@@ -492,8 +498,8 @@ def unpin(wid):
 
 # ---------------------------------------------------------------- Windows Update
 _WU_SCAN = r"""
-$s=New-Object -ComObject Microsoft.Update.Session; $se=$s.CreateUpdateSearcher()
-$r=$se.Search("IsInstalled=0 and Type='Software' and IsHidden=0")
+$s=New-Object -ComObject Microsoft.Update.Session; $se=$s.CreateUpdateSearcher(); $err=$null; $r=$null
+try { $r=$se.Search("IsInstalled=0 and Type='Software' and IsHidden=0") } catch { $err=$_.Exception.HResult }
 $ups=@(foreach($u in $r.Updates){ [pscustomobject]@{ id=$u.Identity.UpdateID; title=$u.Title; kb=@($u.KBArticleIDs);
   cats=@($u.Categories | ForEach-Object { $_.Name }); mb=[math]::Round($u.MaxDownloadSize/1MB,1);
   reboot=[bool]($u.InstallationBehavior.RebootBehavior -ne 0); browse=[bool]$u.BrowseOnly; sev=$u.MsrcSeverity; desc=$u.Description } })
@@ -502,7 +508,7 @@ $ux=Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings' -Error
 $mp=Get-MpComputerStatus -ErrorAction SilentlyContinue
 $av=@(Get-CimInstance -Namespace root\SecurityCenter2 AntiVirusProduct -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ n=$_.displayName; st=$_.productState } })
 $cv=Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
-[pscustomobject]@{ updates=$ups; hist=$h; reboot=(New-Object -ComObject Microsoft.Update.SystemInfo).RebootRequired;
+[pscustomobject]@{ err=$err; updates=$ups; hist=$h; reboot=(New-Object -ComObject Microsoft.Update.SystemInfo).RebootRequired;
   pause=$ux.PauseUpdatesExpiryTime; mpMode="$($mp.AMRunningMode)"; sig=$mp.AntivirusSignatureVersion;
   sigDate=$(if($mp.AntivirusSignatureLastUpdated){$mp.AntivirusSignatureLastUpdated.ToString('o')}else{$null}); av=$av;
   build="$($cv.CurrentBuild).$($cv.UBR)"; ver=$cv.DisplayVersion; prod=$cv.ProductName }
@@ -538,9 +544,20 @@ def scan_windows(job):
             job.progress(p, tr("Searching Windows Update…"))
     threading.Thread(target=tick, daemon=True).start()
     try:
-        r = ps_json(_WU_SCAN, timeout=300) or {}
+        r = ps_json(_WU_SCAN, timeout=300)
     finally:
         stop.set()
+    # A search that failed (no internet, the service disabled, a Windows Update error) is an error, never "no updates":
+    # PowerShell goes on after the failed call, so it used to come back as an empty list that the page showed (and
+    # kept) as "Windows is up to date".
+    if not isinstance(r, dict):
+        raise ToolError(tr("Windows Update did not respond"))
+    if r.get("err") is not None:
+        try:
+            code = f"{int(r['err']) & 0xFFFFFFFF:08X}"
+        except (TypeError, ValueError):
+            code = str(r["err"])[:12]
+        raise ToolError(tr("Windows Update returned 0x{code}", code=code))
     ups = []
     for u in r.get("updates") or []:
         cat = _wu_cat(u)
@@ -623,7 +640,7 @@ def set_store_auto(on):
 # ---------------------------------------------------------------- development
 def scan_dev(job):
     """Read-only: outdated pip packages (from the user's Python), global npm packages and versions."""
-    out = {"python": None, "pip": [], "node": None, "npm": [], "git": None, "tools": []}
+    out = {"python": None, "pip": [], "node": None, "npm": [], "git": None, "tools": [], "ts": time.time()}
     py = _python()
     job.progress(.1, tr("Asking pip…"))
 
@@ -632,10 +649,18 @@ def scan_dev(job):
         res = {}
         try:
             r = subprocess.run([py, "--version"], capture_output=True, text=True, timeout=20, creationflags=NO_WINDOW)
-            res["python"] = (r.stdout or r.stderr).strip().replace("Python ", "")
+            ver = (r.stdout or r.stderr).strip()
+            # no Python: Windows' Store alias answers "Python was not found..." (exit code 9009): not a version, and
+            # an empty pip list from it is not "all up to date"
+            if r.returncode != 0 or not re.match(r"Python \d", ver):
+                return res
+            res["python"] = ver.replace("Python ", "")
             r = subprocess.run([py, "-m", "pip", "list", "--outdated", "--format=json", "--disable-pip-version-check"],
                                capture_output=True, timeout=180, creationflags=NO_WINDOW)
-            res["pip"] = [[p["name"], p["version"], p["latest_version"]] for p in json.loads(r.stdout.decode("utf-8", "replace") or "[]")]
+            if r.returncode != 0 or not r.stdout.strip():
+                res["pipError"] = (r.stderr.decode("utf-8", "replace").strip().splitlines() or ["pip"])[-1][:200]
+                return res
+            res["pip"] = [[p["name"], p["version"], p["latest_version"]] for p in json.loads(r.stdout.decode("utf-8", "replace"))]
         except Exception as e:
             res["pipError"] = str(e)[:200]
         return res
@@ -649,7 +674,10 @@ def scan_dev(job):
                 npm = _exe("npm")
                 r = subprocess.run([npm, "outdated", "-g", "--json"], capture_output=True, timeout=90, creationflags=NO_WINDOW)
                 data = json.loads(r.stdout.decode("utf-8", "replace") or "{}")
-                res["npm"] = [[n, d.get("current", ""), d.get("latest", "")] for n, d in data.items()]
+                if isinstance(data.get("error"), dict):  # offline or npm failed: it says so in the same JSON
+                    raise RuntimeError(str(data["error"].get("summary") or data["error"].get("code") or "npm")[:200])
+                res["npm"] = [[n, d.get("current", ""), d.get("latest", "")] for n, d in data.items()
+                              if isinstance(d, dict)]
             except Exception as e:
                 res["npmError"] = str(e)[:200]
         return res

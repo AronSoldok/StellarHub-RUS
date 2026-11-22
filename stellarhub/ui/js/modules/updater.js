@@ -326,6 +326,7 @@ async function runQueueReal() {
   }
   Q.running = false; renderQueueHead(); finishedToast(); publishPending();
   if (Q.list.some(q => q.st === 'done' && q.it.kind === 'winget')) setTimeout(() => scanApps(true, 'quiet'), 1500);
+  if (Q.list.some(q => q.st === 'done' && (q.it.kind === 'pip' || q.it.kind === 'npm')) && S.devScanned) setTimeout(() => scanDev(true, 'quiet'), 1500);
 }
 /* --- sample: simulation --- */
 function stepQueue() {
@@ -904,7 +905,9 @@ function fillDev(el) {
   /* the same tool under two names (winget's "Windows Subsystem for Linux" and "WSL"): one row; Node.js has its own column */
   const alias = n => /^(wsl|.*\b(subsystem|subsistema|sous-syst).*)$/i.test(n) ? 'wsl' : /^node(\.?js)?$/i.test(n) ? 'node' : n.toLowerCase();
   const tools = okTools.filter(([n]) => !seen.has(alias(n)) && seen.add(alias(n)) && alias(n) !== 'node' && !other.some(o => alias(o.name) === alias(n)));
-  el.innerHTML = `<div class="u-dev">
+  const when = S.fromCache.dev || (d.ts ? d.ts * 1000 : 0);
+  const again = S.devScanned && !S.devScanning && when ? SH.lastRun({ when, title: t('Last check: {when}'), text: S.fromCache.dev ? t('These results are from then. Check again to see what is new.') : '', action: { label: t('Check again'), data: 'data-devcheck', icon: 'refresh' }, cls: 'u-devlast' }) : '';
+  el.innerHTML = `${again}<div class="u-dev">
     <div class="pan u-dcol" data-asm><div class="u-dh"><span class="u-tile" style="--c:var(--ok)">${ic('code')}</span><div><b>Python</b><span class="muted">${d.python ? t('version {v}', { v: esc(d.python) }) : S.devScanned ? t('not found') : t('checking…')}</span></div></div>
       ${S.devScanned ? pkgBlock(d.pip || [], 'pip', t('Outdated pip packages'), d.pipError) : `<p class="muted u-dnote"><span class="u-spin"></span>${t('Asking pip (takes a few seconds)…')}</p>`}</div>
     <div class="pan u-dcol" data-asm><div class="u-dh"><span class="u-tile" style="--c:var(--ok)">${ic('code')}</span><div><b>Node.js</b><span class="muted">${d.node ? t('version {v}', { v: esc(d.node) }) : S.devScanned ? t('not installed') : t('checking…')}</span></div></div>
@@ -1084,7 +1087,7 @@ SH.module({
         const act = S.checkAct = SH.activity.start(ID, { key: 'check', label: t('Looking for updates…'), go: { tab: 'overview' } });
         for (const k of Object.keys(S.acts)) { S.acts[k].end({ quiet: true }); delete S.acts[k]; }  /* searches already running are now part of this check */
         try { await Promise.all([scanApps(true), scanWindows(true)]); } finally { c.disabled = false; c.classList.remove('u-busy'); c.innerHTML = html; S.checkAct = null; }
-        const err = S.noWinget ? t("winget isn't available on this PC.") : S.errs.apps ? ERR_MSG.apps(S.errs.apps) : '';
+        const err = S.noWinget ? t("winget isn't available on this PC.") : S.errs.apps ? ERR_MSG.apps(S.errs.apps) : S.errs.win ? ERR_MSG.win(S.errs.win) : '';
         const msg = err || t('{n} pending updates.', { n: pending().filter(i => !i.optional).length });
         if (!act.end(err ? { ok: false, error: err } : { ok: true, summary: msg, kind: 'scan_complete' })) SH.toast(msg, { group: 'upd-check', kind: err ? 'error' : 'scan_complete' });
       }

@@ -413,3 +413,7 @@ html[data-layout=scroll] #v-updater :is(.u-ovl,.u-scroll,.u-qlist){overscroll-be
 #v-updater .u-apps>.pan,#v-updater .u-rt>.pan,#v-updater .u-sch>.pan,#v-updater .u-wcols>.pan{align-self:stretch;min-height:0}
 #v-updater .u-wmain.u-scroll>.pan{flex:1 0 auto;display:flex;flex-direction:column}
 #v-updater .u-wmain>.pan>.u-wl{flex:1 0 auto}
+/* Development: the last check strip above the three columns (fillDev), which then share the height left */
+#v-updater .tab[data-tab="dev"]:has(> .u-devlast){display:flex;flex-direction:column}
+#v-updater .tab[data-tab="dev"] > .u-devlast{flex:none;margin:0 0 14px}
+#v-updater .tab[data-tab="dev"]:has(> .u-devlast) > .u-dev{flex:1 1 auto;height:auto}
