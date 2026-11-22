@@ -276,17 +276,21 @@ const tickers = new Set(); let last = performance.now();
 /* The tickers (springs, charts, the 3D scene) do not need the display's refresh rate: on a 144 or 165 Hz laptop screen
    every extra frame is a full-window composite for the GPU. They run at most ~70 times a second, ~30 on battery. */
 /* Home left alone (nothing touched for 8 s, no sheet or palette open): only ambient motion is left there (the stars, the
-   fans, the floating 3D model, the live bars), and ~30 a second is plenty for it. Modules keep their rate: a benchmark or a
+   fans, the floating 3D model, the live bars), and ~20 a second is plenty for it (every frame there is a composite of the whole
+   window: ~1 % of a core each second it runs at 1 fps more). Modules keep their rate: a benchmark or a
    test runs without input. */
 const calm = () => state.view === 'home' && !state.palOpen && !state.setOpen && !SH.homeAnimating && !!SH.isIdle && SH.isIdle();
-/* At ~30 a second the loop sleeps on a timer between two ticks instead of asking for every frame (on a 134 Hz screen an empty
+/* At that pace (and ~30 a second in lighter effects) the loop sleeps on a timer between two ticks instead of asking for every frame (on a 134 Hz screen an empty
    frame every 7 ms still woke the page and the compositor for nothing). At full rate it asks for every frame as before: a
    timer that short may wait 15 ms on Windows. */
-const later = (ms, gap) => { if (gap > 12 && ms > 8) setTimeout(() => requestAnimationFrame(loop), ms - 6); else requestAnimationFrame(loop); };
+let slept = false;
+const later = (ms, gap) => { if (gap > 12 && ms > 8) { slept = true; setTimeout(() => requestAnimationFrame(loop), ms - 2); } else requestAnimationFrame(loop); };
 function loop(t) {
-  const gap = state.lite || calm() ? 28 : 12;
-  if (t - last < gap) { later(gap - (t - last), gap); return; }
-  const dt = Math.min(.05, (t - last) / 1000); last = t; for (const fn of tickers) { try { fn(dt, t); } catch (e) { console.error(e); tickers.delete(fn); } }
+  const gap = calm() ? 48 : state.lite ? 28 : 12;
+  /* the frame right after a timer sleep ticks (the timer already waited: asking for one more frame made two frames a tick) */
+  const need = slept ? gap - 8 : gap; slept = false;
+  if (t - last < need) { later(gap - (t - last), gap); return; }
+  const dt = Math.min(gap > 12 ? .1 : .05, (t - last) / 1000); last = t; for (const fn of tickers) { try { fn(dt, t); } catch (e) { console.error(e); tickers.delete(fn); } }
   /* window in the tray or minimized (WebView2 may still deliver frames then): nobody sees the springs, charts or 3D scene, so
      the loop only checks back a few times a second instead of every frame, and goes back to full speed when it is shown again */
   if (pageHidden()) setTimeout(() => requestAnimationFrame(loop), 250); else later(gap, gap); }

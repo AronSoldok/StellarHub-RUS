@@ -79,14 +79,19 @@ function drawStars(dt, t) {
       const dx = x - cxs, dy = y - cys, len = w * s.z * .22;
       cx.strokeStyle = s.z > .7 ? '#cfe6ff' : '#9fb6d8'; cx.lineWidth = s.r; cx.beginPath(); cx.moveTo(x, y); cx.lineTo(x + dx * len, y + dy * len); cx.stroke();
     } else {
-      /* one path per (colour, opacity level): 30 fills instead of one per star */
+      /* grouped by (colour, opacity level): the colour and alpha are set ~30 times, not once per star */
       const key = (s.z > .75 ? 16 : 0) + Math.round(al * 15), r = s.r * s.z + .2;
-      const pa = bk[key] || (bk[key] = new Path2D());
-      /* most stars are under 1 px: a small square is the same dot and far cheaper for the GPU than a tessellated circle */
-      if (r < 1.05) pa.rect(x - r, y - r, r * 2, r * 2); else { pa.moveTo(x + r, y); pa.arc(x, y, r, 0, 6.283); } /* moveTo: otherwise arc() joins the circles with straight lines (shards) */
+      (bk[key] || (bk[key] = [])).push(x, y, r);
     }
   }
-  if (bk) for (const k in bk) { cx.globalAlpha = (k & 15) / 15; cx.fillStyle = k >= 16 ? '#e6f2ff' : '#a9bddc'; cx.fill(bk[k]); }
+  /* Each star is its own small shape: a square for the ones under 1 px (the same dot as a circle, far cheaper) and a circle
+     for the rest. One path holding a whole group was not a shape the GPU draws directly: it was rasterized into a mask of
+     the whole window, some 30 of them per redraw, which cost the GPU process ~40 % of a core with Home idle. */
+  if (bk) for (const k in bk) {
+    cx.globalAlpha = (k & 15) / 15; cx.fillStyle = k >= 16 ? '#e6f2ff' : '#a9bddc'; const a = bk[k];
+    for (let i = 0; i < a.length; i += 3) { const x = a[i], y = a[i + 1], r = a[i + 2];
+      if (r < 1.05) cx.fillRect(x - r, y - r, r * 2, r * 2); else { cx.beginPath(); cx.arc(x, y, r, 0, 6.283); cx.fill(); } }
+  }
   cx.globalAlpha = 1;
 }
 SH.mouse = mouse; SH.warp = warp;
