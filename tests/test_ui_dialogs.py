@@ -88,14 +88,15 @@ class El {
   get textContent() { return this._text + this.children.map(c => c.textContent).join(''); }
   set textContent(v) { this.children.forEach(c => { c.parentElement = null; }); this.children = []; this._text = String(v); }
   set innerHTML(h) { this.textContent = ''; parseInto(this, String(h)); }
-  matches(sel) { return sel.split(',').some(s => matchOne(this, s.trim())); }
+  matches(sel) { return sel.split(',').some(s => { const parts = s.trim().split(/\s+/); if (!matchOne(this, parts.pop())) return false;
+    let n = this.parentElement; while (parts.length && n) { if (n.matches && matchOne(n, parts[parts.length - 1])) parts.pop(); n = n.parentElement; } return !parts.length; }); }
   closest(sel) { for (let n = this; n && n.matches; n = n.parentElement) if (n.matches(sel)) return n; return null; }
   querySelectorAll(sel) { const out = []; const walk = n => n.children.forEach(c => { if (c.matches(sel)) out.push(c); walk(c); }); walk(this); return out; }
   querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
   addEventListener(t, f) { (this.ls[t] ||= []).push(f); }
   removeEventListener(t, f) { if (this.ls[t]) this.ls[t] = this.ls[t].filter(x => x !== f); }
   click() { if (this.disabled) return; const e = { type: 'click', target: this, preventDefault: noop, stopPropagation: noop };
-    for (let n = this; n; n = n.parentElement) { e.currentTarget = n; (n.ls.click || []).slice().forEach(f => f(e)); } }
+    for (let n = this; n; n = n.parentElement) { e.currentTarget = n; (n.ls.click || []).slice().forEach(f => f(e)); if (n.onclick) n.onclick(e); } }
   focus() { document.activeElement = this; }
   animate() { return { finished: Promise.resolve(), cancel: noop }; }
   getAnimations() { return []; }
@@ -197,9 +198,13 @@ class Dialogs(unittest.TestCase):
           /* a held Enter (auto-repeat) does nothing; Esc then cancels */
           p = ask('Disable the device', 'x', 'Disable', true); await tick(40); key('Enter', { repeat: true }); let early = 'open';
           p.then(x => { early = x; }); await tick(10); res.repeat = early; key('Escape'); res.esc = await p;
+          /* a double click on Install asks once: the second question answers no at once, and one Enter says yes once */
+          await tick(10); const p1 = ask('Install 2 drivers', 'x', 'Install'), p2 = ask('Install 2 drivers', 'x', 'Install');
+          res.second = await p2; res.dialogs = $$('.dq-o', v).length; await tick(40); key('Enter'); res.first = await p1;
           out(res);
         """)
-        self.assertEqual(out, {"enter": True, "cancel": False, "repeat": "open", "esc": False})
+        self.assertEqual(out, {"enter": True, "cancel": False, "repeat": "open", "esc": False,
+                               "second": False, "dialogs": 1, "first": True})
 
     def test_update_confirmation_closes_with_escape_and_queues_once(self):
         src = read("js", "modules", "updater.js")
@@ -226,6 +231,31 @@ class Dialogs(unittest.TestCase):
         self.assertEqual(out["runs"], 1)
         self.assertFalse(out["open"])
         self.assertEqual(out["home"], 1)
+
+    def test_a_double_click_answers_a_dialog_once(self):
+        hangar = js_function(read("js", "modules", "hangar.js"), "dialog")
+        monitor = js_function(read("js", "modules", "monitor.js"), "confirmDlg")
+        out = self.run_js(r"""
+          const ID = 'hangar', _t = t;
+          const hv = document.body.appendChild(new El('section')); hv.setAttribute('id', 'v-hangar');
+          const mv = document.body.appendChild(new El('section')); mv.setAttribute('id', 'v-monitor');
+          """ + hangar + "\n" + monitor + r"""
+          let installs = 0, ends = 0;
+          dialog('<h3>Install 2 apps?</h3><button class="btn" data-no>Not now</button><button class="btn pri" data-yes>Install</button>',
+            (e, close) => { if (!e.target.closest('[data-yes]')) return; close(); installs++; });
+          const y = $('[data-yes]', $('.hg-dlg', hv)); y.click(); y.click();
+          confirmDlg({ title: 'End x', text: 'y', yes: 'End task' }, () => ends++);
+          const e = $('[data-d="yes"]', $('.mdlg', mv)); e.click(); e.click();
+          out({ installs, ends });
+        """)
+        self.assertEqual(out, {"installs": 1, "ends": 1})
+
+    def test_the_privacy_plan_runs_once_and_cancel_stops_it(self):
+        src = read("js", "modules", "privacy.js")
+        self.assertIn("if (e.target.closest('#pvFixAll')) { if (!planRun) showPlan(); return; }", src)
+        self.assertIn("if (planRun) { planRun.stop = true; no.disabled = true; return; }", src)
+        self.assertIn("if (e.target.closest('#pvPlanGo')) { if (!planRun) runPlan(); return; }", src)
+        self.assertRegex(js_function(src, "runPlan"), r"for \(const f of fs\) \{ if \(run\.stop\) break;[\s\S]*finally \{ planRun = null; \}")
 
     def test_update_confirmation_is_a_known_dialog(self):
         for f, pat in (("gamepad.js", r"const OVERLAYS = \[(.*?)\];"), ("gamepad.js", r"const MODALS = \[(.*?)\];"),
