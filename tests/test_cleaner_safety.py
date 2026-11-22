@@ -189,6 +189,36 @@ class TempCleanerSafety(unittest.TestCase):
         for k in ("deleted", "freed", "rate", "eta", "current"):
             self.assertIn(k, last)
 
+    def test_a_path_after_the_exe_in_a_command_line_counts_as_in_use(self):
+        # psutil gives the command line as a list; joined, the exe's path swallowed every path after it
+        work = os.path.join(self.root, "tool_work")
+        _touch(os.path.join(work, "state.bin"), 30)
+        _age_dirs(work, 30)
+        proc = mock.Mock(pid=-1, info={"name": "tool.exe", "exe": None, "cwd": None,
+                                       "cmdline": [r"C:\Tools\tool.exe", "--work=" + work]})
+        proc.open_files.side_effect = OSError
+        with mock.patch("psutil.process_iter", return_value=[proc]):
+            in_use = cleaner.in_use_paths(budget=0)
+        row = next(r for r in cleaner.temp_entries(self.root, 7, in_use=in_use) if r["name"] == "tool_work")
+        self.assertEqual(row["status"], "in_use")
+
+    def test_short_name_temp_root_still_sees_the_programs_using_it(self):
+        # %TEMP% is often C:\Users\JOHNSM~1\...; processes report the long name: both must be the same folder
+        import ctypes
+        long_root = os.path.join(self.root, "A temp folder with a long name")
+        work = os.path.join(long_root, "busy")
+        _touch(os.path.join(work, "data.bin"), 30)
+        _age_dirs(long_root, 30)
+        buf = ctypes.create_unicode_buffer(1024)
+        n = ctypes.windll.kernel32.GetShortPathNameW(long_root, buf, 1024)
+        short_root = buf.value if 0 < n < 1024 else long_root
+        if "~" not in short_root:
+            self.skipTest("8.3 names are turned off on this drive")
+        rows = cleaner.temp_entries(short_root, 7, in_use={os.path.normcase(os.path.join(work, "data.bin")): "x.exe"})
+        self.assertEqual(next(r for r in rows if r["name"] == "busy")["status"], "in_use")
+        rows = cleaner.temp_entries(long_root, 7, in_use={cleaner._norm(os.path.join(short_root, "busy")): "x.exe"})
+        self.assertEqual(next(r for r in rows if r["name"] == "busy")["status"], "in_use")
+
 
 if __name__ == "__main__":
     unittest.main()

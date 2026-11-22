@@ -104,6 +104,8 @@ def categories():
     # the temp roots are emptied (first-level entries, permanently): validate them before they become a glob
     for k, root, sysd in (("user_temp", paths.user_temp_dir(), False),
                           ("win_temp", os.path.join(win, "Temp") if win else None, True)):
+        if root and "~" in root:
+            root = paths._long_name(root)   # %TEMP% is often an 8.3 name; processes report the long one
         why = safety.temp_root_problem(root, system_temp=sysd)
         if why:
             c[k]["refused"] = why          # no globs: nothing is scanned or deleted in this category
@@ -137,7 +139,11 @@ def _expand(cat):
 
 
 def _norm(p):
-    return os.path.normcase(os.path.normpath(p)) if p else ""
+    if not p:
+        return ""
+    if "~" in p:   # an 8.3 name (C:\Users\JOHNSM~1\...) and its long name are the same folder
+        p = paths._long_name(os.path.normpath(p))
+    return os.path.normcase(os.path.normpath(p))
 
 
 def _grace_seconds(grace):
@@ -267,6 +273,24 @@ def _remove_empty_dirs(root, remove_root=False):
 
 # ---------------------------------------------------------------- what running programs are using
 _PATH_RE = re.compile(r"[A-Za-z]:\\[^\"'<>|*?\r\n]*")
+_PATH_START = re.compile(r"(?<![^\s=,])[A-Za-z]:\\")
+
+
+def _cmd_paths(cmd):
+    r"""Absolute paths in a command line. psutil gives it as a list of arguments: each one is searched on its own
+    (joined, "C:\Tools\app.exe C:\Temp\work" was ONE match and the second path was never seen). A path may contain
+    spaces, so inside one argument it is cut wherever another path may start: "C:\a.exe C:\Temp\b" gives "C:\a.exe",
+    "C:\Temp\b" and the whole text. More keys only ever keep more folders."""
+    out = []
+    for a in (cmd if isinstance(cmd, (list, tuple)) else [cmd]):
+        for m in _PATH_RE.findall(str(a or "")):
+            for piece in m.split(";"):
+                starts = [x.start() for x in _PATH_START.finditer(piece)]
+                for i, st in enumerate(starts):
+                    out.append(piece[st:])
+                    if i + 1 < len(starts):
+                        out.append(piece[st:starts[i + 1]])
+    return [x.strip() for x in out if x.strip()]
 
 
 def in_use_paths(budget=IN_USE_BUDGET, on_step=None):
@@ -294,7 +318,7 @@ def in_use_paths(budget=IN_USE_BUDGET, on_step=None):
         name = info.get("name") or tr("a program")
         cands = [info.get("exe"), info.get("cwd")]
         cmd = info.get("cmdline") or []
-        cands += _PATH_RE.findall(" ".join(cmd) if isinstance(cmd, list) else str(cmd))
+        cands += _cmd_paths(cmd)
         for x in cands:
             if x:
                 out.setdefault(_norm(x.strip().rstrip("\\")), name)
@@ -363,7 +387,7 @@ def in_use_isolated(budget=IN_USE_FAST_BUDGET, on_step=None, helpers=IN_USE_HELP
             name = info.get("name") or tr("a program")
             cands = [info.get("exe"), info.get("cwd")]
             cmd = info.get("cmdline") or []
-            cands += _PATH_RE.findall(" ".join(cmd) if isinstance(cmd, list) else str(cmd))
+            cands += _cmd_paths(cmd)
             for x in cands:
                 if x:
                     out.setdefault(_norm(x.strip().rstrip("\\")), name)
