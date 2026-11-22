@@ -336,6 +336,10 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: "
 
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "{cm:RunWebView}"; Check: NeedsWebView2 and WebView2SetupTrusted; Flags: waituntilterminated
+; an update reopens StellarHub right here: the first start of the new files must not pay Windows' first-run scan of
+; every library (15-20 s with only the start screen, seen in 2.0.0), so they are loaded once first, as the
+; post-install step does for a normal install (whichever runs first, the second pass takes a fraction of a second)
+Filename: "{app}\{#AppExe}"; Parameters: "--warm"; StatusMsg: "{cm:StatusWarm}"; Check: IsSelfUpdate; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExe}"; Check: IsSelfUpdate; Flags: nowait runasoriginaluser
 Filename: "{app}\{#AppExe}"; Description: "{cm:RunApp}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 Filename: "{#AppUrl}/releases/tag/v{#AppVersion}"; Description: "{cm:RunNotes,{#AppVersion}}"; Flags: shellexec nowait postinstall skipifsilent runasoriginaluser unchecked
