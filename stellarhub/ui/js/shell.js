@@ -690,7 +690,7 @@ function applySetting(key, val) {
   if (key === 'alwaysAdmin') { if (val) alwaysAdminOn(); else SH.call('set_always_admin', false).then(r => { if (r === false) toast(SH.t('Could not set up starting as administrator.')); }); }
 }
 function alwaysAdminOn() {
-  if (!state.admin) askAdmin(true);
+  if (!state.admin) askAdmin(true, true);
   else SH.call('set_always_admin', true).then(r => { if (r === false) toast(SH.t('Could not set up starting as administrator.')); });
 }
 /* what Reset settings keeps: the user's data, not preferences (engine side: app.py reset_settings, same list) */
@@ -794,21 +794,25 @@ function hideNote() {
 }
 /* Modules call SH.requireAdmin before anything that needs elevation: it opens the administrator prompt in the middle of
    the window, and the elevated copy comes back to the same place (and action). It lives in js/admin-resume.js. */
-/* Reopens StellarHub elevated (Api.relaunch_admin): the permission becomes permanent (it can be turned off in Settings >
-   Administrator). adminAsked: the administrator copy plays admin_granted when it opens (js/sounds.js). ticket: where
-   the user is and what they asked for (SH.resume.ticket). Answers true (this copy closes), false (Windows said no:
-   nothing changed, the setting is put back), 'busy' (a task still runs: nothing was asked) or undefined (sample mode). */
-SH.relaunchAdmin = async ticket => {
-  const was = !!state.settings.alwaysAdmin;
-  state.settings.alwaysAdmin = true; state.settings.adminAsked = Date.now(); await SH.call('settings_set', { alwaysAdmin: true, adminAsked: state.settings.adminAsked });
+/* Reopens StellarHub elevated (Api.relaunch_admin) for this session only: the next start is in normal mode again, unless
+   o.always (the prompt's "Always open as administrator" box, or that switch in Settings > Administrator) turns the
+   setting on. adminAsked: the administrator copy plays admin_granted when it opens (js/sounds.js). ticket: where the
+   user is and what they asked for (SH.resume.ticket). Answers true (this copy closes), false (Windows said no: nothing
+   changed, the setting is put back as it was), 'busy' (a task still runs: nothing was asked) or undefined (sample). */
+SH.relaunchAdmin = async (ticket, o = {}) => {
+  const was = !!state.settings.alwaysAdmin, ch = { adminAsked: Date.now() };
+  if (o.always) ch.alwaysAdmin = true;
+  Object.assign(state.settings, ch); await SH.call('settings_set', ch);
   const r = await SH.call('relaunch_admin', ticket || null);
   if (r !== true && r !== undefined) { state.settings.adminAsked = 0; state.settings.alwaysAdmin = was; SH.call('settings_set', { adminAsked: 0, alwaysAdmin: was }); }
   return r;
 };
-async function askAdmin(direct) {
+/* the mode pill's note, the palette and the Turn on buttons open this session as administrator; always: the Settings
+   switch "Always open as administrator" was just turned on */
+async function askAdmin(direct, always = false) {
   if (state.admin) return; if (!direct && !noteShown) { showNote(); return; }
   hideNote();
-  const r = await SH.relaunchAdmin(SH.resume ? SH.resume.ticket() : null);
+  const r = await SH.relaunchAdmin(SH.resume ? SH.resume.ticket() : null, { always });
   if (r === true) toast(SH.t('Opening StellarHub as administrator…'));
   else if (r === false) toast(SH.t("Windows didn't give permission. You're still in normal mode."), { kind: 'warning' });
   else if (r === 'busy') toast(SH.t('Something you started is still running. Open as administrator when it finishes.'), { kind: 'warning' });

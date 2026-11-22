@@ -42,7 +42,8 @@ SH.module({
 - Live data: `SH.tele.v` (values), `SH.tele.hist[key]` (120 values), `SH.tele.on(fn)`.
 - Before anything that needs administrator rights: `if (!SH.requireAdmin('to install drivers.', { resume })) return;`.
   In normal mode it opens the administrator prompt (`js/admin-resume.js`, `.ar-o`: a dialog in the middle, A = Open as
-  administrator, B / Esc = Not now) and answers false. Open as administrator reopens StellarHub elevated (start-screen
+  administrator, B / Esc = Not now) and answers false. Open as administrator reopens StellarHub elevated for this
+  session only (its unticked "Always open as administrator" box, ticked, also turns that setting on) (start-screen
   handover; Windows asks first; a task the user started that still runs blocks it) and the new copy comes back to the
   same place by itself: module, tab, settings section, Home view, the text of `input[id]` search fields and the
   scroll of the view, the tab and any scrolled element with an id. `resume: { action: 'drivers.install', args: { ids } }`

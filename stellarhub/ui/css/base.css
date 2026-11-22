@@ -638,7 +638,9 @@ html[data-lite="1"] .bug-pop{backdrop-filter:none;background:var(--deep)}
 .ar h3{font:500 var(--fs-h2)/1.2 var(--display);letter-spacing:-.02em;color:var(--ink);margin-bottom:10px}
 .ar p{color:var(--mute);font-size:var(--fs-body);line-height:1.5;margin-bottom:8px}
 .ar p b{color:var(--ink);font-weight:500}
-.ar p.ar-note{font-size:var(--fs-sm);color:var(--faint);margin-top:12px}
+.ar-always{display:flex;align-items:center;gap:10px;margin-top:14px;padding:6px 8px 6px 0;border-radius:var(--r-s);color:var(--ink);font-size:var(--fs-body);text-align:left}
+.ar-always:hover .check{border-color:color-mix(in oklab,var(--ink) 40%,transparent)}
+.ar p.ar-note{font-size:var(--fs-sm);color:var(--faint);margin:2px 0 0 28px}
 .ar-a{display:flex;justify-content:flex-end;gap:var(--sp-sm);margin-top:18px;flex-wrap:wrap}
 html[data-lite="1"] .ar-o .ar-s{backdrop-filter:none}
 

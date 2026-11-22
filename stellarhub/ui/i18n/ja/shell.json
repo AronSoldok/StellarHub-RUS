@@ -441,11 +441,11 @@
   "Open StellarHub as administrator": "StellarHub を管理者として開く",
   "Windows asks for permission, then StellarHub reopens right here and picks up what you asked for.": "Windows が許可を求めた後、StellarHub はこの場所で開き直し、頼んだ操作を続けます。",
   "Windows asks for permission, then StellarHub reopens right here.": "Windows が許可を求めた後、StellarHub はこの場所で開き直します。",
-  "From then on it opens as administrator. You can change that in Settings > Administrator.": "以降は管理者として開きます。これは［設定］>［管理者］で変更できます。",
   "Open as administrator": "管理者として開く",
   "Opening…": "開いています…",
   "Something you started is still running. Open as administrator when it finishes.": "開始した処理がまだ実行中です。終わってから管理者として開いてください。",
   "Windows didn't give permission. You're still in normal mode.": "Windows が許可しませんでした。通常モードのままです。",
   "That changed while StellarHub reopened, so it was not done. Check it and try again.": "StellarHub を開き直す間に状況が変わったため、実行しませんでした。確認してからもう一度お試しください。",
-  "You're in administrator mode now. Pick up where you left off.": "管理者モードになりました。中断したところから続けてください。"
+  "You're in administrator mode now. Pick up where you left off.": "管理者モードになりました。中断したところから続けてください。",
+  "Windows asks each time.": "毎回 Windows が確認します。"
 }

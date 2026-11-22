@@ -441,11 +441,11 @@
   "Open StellarHub as administrator": "Abre StellarHub como administrador",
   "Windows asks for permission, then StellarHub reopens right here and picks up what you asked for.": "Windows pide permiso y StellarHub se vuelve a abrir justo aquí y retoma lo que pediste.",
   "Windows asks for permission, then StellarHub reopens right here.": "Windows pide permiso y StellarHub se vuelve a abrir justo aquí.",
-  "From then on it opens as administrator. You can change that in Settings > Administrator.": "A partir de entonces se abrirá como administrador. Puedes cambiarlo en Ajustes > Administrador.",
   "Open as administrator": "Abrir como administrador",
   "Opening…": "Abriendo…",
   "Something you started is still running. Open as administrator when it finishes.": "Algo que iniciaste sigue en marcha. Abre como administrador cuando termine.",
   "Windows didn't give permission. You're still in normal mode.": "Windows no dio permiso. Sigues en modo normal.",
   "That changed while StellarHub reopened, so it was not done. Check it and try again.": "Eso cambió mientras StellarHub se volvía a abrir, así que no se hizo. Revísalo e inténtalo de nuevo.",
-  "You're in administrator mode now. Pick up where you left off.": "Ya estás en modo administrador. Sigue donde lo dejaste."
+  "You're in administrator mode now. Pick up where you left off.": "Ya estás en modo administrador. Sigue donde lo dejaste.",
+  "Windows asks each time.": "Windows lo pregunta cada vez."
 }

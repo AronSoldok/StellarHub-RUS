@@ -269,13 +269,13 @@ class Ui(unittest.TestCase):
     SETUP = r"""
       globalThis.location = { search: '' }; globalThis.chrome = { webview: {} };
       const store = {}; globalThis.sessionStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
-      const toasts = [], relaunched = [];
+      const toasts = [], relaunched = [], always = [];
       let answer = false;
       const view = document.body.appendChild(new El('section')); view.setAttribute('id', 'v-drivers');
       view.innerHTML = '<nav class="subnav"><button data-tab="all">All</button><button data-tab="updates" class="on">Updates</button></nav><div class="tab on" data-tab="updates"></div>';
       Object.assign(SH, { $, $$, esc, ic, anim, EASE, state: { view: 'drivers', admin: false, setOpen: false, settings: { homeVariant: 'bento' } },
         icons: { add: noop }, toast: (text, o) => toasts.push(text), call: async () => undefined, activity: { list: () => [] },
-        relaunchAdmin: async tk => { relaunched.push(tk); return answer; }, registry: { variants: {} }, modById: () => null, go: noop });
+        relaunchAdmin: async (tk, o) => { relaunched.push(tk); always.push(!!(o && o.always)); return answer; }, registry: { variants: {} }, modById: () => null, go: noop });
     """ + "\n"
 
     def load(self):
@@ -303,7 +303,13 @@ class Ui(unittest.TestCase):
           res.deniedToast = toasts.slice(-1)[0];
           /* Windows says yes: the work stops here (the elevated copy picks it up) */
           answer = true; p = SH.adminFirst('to install drivers.', { resume: { action: 'drivers.install', args: { ids: ['u1', 'u2'] } } }); await tick(20); $('.ar-o [data-ar-go]').click(); res.yes = await p;
-          res.ticket = relaunched.slice(-1)[0];
+          res.ticket = relaunched.slice(-1)[0]; res.alwaysDefault = always.slice();
+          /* the box: unticked by default (this session only); ticked, the setting goes on; the per-user note shows */
+          SH.state.adminTask = false;
+          p = SH.adminFirst('to install drivers.'); await tick(20);
+          res.boxRole = $('.ar-o [data-ar-always]').getAttribute('role'); res.noteBefore = (n => n.hidden ?? n.hasAttribute('hidden'))($('.ar-o [data-ar-note]'));
+          $('.ar-o [data-ar-always]').click(); res.boxOn = $('.ar-o [data-ar-always]').getAttribute('aria-checked'); res.noteAfter = $('.ar-o [data-ar-note]').hidden;
+          $('.ar-o [data-ar-go]').click(); await p; res.alwaysTicked = always.slice(-1)[0];
           /* something the user started still runs: nothing is asked */
           SH.activity.list = () => [{ user: true, bg: false }]; const before = relaunched.length;
           p = SH.adminFirst('to install drivers.'); await tick(20); $('.ar-o [data-ar-go]').click(); await p; res.busyAsked = relaunched.length !== before;
@@ -328,6 +334,39 @@ class Ui(unittest.TestCase):
         self.assertEqual(t["args"], {"ids": ["u1", "u2"]})
         self.assertIsNotNone(resume.validate(dict(t, at=time.time())))  # what the page sends, Python accepts
         self.assertFalse(out["busyAsked"])
+        self.assertEqual(out["alwaysDefault"], [False, False])  # Windows said no, then yes: neither made it permanent
+        self.assertEqual(out["boxRole"], "checkbox")
+        self.assertTrue(out["noteBefore"])
+        self.assertEqual(out["boxOn"], "true")
+        self.assertFalse(out["noteAfter"])
+        self.assertTrue(out["alwaysTicked"])
+
+    def test_the_relaunch_only_makes_it_permanent_when_asked(self):
+        src = read("js", "shell.js")
+        m = re.search(r"SH\.relaunchAdmin = async \(ticket, o = \{\}\) => \{.*?\n\};", src, re.S)
+        out = self.run_js(r"""
+          const state = { settings: { alwaysAdmin: false } }, sets = []; let answer = true;
+          SH.call = async (name, arg) => { if (name === 'settings_set') { sets.push({ ...arg }); return true; } if (name === 'relaunch_admin') return answer; };
+          """ + m.group(0) + r"""
+          const res = {};
+          await SH.relaunchAdmin({ v: 1 }); res.session = { sets: sets.splice(0), always: state.settings.alwaysAdmin };
+          state.settings.alwaysAdmin = false; await SH.relaunchAdmin({ v: 1 }, { always: true }); res.ticked = { sets: sets.splice(0), always: state.settings.alwaysAdmin };
+          state.settings.alwaysAdmin = false; answer = false; await SH.relaunchAdmin({ v: 1 }, { always: true }); res.denied = { sets: sets.splice(0), always: state.settings.alwaysAdmin };
+          state.settings.alwaysAdmin = true; answer = false; await SH.relaunchAdmin({ v: 1 }); res.deniedWasOn = state.settings.alwaysAdmin;
+          out(res);
+        """)
+        self.assertNotIn("alwaysAdmin", out["session"]["sets"][0])  # this session only
+        self.assertFalse(out["session"]["always"])
+        self.assertTrue(out["ticked"]["sets"][0]["alwaysAdmin"])
+        self.assertTrue(out["ticked"]["always"])
+        self.assertFalse(out["denied"]["always"])  # Windows said no: back as it was
+        self.assertEqual(out["denied"]["sets"][-1], {"adminAsked": 0, "alwaysAdmin": False})
+        self.assertTrue(out["deniedWasOn"])
+        # the old Turn on paths (mode pill, note, palette, Settings button) are this session only; only the switch
+        # in Settings > Administrator asks for always
+        self.assertIn("SH.relaunchAdmin(SH.resume ? SH.resume.ticket() : null, { always })", src)
+        self.assertEqual(len(re.findall(r"askAdmin\(true, true\)", src)), 1)
+        self.assertRegex(src, r"function alwaysAdminOn\(\) \{\s+if \(!state.admin\) askAdmin\(true, true\);")
 
     def test_the_ticket_and_its_checks(self):
         out = self.run_js(self.load() + r"""

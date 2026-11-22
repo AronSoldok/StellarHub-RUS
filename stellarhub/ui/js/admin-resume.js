@@ -97,7 +97,8 @@ function prompt(reason, o = {}) {
     <h3 id="arT">${esc(t('This needs administrator mode'))}</h3>
     <p id="arD"><b>${esc(t('Open StellarHub as administrator'))}</b> ${esc(reason || t('to make this change in Windows.'))}</p>
     <p>${esc(rerun ? t('Windows asks for permission, then StellarHub reopens right here and picks up what you asked for.') : t('Windows asks for permission, then StellarHub reopens right here.'))}</p>
-    <p class="ar-note">${esc(t('From then on it opens as administrator. You can change that in Settings > Administrator.'))}</p>
+    <button class="ar-always" role="checkbox" aria-checked="false" data-ar-always><span class="check"><svg class="i" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><span>${esc(t('Always open as administrator'))}</span></button>
+    <p class="ar-note" data-ar-note hidden>${esc(t('Windows asks each time.'))}</p>
     <div class="ar-a"><button class="btn ghost" data-close>${esc(o.later || t('Not now'))}</button><button class="btn pri" data-ar-go>${ic('shield')}${esc(t('Open as administrator'))}</button></div></div>`;
   document.body.appendChild(o2);
   anim($('.ar-s', o2), [{ opacity: 0 }, { opacity: 1 }], { d: 220 });
@@ -113,9 +114,15 @@ function prompt(reason, o = {}) {
   o2.addEventListener('click', async e => {
     if (o2.dataset.busy) return;
     if (e.target.closest('[data-close]') || e.target.classList.contains('ar-s')) { close('later'); return; }
+    /* unticked by default: this session only. Ticked, it turns on Settings > Administrator > Always open as
+       administrator; a per-user install (no task) then says Windows asks each time */
+    const al = e.target.closest('[data-ar-always]');
+    if (al) { const on = al.getAttribute('aria-checked') !== 'true'; al.setAttribute('aria-checked', String(on)); $('.check', al).classList.toggle('on', on);
+      $('[data-ar-note]', o2).hidden = !(on && state.adminTask === false); return; }
     const go = e.target.closest('[data-ar-go]'); if (!go) return;
+    const always = $('[data-ar-always]', o2).getAttribute('aria-checked') === 'true';
     o2.dataset.busy = '1'; go.disabled = true; go.innerHTML = `${ic('shield')}${esc(t('Opening…'))}`;
-    const r = await relaunch(ticket(o.resume || {}));
+    const r = await relaunch(ticket(o.resume || {}), always);
     delete o2.dataset.busy;
     close(r === true ? 'relaunch' : 'stay');
   });
@@ -125,20 +132,21 @@ function prompt(reason, o = {}) {
 
 /* ---------- the relaunch ---------- */
 /* true: Windows said yes and this copy closes; false: it said no; 'busy': a task still runs here */
-async function relaunch(tk) {
+async function relaunch(tk, always = false) {
   /* something the user started still runs here (a queue, a scan): reopening now would cut it off */
   if (SH.activity.list().some(a => a.user && !a.bg)) { SH.toast(t('Something you started is still running. Open as administrator when it finishes.'), { kind: 'warning' }); return 'busy'; }
-  if (!IN_APP && !(window.pywebview && window.pywebview.api)) return simulate(tk);
-  const r = SH.relaunchAdmin ? await SH.relaunchAdmin(tk) : await SH.call('relaunch_admin', tk);
+  if (!IN_APP && !(window.pywebview && window.pywebview.api)) return simulate(tk, always);
+  const r = SH.relaunchAdmin ? await SH.relaunchAdmin(tk, { always }) : await SH.call('relaunch_admin', tk);
   if (r === true) { SH.toast(t('Opening StellarHub as administrator…')); return true; }
   if (r === 'busy') { SH.toast(t('Something you started is still running. Open as administrator when it finishes.'), { kind: 'warning' }); return 'busy'; }
   SH.toast(t("Windows didn't give permission. You're still in normal mode."), { kind: 'warning' });
   return false;
 }
 /* sample mode: the page reloads as a pretend administrator copy that resumes from sessionStorage */
-async function simulate(tk) {
+async function simulate(tk, always) {
   if (query.get('uac') === 'deny') { await wait(300); SH.toast(t("Windows didn't give permission. You're still in normal mode."), { kind: 'warning' }); return false; }
   try { sessionStorage.setItem('sh.resume', JSON.stringify(tk)); sessionStorage.setItem('sh.sampleAdmin', '1'); } catch { return false; }
+  if (always) SH.setSetting('alwaysAdmin', true);
   SH.toast(t('Opening StellarHub as administrator…'));
   await wait(500);
   const a = SH.leave ? SH.leave(false) : null;
