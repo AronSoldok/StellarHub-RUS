@@ -6,7 +6,9 @@
 (() => {
 const { $, $$, Spring, EASE, anim, tickers, ic, state, esc } = SH;
 let THREE = null, threeP = null;
-const loadThree = () => (threeP ||= import(new URL('vendor/three.module.min.js', document.baseURI).href).then(m => (THREE = m)));
+/* a failed load (the file held by an antivirus scan for a moment) is tried again at the next mount instead of leaving the 3D
+   view flat until StellarHub restarts */
+const loadThree = () => (threeP ||= import(new URL('vendor/three.module.min.js', document.baseURI).href).then(m => (THREE = m), e => { threeP = null; throw e; }));
 /* WebGL available? And is it a software renderer (no GPU: WebView2 fallback)? Then the scene is drawn lighter. */
 let softGL = false;
 function webglOK() {
