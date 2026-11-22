@@ -734,7 +734,10 @@ function confirmDlg(o, onYes) {
   anim($('.box', dlg), [{ opacity: 0, transform: 'translate3d(0,12px,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
   setTimeout(() => { const b = $('[data-d="no"]', dlg); if (b) b.focus(); }, 30);
   const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(false); } };
+  /* one answer: a double click on End task (or Change DNS) runs it once */
+  let shut = false;
   function close(yes) {
+    if (shut) return; shut = true;
     document.removeEventListener('keydown', onKey, true);
     anim($('.scrim', dlg), [{ opacity: 1 }, { opacity: 0 }], { d: 160 });
     anim($('.box', dlg), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(0,6px,0) scale(.97)' }], { d: 160 }).finished.then(() => dlg.classList.remove('on')).catch(() => {});
