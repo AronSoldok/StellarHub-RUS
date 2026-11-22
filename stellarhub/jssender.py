@@ -11,6 +11,7 @@ class Runner:
     stuck thread is left behind (it costs a parked thread) and a fresh one takes the next call."""
     def __init__(self, window, name, timeout=15.0):
         self.window, self.name, self.timeout = window, name, timeout
+        self._stopped = False
         self._new()
 
     def _new(self):
@@ -22,6 +23,8 @@ class Runner:
             while True:
                 go.wait()
                 go.clear()
+                if box._stopped:
+                    return
                 code, done = box._job
                 try:
                     box.window.evaluate_js(code)
@@ -32,8 +35,15 @@ class Runner:
                     return
         threading.Thread(target=work, daemon=True, name=self.name).start()
 
+    def stop(self):
+        """The window is gone: its thread ends (one parked thread per closed widget was left behind before)."""
+        self._stopped = True
+        self._go.set()
+
     def run(self, code):
         """True if the page answered in time."""
+        if self._stopped:
+            return False
         done = threading.Event()
         self._job = (code, done)
         self._go.set()

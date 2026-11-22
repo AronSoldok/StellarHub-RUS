@@ -58,6 +58,25 @@ class SenderTests(unittest.TestCase):
         self.assertEqual(w.calls, [])
 
 
+class TelemetryRunnerTests(unittest.TestCase):
+    def test_a_closed_windows_runner_and_thread_go_away(self):
+        """Each window gets a telemetry runner with a thread of its own; closing the widget left both behind (one
+        thread and one dead window per open/close)."""
+        from stellarhub.api import Api
+        api = Api()
+        w = FakeWindow()
+        r = api._tele_runner(w)
+        self.assertTrue(r.run("sample"))
+        names = lambda: [t for t in threading.enumerate() if t.name == "tele-js"]
+        before = len(names())
+        api._sender_drop(w)
+        self.assertNotIn(w, api._tele_runners)
+        self.assertTrue(wait_for(lambda: len(names()) == before - 1))
+        self.assertFalse(r.run("late sample"))  # a sample already on its way is dropped, no new thread
+        self.assertEqual(len(names()), before - 1)
+        self.assertEqual(w.calls, ["sample"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

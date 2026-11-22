@@ -101,6 +101,9 @@ class Api(SettingsApi, MainWindowApi, WidgetApi, TrayPanelApi, EngineApi):
             sd = self._senders.pop(w, None)
         if sd is not None:
             sd.stop()
+        tr = self.__dict__.get("_tele_runners", {}).pop(w, None)  # the closed window's telemetry runner and thread
+        if tr is not None:
+            tr.stop()
 
     def log_js_error(self, msg):
         """UI errors go to the log (stellarhub.log), to help diagnose problems."""
