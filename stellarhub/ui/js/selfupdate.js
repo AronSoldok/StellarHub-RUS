@@ -173,10 +173,14 @@ function ask() {
    this copy can update without a Windows prompt and "Install new features automatically" is on */
 const QUIET = ['direct', 'portable', 'task'];
 const STAGE_AFTER = 10 * 60000;  /* ms after start before a quiet background download begins */
-let staging = null, stagedVer = null, bootAt = Date.now();
+let staging = null, stagedVer = null, bootAt = Date.now(), stageT = 0, stageBusy = false;
 const quiet = r => !!r && r.ok && r.newer && kindOf(r.current, r.latest) === 'minor' && state.settings.autoUpdateFeatures !== false && QUIET.includes(r.mode);
 async function stage(r) {
-  if (staging || stagedVer === r.latest) return;
+  if (staging || stageBusy || stagedVer === r.latest) return;
+  stageBusy = true;  /* (staging is set only after the engine answers: two calls at once both got past the test) */
+  try { await stageRun(r); } finally { stageBusy = false; }
+}
+async function stageRun(r) {
   let s = null; try { s = await SH.engine('selfupdate', 'state'); } catch {}
   const now = Date.now() / 1000;
   if (s && s.st === 'staged' && s.ver === r.latest) { stagedVer = r.latest; paintSettings(); return; }
@@ -208,7 +212,13 @@ async function check(manual) {
      small fix waits in Settings > Updates */
   /* the quiet download waits until StellarHub has been open a while: a program that downloads an installer seconds
      after it starts is what antivirus behaviour engines treat as a dropper (issue #7) */
-  if (!manual && quiet(r)) { setTimeout(() => stage(r), Math.max(0, STAGE_AFTER - (Date.now() - bootAt))); return r; }
+  /* one wait at a time, and what the user did meanwhile still counts when it ends: automatic updates or new features
+     turned off, the version skipped, an update of their own running */
+  if (!manual && quiet(r)) {
+    clearTimeout(stageT);
+    stageT = setTimeout(() => { stageT = 0; const st = state.settings; if (!running && st.autoUpdate !== false && st.skipVersion !== r.latest && quiet(r)) stage(r); }, Math.max(0, STAGE_AFTER - (Date.now() - bootAt)));
+    return r;
+  }
   if (manual || (kindOf(r.current, r.latest) !== 'patch' && state.settings.skipVersion !== r.latest)) { if (!box) { open(r); SH.sound('update_available'); } }
   return r;
 }

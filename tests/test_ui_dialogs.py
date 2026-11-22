@@ -440,5 +440,36 @@ class Dialogs(unittest.TestCase):
         self.assertEqual(out["calls"], [["set_dns", "Wi-Fi", "cf"], ["dns_undo", "b1"]])
         self.assertEqual(out["last"], "DNS restored.")
 
+    def test_the_quiet_download_rechecks_the_settings_when_its_wait_ends(self):
+        src = read("js", "selfupdate.js")
+        parts = "\n".join([js_line(src, "const QUIET = "), js_line(src, "const STAGE_AFTER = "), js_line(src, "let staging = null"),
+                           js_line(src, "const quiet = "), js_function(src, "stage"), js_function(src, "stageRun"), js_function(src, "check")])
+        out = self.run_js(r"""
+          let box = null, running = false, last = null; const log = [], paintSettings = noop;
+          const state = { settings: { autoUpdate: true, autoUpdateFeatures: true } };
+          const kindOf = (a, b) => a.split('.')[1] !== b.split('.')[1] ? 'minor' : 'patch';
+          const ask = async () => ({ ok: true, newer: true, current: '2.1.1', latest: '2.2.0', mode: 'direct' });
+          const open = () => log.push('open');
+          """ + parts + r"""
+          /* the ten-minute wait: kept aside and run on demand */
+          const waits = new Map(); let wid = 1e6; const realST = setTimeout, realCT = clearTimeout;
+          globalThis.setTimeout = (f, ms) => { if (ms < 60000) return realST(f, ms); waits.set(++wid, f); return wid; };
+          globalThis.clearTimeout = id => { waits.delete(id); realCT(id); };
+          const runWaits = () => { const fs = [...waits.values()]; waits.clear(); fs.forEach(f => f()); };
+          let prefetches = 0;
+          let fetched = false;
+          SH.engine = async (m, fn) => { if (fn === 'prefetch') { prefetches++; fetched = true; await tick(5); return { ok: true, at: 1 }; } return fetched ? { st: 'staged', ts: 2, ver: '2.2.0' } : { st: 'idle' }; };
+          const r = {};
+          /* checked twice during the wait: one wait, one download */
+          await check(false); await check(false); r.waits = waits.size;
+          runWaits(); await tick(3200); r.once = prefetches;
+          /* the version skipped, then new features turned off, during the wait: nothing is downloaded */
+          stagedVer = null; prefetches = 0; fetched = false;
+          await check(false); state.settings.skipVersion = '2.2.0'; runWaits(); await tick(30); r.skipped = prefetches;
+          delete state.settings.skipVersion; await check(false); state.settings.autoUpdateFeatures = false; runWaits(); await tick(30); r.off = prefetches;
+          out(r);
+        """)
+        self.assertEqual(out, {"waits": 1, "once": 1, "skipped": 0, "off": 0})
+
 if __name__ == "__main__":
     unittest.main()
