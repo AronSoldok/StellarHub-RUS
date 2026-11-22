@@ -69,9 +69,10 @@ def read():
     """Best effort: {} when the file is missing or unreadable (start path, installer, elevation checks)."""
     try:
         with open(config.SETTINGS, encoding="utf-8") as fh:
-            return json.load(fh)
+            data = json.load(fh)
     except (OSError, ValueError):
         return {}
+    return data if isinstance(data, dict) else {}  # `[]` or `null` made every caller's .get() raise: no start at all
 
 
 def load_strict():
@@ -113,17 +114,29 @@ def write_json(path, data):
     """Writes through a temp file and os.replace, retrying while another program has the file open for a moment."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=False, indent=2)
-    for i in range(20):
+    # a temp file of this writer's own (the installer's --setup, a second process, another thread never share it),
+    # flushed to the disk before it replaces the file: a power cut right after a save (a handheld's battery running
+    # out) left an empty or half-written settings.json, which the next start set aside as damaged
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        for i in range(20):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:
+                if i == 19:
+                    raise
+                time.sleep(.05)
+    except BaseException:
         try:
-            os.replace(tmp, path)
-            return
-        except PermissionError:
-            if i == 19:
-                raise
-            time.sleep(.05)
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def update(changes):
@@ -142,9 +155,9 @@ def update(changes):
 def reset():
     """Puts the preferences back to their defaults and returns the old settings (so it can be undone). The user's
     data in the file (KEEP_ON_RESET) stays."""
-    old = get()
-    keep = {k: old[k] for k in KEEP_ON_RESET if k in old}
-    with _lock:
+    with _lock:  # read and write as one step: a change saved in between (another thread's update) was lost
+        old = get()
+        keep = {k: old[k] for k in KEEP_ON_RESET if k in old}
         try:
             write_json(config.SETTINGS, keep)
         except OSError:
@@ -173,10 +186,11 @@ def parse_setup(pairs):
 def apply_setup(changes):
     """Writes the installer's choices (it runs as the user who installs, not elevated, so they land in their
     profile). False when the file could not be written."""
-    data = read()
-    data.update(changes)
-    try:
-        write_json(config.SETTINGS, data)
-    except OSError:
-        return False
+    with _lock:
+        data = read()
+        data.update(changes)
+        try:
+            write_json(config.SETTINGS, data)
+        except OSError:
+            return False
     return True
