@@ -544,6 +544,35 @@ def approve(routines):
     return {"ok": ok, "admin": True, "n": len(hs)}
 
 
+_AS_USER_ELEVATED = _m("skipped: this command runs as you, and StellarHub is running as administrator. Open StellarHub in "
+                       "normal mode to run it, or set it to run as administrator")
+
+
+def _closable(pr):
+    """"Close an app" only ends the user's own programs: never another account's or Windows' own processes (from an
+    elevated StellarHub it could end anything, and routines live in a file any program running as the user can edit),
+    nor StellarHub itself."""
+    try:
+        if pr.pid == os.getpid():
+            return False
+        me = _me().lower()
+        if not me or (pr.username() or "").lower() != me:
+            return False
+        exe = (pr.exe() or "").lower()
+    except (psutil.Error, OSError):
+        return False
+    buf = ctypes.create_unicode_buffer(260)  # asked from Windows: %SystemRoot% is the user's to change
+    windir = (buf.value if ctypes.windll.kernel32.GetSystemWindowsDirectoryW(buf, 260) else r"C:\Windows").lower().rstrip("\\") + "\\"
+    return bool(exe) and not exe.startswith(windir)
+
+
+def _me():
+    try:
+        return psutil.Process().username() or ""
+    except (psutil.Error, OSError):
+        return ""  # unknown: nothing is closed
+
+
 _NOT_APPROVED = _m("skipped: this action wasn’t approved in administrator mode. Open StellarHub and save this routine again to allow it")
 
 
@@ -1170,7 +1199,7 @@ def _act(job, a, r):
     if k == "closeApp":
         a_ = (p.get("app") or "").lower()
         names = set(APP_PROCS.get(a_, [a_ + ".exe"]))
-        procs = [pr for pr in psutil.process_iter(["name"]) if (pr.info.get("name") or "").lower() in names]
+        procs = [pr for pr in psutil.process_iter(["name"]) if (pr.info.get("name") or "").lower() in names and _closable(pr)]
         for pr in procs:
             try:
                 pr.terminate()
@@ -1194,12 +1223,18 @@ def _act(job, a, r):
             return "bad", _m("no command to run"), 0, 0
         if p.get("as") == "admin" and not _admin():
             return "skip", _m("skipped: the command needs administrator mode"), 0, 0
+        if p.get("as") != "admin" and _admin():
+            # "as you" must not quietly run with administrator rights (a child of an elevated StellarHub is elevated)
+            job.log(_en(_AS_USER_ELEVATED))
+            return "skip", _AS_USER_ELEVATED, 0, 0
         limit = max(1, float((r.get("after") or {}).get("limit") or 60)) * 60
         try:
             pr = subprocess.run(["cmd.exe", "/c", cmd], capture_output=True, timeout=limit, creationflags=NO_WINDOW)
         except subprocess.TimeoutExpired:
             return "bad", _m("the command took too long and was stopped"), 0, 0
-        for line in (pr.stdout or b"").decode("utf-8", "replace").splitlines()[-20:]:
+        from .ps import _decode  # the console's output is UTF-8, UTF-16 or this Windows' code page, depending on the tool
+        out = pr.stdout if isinstance(pr.stdout, bytes) else b""
+        for line in (_decode(out, "utf-8") if out else "").splitlines()[-20:]:
             job.log(line)
         return ("ok" if pr.returncode == 0 else "bad"), _m("command finished (exit code {code})", code=pr.returncode), 0, 0
     if k == "widget":
@@ -1497,6 +1532,8 @@ def dry_run(routine):
             note = _m("would ask you first")
         elif k in NEEDS_APPROVAL and not is_approved(a):
             note = _m("would be skipped: not approved in administrator mode. Save the routine again to allow it")
+        elif k == "cmd" and p.get("as") != "admin" and _admin():
+            note = _AS_USER_ELEVATED
         elif k == "clean" and not any(CLEAN_MAP.get(c) for c in (p.get("cats") or [])):
             note = _m("none of the chosen categories can be cleaned yet")
         acts.append({"k": k, "note": _txt(note) if note else "", "noteM": note, "needAdmin": need_admin})

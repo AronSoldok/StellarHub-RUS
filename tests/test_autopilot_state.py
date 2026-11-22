@@ -1,11 +1,13 @@
 """Autopilot's state file (last run, retry tomorrow) is shared by the scheduler's check and the runs: neither may erase
-what the other saved. Everything lives in a temp folder; nothing runs for real."""
+what the other saved. Routines started from an elevated StellarHub stay within the user's own reach. Everything lives
+in a temp folder; nothing runs for real."""
 import json
 import os
 import shutil
 import tempfile
 import threading
 import time
+import types
 import unittest
 from unittest import mock
 
@@ -47,6 +49,68 @@ class TickKeepsWhatARunSaved(unittest.TestCase):
         st = autopilot._state()
         self.assertEqual(st["last"].get("r1"), 12345.0)
         self.assertIn("r1", st.get("retry") or {})
+
+
+class ElevatedRoutines(unittest.TestCase):
+    """Routines live in a file any program running as the user can edit: from an elevated StellarHub they must not
+    reach beyond the user's own programs, nor run "as you" with administrator rights."""
+
+    class Job:
+        cancelled = False
+
+        def __init__(self):
+            self.lines = []
+
+        def log(self, line):
+            self.lines.append(line)
+
+        def check(self):
+            pass
+
+    def proc(self, pid, name, user, exe):
+        p = mock.Mock(pid=pid, info={"name": name})
+        p.username.return_value = user
+        p.exe.return_value = exe
+        return p
+
+    def test_close_app_only_ends_the_users_own_programs(self):
+        me = "PC\\ana"
+        mine = self.proc(10, "spotify.exe", me, "C:\\Users\\ana\\AppData\\Roaming\\Spotify\\Spotify.exe")
+        other = self.proc(11, "spotify.exe", "PC\\bob", "C:\\Users\\bob\\AppData\\Roaming\\Spotify\\Spotify.exe")
+        system = self.proc(12, "winlogon.exe", me, "C:\\Windows\\System32\\winlogon.exe")
+
+        def windir(buf, n):
+            buf.value = "C:\\Windows"
+            return 10
+        with mock.patch.object(autopilot.psutil, "process_iter", return_value=[mine, other, system]), \
+                mock.patch.object(autopilot, "_me", return_value=me), mock.patch.object(autopilot.psutil, "wait_procs"), \
+                mock.patch.object(autopilot.ctypes.windll.kernel32, "GetSystemWindowsDirectoryW", side_effect=windir):
+            self.assertEqual(autopilot._act(self.Job(), {"k": "closeApp", "p": {"app": "spotify"}}, {})[0], "ok")
+            autopilot._act(self.Job(), {"k": "closeApp", "p": {"app": "winlogon"}}, {})
+        mine.terminate.assert_called_once()
+        other.terminate.assert_not_called()
+        system.terminate.assert_not_called()
+
+    def test_a_command_as_you_is_not_run_elevated(self):
+        a = {"k": "cmd", "p": {"cmd": "echo hi", "as": "user"}}
+        with mock.patch.object(autopilot, "_admin", return_value=True), \
+                mock.patch.object(autopilot, "_approved_load", return_value={autopilot._action_hash(a)}), \
+                mock.patch.object(autopilot.subprocess, "run") as run:
+            out = autopilot._act(self.Job(), a, {"after": {}})
+            note = autopilot.dry_run({"acts": [a]})["acts"][0]["noteM"]
+        self.assertEqual(out[0], "skip")
+        self.assertIn("running as administrator", autopilot._en(out[1]))
+        self.assertIn("runs as you", autopilot._en(note))
+        self.assertFalse([c for c in run.call_args_list if c[0] and c[0][0][:1] == ["cmd.exe"]])
+
+    def test_command_output_in_this_windows_code_page_is_readable(self):
+        oem = "Configuración".encode("oem")  # what cmd.exe prints on a Spanish (or any Western) Windows
+        job = self.Job()
+        with mock.patch.object(autopilot, "_admin", return_value=False), \
+                mock.patch.object(autopilot.subprocess, "run", return_value=types.SimpleNamespace(stdout=oem, returncode=0)):
+            out = autopilot._act(job, {"k": "cmd", "p": {"cmd": "echo x"}}, {"after": {}})
+        self.assertEqual(out[0], "ok")
+        self.assertEqual(job.lines, ["Configuración"])
 
 
 if __name__ == "__main__":

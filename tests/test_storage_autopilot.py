@@ -307,7 +307,7 @@ class Approval(unittest.TestCase):
         sf.assert_not_called()
 
     def test_approved_command_runs(self):
-        a = {"k": "cmd", "p": {"cmd": "echo hi"}}
+        a = {"k": "cmd", "p": {"cmd": "echo hi", "as": "admin"}}
         out, run, _j = self.act(a, admin=True, approved={autopilot._action_hash(a)})
         self.assertEqual(out[0], "ok")
         run.assert_called_once()
