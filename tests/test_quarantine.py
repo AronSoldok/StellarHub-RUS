@@ -1,18 +1,34 @@
-"""Quarantine: move, restore and delete, on temporary folders and HKCU\\Software\\MiniRevoTest."""
+"""Quarantine: move, restore and delete, on temporary folders and a test-only HKCU key with a random name
+(HKCU\\Software\\MiniRevoTest-<random>, always deleted). Nothing else on the system is touched: the quarantine lives in a
+temp folder, the Run value is an in-memory stand-in and the "move/delete at the next restart" calls are mocks."""
 import json
 import os
 import shutil
 import subprocess
 import tempfile
 import unittest
+import uuid
 import winreg
 from unittest import mock
 
 from stellarhub.engine.removal import paths, quarantine, registry
 from stellarhub.engine.removal.registry import RegRef
 
-TEST_KEY = r"Software\MiniRevoTest"
+TEST_KEY = r"Software\MiniRevoTest"   # only ever used with reg.exe mocked (RegImportOutput)
 RUN = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_DATA = {}
+
+
+def setUpModule():
+    # the quarantine of these tests is a temp folder, whatever STELLARHUB_DATA says (or when run on its own)
+    _DATA["dir"] = tempfile.mkdtemp(prefix="mrq_data_")
+    _DATA["patch"] = mock.patch.object(paths, "DATA_DIR", _DATA["dir"])
+    _DATA["patch"].start()
+
+
+def tearDownModule():
+    _DATA["patch"].stop()
+    shutil.rmtree(_DATA["dir"], ignore_errors=True)
 
 
 def make_tree(base):
@@ -26,30 +42,54 @@ def make_tree(base):
 class Quarantine(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="mrq_")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         self.app = os.path.join(self.tmp, "MiniRevoTestApp")
         make_tree(self.app)
         self.file = os.path.join(self.tmp, "MiniRevoTestApp.lnk")
         with open(self.file, "w") as f:
             f.write("x")
-        k = winreg.CreateKey(winreg.HKEY_CURRENT_USER, TEST_KEY + r"\App\Deep")
+        # a key of this test only (random name), removed even when the test fails or setUp stops halfway
+        self.key = rf"Software\MiniRevoTest-{uuid.uuid4().hex[:12]}"
+        self.addCleanup(self._drop_key)
+        k = winreg.CreateKey(winreg.HKEY_CURRENT_USER, self.key + r"\App\Deep")
         winreg.SetValueEx(k, "n", 0, winreg.REG_DWORD, 7)
         winreg.CloseKey(k)
-        k = winreg.CreateKey(winreg.HKEY_CURRENT_USER, TEST_KEY + r"\Vals")
+        k = winreg.CreateKey(winreg.HKEY_CURRENT_USER, self.key + r"\Vals")
         winreg.SetValueEx(k, "bin", 0, winreg.REG_BINARY, b"\x01\x02\x03")
         winreg.SetValueEx(k, "multi", 0, winreg.REG_MULTI_SZ, ["a", "b"])
         winreg.CloseKey(k)
-        with winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, RUN, 0, winreg.KEY_SET_VALUE) as k:  # a fresh profile (CI) may not have it
-            winreg.SetValueEx(k, "MiniRevoTestRun", 0, winreg.REG_SZ, r'"C:\nope\x.exe"')
+        # the user's real Run key is never written: its values live in this dict
+        self.run = {"MiniRevoTestRun": (r'"C:\nope\x.exe"', winreg.REG_SZ)}
+        real_read, real_del, real_set = registry.read_value_full, registry.delete_value, registry.set_value
+        is_run = lambda ref: ref.hive == "HKCU" and ref.path.lower() == RUN.lower()   # noqa: E731
+
+        def read(ref):
+            return self.run.get(ref.value) if is_run(ref) else real_read(ref)
+
+        def delete(ref):
+            if not is_run(ref):
+                return real_del(ref)
+            if self.run.pop(ref.value, None) is None:
+                raise FileNotFoundError(ref.value)
+
+        def write(ref, data, typ):
+            if not is_run(ref):
+                return real_set(ref, data, typ)
+            self.run[ref.value] = (data, typ)
+        # "move/delete at the next restart" is never asked of Windows (as administrator it would be done for real)
+        self.reboot_move = mock.Mock(return_value=False)
+        self.reboot_delete = mock.Mock(return_value=False)
+        for p in (mock.patch.object(registry, "read_value_full", read), mock.patch.object(registry, "delete_value", delete),
+                  mock.patch.object(registry, "set_value", write),
+                  mock.patch.object(quarantine, "_move_on_reboot", self.reboot_move),
+                  mock.patch.object(quarantine.system, "delete_on_reboot", self.reboot_delete)):
+            p.start()
+            self.addCleanup(p.stop)
         self.prog = {"id": "test", "name": "MiniRevo Test App", "location": self.app}
 
-    def tearDown(self):
-        shutil.rmtree(self.tmp, ignore_errors=True)
+    def _drop_key(self):
         try:
-            registry.delete_tree(RegRef("HKCU", TEST_KEY))
-        except OSError:
-            pass
-        try:
-            registry.delete_value(RegRef("HKCU", RUN, 0, "MiniRevoTestRun"))
+            registry.delete_tree(RegRef("HKCU", self.key))
         except OSError:
             pass
 
@@ -57,9 +97,9 @@ class Quarantine(unittest.TestCase):
         return [
             {"kind": "folder", "target": self.app, "display": self.app},
             {"kind": "file", "target": self.file, "display": self.file},
-            {"kind": "regkey", "target": RegRef("HKCU", TEST_KEY + r"\App").to_str(), "display": "k"},
-            {"kind": "regvalue", "target": RegRef("HKCU", TEST_KEY + r"\Vals", 0, "bin").to_str(), "display": "v"},
-            {"kind": "regvalue", "target": RegRef("HKCU", TEST_KEY + r"\Vals", 0, "multi").to_str(), "display": "m"},
+            {"kind": "regkey", "target": RegRef("HKCU", self.key + r"\App").to_str(), "display": "k"},
+            {"kind": "regvalue", "target": RegRef("HKCU", self.key + r"\Vals", 0, "bin").to_str(), "display": "v"},
+            {"kind": "regvalue", "target": RegRef("HKCU", self.key + r"\Vals", 0, "multi").to_str(), "display": "m"},
             {"kind": "regvalue", "target": RegRef("HKCU", RUN, 0, "MiniRevoTestRun").to_str(), "display": "run"},
         ]
 
@@ -69,8 +109,8 @@ class Quarantine(unittest.TestCase):
         self.assertEqual(r["ok"], 6)
         self.assertFalse(os.path.exists(self.app))
         self.assertFalse(os.path.exists(self.file))
-        self.assertFalse(registry.key_exists(RegRef("HKCU", TEST_KEY + r"\App")))
-        self.assertIsNone(registry.get_value(winreg.HKEY_CURRENT_USER, RUN, "MiniRevoTestRun"))
+        self.assertFalse(registry.key_exists(RegRef("HKCU", self.key + r"\App")))
+        self.assertNotIn("MiniRevoTestRun", self.run)
         s = next(x for x in quarantine.sessions() if x["id"] == r["session"])
         self.assertTrue(s["restorable"])
         self.assertEqual(s["count"], 6)
@@ -81,10 +121,10 @@ class Quarantine(unittest.TestCase):
             self.assertEqual(f.read(), "hola")
         self.assertEqual(os.path.getsize(os.path.join(self.app, "sub", "b.bin")), 2000)
         self.assertTrue(os.path.exists(self.file))
-        self.assertEqual(registry.get_value(winreg.HKEY_CURRENT_USER, TEST_KEY + r"\App\Deep", "n"), 7)
-        self.assertEqual(registry.get_value(winreg.HKEY_CURRENT_USER, TEST_KEY + r"\Vals", "bin"), b"\x01\x02\x03")
-        self.assertEqual(registry.get_value(winreg.HKEY_CURRENT_USER, TEST_KEY + r"\Vals", "multi"), ["a", "b"])
-        self.assertEqual(registry.get_value(winreg.HKEY_CURRENT_USER, RUN, "MiniRevoTestRun"), r'"C:\nope\x.exe"')
+        self.assertEqual(registry.get_value(winreg.HKEY_CURRENT_USER, self.key + r"\App\Deep", "n"), 7)
+        self.assertEqual(registry.get_value(winreg.HKEY_CURRENT_USER, self.key + r"\Vals", "bin"), b"\x01\x02\x03")
+        self.assertEqual(registry.get_value(winreg.HKEY_CURRENT_USER, self.key + r"\Vals", "multi"), ["a", "b"])
+        self.assertEqual(self.run["MiniRevoTestRun"], (r'"C:\nope\x.exe"', winreg.REG_SZ))
         quarantine.delete_session(r["session"])
 
     def test_delete_mode_not_restorable(self):
@@ -100,7 +140,11 @@ class Quarantine(unittest.TestCase):
                {"kind": "folder", "target": paths.kf("Windows"), "display": "win"},
                {"kind": "regkey", "target": RegRef("HKCU", r"Software\Microsoft").to_str(), "display": "ms"},
                {"kind": "regkey", "target": RegRef("HKCU", "Software").to_str(), "display": "sw"}]
-        r = quarantine.remove(self.prog, bad, [self.prog])
+        # if the safety rules ever let one through, nothing real is moved or deleted: the test just fails
+        no = mock.Mock(side_effect=AssertionError("a protected item reached the removal"))
+        with mock.patch.object(quarantine, "_do_path", no), mock.patch.object(registry, "delete_tree", no), \
+                mock.patch.object(registry, "export_key", no):
+            r = quarantine.remove(self.prog, bad, [self.prog])
         self.assertEqual(r["skipped"], 4)
         self.assertEqual(r["ok"], 0)
         self.assertTrue(os.path.isdir(paths.kf("Documents")))
@@ -115,14 +159,17 @@ class Quarantine(unittest.TestCase):
         quarantine.delete_session(r["session"])
 
     def test_locked_file_does_not_abort(self):
+        self.reboot_move.return_value = True    # as administrator: scheduled for the restart (a mock, never Windows)
         locked = open(os.path.join(self.app, "sub", "b.bin"), "rb")  # without FILE_SHARE_DELETE
         try:
             r = quarantine.remove(self.prog, self.items()[:2], [self.prog])
         finally:
             locked.close()
-        # the rest was moved; the locked one stays (or is scheduled for reboot if permissions allow)
+        # the rest was moved; the locked one is scheduled for the restart
         self.assertFalse(os.path.exists(os.path.join(self.app, "a.txt")))
         self.assertFalse(os.path.exists(self.file))
+        self.assertEqual(self.reboot_move.call_args[0][0], os.path.join(self.app, "sub", "b.bin"))
+        self.assertTrue(r["restart_required"])
         quarantine.delete_session(r["session"])
 
     def test_a_file_that_stays_is_said_not_counted_as_freed(self):

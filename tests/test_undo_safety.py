@@ -1,6 +1,7 @@
 """Undo and safety of the Super Optimizer, Debloat, Privacy, Backups and Monitor engines: exact undo, backups written
 before anything changes, no false positives in the registry cleaner, services and Windows Update restarted after a
-repair. Everything runs against mocks and temporary folders: nothing touches the real system."""
+repair. Everything runs against mocks and temporary folders (and one test-only HKCU key with a random name, always
+deleted): nothing else touches the real system."""
 import json
 import os
 import shutil
@@ -102,9 +103,11 @@ class WindowsOwnedEntries(unittest.TestCase):
         self.assertTrue(keys[0].endswith("gone.exe"))
 
     def test_protected_key_is_detected_without_changing_it(self):
-        key = r"Software\MiniRevoTest\Protected"
+        # a key of this test only (random name), removed even if the test fails
+        base = r"Software\MiniRevoTest-" + __import__("uuid").uuid4().hex[:12]
+        key = base + r"\Protected"
+        self.addCleanup(lambda: registry.delete_tree(RegRef("HKCU", base)))
         winreg.CloseKey(winreg.CreateKey(winreg.HKEY_CURRENT_USER, key))
-        self.addCleanup(lambda: registry.delete_tree(RegRef("HKCU", r"Software\MiniRevoTest")))
         ref = RegRef("HKCU", key)
         self.assertFalse(O._windows_protected(ref))                       # the user's own key
         with mock.patch.object(O, "_key_owner", return_value=O._TI_SID):
@@ -117,7 +120,7 @@ class WindowsOwnedEntries(unittest.TestCase):
             return real_open(root, path, res, access)
         with mock.patch.object(O.winreg, "OpenKey", deny_write):
             self.assertTrue(O._windows_protected(ref))                    # its rights refuse the change
-        self.assertFalse(O._windows_protected(RegRef("HKCU", r"Software\MiniRevoTest\NotThere")))
+        self.assertFalse(O._windows_protected(RegRef("HKCU", base + r"\NotThere")))
         self.assertTrue(registry.key_exists(ref))
 
 class FalsePositives(unittest.TestCase):

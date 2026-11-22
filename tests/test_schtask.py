@@ -64,7 +64,9 @@ class UpdaterFallsBack(unittest.TestCase):
         self.assertEqual(r["mode"], "task")
 
 
-@unittest.skipUnless(ctypes.windll.shell32.IsUserAnAdmin(), "creating a task needs administrator rights (CI has them)")
+@unittest.skipUnless(os.environ.get("STELLARHUB_SYSTEM_TESTS") == "1" and ctypes.windll.shell32.IsUserAnAdmin(),
+                     "creates a real scheduled task: only on request (STELLARHUB_SYSTEM_TESTS=1, as administrator); "
+                     "the suite never changes the system")
 class RealTask(unittest.TestCase):
     def test_windows_accepts_the_task_and_keeps_the_settings(self):
         name = rf"StellarHubTest\t{uuid.uuid4().hex[:8]}"
