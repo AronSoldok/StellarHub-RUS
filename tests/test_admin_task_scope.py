@@ -5,6 +5,7 @@ start, and an elevated StellarHub removes a task an earlier version left for the
 a real task: schtasks and the registry are replaced by mocks."""
 import os
 import re
+import subprocess
 import unittest
 from unittest import mock
 
@@ -79,6 +80,26 @@ class Scope(unittest.TestCase):
                 mock.patch.object(elevation.ctypes.windll.shell32, "ShellExecuteW", return_value=42) as uac:
             self.assertTrue(elevation.elevate_on_start())
         self.assertFalse(any("/run" in c[0][0] for c in run.call_args_list if c[0]))
+        uac.assert_called_once()
+        self.assertEqual(uac.call_args[0][1], "runas")
+
+
+    def test_a_task_scheduler_that_does_not_answer_falls_back_to_the_windows_prompt(self):
+        """schtasks /run waited 15 s and then raised TimeoutExpired, which nothing caught: the start ended with a
+        traceback and no window. Now it is a failed run and Windows is asked the usual way."""
+        self.frozen(PF + r"\StellarHub\StellarHub.exe")
+
+        def run(cmd, **kw):
+            if "/run" in cmd:
+                raise subprocess.TimeoutExpired(cmd, 15)
+            raise AssertionError(cmd)
+        with mock.patch.object(elevation, "wants_elevation", return_value=True), \
+                mock.patch.object(elevation, "_hand_over_splash", return_value=None), \
+                mock.patch.object(elevation, "task_opens_this_copy", return_value=True), \
+                mock.patch("subprocess.run", side_effect=run), \
+                mock.patch.object(elevation, "elevated_copy_started", return_value=True), \
+                mock.patch.object(elevation.ctypes.windll.shell32, "ShellExecuteW", return_value=42) as uac:
+            self.assertTrue(elevation.elevate_on_start())
         uac.assert_called_once()
         self.assertEqual(uac.call_args[0][1], "runas")
 

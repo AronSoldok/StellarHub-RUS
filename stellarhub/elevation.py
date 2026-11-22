@@ -222,7 +222,6 @@ def elevate_on_start():
     if not wants_elevation():
         return False
     hidden = "--tray" in sys.argv
-    import subprocess
     phase("elevating")
     if hidden:  # the task can't take arguments: the elevated copy reads this note and stays in the tray
         try:
@@ -234,8 +233,7 @@ def elevate_on_start():
     ran_at = time.time()
     # only an all-users install runs its task: a per-user copy never starts one (the elevated copy Windows' prompt
     # opens below removes a task an earlier version made for it)
-    if uses_admin_task() and task_opens_this_copy(ADMIN_TASK) and subprocess.run(
-            ["schtasks", "/run", "/tn", ADMIN_TASK], capture_output=True, creationflags=0x08000000, timeout=15).returncode == 0:
+    if uses_admin_task() and task_opens_this_copy(ADMIN_TASK) and _run_task(ADMIN_TASK):
         # a copy the task did start but that is slow to reach the lock (a cold logon, an antivirus scan) gets up to a
         # minute: ending it after 8 s brought the Windows prompt at every such logon
         if elevated_copy_started() or (_copy_started_since(ran_at) and elevated_copy_started(52)):
@@ -258,6 +256,18 @@ def elevate_on_start():
     if splash is not None:
         splash.hand_over(False)
     return False  # the user said no: stay in normal mode
+
+
+def _run_task(name):
+    """schtasks /run: True if Windows accepted it. A Task Scheduler that does not answer in 15 s (or schtasks that
+    can't start) is a failed run, never an exception: that ended the start with no window at all."""
+    import subprocess
+    try:
+        return subprocess.run(["schtasks", "/run", "/tn", name], capture_output=True, creationflags=0x08000000,
+                              timeout=15).returncode == 0
+    except (OSError, subprocess.SubprocessError) as e:
+        print("[start] the administrator task could not be run:", e, flush=True)
+        return False
 
 
 def _hand_over_splash():
