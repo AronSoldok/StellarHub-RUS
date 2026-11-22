@@ -564,6 +564,28 @@ html[data-corners=soft] :is(.row,.vit,.pend,.nx,.tool,.dk,.pal .it,.pal .hl,.cs-
   .sheet nav .ind{height:34px}
 }
 
+/* ---------- compact layout: a window smaller than the layouts are designed for (1100 x 700 CSS px) ----------
+   html[data-layout=scroll] (shell.js; the rule is SH.zoomRule.compact in js/zoom.js). Nothing is squeezed or clipped:
+   every view lays out at least as tall as it would in a 760 px window (--fit-h, a little more than the 700 px minimum,
+   so nothing is cramped) and the view itself scrolls as one page, with the mouse wheel, touch (default panning,
+   nothing blocks it), the keyboard and the controller. Lists keep
+   scrolling inside their panels and hand the wheel on to the page at their ends (no overscroll containment). The dock
+   floats over the page; the page ends with the dock's room free (::after), so its last content always scrolls clear
+   of the dock. Narrow windows reflow their columns in each module's CSS (max-width:1099px); a fit-to-height tab that
+   still needs more room makes its module taller (--grow, shell.js growCompact). */
+html[data-layout=scroll]{--fit-h:calc(760px - var(--top))}
+html[data-layout=scroll] .view{overflow-x:hidden;overflow-y:auto;overscroll-behavior-y:none;scrollbar-gutter:stable}
+html[data-layout=scroll] .view::after{content:"";display:block;height:var(--dockspace)}
+html[data-layout=scroll] .view>.mod{position:relative;inset:auto;margin:6px 30px 0;height:max(calc(100% - 6px - var(--dockspace)),calc(var(--fit-h) - 6px - var(--dockspace) + var(--grow,0px)))}
+html[data-layout=scroll] .view .tab{overscroll-behavior:auto}
+/* a module's own dialogs cover what is on screen, wherever the page is scrolled */
+html[data-layout=scroll] :is(#v-monitor .mdlg,#v-drivers .dq-o,#v-hangar .hg-dlg,#v-updater .u-confirm){position:fixed;inset:var(--top) 0 0 0}
+@media (max-width:1099px){
+  html[data-layout=scroll] .view>.mod{margin:6px 18px 0}
+  html[data-layout=scroll] .mhead{flex-wrap:wrap;row-gap:10px}
+  html[data-layout=scroll] .mhead h1{white-space:normal}
+}
+
 /* ---------- lighter effects on battery (html[data-lite="1"], set by js/telemetry.js) ----------
    The same look with the costly parts swapped: no backdrop blur (a more opaque fill instead), no mask on scrolling
    lists, short shadows, no endless skeleton sweep. */

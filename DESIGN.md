@@ -150,7 +150,15 @@ Source of truth: `stellarhub/ui/css/base.css` (`:root` tokens) and `docs/UI_CONT
   (`.subnav`) 18 px below it, then panels. Panels fill the width and the height: grids use `repeat(auto-fit, minmax(...))`,
   every column reaches the dock and lines up with its neighbours (lists scroll inside), empty and idle states fill
   their panel with the content centred; nothing hangs in a corner with empty space beside or under it. Gaps 10-26 px; tight inside a group,
-  generous between groups. Minimum window 1100 x 700 must not wrap or overlap.
+  generous between groups. At 1100 x 700 CSS px (the size the layouts are designed for) nothing may wrap or overlap.
+- Compact layout (`html[data-layout=scroll]`, below 1100 x 700 CSS px: handhelds at 150 %, small windows): nothing is
+  squeezed or clipped. Each view lays out at least as tall as in a 760 px window and scrolls as one page (wheel,
+  touch, keyboard, controller); lists keep scrolling inside their panels and hand the wheel on to the page at their
+  ends; the dock floats over the page and the page ends with its room free; narrow windows reflow columns
+  (`max-width:1099px`). Above it the fit-to-window design is unchanged.
+- Interface size Automatic (`js/zoom.js`): bigger only where there is room to spare (1440 x 820 left); 100 % when the
+  layouts fit; on a smaller or high-scaling screen 90 % or 80 % so they fit (never more than 100 % there). The
+  window's minimum size always fits the screen's work area.
 - Density "compact" and corner presets (soft / mid / sharp) remap the same pieces.
 
 ## Elevation & Depth

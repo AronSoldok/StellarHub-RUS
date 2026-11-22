@@ -155,5 +155,8 @@ html[data-int=min] .pend.act.ind .ring{animation:none}
   .vit{padding:5px 10px;row-gap:5px}
   .vit .vn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 }
-@media (max-height:680px){ .nextp{display:none} }
+/* compact layout (base.css): Home lays out at least as tall as in a 760 px window and scrolls as one page; touch
+   on the 3D view pans the page vertically and still turns the model sideways */
+html[data-layout=scroll] .home-grid{position:relative;inset:auto;margin:8px 30px 0;height:max(calc(100% - 8px - var(--dockspace)),calc(var(--fit-h) - 8px - var(--dockspace)))}
+html[data-layout=scroll] .hv-model3d .m3-canvas{touch-action:pan-y}
 @container (max-height:110px){.nx-empty button{display:none}.nx-empty{padding:4px 10px}}

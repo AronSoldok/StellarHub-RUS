@@ -28,4 +28,5 @@ confirmed first and reversible whenever possible.
   no new backdrop-filter on large areas, no new per-frame loops.
 - Every visible string goes through `SH.t()` and is translated into es, pt, it, fr, zh.
 - Writing: sentence case, no ALL-CAPS labels, no emojis in the UI, no purple gradients.
-- Minimum window 1100 x 700; nothing may wrap badly or overlap there.
+- Layouts are designed for 1100 x 700 CSS px and must not wrap badly or overlap there. Smaller windows (handhelds at
+  150 %, a small window) switch to the compact layout: the page scrolls, nothing is clipped or left under the dock.

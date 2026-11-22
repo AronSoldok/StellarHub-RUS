@@ -737,7 +737,8 @@ function sfScan(root) {
     if (!vis(el)) continue;
     for (let c = el.lastElementChild; c; c = c.previousElementSibling) stack.push(c);
     /* cheapest tests first: only an element that really overflows gets its style read */
-    if (sfSet.has(el) || !el.clientHeight || el.scrollHeight - el.clientHeight <= 2 || el.closest('[data-nofade]')) continue;
+    /* a view that scrolls as one page (compact layout) gets no fade: it would mask the whole page */
+    if (sfSet.has(el) || el.classList.contains('view') || !el.clientHeight || el.scrollHeight - el.clientHeight <= 2 || el.closest('[data-nofade]')) continue;
     const cs = getComputedStyle(el);
     if (!/(auto|scroll)/.test(cs.overflowY)) continue;
     const plain = cs.backgroundColor === 'rgba(0, 0, 0, 0)' && parseFloat(cs.borderBottomWidth) === 0;

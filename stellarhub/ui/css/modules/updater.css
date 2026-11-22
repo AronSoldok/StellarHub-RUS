@@ -362,6 +362,8 @@ html[data-int=min] #v-updater .u-qrow.st-inst .u-qbar>span{animation:none}
 #v-updater .u-row,#v-updater .rows>.row,#v-updater .u-pkr,#v-updater .u-qrow{content-visibility:auto;contain-intrinsic-size:auto 52px}
 #v-updater .u-group{contain:layout paint}
 #v-updater .u-ovl,#v-updater .u-scroll,#v-updater .u-qlist{overscroll-behavior:contain}
+/* compact layout: the page scrolls, so a list at its end hands the wheel on to it */
+html[data-layout=scroll] #v-updater :is(.u-ovl,.u-scroll,.u-qlist){overscroll-behavior:auto}
 
 /* long versions: wrap to two lines instead of being cut */
 #v-updater .u-row .u-ver{flex-wrap:wrap;row-gap:0}

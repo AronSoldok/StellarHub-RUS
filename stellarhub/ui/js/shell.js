@@ -708,6 +708,27 @@ function effectiveZoom() {
 function zoomNote() { return zoomCapped ? SH.t('Reduced to {pct}% while the window is this small, so everything fits.', { pct: Math.round(zoomCapped * 100) }) : ''; }
 function paintZoomNote() { const n = $('#zoomNote'); if (n) n.textContent = zoomNote(); }
 function computeAutoZoom() { autoZoom = SH.zoomRule.auto(innerWidth * curZoom, innerHeight * curZoom); }
+/* compact layout (base.css, html[data-layout=scroll]): below the size the layouts are designed for, the views scroll as
+   one page instead of squeezing their panels. Switched on every resize, before anything re-fits ('layout' event). */
+function applyLayout() {
+  const v = SH.zoomRule.compact(innerWidth, innerHeight) ? 'scroll' : 'fit';
+  if (ROOT.dataset.layout === v) return;
+  ROOT.dataset.layout = v; SH.layout = v; SH.emit('layout', v);
+}
+applyLayout(); addEventListener('resize', applyLayout);
+/* In the compact layout a fit-to-height tab whose content still needs more room than a 760 px window gives it (a
+   narrow window stacks its columns) makes its module that much taller (--grow), so the page scrolls to it instead of
+   clipping it. Measured after the tab is shown and when the window changes; never in the normal layout. */
+function growCompact(reset) {
+  const v = $('#v-' + state.view), mod = v && $('.mod', v); if (!mod) return;
+  if (reset) mod.style.removeProperty('--grow');
+  if (ROOT.dataset.layout !== 'scroll') { mod.style.removeProperty('--grow'); return; }
+  const tab = $('.tab.on', mod); if (!tab || !tab.classList.contains('fill')) { mod.style.removeProperty('--grow'); return; }
+  const over = tab.scrollHeight - tab.clientHeight, g = parseFloat(mod.style.getPropertyValue('--grow')) || 0;
+  if (over > 2) mod.style.setProperty('--grow', Math.ceil(g + over + 8) + 'px');
+}
+let growT = 0; const growSoon = () => { clearTimeout(growT); growT = setTimeout(() => { growCompact(true); setTimeout(growCompact, 600); }, 120); };
+SH.on('view', growSoon); SH.on('tab', growSoon); SH.on('layout', growSoon); addEventListener('resize', growSoon);
 let zoomTimer = 0;
 addEventListener('resize', () => {
   clearTimeout(zoomTimer);
