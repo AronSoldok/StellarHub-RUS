@@ -153,6 +153,20 @@ class SingleInstance(unittest.TestCase):
         self.assertGreater(instance._age(old), 500)
         self.assertEqual(instance._age(mock.Mock(create_time=mock.Mock(side_effect=OSError))), 60.0)
 
+    def test_another_users_copy_is_never_taken_for_this_sessions(self):
+        """Only this session's StellarHub can hold this session's lock: another user's (fast user switching, Remote
+        Desktop) must not be waited for, nor ended as stuck. A process whose session Windows won't say is kept."""
+        import types
+        run_py = os.path.join(instance.config.base_dir(), "run.py")
+
+        def proc(pid):
+            return types.SimpleNamespace(info={"pid": pid, "name": "python.exe", "exe": sys.executable,
+                                               "cmdline": [sys.executable, run_py]})
+        procs = [proc(101), proc(202), proc(303)]
+        sessions = {None: 2, 101: 2, 202: 3, 303: 0}
+        with mock.patch.object(instance, "session_id", side_effect=lambda pid=None: sessions[pid]),                 mock.patch("psutil.process_iter", return_value=procs), mock.patch.object(instance.config, "FROZEN", False):
+            self.assertEqual([p.info["pid"] for p in instance.other_copies()], [101, 303])
+
 
 class Jobs(unittest.TestCase):
     def test_finished_jobs_need_no_timer_thread(self):

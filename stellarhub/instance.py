@@ -12,10 +12,11 @@ from . import config
 from .i18n import tr
 from .log import fatal, phase
 
-def session_id():
+def session_id(pid=None):
+    """The Windows session a process runs in (this one by default); 0 when Windows does not say."""
     sid = ctypes.c_ulong(0)
     try:
-        if ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(sid)):
+        if ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid() if pid is None else int(pid), ctypes.byref(sid)):
             return sid.value
     except Exception:
         pass
@@ -147,12 +148,15 @@ def claim_single_instance(wait=0.0):
 
 
 def other_copies():
-    """The other StellarHub processes that could be holding the lock (not workers, updaters or installer helpers)."""
+    """The other StellarHub processes that could be holding the lock (not workers, updaters or installer helpers). Only
+    this Windows session's: the lock is per session, and another user's StellarHub (fast user switching, Remote
+    Desktop, an all-users install) never holds this session's lock, so it must never be taken for stuck and ended."""
     try:
         import psutil
     except ImportError:
         return []
     me, out = os.getpid(), []
+    here = session_id()
     mine = os.path.normcase(sys.executable)
     run_py = os.path.normcase(str(Path(config.base_dir()) / "run.py"))
     for pr in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
@@ -168,6 +172,8 @@ def other_copies():
                     (pr.info["exe"] is None or os.path.normcase(pr.info["exe"]) == mine)
             else:
                 same = run_py in cmd
+            if same and here and session_id(pr.info["pid"]) not in (0, here):  # (0: Windows did not say: keep it)
+                continue
             if same:
                 out.append(pr)
         except (psutil.Error, OSError):
