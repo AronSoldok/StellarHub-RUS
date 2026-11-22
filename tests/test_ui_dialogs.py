@@ -287,6 +287,20 @@ class Dialogs(unittest.TestCase):
         self.assertTrue(out["second"][1].startswith("toast:StellarHub 2.2.0 is ready"))
         self.assertEqual(out["stagedVer"], "2.2.0")
 
+    def test_a_privacy_change_that_failed_is_an_error(self):
+        src = read("js", "modules", "privacy.js")
+        out = self.run_js(r"""
+          const state = {}; SH.requireAdmin = noop; let answer;
+          SH.engine = async () => answer;
+          """ + js_function(src, "eng") + r"""
+          const res = [];
+          for (const a of [{ ok: false, error: 'Windows said no' }, { error: 'x' }, undefined, null, { needAdmin: true }, { ok: true, backup: 'b', label: 'Done' }]) {
+            answer = a; try { const r = await eng('fix', 'uac'); res.push('ok:' + r.label); } catch (e) { res.push(e.needAdmin ? 'admin' : 'err:' + e.message); } }
+          out(res);
+        """)
+        self.assertEqual(out, ["err:Windows said no", "err:x", "err:Something went wrong.", "err:Something went wrong.", "admin", "ok:Done"])
+        self.assertIn("r && r.backup ? { kind: 'success', action:", src)   # Undo only with a backup
+
     def test_update_confirmation_is_a_known_dialog(self):
         for f, pat in (("gamepad.js", r"const OVERLAYS = \[(.*?)\];"), ("gamepad.js", r"const MODALS = \[(.*?)\];"),
                        ("sounds.js", r"const MODALS = '(.*?)';")):
