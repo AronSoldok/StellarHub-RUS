@@ -172,7 +172,8 @@ function ask() {
 /* new features (x.Y.0): downloaded in the background and installed the next time StellarHub opens (app.py), when
    this copy can update without a Windows prompt and "Install new features automatically" is on */
 const QUIET = ['direct', 'portable', 'task'];
-let staging = null, stagedVer = null;
+const STAGE_AFTER = 10 * 60000;  /* ms after start before a quiet background download begins */
+let staging = null, stagedVer = null, bootAt = Date.now();
 const quiet = r => !!r && r.ok && r.newer && kindOf(r.current, r.latest) === 'minor' && state.settings.autoUpdateFeatures !== false && QUIET.includes(r.mode);
 async function stage(r) {
   if (staging || stagedVer === r.latest) return;
@@ -205,7 +206,9 @@ async function check(manual) {
   if (!r.newer) { if (manual) SH.toast(t('You are on the latest version.')); return r; }
   /* on its own, StellarHub only interrupts for a big version (X.0.0); new features install at the next start, and a
      small fix waits in Settings > Updates */
-  if (!manual && quiet(r)) { stage(r); return r; }
+  /* the quiet download waits until StellarHub has been open a while: a program that downloads an installer seconds
+     after it starts is what antivirus behaviour engines treat as a dropper (issue #7) */
+  if (!manual && quiet(r)) { setTimeout(() => stage(r), Math.max(0, STAGE_AFTER - (Date.now() - bootAt))); return r; }
   if (manual || (kindOf(r.current, r.latest) !== 'patch' && state.settings.skipVersion !== r.latest)) { if (!box) { open(r); SH.sound('update_available'); } }
   return r;
 }
@@ -238,6 +241,7 @@ function paintSettings(el) {
   $('[data-upd-open]', box2).addEventListener('click', () => open(r));
 }
 SH.on('boot', () => {
+  bootAt = Date.now();
   setTimeout(afterUpdate, 900);
   const auto = () => { if (state.settings.autoUpdate !== false) check(false); };
   setTimeout(auto, 3500);
