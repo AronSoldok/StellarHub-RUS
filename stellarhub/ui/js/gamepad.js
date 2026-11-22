@@ -379,10 +379,11 @@ function enter(p) {
   inside.push(p); const list = candidates(scope(), p);
   const n = list.length ? firstVisible(list, p) : null;
   if (n) setCur(n); else { cur = p; aimRing(); }
+  scrollerCache = null;  /* the right stick scrolls the panel now, not what it scrolled before */
   paintPanel(); hintKey = ''; paintHints(); SH.sound('focus_move');
 }
 function leave() {
-  const p = inside.pop(); paintPanel();
+  const p = inside.pop(); paintPanel(); scrollerCache = null;
   if (p && p.isConnected) setCur(p); hintKey = ''; paintHints(); bump('up');
 }
 /* LB / RB inside a panel: a page up or down, the focus on the first item then on screen */
@@ -577,14 +578,17 @@ function validate(force) {
   const now = performance.now(); if (!force && now - lastVal < 140) return; lastVal = now;
   const sc = scope();
   /* a panel that went away (closed, re-rendered, no longer scrolls) or another overlay on top: back to the page */
-  while (inside.length && (!usable(insideRoot(), sc) || !scrollsY(insideRoot()))) { const p = inside.pop(); if (cur && p.contains(cur)) cur = p.isConnected ? p : null; }
+  while (inside.length && (!usable(insideRoot(), sc) || !scrollsY(insideRoot()))) { const p = inside.pop(); scrollerCache = null; if (cur && p.contains(cur)) cur = p.isConnected ? p : null; }
   if (sc !== scopeRoot || state.view !== lastView) {
     if (sc !== scopeRoot) inside.length = 0;
-    if (scopeRoot && cur && cur.isConnected) memo.set(scopeRoot, cur);
+    /* the focus each scope had, for coming back to it: the page, or a dialog that another one opened on top of (Settings
+       under the update dialog); a dialog that closed forgets it, so opening it again starts at its first control */
+    if (scopeRoot && scopeRoot !== document.body && !visible(scopeRoot)) memo.delete(scopeRoot);
+    else if (scopeRoot && cur && cur.isConnected) memo.set(scopeRoot, cur);
     /* another module: its own last focus (initialFor), not the one this scope had */
     const viewChanged = state.view !== lastView && sc === document.body && scopeRoot === sc; scopeRoot = sc; lastView = state.view;
     if (viewChanged) { inside.length = 0; const n = initialFor(sc); if (n) setCur(n, true); else cur = null; }
-    else { const m = memo.get(sc); const n = sc === document.body && usable(m, sc) ? m : initialFor(sc); if (n) setCur(n, true); else cur = null; }
+    else { const m = memo.get(sc); const n = usable(m, sc) ? m : initialFor(sc); if (n) setCur(n, true); else cur = null; }
   } else if (!editing() && !usable(cur, insideRoot() || sc)) {
     const r = lastRect, n = candidates(sc, insideRoot()); const p = r ? nearestTo(r.x, r.y, n) : initialFor(sc); if (p) setCur(p, true); else cur = null;
   }
@@ -637,8 +641,16 @@ function poll(gp, ts, dt) {
     else if (ts >= st.next) { st.next = ts + (ts - st.since > 1400 ? FAST : REPEAT); move(dir); }
   } else st.dir = null;
   if (hk) hk.stick(rx, ry, dt, n => !!bs[B[n]]);
-  else if (Math.hypot(rx, ry) > RDZ) stickScroll(rx, ry, dt);
+  else {
+    /* the view that had the stick lost it while the stick was still deflected (the focus moved on, a panel was entered):
+       tell it once that the stick is at rest, so it settles (the 3D model glides back) instead of staying where it was */
+    if (lastHk && lastHk !== hook) lastHk = null;
+    if (lastHk) { try { lastHk.stick(0, 0, dt, () => false); } catch (e) { console.error(e); } }
+    if (Math.hypot(rx, ry) > RDZ) stickScroll(rx, ry, dt);
+  }
+  lastHk = hk;
 }
+let lastHk = null;
 let consumed = false, scrollerCache = null;
 /* ---------- a view that takes the right stick and a few buttons while the focus is in it (the Home 3D model orbits) ----------
    SH.gamepad.setHook({ owns(el) -> true while it wants them (el = the focus), stick(x, y, dt, held) every frame (raw axes,
@@ -740,6 +752,7 @@ function releaseCapture() { capture = null; if (mode) { ring.classList.add('on')
 const MODALS = ['.su-ov', '.cs-o.on', '.hg-dlg', '.mdlg', '.bk-dq-o', '.dq-o', '.u-confirm', '.bug-pop', '.ar-o'];
 const KEEP = '#toasts,#padRing,#padHints,#padPanel,#padTip,script,style,link';
 let modal = null, opener = null, inerted = [], lastFocus = null, modalTimer = 0;
+const under = []; let inModal = null;  /* [dialog, its opener] for each dialog still open under the one on top (Settings under the update dialog) */
 function modalTop() {
   if (state.palOpen) return $('#palO');
   let b = null, bz = -1;
@@ -752,18 +765,27 @@ function modalTop() {
   return state.setOpen ? $('#setO') : null;
 }
 const tabbables = root => $$('a[href],button,input:not([type=hidden]),select,textarea,[tabindex]:not([tabindex="-1"])', root).filter(el => !el.disabled && visible(el) && !el.closest('[inert]'));
-function releaseModal() {
+function releaseModal(stacked) {
   inerted.forEach(el => el.removeAttribute('inert')); inerted = [];
   const o = opener, was = modal; modal = null; opener = null; clearInterval(modalTimer); modalTimer = 0;
+  if (stacked) return;  /* a dialog opened on top of it: the focus moves into that one, never to the page behind both */
   const a = document.activeElement;
   if (o && o.isConnected && visible(o) && (!a || a === document.body || (was && was.contains(a)))) { try { o.focus({ preventScroll: true }); } catch {} }
 }
 function syncModal() {
   const top = modalTop();
   if (top === modal) return;
-  if (modal) releaseModal();
-  if (!top) return;
-  modal = top; opener = lastFocus && lastFocus.isConnected && !top.contains(lastFocus) ? lastFocus : null;
+  /* a new dialog over one that stays open: what had the focus in the lower one opened it, and gets it back when it closes */
+  /* (the last focus inside the lower one: the new dialog may already have taken the focus to its own button) */
+  const lower = modal && top && visible(modal) ? modal : null, from = inModal && inModal.isConnected ? inModal : document.activeElement;
+  inModal = null;
+  if (lower) under.push([lower, opener]);
+  if (modal) releaseModal(!!lower);
+  if (!top) { under.length = 0; return; }
+  const i = under.findIndex(([d]) => d === top);
+  modal = top;
+  if (i >= 0) { opener = under[i][1]; under.length = i; }
+  else opener = lower && from && lower.contains(from) ? from : lastFocus && lastFocus.isConnected && !top.contains(lastFocus) ? lastFocus : null;
   for (let n = top; n && n !== document.body; n = n.parentElement) for (const sib of n.parentElement ? n.parentElement.children : []) {
     if (sib !== n && !sib.matches(KEEP) && !sib.hasAttribute('inert')) { sib.setAttribute('inert', ''); inerted.push(sib); }
   }
@@ -772,10 +794,10 @@ function syncModal() {
     const l = tabbables(top), f = l.find(el => el.classList.contains('pri')) || l[0];
     if (f && !isTextField(f)) { try { f.focus({ preventScroll: true }); } catch {} }
   }
-  if (!modalTimer) modalTimer = setInterval(syncModal, 160);
+  if (!modalTimer) modalTimer = setInterval(() => { if (!document.hidden) syncModal(); }, 160);  /* (in the tray: nothing to check) */
 }
 const syncSoon = () => { if (syncSoon.t) return; syncSoon.t = setTimeout(() => { syncSoon.t = 0; syncModal(); }, 60); };
-document.addEventListener('focusin', e => { if (!modal && e.target !== document.body && !(e.target.closest && e.target.closest(MODALS.join(',') + ',#palO,#setO'))) lastFocus = e.target; }, true);
+document.addEventListener('focusin', e => { if (modal && modal.contains(e.target)) inModal = e.target; if (!modal && e.target !== document.body && !(e.target.closest && e.target.closest(MODALS.join(',') + ',#palO,#setO'))) lastFocus = e.target; }, true);
 addEventListener('keydown', e => {
   if (e.key !== 'Tab' || !modal) return;
   const list = tabbables(modal); if (!list.length) { e.preventDefault(); return; }

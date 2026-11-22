@@ -1010,8 +1010,11 @@ if (bugBtn) { bugBtn.innerHTML = ic('bugreport'); bugBtn.addEventListener('click
 const ORDER = DOCK.filter(x => x !== '|');
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if ((e.ctrlKey || e.metaKey) && k === 'k') { e.preventDefault(); state.palOpen ? closePal() : openPal(); return; }
-  if ((e.ctrlKey || e.metaKey) && k === ',') { e.preventDefault(); state.setOpen ? closeSettings() : openSettings(); return; }
+  /* a dialog on top (the component sheet, the update or administrator dialog, a confirmation, the bug popover) keeps the
+     palette and the settings from opening behind it: the focus trap would make the dialog on screen inert */
+  const dlg = SH.modal && SH.modal.open, held = !!dlg && dlg.id !== 'palO' && dlg.id !== 'setO';
+  if ((e.ctrlKey || e.metaKey) && k === 'k') { e.preventDefault(); if (state.palOpen) closePal(); else if (!held) openPal(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === ',') { e.preventDefault(); if (state.setOpen) closeSettings(); else if (!held) openSettings(); return; }
   if ((e.ctrlKey || e.metaKey) && /^[1-9]$/.test(k)) { e.preventDefault(); const id = ORDER[+k - 1]; if (id) go(id); return; }
   if (e.key === 'Escape') { if (state.palOpen) closePal(); else if (state.setOpen) closeSettings(); else if (noteShown) hideNote(); else if (state.view !== 'home' && !e.defaultPrevented && !(e.target && e.target.closest && e.target.closest('input:not([type=range]):not([type=checkbox]):not([type=radio]):not([type=button]),textarea,select,[contenteditable=""],[contenteditable="true"]'))) go('home'); return; }
   if (state.palOpen) {
