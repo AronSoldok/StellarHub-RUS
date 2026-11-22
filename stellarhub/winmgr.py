@@ -124,7 +124,14 @@ def watch_ui(window, busy_fn=None, every=2.0, limit=8.0):
             try:
                 form.BeginInvoke(Action(ev.set))
             except Exception:
-                return  # the window is gone
+                try:
+                    gone = bool(form.IsDisposed)
+                except Exception:
+                    gone = True
+                if gone:
+                    return  # the window is gone
+                time.sleep(every)  # its handle is not made yet (a slow start): it used to stop watching for good
+                continue
             ok = ev.wait(limit)
             try:
                 busy = busy_fn() if busy_fn is not None else 0

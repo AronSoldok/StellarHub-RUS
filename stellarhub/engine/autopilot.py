@@ -281,7 +281,7 @@ def wifi_ssid():
         try:
             out = raw.decode("utf-8")
         except UnicodeDecodeError:
-            out = raw.decode("cp850", "replace")
+            out = raw.decode("oem", "replace")  # this Windows' console code page (cp850 was only right in Western Europe)
         for line in out.splitlines():
             k, _, v = line.partition(":")
             if k.strip().upper() == "SSID":   # "SSID" on English and Spanish Windows ("BSSID" is a different line)

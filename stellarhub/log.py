@@ -42,9 +42,15 @@ class LogOnce:
     written once and then counted, so the log stays readable and small."""
 
     def __init__(self, fh):
+        import threading
         self.fh, self.last, self.n, self.buf = fh, None, 0, ""
+        self._lock = threading.RLock()  # every thread prints: without it, lines from two threads could be lost or mixed
 
     def write(self, text):
+        with self._lock:
+            return self._write(text)
+
+    def _write(self, text):
         self.buf += text
         while "\n" in self.buf:
             line, self.buf = self.buf.split("\n", 1)
@@ -64,8 +70,9 @@ class LogOnce:
 
     def flush(self):
         try:
-            self._flush_repeats()
-            self.fh.flush()
+            with self._lock:
+                self._flush_repeats()
+                self.fh.flush()
         except (OSError, ValueError):
             pass
 

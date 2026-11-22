@@ -2,6 +2,7 @@
 import io
 import os
 import socket
+import sys
 import tempfile
 import threading
 import time
@@ -25,6 +26,25 @@ class LogOnce(unittest.TestCase):
         self.assertEqual(out.count("[telemetry] boom"), 1)
         self.assertIn("49 more times", out)
         self.assertIn("something else", out)
+
+    def test_many_threads_printing_lose_and_repeat_nothing(self):
+        buf = io.StringIO()
+        lo = log.LogOnce(buf)
+        old = sys.getswitchinterval()
+        sys.setswitchinterval(1e-6)  # switch threads as often as possible: the unlocked version duplicated lines
+        self.addCleanup(sys.setswitchinterval, old)
+
+        def w(i):
+            for k in range(1500):
+                lo.write(f"thread {i} line {k}\n")
+        ts = [threading.Thread(target=w, args=(i,)) for i in range(6)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        lines = buf.getvalue().splitlines()
+        self.assertEqual(len(lines), 9000)
+        self.assertEqual(len(set(lines)), 9000)
 
     def test_rotate_keeps_one_old_copy(self):
         d = tempfile.mkdtemp()

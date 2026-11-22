@@ -196,4 +196,6 @@ def _decode(raw, enc):
     try:
         return raw.decode(enc)
     except UnicodeDecodeError:
-        return raw.decode("cp850", "replace")
+        # the console code page of THIS Windows (850 in Western Europe, 437 in the US, 866 in Russian, 852 in Central
+        # Europe...): a fixed cp850 garbled every accented letter on the others
+        return raw.decode("oem", "replace")
