@@ -523,7 +523,13 @@ def export(job, folder=None):
     if need:
         return need
     base = folder or default_backup_dir()
-    dest = os.path.join(base, time.strftime("%Y-%m-%d %H%M"))
+    # a folder of its own: a second backup in the same minute (a routine right after a manual one) used to write into
+    # the first one's folder, and when it was cancelled or failed it removed that folder, the complete backup with it
+    stem = dest = os.path.join(base, time.strftime("%Y-%m-%d %H%M"))
+    k = 2
+    while os.path.exists(dest):
+        dest = f"{stem} ({k})"
+        k += 1
     os.makedirs(dest, exist_ok=True)
     marker = os.path.join(dest, PARTIAL)
     try:

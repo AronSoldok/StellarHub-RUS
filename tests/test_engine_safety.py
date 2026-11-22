@@ -118,6 +118,22 @@ class DriverBackupsAndInstall(unittest.TestCase):
             open(os.path.join(part, D.PARTIAL), "w").close()
             self.assertEqual(D.backups(), [])
 
+    def test_a_cancelled_backup_never_removes_an_earlier_one_from_the_same_minute(self):
+        job = QuietJob()
+        first = os.path.join(self.tmp, "2026-11-22 1530")
+        os.makedirs(first)
+        with open(os.path.join(first, "oem1.inf"), "w") as f:
+            f.write("complete backup")
+
+        def fake_run(cmd, on_line=None, **kw):
+            self.assertNotEqual(os.path.normcase(cmd[-1]), os.path.normcase(first))
+            job.cancelled = True
+            return 1, ""
+        with mock.patch.object(D, "default_backup_dir", return_value=self.tmp),                 mock.patch.object(D, "KNOWN_BACKUPS", os.path.join(self.tmp, "known.json")),                 mock.patch.object(D, "_need_admin", return_value=None),                 mock.patch.object(D, "_third_party_count", return_value=1),                 mock.patch.object(D.time, "strftime", return_value="2026-11-22 1530"),                 mock.patch.object(D, "run", side_effect=fake_run):
+            with self.assertRaises(Cancelled):
+                D.export(job)
+        self.assertTrue(os.path.isfile(os.path.join(first, "oem1.inf")))
+
     def test_cancelled_install_keeps_what_was_installed(self):
         job = QuietJob()
         a, b = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
