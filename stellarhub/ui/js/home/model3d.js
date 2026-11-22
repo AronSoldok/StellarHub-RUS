@@ -1009,7 +1009,7 @@ function thinMats(R0) {
 }
 /* a world-space camera target for each spot from its point in the device's own frame */
 function spotsFrom(dev, spots) {
-  dev.updateMatrixWorld(true); const out = {};
+  dev.updateWorldMatrix(true, false); const out = {};
   for (const [k, s] of Object.entries(spots)) { out[k] = { ...s }; if (s.pos) out[k].tg = new THREE.Vector3(...s.pos).applyMatrix4(dev.matrixWorld).toArray(); }
   return out;
 }
@@ -1232,6 +1232,217 @@ function buildHandheld(canvas) {
   return R0;
 }
 
+/* ---------- tablet / detachable: a 13" slate standing on its kickstand, its keyboard cover on the floor in front. The device's
+   own frame as the handheld's (x across, y out of the screen, z down). ---------- */
+const TB = { w: 2.87, d: 1.95, t: .09, tilt: .42, y: .95, scrW: 2.72, scrH: 1.7, lift: .34 };
+const POSE_TB = { az: .5, el: .33, dist: 8.4, target: [0, .95, .3] };
+const SPOTS_TB = {
+  cpu: { pos: [.48, 0, -.45], az: .1, el: .6, dist: 7.6, inside: true },
+  gpu: { pos: [.62, 0, -.45], az: -.08, el: .6, dist: 7.6, inside: true },
+  ram: { pos: [.55, 0, -.45], az: 0, el: .6, dist: 7.8, inside: true },
+  ssd: { pos: [-.15, 0, -.55], az: .12, el: .6, dist: 7.6, inside: true },
+  wifi: { pos: [1.0, 0, -.6], az: -.25, el: .6, dist: 7.6, inside: true },
+  battery: { pos: [0, 0, .3], az: .05, el: .62, dist: 8.4, inside: true },
+  audio: { pos: [0, .02, -.8], az: .05, el: .42, dist: 7.0 },
+  display: { screen: true, az: .04, el: .42, dist: 7.4 },
+  sys: { screen: true, az: -.3, el: .46, dist: 7.4 },
+};
+function keyboardCoverCanvas(w, d) {
+  const W = 1536, H = Math.round(W * d / w), c = mk(W, H), g = c.getContext('2d'), U = W / w;
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#2b3446'); gr.addColorStop(1, '#232b3b'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  noise(g, W, H, .09, 31);
+  const kx = .12 * U, kw = (W - kx * 2) / 15, kh = kw * .92, ky = .1 * U;
+  g.fillStyle = '#141820';
+  for (let r = 0; r < 6; r++) {
+    const n = r === 5 ? 9 : 15, h = r === 0 ? kh * .6 : kh, y = ky + (r ? kh * .6 + 6 + (r - 1) * (kh + 6) : 0);
+    for (let i = 0; i < n; i++) {
+      let x = kx + i * kw, ww = kw - 6;
+      if (r === 5) { const ws = [1.2, 1, 1, 1.2, 5.6, 1.2, 1, 1, 1]; x = kx + ws.slice(0, i).reduce((a, b) => a + b, 0) * kw; ww = ws[i] * kw - 6; }
+      g.beginPath(); g.roundRect(x, y, ww, h - 6, 6); g.fill();
+    }
+  }
+  const ty = ky + kh * .6 + 6 + 5 * (kh + 6) + 14; g.fillStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.roundRect(W / 2 - 1.0 * U / 2, ty, 1.0 * U, H - ty - .06 * U, 14); g.fill();
+  return c;
+}
+function buildTablet(canvas) {
+  const R0 = sceneBase(canvas, { lift: TB.lift }), { accent, aniso } = R0, std = o => new THREE.MeshStandardMaterial(o);
+  const mat = R0.mat = Object.assign(R0.mat, thinMats(R0), {
+    back: std({ color: 0x59606d, metalness: .75, roughness: .34 }), side: std({ color: 0x6a7280, metalness: .85, roughness: .3 }),
+    glass: std({ color: 0x040507, metalness: .1, roughness: .06, envMapIntensity: 1.2 }), stand: std({ color: 0x4f5663, metalness: .75, roughness: .36 }),
+    cover: std({ map: canvasTex(keyboardCoverCanvas(2.87, 1.05), true, aniso), metalness: .05, roughness: .9 }), coverSide: std({ color: 0x1c2230, metalness: .1, roughness: .8 }),
+  });
+  const fill = new THREE.DirectionalLight(0xdfe8ff, .6); fill.position.set(1.5, 2.5, 6); R0.scene.add(fill);
+  const dev = new THREE.Group(); dev.position.set(0, TB.y, 0); dev.rotation.x = Math.PI / 2 - TB.tilt; R0.laptop.add(dev); R0.dev = dev;
+  groundShadow(R0, 3.9, 2.6, 0, .55, .8); R0.shadowOp = .8;
+  // the slab: aluminium back with a chamfered edge
+  dev.add(new THREE.Mesh(loft(TB.w, TB.d, .14, [[-TB.t, .03], [-TB.t + .016, 0], [-.012, 0], [0, .004]], 8), [mat.tray, mat.side, mat.back]));
+  const cam = new THREE.Mesh(merge([new THREE.CylinderGeometry(.05, .05, .012, 24), at(new THREE.CylinderGeometry(.022, .022, .004, 20), 0, -.008, 0)]), mat.glass);
+  cam.position.set(1.12, -TB.t - .004, -.78); dev.add(cam);
+  // the kickstand: hinged a third of the way down the back, opened until its edge meets the floor
+  const kick = new THREE.Group(); kick.position.set(0, -TB.t, -.36); dev.add(kick);
+  kick.add(new THREE.Mesh(at(loft(TB.w - .12, 1.25, .1, [[-.014, 0], [0, 0]], 6), 0, 0, .625), [mat.stand, mat.stand, mat.stand]));
+  { // solve the opening angle: the edge's height above the floor is 0
+    const th = Math.PI / 2 - TB.tilt, Y = TB.y - TB.t * Math.cos(th) + .36 * Math.sin(th);   // the hinge's height
+    kick.rotation.x = Math.PI - Math.asin(clamp((Y + .01) / 1.25, -1, 1)) - th;
+  }
+  // the keyboard cover lying on the floor in front
+  const cover = new THREE.Mesh(at(loft(TB.w, 1.05, .08, [[0, .01], [.01, 0], [.035, 0], [.045, .008]], 6), 0, 0, 1.0), [mat.cover, mat.coverSide, mat.coverSide]); R0.laptop.add(cover);
+  // the front: glass, screen, webcam (lifts and turns to glass in x-ray)
+  const top = R0.top; dev.add(top);
+  const glass = loft(TB.w - .006, TB.d - .006, .136, [[0, 0], [.008, 0], [.012, .004]], 8);
+  top.add(new THREE.Mesh(glass, [mat.glass, mat.side, mat.glass]));
+  const scr = liveScreen(R0, TB.scrW, TB.scrH); scr.rotation.x = -Math.PI / 2; scr.position.y = .0125; top.add(scr);
+  const fc = new THREE.Mesh(new THREE.CircleGeometry(.014, 18), std({ color: 0x0b0e14, metalness: .3, roughness: .1 })); fc.rotation.x = -Math.PI / 2; fc.position.set(0, .0126, -TB.d / 2 + .06); top.add(fc);
+  R0.outline = new THREE.LineSegments(new THREE.EdgesGeometry(glass, 30), R0.outline.material); R0.outline.visible = false; top.add(R0.outline);
+  R0.shellMats = [mat.glass, mat.screen];
+  // inside: board with the SoC, memory, SSD, Wi-Fi, one fan, two battery packs, speakers in the top corners
+  const inner = R0.inner; dev.add(inner);
+  const L = { y0: .001, board: [.5, -.48, 1.4, .64], label: 'LOGIC BOARD  REV 1.2', soc: [.55, -.45, .32, .26],
+    ram: [[.27, -.53], [.27, -.37], [.83, -.53], [.83, -.37]], ramSize: [.13, .12], ssd: [-.15, -.55, .3, .22], wifi: [1.0, -.6, .16, .14],
+    antenna: [[1.0, -.66], [1.2, -.8], [1.3, -.9]], battery: [[-.68, .38, 1.2, .9], [.68, .38, 1.2, .9]], batH: .035, cells: '7.58 V  ·  2 cells' };
+  const parts = thinInternals(R0, inner, L, mat);
+  blower(R0, inner, mat, -.55, -.5, .17, L.y0, blurDisc());
+  inner.add(new THREE.Mesh(merge([-1, 1].map(s => at(loft(.3, .14, .03, [[L.y0, 0], [L.y0 + .04, 0]], 3), s * 1.25, 0, -.8))), mat.speaker));
+  const H = haloKit(R0), IY = .07;
+  H.add('cpu', H.plane(inner, .16, .2, [.48, IY, -.45]), 1, parts.cpu.material);
+  H.add('gpu', H.plane(inner, .17, .2, [.6, IY, -.45]), 1, parts.gpu.material);
+  { const m = H.hMat(); H.add('ram', [-1, 1].map(s => H.plane(inner, .2, .36, [.55 + s * .28, IY, -.45], undefined, m)), 1, parts.ram.material); }
+  H.add('ssd', H.plane(inner, .4, .3, [-.15, IY, -.55]), 1, parts.ssd.material[0]);
+  H.add('wifi', H.plane(inner, .24, .22, [1.0, IY, -.6]), 1, parts.wifi.material);
+  { const m = H.hMat(); H.add('battery', [-1, 1].map(s => H.plane(inner, 1.28, 1.0, [s * .68, IY, .38], undefined, m)), .5, parts.battery.material[0]); }
+  { const m = H.hMat(); H.add('audio', [-1, 1].map(s => H.plane(top, .4, .16, [s * 1.25, .015, -TB.d / 2 + .06], undefined, m)), 1); }
+  H.add('display', H.plane(top, TB.scrW * 1.08, TB.scrH * 1.12, [0, .016, 0]), .7);
+  H.add('sys', H.plane(top, TB.scrW * 1.02, .2, [0, .016, TB.scrH / 2 - .08]), .9);
+  R0.pose = POSE_TB; R0.spots = spotsFrom(dev, SPOTS_TB);
+  return R0;
+}
+
+/* ---------- desk scenes: an all-in-one (the PC is the display's back) and a mini PC next to its monitor ---------- */
+function deskMonitor(R0, parent, MW, MH, MY, mats, chin = .1) {
+  const M = new THREE.Group(); parent.add(M);
+  M.add(new THREE.Mesh(merge([box(MW + .14, MH + .14 + chin, .1, 0, MY - chin / 2, 0)]), mats.bezel));
+  const scr = liveScreen(R0, MW, MH); scr.position.set(0, MY, .051); M.add(scr);
+  return M;
+}
+function buildAio(canvas) {
+  const R0 = sceneBase(canvas, { lift: .75, liftDir: new THREE.Vector3(0, 0, -1) }), std = o => new THREE.MeshStandardMaterial(o);
+  const mat = R0.mat = Object.assign(R0.mat, thinMats(R0), {
+    bezel: std({ color: 0x0b0d12, metalness: .3, roughness: .3 }), shell: std({ color: 0xc9ced8, metalness: .55, roughness: .38 }),
+    shellSide: std({ color: 0xb4bac6, metalness: .6, roughness: .34 }), stand: std({ color: 0xaab1be, metalness: .9, roughness: .26 }),
+    grille: std({ color: 0x1a1e26, metalness: .3, roughness: .6 }),
+  });
+  const MW = 5.3, MH = 2.98, MY = 2.75, CH = .42;
+  groundShadow(R0, 6.5, 3.2, 0, -.6, .85);
+  const A = new THREE.Group(); A.rotation.y = -.12; R0.laptop.add(A);
+  const M = deskMonitor(R0, A, MW, MH, MY, mat, CH);
+  // the chin with its speaker grille and the back plate
+  const chinY = MY - MH / 2 - CH / 2 - .04;
+  M.add(new THREE.Mesh(box(MW + .14, CH, .02, 0, chinY, .052), mat.shellSide));
+  const grille = []; for (let i = 0; i < 60; i++) grille.push(box(.03, .05, .004, -1.8 + i * .061, chinY, .064));
+  M.add(new THREE.Mesh(merge(grille), mat.grille));
+  M.add(new THREE.Mesh(box(MW + .14, MH + .14 + CH, .04, 0, MY - CH / 2, -.07), mat.shell));
+  // the stand: a slanted neck and a foot
+  const neckM = new THREE.Mesh(box(.9, 2.3, .12, 0, 1.2, -.75), mat.stand); neckM.rotation.x = -.22; neckM.position.set(0, -.05, -.25); M.add(neckM);
+  M.add(new THREE.Mesh(at(loft(2.2, 1.5, .35, [[0, .02], [.02, 0], [.05, 0], [.06, .01]], 8), 0, 0, -.55), [mat.stand, mat.stand, mat.stand]));
+  // the back cover that holds the PC (lifts back and turns to glass in x-ray)
+  const top = R0.top; M.add(top);
+  const cg = loft(3.9, 2.3, .35, [[0, 0], [.24, 0], [.32, .1]], 10); cg.rotateX(-Math.PI / 2); cg.translate(0, MY - .45, -.09);
+  top.add(new THREE.Mesh(cg, [mat.shell, mat.shellSide, mat.shell]));
+  const vents = []; for (let i = 0; i < 26; i++) vents.push(box(.07, .018, .02, -.9 + i * .072, MY + .4, -.415));
+  top.add(new THREE.Mesh(merge(vents), mat.grille));
+  R0.outline = new THREE.LineSegments(new THREE.EdgesGeometry(cg, 30), R0.outline.material); R0.outline.visible = false; top.add(R0.outline);
+  R0.shellMats = [mat.shell, mat.shellSide, mat.grille];
+  // the PC inside, on the back of the display: its own frame lies flat on the back (y = backwards, z = down)
+  const fr = new THREE.Group(); fr.position.set(0, MY - .45, -.09); fr.rotation.x = -Math.PI / 2; M.add(fr);   // local y = backwards, local z = up
+  const inner = R0.inner; fr.add(inner);
+  const L = { y0: .0, board: [.35, -.15, 2.2, 1.3], label: 'AIO MAIN BOARD  REV 1.0', soc: [-.2, -.25, .4, .4],
+    ram: [[.75, -.45]], ramSize: [.72, .18], ssd: [.75, .2, .8, .22], ssdForm: 'M.2 2280  NVMe', wifi: [1.25, -.05, .22, .3],
+    antenna: [[1.25, -.2], [1.6, -.7], [1.7, -.95]] };
+  const parts = thinInternals(R0, inner, L, mat);
+  blower(R0, inner, mat, -1.05, .2, .3, L.y0, blurDisc());
+  const fins = []; for (let i = 0; i < 22; i++) fins.push(box(.006, .07, .22, -1.4 + i * .03 + .35, .04, .78));
+  const pipe = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([[-.2, -.25], [-.45, .2], [-.8, .7], [-1.1, .78]].map(([x, z]) => new THREE.Vector3(x, .045, z))), 30, .026, 8, false);
+  const spk = [-1, 1].map(s => at(loft(.5, .22, .05, [[0, 0], [.06, 0]], 3), s * 1.4, 0, -.95));
+  inner.add(new THREE.Mesh(merge(fins), mat.alu), new THREE.Mesh(pipe, mat.copper), new THREE.Mesh(merge(spk), mat.speaker));
+  const H = haloKit(R0), IY = .08;
+  H.add('cpu', H.plane(inner, .22, .3, [-.28, IY, -.25]), 1, parts.cpu.material);
+  H.add('gpu', H.plane(inner, .22, .3, [-.12, IY, -.25]), 1, parts.gpu.material);
+  H.add('ram', H.plane(inner, .85, .3, [.75, IY, -.45]), 1, parts.ram.material);
+  H.add('ssd', H.plane(inner, .95, .32, [.75, IY, .2]), 1, parts.ssd.material[0]);
+  H.add('wifi', H.plane(inner, .32, .4, [1.25, IY, -.05]), 1, parts.wifi.material);
+  { const m = H.hMat(); H.add('audio', [-1, 1].map(s => H.plane(M, 1.6, .3, [s * 1.4, chinY, .062], [0, 0, 0], m)), 1); }
+  H.add('display', H.plane(M, MW * 1.06, MH * 1.1, [0, MY, .06], [0, 0, 0]), .7);
+  H.add('sys', H.plane(M, MW * .98, .3, [0, MY - MH / 2 + .14, .06], [0, 0, 0]), .9);
+  const back = { az: Math.PI - .62, el: .36, dist: 9, inside: true };   // from behind and a little above: over the stand's neck
+  R0.pose = { az: .42, el: .16, dist: 12.6, target: [0, 2.3, 0] };
+  R0.spots = { ...spotsFrom(fr, { cpu: { ...back, pos: [-.2, .1, -.25] }, gpu: { ...back, pos: [-.12, .1, -.25] }, ram: { ...back, pos: [.75, .1, -.45] },
+      ssd: { ...back, pos: [.75, .1, .2] }, wifi: { ...back, pos: [1.25, .1, -.05] } }),
+    ...spotsFrom(M, { audio: { pos: [0, chinY, 0], az: .2, el: .12, dist: 9 } }),
+    display: { screen: true, az: .1, el: .1, dist: 10.5 }, sys: { screen: true, az: -.25, el: .12, dist: 10.5 } };
+  return R0;
+}
+function miniLidCanvas() {
+  const W = 512, c = mk(W, W), g = c.getContext('2d');
+  g.fillStyle = '#2c323d'; g.fillRect(0, 0, W, W); noise(g, W, W, .07, 41);
+  g.strokeStyle = 'rgba(255,255,255,.05)'; g.lineWidth = 1; for (let r = 20; r < 400; r += 6) { g.beginPath(); g.arc(W / 2, W / 2, r, 0, TAU); g.stroke(); }   // spun finish
+  g.strokeStyle = 'rgba(210,225,245,.35)'; g.lineWidth = 3; g.beginPath(); g.arc(W / 2, W / 2, 46, 0, TAU); g.stroke();
+  g.beginPath(); g.ellipse(W / 2, W / 2, 80, 22, -.35, 0, TAU); g.stroke();
+  return c;
+}
+function buildMini(canvas) {
+  const R0 = sceneBase(canvas, { lift: .45 }), std = o => new THREE.MeshStandardMaterial(o), { aniso } = R0;
+  const mat = R0.mat = Object.assign(R0.mat, thinMats(R0), {
+    bezel: std({ color: 0x07080b, metalness: .2, roughness: .3 }), stand: std({ color: 0x1b1f27, metalness: .6, roughness: .4 }),
+    body: std({ color: 0x343a45, metalness: .7, roughness: .38 }), lid: std({ map: canvasTex(miniLidCanvas(), true, aniso), metalness: .7, roughness: .4 }),
+    lidSide: std({ color: 0x3d4450, metalness: .75, roughness: .34 }),
+  });
+  groundShadow(R0, 9.5, 3.6, 1.2, .2, .85);
+  // the monitor
+  const MW = 5.2, MH = 3.25, MY = 2.5;
+  const mon = new THREE.Group(); mon.rotation.y = -.18; R0.laptop.add(mon);
+  deskMonitor(R0, mon, MW, MH, MY, mat, 0);
+  mon.add(new THREE.Mesh(merge([box(.4, 1.05, .1, 0, .6, -.12), box(1.8, .05, 1.0, 0, .025, -.08)]), mat.stand));
+  // the mini PC: a palm-sized box on the desk, its lid lifts and turns to glass in x-ray
+  const B = new THREE.Group(); B.position.set(3.6, 0, 1.5); B.rotation.y = -.55; B.scale.setScalar(1.3); R0.laptop.add(B);
+  const BW2 = 1.17, BD2 = 1.12;
+  B.add(new THREE.Mesh(loft(BW2, BD2, .14, [[0, .03], [.025, 0], [.44, 0]], 8), [mat.tray, mat.body, mat.body]));
+  // front: power button with a lit ring, two USB-A and a USB-C; side vents
+  const fz = BD2 / 2 + .001, fronts = [], rims = [];
+  fronts.push(at(new THREE.PlaneGeometry(.11, .04), -.18, .22, fz), at(new THREE.PlaneGeometry(.11, .04), .0, .22, fz), at(new THREE.PlaneGeometry(.07, .025), .16, .22, fz));
+  B.add(new THREE.Mesh(merge(fronts), mat.port));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(.04, .007, 8, 32), new THREE.MeshBasicMaterial({ color: R0.accent2.clone(), toneMapped: false })); ring.position.set(.4, .22, fz); B.add(ring);
+  B.add(new THREE.Mesh(at(new THREE.CylinderGeometry(.03, .03, .01, 24).rotateX(Math.PI / 2), .4, .22, fz), mat.lidSide));
+  const vents = []; for (const s of [-1, 1]) for (let i = 0; i < 14; i++) vents.push(box(.004, .05, .03, s * (BW2 / 2 + .001), .2, -.4 + i * .06));
+  B.add(new THREE.Mesh(merge(vents), mat.port));
+  R0.ledCharge = null;
+  const top = R0.top; B.add(top);
+  const lidG = loft(BW2, BD2, .14, [[.44, 0], [.52, 0], [.54, .02]], 8);
+  top.add(new THREE.Mesh(lidG, [mat.lid, mat.lidSide, mat.lidSide]));
+  R0.outline = new THREE.LineSegments(new THREE.EdgesGeometry(lidG, 30), R0.outline.material); R0.outline.visible = false; top.add(R0.outline);
+  R0.shellMats = [mat.lid, mat.lidSide];
+  const inner = R0.inner; B.add(inner);
+  const L = { y0: .44, board: [0, 0, 1.04, 1.04], label: 'MINI PC BOARD', soc: [-.22, -.24, .3, .28],
+    ram: [[0, .04], [0, .2]], ramSize: [.74, .13], ssd: [-.08, .4, .7, .18], ssdForm: 'M.2 2280  NVMe', wifi: [.4, .4, .14, .14] };
+  const parts = thinInternals(R0, inner, L, mat);
+  blower(R0, inner, mat, .24, -.24, .16, L.y0 + .01, blurDisc());
+  const codec = box(.06, .01, .06, -.42, L.y0 + .014, -.04); inner.add(new THREE.Mesh(codec, mat.die));
+  const H = haloKit(R0), IY = L.y0 + .05;
+  H.add('cpu', H.plane(inner, .14, .22, [-.27, IY, -.24]), 1, parts.cpu.material);
+  H.add('gpu', H.plane(inner, .15, .22, [-.17, IY, -.24]), 1, parts.gpu.material);
+  H.add('ram', H.plane(inner, .82, .36, [0, IY, .12]), 1, parts.ram.material);
+  H.add('ssd', H.plane(inner, .78, .26, [-.08, IY, .4]), 1, parts.ssd.material[0]);
+  H.add('wifi', H.plane(inner, .22, .22, [.4, IY, .4]), 1, parts.wifi.material);
+  H.add('audio', H.plane(inner, .14, .14, [-.42, IY, -.04]), 1.2);
+  H.add('display', H.plane(R0.screen.parent, MW * 1.06, MH * 1.1, [0, MY, .06], [0, 0, 0]), .7);
+  H.add('sys', H.plane(R0.screen.parent, MW * .98, .3, [0, MY - MH / 2 + .14, .06], [0, 0, 0]), .9);
+  const above = { az: -.25, el: .95, dist: 5.6, inside: true };
+  R0.pose = { az: .3, el: .2, dist: 14.2, target: [1.7, 1.55, .6] };
+  R0.spots = { ...spotsFrom(B, { cpu: { ...above, pos: [-.27, .5, -.1] }, gpu: { ...above, pos: [-.17, .5, -.1] }, ram: { ...above, pos: [0, .5, .1] },
+      ssd: { ...above, pos: [0, .5, .2] }, wifi: { ...above, pos: [.3, .5, .2] }, audio: { ...above, pos: [-.3, .5, 0] } }),
+    display: { screen: true, az: .05, el: .1, dist: 10.5 }, sys: { screen: true, az: -.25, el: .12, dist: 10.5 } };
+  return R0;
+}
+
 /* ---------- surrounding UI ---------- */
 function listHTML(PC) {
   return `<div class="pan m3-list"><h4>${SH.t('Components')}</h4>${PC.components.map(c => `<button class="m3-row" data-comp="${c.id}"><span class="ci">${ic(SH.compIcon(c))}</span><span class="ct"><b>${esc(c.name)}</b><span>${esc(c.title)}</span></span></button>`).join('')}</div>`;
@@ -1274,7 +1485,7 @@ function fallbackHandheldSVG() {
     <circle cx="340" cy="104" r="6" fill="#1e273c"/><circle cx="340" cy="132" r="6" fill="#1e273c"/><circle cx="326" cy="118" r="6" fill="#1e273c"/><circle cx="354" cy="118" r="6" style="fill:var(--accent)" fill-opacity=".8"/></svg>`;
 }
 function fallbackFor() { const k = sceneKind(); return k === 'tower' || k === 'aio' || k === 'mini' ? fallbackTowerSVG() : k === 'handheld' ? fallbackHandheldSVG() : fallbackSVG(); }
-const BUILDERS = { laptop: build, tower: buildTower, handheld: buildHandheld };
+const BUILDERS = { laptop: build, tower: buildTower, handheld: buildHandheld, tablet: buildTablet, aio: buildAio, mini: buildMini };
 function release() {
   if (!R) return;
   R.scene.traverse(o => {

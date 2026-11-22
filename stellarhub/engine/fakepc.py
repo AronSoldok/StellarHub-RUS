@@ -219,9 +219,9 @@ _TELE = {
                  "igpu": None, "vramTotal": 4, "fanGpu": None},
     "tablet": {"battery": 64, "charging": True, "batterySecs": None, "batteryPower": 21.3, "batteryHealth": 91,
                "batteryCycles": 143, "batteryDesignWh": 47.7, "batteryFullWh": 43.4, "ramTotal": 15.7, "diskUsed": 211, "diskTotal": 476,
-               "igpu": None, "vramTotal": None, "fanGpu": None},
-    "aio": {**_NO_BATTERY, "ramTotal": 15.8, "diskUsed": 236, "diskTotal": 476, "igpu": None, "vramTotal": None, "fanGpu": None},
-    "mini": {**_NO_BATTERY, "ramTotal": 31.6, "diskUsed": 305, "diskTotal": 931, "igpu": None, "vramTotal": None, "fanGpu": None},
+               "igpu": None, "vramTotal": 8, "fanGpu": None},
+    "aio": {**_NO_BATTERY, "ramTotal": 15.8, "diskUsed": 236, "diskTotal": 476, "igpu": None, "vramTotal": 8, "fanGpu": None},
+    "mini": {**_NO_BATTERY, "ramTotal": 31.6, "diskUsed": 305, "diskTotal": 931, "igpu": None, "vramTotal": 16, "fanGpu": None},
 }
 
 
