@@ -396,9 +396,10 @@ function renderOverview(el, ctx) {
       catch (err) { if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); } finally { back(); }
       return;
     }
-    if (e.target.closest('#pvFixAll')) { showPlan(); return; }
-    if (e.target.closest('#pvPlanNo')) { ovMode = 'list'; paintOverview(true); return; }
-    if (e.target.closest('#pvPlanGo')) { runPlan(); return; }
+    /* while the plan is being applied: Cancel stops it after the change in progress, and the plan can't start twice */
+    if (e.target.closest('#pvFixAll')) { if (!planRun) showPlan(); return; }
+    const no = e.target.closest('#pvPlanNo'); if (no) { if (planRun) { planRun.stop = true; no.disabled = true; return; } ovMode = 'list'; paintOverview(true); return; }
+    if (e.target.closest('#pvPlanGo')) { if (!planRun) runPlan(); return; }
     const ck = e.target.closest('.pv-plan .check'); if (ck && !ck.disabled) ck.classList.toggle('on');
   });
   paintOverview(true); startSweep();
@@ -460,14 +461,17 @@ function showPlan() {
     <div class="pv-pa"><button class="btn pri lg" id="pvPlanGo">${ic('check')}${t('Apply')}</button><button class="btn ghost" id="pvPlanNo">${t('Cancel')}</button><span class="faint">${t('You can undo everything from the notification or from Tracking.')}</span></div>`, true);
   $$('.pv-ps', right).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(14px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 380, delay: 40 + i * 45, e: EASE.spring }));
 }
+let planRun = null;  /* { stop } while runPlan applies the changes */
 async function runPlan() {
-  const right = $('#pvRight', ovEl);
+  const right = $('#pvRight', ovEl), run = planRun = { stop: false };
   const ids = $$('.pv-ps', right).filter(r => $('.check', r).classList.contains('on')).map(r => r.dataset.f);
   const fs = findings().filter(f => ids.includes(f.id)); const done = [];
   $('#pvPlanGo', right).disabled = true;
-  for (const f of fs) { const row = $(`.pv-ps[data-f="${CSS.escape(f.id)}"]`, right); row && row.classList.add('run');
-    try { const r = await applyFix(f); if (r) { done.push([r, f.area]); row && row.classList.add('done'); } } catch (e) { row && row.classList.add('fail'); if (!e.needAdmin) SH.toast(e.message, { kind: 'error' }); }
-    row && row.classList.remove('run'); }
+  try {
+    for (const f of fs) { if (run.stop) break; const row = $(`.pv-ps[data-f="${CSS.escape(f.id)}"]`, right); row && row.classList.add('run');
+      try { const r = await applyFix(f); if (r) { done.push([r, f.area]); row && row.classList.add('done'); } } catch (e) { row && row.classList.add('fail'); if (!e.needAdmin) SH.toast(e.message, { kind: 'error' }); }
+      row && row.classList.remove('run'); }
+  } finally { planRun = null; }
   ovMode = 'list'; paintOverview(true);
   if (done.length) {
     SH.toast(done.length === 1 ? t('1 change applied.') : t('{n} changes applied.', { n: done.length }), { kind: 'success', action: { label: t('Undo'), sound: 'undo', run: async () => { for (const [r, a] of done.reverse()) await undo(r, a); } } });
