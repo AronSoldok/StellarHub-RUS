@@ -84,5 +84,8 @@
   "Windows does not report this processor's temperature": "Windows 未报告此处理器的温度",
   "The CPU temperature is only visible in administrator mode": "CPU 温度仅在管理员模式下可见",
   "Mosaic": "磁贴",
-  "One tile per component, with its live stat.": "每个组件一个磁贴，显示其实时数据。"
+  "One tile per component, with its live stat.": "每个组件一个磁贴，显示其实时数据。",
+  "{n}\" built-in screen": "{n}\" 内置屏幕",
+  "built-in screen": "内置屏幕",
+  "Controller built in": "内置手柄"
 }

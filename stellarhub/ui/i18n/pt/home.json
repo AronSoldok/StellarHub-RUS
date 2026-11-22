@@ -84,5 +84,8 @@
   "Windows does not report this processor's temperature": "O Windows não informa a temperatura deste processador",
   "The CPU temperature is only visible in administrator mode": "A temperatura da CPU só aparece no modo administrador",
   "Mosaic": "Mosaico",
-  "One tile per component, with its live stat.": "Um bloco por componente, com seu dado ao vivo."
+  "One tile per component, with its live stat.": "Um bloco por componente, com seu dado ao vivo.",
+  "{n}\" built-in screen": "tela integrada de {n}\"",
+  "built-in screen": "tela integrada",
+  "Controller built in": "Controle integrado"
 }

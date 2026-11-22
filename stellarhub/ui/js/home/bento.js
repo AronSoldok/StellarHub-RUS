@@ -58,6 +58,18 @@ const ART = {
     <path class="stand" d="M230 80 V94 M214 96 H246"/>
     <text x="230" y="56" text-anchor="middle" class="sm">1920 × 1080</text>
   </svg>`,
+  /* a handheld: the screen between two grips, with its sticks and buttons (same classes as the display drawing) */
+  dspHandheld: () => `<svg viewBox="0 0 280 120" class="art-dsp art-dsp-hh">
+    <path class="frame" d="M62 16 H218 C236 16 244 22 246 36 C250 58 252 80 246 96 C241 108 226 110 216 102 C208 95 202 90 190 90 H90 C78 90 72 95 64 102 C54 110 39 108 34 96 C28 80 30 58 34 36 C36 22 44 16 62 16 Z"/>
+    <rect class="screen" x="88" y="22" width="104" height="62" rx="4"/><rect class="scrglow" x="88" y="22" width="104" height="62" rx="4"/>
+    <rect class="sweep" x="88" y="22" width="30" height="62"/>
+    <text x="140" y="57" text-anchor="middle" class="sm">1920 × 1080</text>
+    <g style="fill:none;stroke:var(--accent2);stroke-opacity:.55;stroke-width:1.5">
+      <circle cx="62" cy="42" r="10"/><circle cx="216" cy="70" r="10"/>
+      <path d="M58 64 h7 v-7 h6 v7 h7 v6 h-7 v7 h-6 v-7 h-7 Z"/>
+    </g>
+    <g style="fill:var(--accent2);fill-opacity:.5"><circle cx="216" cy="33" r="3.2"/><circle cx="216" cy="51" r="3.2"/><circle cx="207" cy="42" r="3.2"/><circle cx="225" cy="42" r="3.2" style="fill:var(--accent);fill-opacity:.85"/></g>
+  </svg>`,
   bat: () => `<svg viewBox="0 0 130 64" class="art-bat">
     <rect class="body" x="4" y="8" width="108" height="48" rx="10"/><rect class="term" x="114" y="22" width="9" height="20" rx="3"/>
     <rect class="fill" x="11" y="15" width="94" height="34" rx="5"/>
@@ -105,7 +117,8 @@ function shortTitle(t, c) {
     case 'ram': return title;
     case 'ssd': { const w = title.split(/\s+/).filter(x => !/[-_]/.test(x) && !/^\d+(\.\d+)?$/.test(x) && x !== 'TB' && x.toUpperCase() !== 'PC'); const cap = (title.match(/(\d+(?:[.,]\d+)?)\s*TB/) || [])[0]; return [w.slice(0, 2).join(' '), cap].filter(Boolean).join(', '); }
     case 'dsp': { const m = c.monitors || []; if (m.length > 1) return SH.t('{n} displays', { n: m.length }); if (!m[0]) return title;
-      return m[0].inches ? (m[0].internal ? SH.t('{n}" laptop screen', { n: m[0].inches }) : SH.t('{n}" external', { n: m[0].inches })) : (m[0].internal ? SH.t('laptop screen') : SH.t('external')); }
+      const lap = SH.PC.type === 'laptop'; /* a handheld, tablet or all-in-one has a built-in screen, not a laptop's */
+      return m[0].inches ? (m[0].internal ? (lap ? SH.t('{n}" laptop screen', { n: m[0].inches }) : SH.t('{n}" built-in screen', { n: m[0].inches })) : SH.t('{n}" external', { n: m[0].inches })) : (m[0].internal ? (lap ? SH.t('laptop screen') : SH.t('built-in screen')) : SH.t('external')); }
     case 'bat': return SH.PC.real ? title : title.split(/[,，]/)[0]; // the sample title adds the health after a comma
     case 'wif': return /6E/i.test(title) ? 'Wi-Fi 6E' : /wi-?fi ?7|BE\d/i.test(title) ? 'Wi-Fi 7' : /wi-?fi ?6|AX\d/i.test(title) ? 'Wi-Fi 6' : /wi-?fi|wireless|802\.11/i.test(title) ? 'Wi-Fi' : /ethernet|gbe|lan/i.test(title) ? 'Ethernet' : title.split(/\s+/).slice(0, 2).join(' ');
     case 'aud': return title.replace(/\(R\)|\(TM\)/g, '').replace(/High Definition Audio/i, 'HD Audio').replace(/Dispositivo de audio|USB Audio Device/i, 'Audio').trim();
@@ -143,7 +156,8 @@ function liveHTML(area) {
     case 'cpu': return `<div class="nums"><div><b class="n" data-l="cpu">–</b><small>${SH.t('% usage')}</small></div><div><b data-l="freq">–</b><small>GHz</small></div><div><b data-l="ctemp">–</b><small>°C</small></div></div>`;
     case 'ram': return `<div class="lbar"><span>${SH.t('{used} of {total} GB', { used: '<b data-l="ram">–</b>', total: '<span data-l="ramt">–</span>' })}</span></div><div class="bar"><span data-b="ram"></span></div>`;
     case 'ssd': return `<div class="lbar"><span>${SH.t('{n} GB free', { n: '<b data-l="free">–</b>' })}</span></div><div class="bar acc"><span data-b="disk"></span></div>`;
-    case 'dsp': return `<div class="lbar"><span data-l="dsp">${esc(andList(((comp('display') || {}).rows || []).map(r => r[1])) || '—')}</span></div>`;
+    case 'dsp': if (SH.PC.type === 'handheld') return `<div class="lbar"><span>${SH.t('Controller built in')}</span></div>`;
+      return `<div class="lbar"><span data-l="dsp">${esc(andList(((comp('display') || {}).rows || []).map(r => r[1])) || '—')}</span></div>`;
     case 'bat': return `<div class="lbar"><span>${SH.t('Health {n}', { n: '<b data-l="bath">–</b>' })}</span></div>`;
     case 'wif': return `<div class="lbar"><span><b data-l="down">–</b> Mb/s</span></div>`;
     case 'aud': { const n = 1 + (rowv('audio', 'Others').split(',').filter(x => x.trim() && x.trim() !== '–').length); return `<div class="lbar"><span>${n > 1 ? SH.t('{n} devices', { n }) : SH.t('{n} device', { n })}</span></div>`; }
@@ -179,7 +193,7 @@ function mount(el, ctx) {
   root.innerHTML = list.map(t => {
     const c = comp(t.comp);
     return `<div class="bt k-${t.kind} a-${t.area}" style="grid-area:${t.area}" data-comp="${t.comp}" tabindex="0" role="button" aria-label="${esc(c.name)}: ${esc(c.title)}">
-      <div class="tilt"><div class="glow"></div><div class="art">${t.area === 'gpu' ? `<div class="artbox">${ART.gpu()}${GPU_FANS.map(fanOverlay).join('')}</div>` : (t.area === 'wif' && /ethernet|gbe|lan/i.test(c.title + ' ' + rowv('wifi', 'Type')) && !/wi-?fi|wireless|802\.11/i.test(c.title) ? ART.eth : ART[t.area])()}</div>
+      <div class="tilt"><div class="glow"></div><div class="art">${t.area === 'gpu' ? `<div class="artbox">${ART.gpu()}${GPU_FANS.map(fanOverlay).join('')}</div>` : (t.area === 'wif' && /ethernet|gbe|lan/i.test(c.title + ' ' + rowv('wifi', 'Type')) && !/wi-?fi|wireless|802\.11/i.test(c.title) ? ART.eth : t.area === 'dsp' && SH.PC.type === 'handheld' ? ART.dspHandheld : ART[t.area])()}</div>
       <div class="meta"><span class="k">${esc(c.name)}</span><b class="t" title="${esc(c.title)}">${esc(shortTitle(t, c))}</b><div class="live">${liveHTML(t.area)}</div></div></div></div>`;
   }).join('');
   /* the display drawing with the real resolutions */

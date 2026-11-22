@@ -84,5 +84,8 @@
   "Windows does not report this processor's temperature": "Windows はこのプロセッサの温度を報告しません",
   "The CPU temperature is only visible in administrator mode": "CPU 温度は管理者モードでのみ表示されます",
   "Mosaic": "モザイク",
-  "One tile per component, with its live stat.": "コンポーネントごとに 1 つのタイルで、ライブの統計を表示します。"
+  "One tile per component, with its live stat.": "コンポーネントごとに 1 つのタイルで、ライブの統計を表示します。",
+  "{n}\" built-in screen": "{n}\" 内蔵ディスプレイ",
+  "built-in screen": "内蔵ディスプレイ",
+  "Controller built in": "コントローラー内蔵"
 }
