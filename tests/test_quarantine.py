@@ -204,5 +204,20 @@ class NoUndoNoDelete(unittest.TestCase):
         self.assertFalse(s["restorable"])
 
 
+class RegImportOutput(unittest.TestCase):
+    def test_a_localized_message_in_the_console_code_page_does_not_turn_success_into_an_error(self):
+        # reg.exe is replaced by a child that answers like a German/French Windows does (OEM bytes, exit code 0)
+        import sys
+        real = subprocess.run
+
+        def fake(args, **kw):
+            code = "import sys; sys.stdout.buffer.write(b'Vorgang erfolgreich \\x81berpr\\x81ft.\\r\\n')"
+            return real([sys.executable, "-c", code], **kw)
+        with mock.patch.object(registry.subprocess, "run", fake):
+            ok, out = registry.import_reg(r"C:\nope\x.reg")
+        self.assertTrue(ok)
+        self.assertIn("Vorgang", out)
+
+
 if __name__ == "__main__":
     unittest.main()

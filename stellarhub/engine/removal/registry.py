@@ -171,8 +171,19 @@ def import_reg(reg_file, view=0):
         args.append("/reg:32")
     elif view == V64:
         args.append("/reg:64")
-    r = subprocess.run(args, capture_output=True, creationflags=NOWIN, text=True)
-    return r.returncode == 0, (r.stderr or r.stdout).strip()
+    # bytes, decoded here: reg.exe writes its localized message in the console code page, and text=True decoded it as
+    # ANSI and raised on some letters ("Überprüfen", "É"), turning a restore that worked into an error
+    r = subprocess.run(args, capture_output=True, creationflags=NOWIN)
+    return r.returncode == 0, _decode(r.stderr or r.stdout).strip()
+
+
+def _decode(raw):
+    if not raw:
+        return ""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("oem", "replace")
 
 
 def walk_values(root, path, view=0, max_depth=6, _depth=0):
