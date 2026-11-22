@@ -16,10 +16,12 @@
 
 /* app icons: a fixed box, the image fitted inside (never stretched); letters when there is no icon */
 #v-hangar .hg-ic{position:relative;width:36px;height:36px;flex:none;border-radius:var(--r-s);display:grid;place-items:center;padding:5px;
-  background:var(--raise2);border:1px solid var(--line)}
-#v-hangar .hg-ic img{width:100%;height:100%;object-fit:contain;display:block;border-radius:var(--r-xs)}
-#v-hangar .hg-ic.sm{width:32px;height:32px;padding:4px;border-radius:var(--r-s)}
-#v-hangar .hg-ic.xs{width:26px;height:26px;padding:3px;border-radius:var(--r-s)}
+  background:var(--raise2);border:1px solid var(--line);--ii:24px}
+/* the picture's size is a fixed length (the box less its padding and border), never 100 %: an icon that finished loading
+   as it scrolled into view then made the whole catalog grid lay out again, a dropped frame each time */
+#v-hangar .hg-ic img{width:var(--ii);height:var(--ii);object-fit:contain;display:block;border-radius:var(--r-xs)}
+#v-hangar .hg-ic.sm{width:32px;height:32px;padding:4px;border-radius:var(--r-s);--ii:22px}
+#v-hangar .hg-ic.xs{width:26px;height:26px;padding:3px;border-radius:var(--r-s);--ii:18px}
 #v-hangar .hg-lt{position:absolute;inset:-1px;border-radius:inherit;display:grid;place-items:center;font:600 var(--fs-body) var(--display);font-style:normal;
   color:var(--c);background:color-mix(in oklab,var(--c) 14%,var(--deep));border:1px solid color-mix(in oklab,var(--c) 28%,transparent)}
 #v-hangar .hg-ic.sm .hg-lt{font-size:var(--fs-body)}
@@ -65,9 +67,11 @@
 #v-hangar .hg-si svg{width:var(--ic-m);height:var(--ic-m)}
 #v-hangar .hg-sc{font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #v-hangar .hg-sall{flex:none}
+/* the cards are always rendered (no content-visibility): a card that scrolls in or out made the whole grid lay out again,
+   three to five times the layout of the plain grid (a 21 ms frame instead of 9 while scrolling), and the first render costs the same */
 #v-hangar .hg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:var(--sp-sm)}
 #v-hangar .hg-app{display:grid;grid-template-columns:36px minmax(0,1fr) 18px;gap:var(--sp-md);align-items:center;padding:10px 12px;border-radius:var(--r-m);text-align:left;
-  background:var(--raise);border:1px solid var(--line);content-visibility:auto;contain-intrinsic-size:auto 66px;
+  background:var(--raise);border:1px solid var(--line);
   transition:background-color calc(160ms*var(--f)),border-color calc(160ms*var(--f)),transform calc(220ms*var(--f)) var(--e-snap)}
 #v-hangar .hg-app:hover{background:var(--raise2);border-color:var(--line2);transform:translateY(-1px)}
 #v-hangar .hg-app:active{transform:scale(.98)}
@@ -205,7 +209,7 @@
 #v-hangar .hg-qlist{display:flex;flex-direction:column;gap:var(--sp-xs);min-height:100%}
 #v-hangar .hg-qrow{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:var(--sp-md);align-items:center;padding:10px 12px;border-radius:var(--r-m);border:1px solid transparent;
   transition:background-color calc(200ms*var(--f)),border-color calc(200ms*var(--f)),opacity calc(300ms*var(--f))}
-#v-hangar .hg-qrow .hg-ic{width:40px;height:40px;border-radius:var(--r-s)}
+#v-hangar .hg-qrow .hg-ic{width:40px;height:40px;border-radius:var(--r-s);--ii:28px}
 #v-hangar .hg-qrow.st-down,#v-hangar .hg-qrow.st-inst{background:var(--raise2);border-color:var(--line)}
 #v-hangar .hg-qrow.st-cancel{opacity:.45}
 #v-hangar .hg-qrow.st-skip .hg-ic{opacity:.6}
