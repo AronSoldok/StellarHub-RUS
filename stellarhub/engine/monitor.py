@@ -518,33 +518,14 @@ Get-Partition | Where-Object { $_.Type -ne 'Reserved' } | ForEach-Object { $v = 
 
 
 # ======================================================================================= network
-def _netsh_wifi():
+def _wifi():
+    """The Wi-Fi connection from Windows' Wi-Fi API in this process (engine/wlan.py; it was `netsh wlan show
+    interfaces`, parsed per language), or None when Windows can't say."""
     try:
-        raw = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, timeout=5,
-                             creationflags=NO_WINDOW).stdout
-        try:
-            out = raw.decode("utf-8")  # netsh writes UTF-8 even when the console is cp850
-        except UnicodeDecodeError:
-            out = raw.decode("cp850", "replace")
+        from . import wlan
+        return wlan.current()
     except Exception:
         return None
-    d = {}
-    for line in out.splitlines():
-        if ":" not in line:
-            continue
-        k, _, v = line.partition(":")
-        d[k.strip().lower()] = v.strip()
-    pick = lambda *ks: next((d[k] for k in ks if k in d and d[k]), None)
-    # netsh output is localized: the keys below cover English and Spanish Windows (they are parsing data, not UI)
-    ssid = pick("ssid")
-    if not ssid:
-        return {"connected": False, "needsLocation": "ubicaci" in out.lower() or "location" in out.lower()}
-    sig = pick("signal", "se\u00f1al")
-    return {"connected": True, "ssid": ssid, "signal": int(re.sub(r"\D", "", sig)) if sig else None,
-            "band": pick("band", "banda"), "channel": pick("channel", "canal"), "radio": pick("radio type", "tipo de radio"),
-            "rx": pick("receive rate (mbps)", "velocidad de recepci\u00f3n (mbps)", "velocidad de recepcion (mbps)"),
-            "tx": pick("transmit rate (mbps)", "velocidad de transmisi\u00f3n (mbps)", "velocidad de transmision (mbps)"),
-            "auth": pick("authentication", "autenticaci\u00f3n", "autenticacion")}
 
 
 _NET_PS = r"""
@@ -569,7 +550,7 @@ def _established_by_pid():
 
 def network():
     # PowerShell (adapters), netsh (Wi-Fi) and the connection table do not depend on each other: all at once
-    cfg, wifi, apps = gather(lambda: ps_json(_NET_PS, timeout=30, as_list=True), _netsh_wifi, _established_by_pid)
+    cfg, wifi, apps = gather(lambda: ps_json(_NET_PS, timeout=30, as_list=True), _wifi, _established_by_pid)
     byname = {}
     for pid, n in apps.items():
         try:

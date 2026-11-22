@@ -12,7 +12,7 @@ Sources (all read-only, no extra processes in the hot path):
   monitors have with nvidia-smi).
 - Battery driver IOCTLs: charge/discharge rate, design and full-charge capacity, cycle count (0.2 ms, against
   ~190 ms of CPU for the equivalent WMI query).
-- netsh for the Wi-Fi signal and a short TCP connection for latency.
+- the Wi-Fi API (wlanapi.dll, engine/wlan.py) for the Wi-Fi signal and a short TCP connection for latency.
 
 CPU package temperature: Windows only exposes ACPI thermal zones. Many laptops report a fixed placeholder there
 (27.8 °C), so implausible values are discarded. Real CPU sensors need a kernel driver such as WinRing0, which
@@ -22,7 +22,6 @@ Anything Windows does not provide is sent as None: the UI shows "—" instead of
 import ctypes
 import re
 import socket
-import subprocess
 import threading
 import time
 from ctypes import wintypes
@@ -313,6 +312,15 @@ class _Nvml:
             "vramTotal": round(mem.total / GB) if ok(L.nvmlDeviceGetMemoryInfo(d, ctypes.byref(mem))) else None,
             "vramUsed": round(mem.used / GB, 2) if mem.total else None,
         }
+
+
+def nvml_once():
+    """One NVML reading (temperature, memory, ...) for callers outside the sampler, or None without an NVIDIA driver."""
+    nv = _Nvml()
+    try:
+        return nv.read()
+    finally:
+        nv.shutdown()
 
 
 # ---------- battery through its driver (IOCTL_BATTERY_*) ----------
@@ -684,8 +692,8 @@ class Sampler:
             self._slow["ping"] = None
 
     def _has_wifi(self):
-        """False when Windows has no Wi-Fi adapter (the WLAN service keeps one key per adapter): then netsh is not
-        started every few seconds just to learn there is nothing. Checked again every minute."""
+        """False when Windows has no Wi-Fi adapter (the WLAN service keeps one key per adapter): then the Wi-Fi API is
+        not asked every few seconds just to learn there is nothing. Checked again every minute."""
         at, val = self._wifi_probe
         if time.monotonic() - at > 60:
             try:
@@ -693,7 +701,7 @@ class Sampler:
                 with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\WlanSvc\Interfaces") as k:
                     val = winreg.QueryInfoKey(k)[0] > 0
             except OSError:
-                val = True  # unknown: ask netsh, as before
+                val = True  # unknown: ask the Wi-Fi API anyway
             self._wifi_probe = (time.monotonic(), val)
         return val
 
@@ -701,16 +709,9 @@ class Sampler:
         if not self._has_wifi():
             self._slow["wifiSignal"] = None
             return
-        try:
-            raw = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, timeout=4,
-                                 creationflags=NO_WINDOW).stdout
-            try:
-                out = raw.decode("utf-8")  # netsh writes UTF-8 on Windows 11
-            except UnicodeDecodeError:
-                out = raw.decode("oem", "replace")
-            # the label is localized (Signal, Señal, Sinal, Segnale, 信号...), but the signal is the only "NN %" value
-            m = re.search(r":\s*(\d{1,3})\s*%", out)
-            self._slow["wifiSignal"] = int(m.group(1)) if m else None
+        try:  # in this process (engine/wlan.py): no netsh.exe every ten seconds
+            from . import wlan
+            self._slow["wifiSignal"] = wlan.signal()
         except Exception:
             self._slow["wifiSignal"] = None
 

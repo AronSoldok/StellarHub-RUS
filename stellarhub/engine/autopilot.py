@@ -275,20 +275,12 @@ def in_call():
 
 
 def wifi_ssid():
+    """The connected Wi-Fi network's name, from Windows' Wi-Fi API in this process (engine/wlan.py; it was netsh)."""
     try:
-        raw = subprocess.run(["netsh", "wlan", "show", "interfaces"], capture_output=True, timeout=5,
-                             creationflags=NO_WINDOW).stdout
-        try:
-            out = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            out = raw.decode("oem", "replace")  # this Windows' console code page (cp850 was only right in Western Europe)
-        for line in out.splitlines():
-            k, _, v = line.partition(":")
-            if k.strip().upper() == "SSID":   # "SSID" on English and Spanish Windows ("BSSID" is a different line)
-                return v.strip() or None
+        from . import wlan
+        return wlan.ssid()
     except Exception:
-        pass
-    return None
+        return None
 
 
 def _metered_com():
@@ -372,10 +364,11 @@ def app_running(app):
 
 
 def gpu_temp():
+    """The NVIDIA graphics card's temperature through NVML in this process (it was a run of nvidia-smi.exe), or None."""
     try:
-        out = subprocess.run(["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=5, creationflags=NO_WINDOW).stdout.strip()
-        return float(out.splitlines()[0])
+        from .telemetry import nvml_once
+        t = (nvml_once() or {}).get("temp")
+        return float(t) if t is not None else None
     except Exception:
         return None
 

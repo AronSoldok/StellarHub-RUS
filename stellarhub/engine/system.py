@@ -425,13 +425,12 @@ def _clean(s):
 
 
 def _gpu_vram(name):
-    # AdapterRAM tops out at 4 GB because it is 32-bit: for NVIDIA, nvidia-smi is asked instead
+    # AdapterRAM tops out at 4 GB because it is 32-bit: for NVIDIA, NVML is asked instead (in this process; it was a
+    # run of nvidia-smi.exe)
     if "nvidia" in name.lower():
         try:
-            import subprocess
-            out = subprocess.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                                 capture_output=True, text=True, timeout=5, creationflags=0x08000000).stdout.strip()
-            return round(int(out.splitlines()[0]) / 1024)
+            from .telemetry import nvml_once
+            return (nvml_once() or {}).get("vramTotal")
         except Exception:
             return None
     return None
