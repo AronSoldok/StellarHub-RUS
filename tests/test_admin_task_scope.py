@@ -141,6 +141,7 @@ class StaleTask(unittest.TestCase):
         make.assert_not_called()
         with mock.patch.object(elevation, "uses_admin_task", return_value=True), \
                 mock.patch.object(elevation.settings, "read", return_value={"alwaysAdmin": True}), \
+                mock.patch.object(elevation, "admin_task_current", return_value=False), \
                 mock.patch.object(elevation, "remove_unsafe_admin_task") as rm, \
                 mock.patch.object(elevation, "ensure_admin_task") as make:
             elevation.sync_admin_task()

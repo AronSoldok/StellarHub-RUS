@@ -205,13 +205,27 @@ version. It shows in a corner of every view (`v2.1.0 · ATLAS`) and on the start
 
 StellarHub is new, not code-signed yet and talks to Windows a lot (drivers, services, startup entries, the
 registry), which is exactly what heuristic and machine-learning detections watch. A few engines have flagged it as
-"generic" or "suspicious" with no specific malware name. What is done about it:
+"generic" or "suspicious" with no specific malware name, and Kaspersky's System Watcher has stopped 2.0.0 while it
+ran (`PDM:Trojan.Win32.Generic`, a verdict on behaviour, not on the file). What is done about it:
 
 - the program is built by GitHub Actions from this public repository, with PyInstaller's bootloader **compiled from
-  source** (not the prebuilt one shared by thousands of programs), as a folder, without packers;
+  source** (not the prebuilt one shared by thousands of programs), as a folder, without packers, with a full version
+  resource and application manifest;
 - it installs **per user** by default (no administrator rights, nothing in `Program Files` or scheduled tasks), and
   reads Windows through WMI inside its own process instead of starting hidden PowerShell windows;
+- since 2.1.1 the live data reads the Wi-Fi signal and the NVIDIA card through Windows' and NVIDIA's own libraries
+  inside the process (it used to start `netsh` every ten seconds and `nvidia-smi`), PowerShell is never started with
+  `-ExecutionPolicy Bypass` or `-WindowStyle Hidden`, the junk cleaner never opens Windows' core processes (such as
+  `lsass.exe`) or security software to ask what files they use, and an elevated start only looks at its scheduled
+  tasks when there can be something to fix (once per version), instead of at every start;
+- nothing is added to Windows' startup (the `Run` key) or the Task Scheduler unless you turn on the matching setting;
 - every release is signed by the author and reported to the antivirus vendors as a false positive.
+
+What it still does, all of it visible in the code: it checks GitHub for a new version a few seconds after it opens
+and, for a version with new features, downloads the installer in the background (checked against the author's
+signature before it is ever run) to install it at the next start; the storage map (reading the disk's file table) and
+the cleaner (asking running programs which files they have open, so it never deletes them) work with a few helper
+copies of itself (`StellarHub.exe --multiprocessing-fork ...`), only while a scan or a cleanup runs.
 
 If yours stops it, you can check the file yourself ([Verifying a download yourself](#verifying-a-download-yourself))
 or scan it on [VirusTotal](https://www.virustotal.com).
