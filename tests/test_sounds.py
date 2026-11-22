@@ -872,6 +872,36 @@ class Wiring(unittest.TestCase):
         self.assertEqual(out["buttonKey"], ["toast"])
         self.assertEqual(out["success"], ["success"])
 
+    def test_a_button_that_disables_itself_still_clicks(self):
+        """Program Updater's row Update disables itself and shows a plain toast: the toast kept quiet for the button's
+        click, and the click, seeing the button disabled after its handler, said nothing either."""
+        out = self.run_js(r"""
+          const btn = { disabled: false, dataset: {}, classList: { contains: () => false }, getAttribute: () => null,
+            matches: s => s.split(',').map(x => x.trim()).includes('button'), closest(s) { return this.matches(s) ? this : null; } };
+          SH.sound.preload(['toast', 'click']); await tick(30);
+          fire('pointerdown', { target: btn }); fire('click', { target: btn }, () => { btn.disabled = true; SH.sound('toast'); }); await tick(450);
+          out(played);
+        """)
+        self.assertEqual(out, ["click"])
+
+    def test_a_dialog_that_opened_by_itself_closes_with_panel_close(self):
+        """The update dialog opens on a timer, with no gesture: a press on its Later is not a panel_open, and Esc on it
+        still says panel_close."""
+        out = self.run_js(r"""
+          const x = { disabled: false, dataset: {}, matches: () => false, closest: () => x };
+          SH.sound.preload(['panel_open', 'panel_close', 'click']); await tick(30);
+          const r = {};
+          let d = dialog(); DIALOGS = [d]; await tick(600);                       /* opened by a timer */
+          fire('pointerdown', { target: x }); await tick(60); fire('click', { target: x }, () => d.close()); await tick(500);
+          r.later = played.slice(); played.length = 0; DIALOGS = []; await tick(200);
+          d = dialog(); DIALOGS = [d]; await tick(600);
+          fire('keydown', { key: 'Escape', target: nothing }, () => d.close()); await tick(500);
+          r.esc = played.slice();
+          out(r);
+        """)
+        self.assertEqual(out["later"], ["panel_close"])
+        self.assertEqual(out["esc"], ["panel_close"])
+
     def test_count_ticks_follow_a_counter_on_screen(self):
         out = self.run_js(r"""
           globalThis.requestAnimationFrame = f => setTimeout(() => f(performance.now()), 16);

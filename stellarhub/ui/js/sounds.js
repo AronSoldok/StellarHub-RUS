@@ -70,6 +70,10 @@ function dialogChange() {
 /* a dialog that opens or closes a moment after a click or a key (it waited for an answer, Esc closed it) */
 let gestAt = 0, checks = [];
 function afterGesture() {
+  /* what is open right now, before the gesture acts: a dialog that opened by itself (the update dialog on a timer, one
+     that came long after its click) would otherwise be "new" at the first press inside it (panel_open on its Later) and,
+     closed with Esc or B, never have been open (no panel_close) */
+  dialogChange();
   gestAt = performance.now(); checks.forEach(clearTimeout);
   checks = [0, 90, 420].map(ms => setTimeout(() => {
     const c = dialogChange(); if (!c) return;
@@ -126,7 +130,7 @@ addEventListener('click', e => {
   dialogChange();
   const el = e.target.closest && e.target.closest(`${TOGGLE}, ${CHOICE}, ${CLICKABLE}`);
   const wasOn = !!(el && el.matches(CHOICE) && (el.classList.contains('on') || el.getAttribute('aria-selected') === 'true'));
-  pre.set(e, { act, el, wasOn });
+  pre.set(e, { act, el, wasOn, dis: !!(el && el.disabled) });
   /* this click will have the control's own sound (a switch, a new choice, a press with the pointer or the controller's
      A): a plain toast its handler shows stays quiet (core.js) */
   const pad = SH.sound.viaPad === true;
@@ -139,7 +143,7 @@ addEventListener('click', e => {
   const pad = SH.sound.viaPad === true, trusted = e.isTrusted || pad, pointer = e.detail > 0 || pad;
   if (!trusted) return;  /* (the check after the gesture still hears a dialog it opened or closed: the controller's B) */
   const el = p.el, c = dialogChange();
-  if (el && el.disabled) return;
+  if (p.dis) return;  /* disabled before the click (a button its own handler disables, as it starts, still clicks) */
   /* also a click on nothing clickable: the backdrop that closes a dialog */
   if (c > 0) { sound('panel_open'); return; }
   if (c < 0) { sound('panel_close'); return; }
