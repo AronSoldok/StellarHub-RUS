@@ -32,26 +32,69 @@ if config.ISOLATED:
     SINGLE_PORT = 47900 + sum(map(ord, LOCK_ID)) % 90
 
 
+def _port_file():
+    """Where the running copy writes the port it listens on when SINGLE_PORT was taken (local data folder)."""
+    from . import paths
+    tag = f"test{LOCK_ID}" if config.ISOLATED else str(session_id())
+    return str(Path(paths.local_dir()) / f"instance-{tag}.port")
+
+
+def _ports():
+    """The ports a running copy may listen on: SINGLE_PORT, then the one it wrote down when that was taken."""
+    out = [SINGLE_PORT]
+    try:
+        with open(_port_file(), encoding="ascii") as fh:
+            p = int(fh.read().strip())
+        if 1024 <= p <= 65535 and p != SINGLE_PORT:
+            out.append(p)
+    except (OSError, ValueError):
+        pass
+    return out
+
+
 def ask_running_to_show(wait=1.5):
     """Asks the running copy to show its window. True only if it ANSWERED that it did (it replies "ok" once the
     window is up), so a copy that is quitting, hung or deaf is told apart from one that obeyed."""
     import socket
-    try:
-        with socket.create_connection(("127.0.0.1", SINGLE_PORT), timeout=min(wait, 0.5)) as s:
-            s.settimeout(wait)
-            s.sendall(b"show")
-            return s.recv(4).startswith(b"ok")
-    except OSError:
-        return False
+    for port in _ports():
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=min(wait, 0.5)) as s:
+                s.settimeout(wait)
+                s.sendall(b"show")
+                if s.recv(4).startswith(b"ok"):
+                    return True
+        except OSError:
+            continue
+    return False
 
 
 def listen_single(api):
+    """The running copy's side of the single instance: "show" and "quit" on SINGLE_PORT. If another program holds that
+    port, any free one, written down in _port_file() for the next copy: with no listener at all, every later double
+    click took this healthy copy for stuck and ended it a minute later. Returns the listening socket, or None."""
     import socket
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         srv.bind(("127.0.0.1", SINGLE_PORT))
+        moved = None
+    except OSError as e:
+        try:
+            srv.bind(("127.0.0.1", 0))
+        except OSError:
+            srv.close()
+            print("[start] no port for the single-instance listener:", e, flush=True)
+            return None
+        moved = srv.getsockname()[1]
+        print(f"[start] port {SINGLE_PORT} is taken ({e}): listening on {moved}", flush=True)
+    try:
+        if moved:
+            Path(_port_file()).parent.mkdir(parents=True, exist_ok=True)
+            with open(_port_file(), "w", encoding="ascii") as fh:
+                fh.write(str(moved))
+        else:
+            os.remove(_port_file())  # an older copy's note: nobody needs to try that port any more
     except OSError:
-        return
+        pass
     srv.listen(2)
 
     def loop():
@@ -76,6 +119,7 @@ def listen_single(api):
                 time.sleep(0.05)  # one bad client never ends the listener
                 continue
     threading.Thread(target=loop, daemon=True, name="single").start()
+    return srv
 
 
 def wait_for_previous(seconds=10):
@@ -271,21 +315,23 @@ def take_over_running_copy():
 def quit_running():
     """--quit: asks the running copy to close (installer and uninstaller) and waits until it is gone."""
     import socket
-    try:
-        with socket.create_connection(("127.0.0.1", SINGLE_PORT), timeout=1.5) as s:
-            s.sendall(b"quit")
-            s.settimeout(3)
-            if s.recv(8) != b"bye":
-                return wait_other_copies_gone()
-    except OSError:
-        return wait_other_copies_gone()  # not answering (or not running): make sure it is gone anyway
-    for _ in range(80):  # up to 8 s
-        time.sleep(0.1)
+    for port in _ports():
         try:
-            socket.create_connection(("127.0.0.1", SINGLE_PORT), timeout=0.2).close()
+            with socket.create_connection(("127.0.0.1", port), timeout=1.5) as s:
+                s.sendall(b"quit")
+                s.settimeout(3)
+                if s.recv(8) != b"bye":
+                    continue
         except OSError:
-            break
-    wait_other_copies_gone()
+            continue
+        for _ in range(80):  # up to 8 s
+            time.sleep(0.1)
+            try:
+                socket.create_connection(("127.0.0.1", port), timeout=0.2).close()
+            except OSError:
+                break
+        break
+    wait_other_copies_gone()  # not answering (or not running): make sure it is gone anyway
 
 
 def wait_other_copies_gone(seconds=12):

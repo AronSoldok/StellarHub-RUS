@@ -69,6 +69,11 @@ class Dialogs(unittest.TestCase):
 
 
 class SingleInstance(unittest.TestCase):
+    def setUp(self):  # never the real note in the user's local data folder
+        p = mock.patch.object(instance, "_port_file", return_value=os.path.join(tempfile.mkdtemp(), "instance.port"))
+        p.start()
+        self.addCleanup(p.stop)
+
     def serve(self, reply, hold=0.0):
         srv = socket.socket()
         srv.bind(("127.0.0.1", 0))
@@ -167,6 +172,46 @@ class SingleInstance(unittest.TestCase):
         with mock.patch.object(instance, "session_id", side_effect=lambda pid=None: sessions[pid]), \
                 mock.patch("psutil.process_iter", return_value=procs), mock.patch.object(instance.config, "FROZEN", False):
             self.assertEqual([p.info["pid"] for p in instance.other_copies()], [101, 303])
+
+
+    def test_a_taken_port_moves_the_listener_and_the_next_copy_finds_it(self):
+        """Another program held the single-instance port: the running copy listened nowhere, so every later double
+        click waited, took the healthy copy for stuck and ended it. Now it listens on a free port, writes it down,
+        and the next copy (and the installer's --quit) try that one too."""
+        blocker = socket.socket()
+        blocker.bind(("127.0.0.1", 0))
+        blocker.listen(1)
+        self.addCleanup(blocker.close)
+        api = mock.Mock(_quitting=False)
+        with mock.patch.object(instance, "SINGLE_PORT", blocker.getsockname()[1]):
+            srv = instance.listen_single(api)
+            self.assertIsNotNone(srv)
+            self.addCleanup(srv.close)
+            self.assertNotEqual(srv.getsockname()[1], instance.SINGLE_PORT)
+            self.assertEqual(instance._ports(), [instance.SINGLE_PORT, srv.getsockname()[1]])
+            self.assertTrue(instance.ask_running_to_show(1.0))
+        api.show_main.assert_called_once()
+
+    def test_a_note_that_is_junk_or_the_usual_port_adds_nothing(self):
+        port = 47999
+        with mock.patch.object(instance, "SINGLE_PORT", port):
+            self.assertEqual(instance._ports(), [port])
+            for junk in ("junk", "", "80", str(port), "70000"):
+                with open(instance._port_file(), "w", encoding="ascii") as fh:
+                    fh.write(junk)
+                self.assertEqual(instance._ports(), [port], junk)
+
+    def test_listening_on_the_usual_port_drops_an_old_note(self):
+        with open(instance._port_file(), "w", encoding="ascii") as fh:
+            fh.write("51234")
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        with mock.patch.object(instance, "SINGLE_PORT", port):
+            srv = instance.listen_single(mock.Mock(_quitting=False))
+            self.addCleanup(srv.close)
+        self.assertFalse(os.path.exists(instance._port_file()))
 
 
 class Jobs(unittest.TestCase):
