@@ -607,10 +607,12 @@ function dialog(html, onClick, cls = '') {
   const v = $(`#v-${ID}`); let d = $('.hg-dlg', v); if (d) d.remove();
   d = document.createElement('div'); d.className = 'hg-dlg'; d.innerHTML = `<div class="hg-dbox pan ${cls}">${html}</div>`; v.appendChild(d);
   anim(d, [{ opacity: 0 }, { opacity: 1 }], { d: 200 }); anim($('.hg-dbox', d), [{ opacity: 0, transform: 'translate3d(0,14px,0) scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring });
-  const close = () => { if (!d.isConnected) return; removeEventListener('keydown', key, true); anim(d, [{ opacity: 1 }, { opacity: 0 }], { d: 160 }).finished.then(() => d.remove()).catch(() => d.remove()); };
+  /* closing starts the fade: a second click on its button meanwhile (a double click on Install) does nothing */
+  let shut = false;
+  const close = () => { if (shut || !d.isConnected) return; shut = true; removeEventListener('keydown', key, true); anim(d, [{ opacity: 1 }, { opacity: 0 }], { d: 160 }).finished.then(() => d.remove()).catch(() => d.remove()); };
   const key = e => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
   addEventListener('keydown', key, true);
-  d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-no]')) { close(); return; } onClick && onClick(e, close, d); });
+  d.addEventListener('click', e => { if (shut) return; if (e.target === d || e.target.closest('[data-no]')) { close(); return; } onClick && onClick(e, close, d); });
   return { el: d, close };
 }
 const stack = (list, max = 7) => `<span class="hg-stack">${list.slice(0, max).map(a => icon(a, 'xs')).join('')}${list.length > max ? `<i class="hg-more">+${list.length - max}</i>` : ''}</span>`;
