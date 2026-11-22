@@ -187,4 +187,52 @@ document.addEventListener('pointerover', e => {
   if (now - hoverAt < SOFT_GAP) return;                           /* a primary one just spoke */
   sound('hover_soft');
 }, { passive: true });
+
+/* ---------- the loading loop ----------
+   While a loading indicator is on screen (LOADING: a radar or a scan ring turning, an analysis loading, a list or a
+   catalog standing in as skeletons), loading.ogg loops (SH.sound.loop, core.js). On screen: in the module in view,
+   rendered, inside the window and its scroll boxes, and not covered (the palette, a dialog or the Settings sheet over
+   its middle hides it). It starts once one has been there for 400 ms (a quick load stays silent), goes on while
+   indicators come and go without a gap (a re-render, the radar giving way to the list's skeletons), and fades when
+   none is left: the work ended or failed, the user went to another module or tab, scrolled it away, covered it, or
+   the window was hidden. Not on the start screen (it covers everything). One loop however many indicators. Left out on
+   purpose: spinners inside buttons and the progress bars of installs, cleanups, backups and tests (they have their
+   own progress and sounds), the benchmark (it measures the PC) and the small skeletons of a single value. */
+const LOADING = [
+  '#v-drivers .du-radar.on', '#v-optimizer .ring.scanning', '#v-optimizer .opt-load', '#v-privacy .pv-radar.scanning',
+  '#v-privacy .pv-scan.run', '#v-storage .st-scan.busy', '#v-remover .ck.run', '#v-updater.u-rescan .u-hero',
+  '#v-updater .btn.u-busy', '#v-updater .u-dnote', '.sk-row', '.sk-app', '.sk-card', '.opt-sk', '.sk',
+].join(', ');
+const LOAD_SK = 100;     /* a bare .sk block counts from this height (a chart, a panel being read), not a line of text */
+const LOAD_AFTER = 400, LOAD_EVERY = 200;
+const inView = el => { const v = el.closest('.view'); return !!v && v.id === 'v-' + state.view; };
+/* the middle of the part of el that the window and its scroll boxes let through, or null */
+function shownAt(el) {
+  let r = el.getBoundingClientRect(), l = Math.max(r.left, 0), t = Math.max(r.top, 0), rt = Math.min(r.right, innerWidth), b = Math.min(r.bottom, innerHeight);
+  for (let p = el.parentElement; p && p !== document.body && l < rt && t < b; p = p.parentElement) {
+    const s = getComputedStyle(p); if (s.overflowX === 'visible' && s.overflowY === 'visible') continue;
+    const q = p.getBoundingClientRect(); l = Math.max(l, q.left); t = Math.max(t, q.top); rt = Math.min(rt, q.right); b = Math.min(b, q.bottom);
+  }
+  return l < rt && t < b ? [(l + rt) / 2, (t + b) / 2] : null;
+}
+function loading() {
+  for (const el of $$(LOADING)) {
+    if (!inView(el) || !(el.checkVisibility ? el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) : el.offsetParent)) continue;
+    if (el.matches('.sk') && el.getBoundingClientRect().height < LOAD_SK) continue;  /* (a skeleton row counts by itself) */
+    const at = shownAt(el); if (!at) continue;
+    const hit = document.elementFromPoint(at[0], at[1]);
+    if (hit && (el.contains(hit) || hit.contains(el))) return true;
+  }
+  return false;
+}
+let loadSince = 0;
+function loadCheck() {
+  const st = state.settings, can = SH.booted && st.sounds !== false && st.soundTasks !== false && +st.soundVolume > 0 && !document.hidden;
+  const now = performance.now(), on = can && loading();
+  if (!on) { if (loadSince || sound.looping) sound.loop(false); loadSince = 0; }  /* gone: fade, and the next one may start it */
+  else if (!loadSince) { loadSince = now; sound.preload(['loading']); }
+  else if (now - loadSince >= LOAD_AFTER) sound.loop(true);
+  setTimeout(loadCheck, LOAD_EVERY);
+}
+SH.on('boot', () => setTimeout(loadCheck, LOAD_EVERY));
 })();

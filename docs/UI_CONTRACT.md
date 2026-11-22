@@ -138,6 +138,18 @@ controller mode), `tab_switch`, `navigate`, `dropdown`, `palette_open`,
 palette search: not modifiers, not held-key repeats, not during IME composition; 30 ms apart) and `map_hover` (35 ms
 apart, quieter than hover).
 
+The loading loop (group `soundTasks`): `loading.ogg`, one seamless 2.1 s sonar cycle, plays with `loop = true` while a
+loading indicator is on screen (`LOADING` in sounds.js: Driver Updater's radar, the Optimizer's analysis ring and its
+"Loading…" panels, Privacy's radar and quick scan, Storage's scan dial, Remover's leftover search, Updater's checks,
+skeleton rows, the Hangar catalog's placeholders, any skeleton block 100 px tall or more). On screen means in the
+module in view, rendered, inside the window and its scroll boxes and not covered at its middle (the palette, a dialog,
+the Settings sheet). It starts after 400 ms (a quick load stays silent), goes on across re-renders, and fades in about
+150 ms when none is left: the work ended or failed, another module or tab, scrolled away, covered, the window hidden.
+One loop however many indicators; a notification or a finished task (`scan_complete`, `success`, `error`...) fades it
+first and it stays off until the indicator goes. A new loading state adds its selector to `LOADING`; spinners in
+buttons and the progress bars of installs, cleanups and tests stay out (they have their own progress and sounds), and
+so does the benchmark (it measures the PC). `SH.sound.loop(on)` and `SH.sound.looping` are the engine's side (core.js).
+
 Rules: one sound per user action. Interface sounds need a click, key or controller press in the last 1.5 s, and the
 first one within 100 ms wins, so a sound that belongs to a click must be played synchronously in the click handler
 (before any `await`); if it can only come later, call `SH.sound.claim()` in the handler and play it when ready. A

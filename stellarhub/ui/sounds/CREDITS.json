@@ -162,6 +162,17 @@
   "durationMs": 31
  },
  {
+  "event": "loading",
+  "id": "loading.orbital-sonar",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_loading.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 2100,
+  "note": "one seamless 2.1 s cycle (a ping and two echoes, one Driver Updater radar sweep), looped while a loading indicator is on screen"
+ },
+ {
   "event": "map_hover",
   "id": "map_hover.orbital-dot",
   "family": "Orbital (original)",

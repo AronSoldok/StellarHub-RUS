@@ -51,6 +51,12 @@ def event_file(ev):
     return sound_table()[ev].get("f", ev)
 
 
+def loop_info():
+    """LOOP (core.js): (file, trim) of the loading loop."""
+    m = re.search(r"const LOOP = \{ file: '(\w+)', g: ([\d.]+)", read("js", "core.js"))
+    return m.group(1), float(m.group(2))
+
+
 class SoundFiles(unittest.TestCase):
     def test_every_event_has_its_file_and_credit(self):
         table = sound_table()
@@ -59,11 +65,16 @@ class SoundFiles(unittest.TestCase):
         sw = [f for f, _ in swooshes()]
         self.assertEqual(sw, [f"navigate_swoosh_{i}" for i in range(1, 8)])
         self.assertEqual(table["navigate"]["f"], "navigate_click")
-        self.assertEqual({d.get("f", ev) for ev, d in table.items()} | set(sw), files)   # no file is left over
+        self.assertEqual(loop_info()[0], "loading")                                       # the loop is no event
+        self.assertNotIn("loading", table)
+        self.assertEqual({d.get("f", ev) for ev, d in table.items()} | set(sw) | {"loading"}, files)   # no file is left over
         self.assertNotIn("navigate", files)                                              # the old one is gone
         with open(os.path.join(SOUNDS, "CREDITS.json"), encoding="utf-8") as fh:
             credits = json.load(fh)
-        self.assertEqual(len(credits), 45)
+        self.assertEqual(len(credits), 46)
+        loading = next(c for c in credits if c["event"] == "loading")
+        self.assertEqual((loading["license"], loading["sourceUrl"]), ("CC0-1.0", ""))
+        self.assertIn("Orbital", loading["family"])
         self.assertEqual({c["event"] for c in credits}, files)
         for c in credits:
             self.assertIn(c["license"], ("CC0-1.0", "CC-BY-4.0"), c["event"])
@@ -159,6 +170,23 @@ class SoundFiles(unittest.TestCase):
             lv = raw(f) + 20 * math.log10(g)
             self.assertAlmostEqual(lv, -36, delta=1, msg=f)
             self.assertLess(lv, level("navigate") - 5, f)
+        # the loading loop: a background, under the swooshes and well over hover
+        f, g = loop_info()
+        lv = raw(f) + 20 * math.log10(g)
+        self.assertAlmostEqual(lv, -38.4, delta=1)
+        self.assertGreater(lv, level("hover") + 5)
+
+    def test_the_loading_loop_is_one_seamless_cycle(self):
+        """loading.ogg is exactly one 2.1 s cycle whose end runs into its start (loop = true, no click at the seam)."""
+        try:
+            import numpy as np
+            import soundfile as sf
+        except ImportError:
+            self.skipTest("needs numpy and soundfile")
+        x, sr = sf.read(os.path.join(SOUNDS, "loading.ogg"), always_2d=True)
+        self.assertAlmostEqual(len(x) / sr, 2.1, delta=0.01)
+        self.assertLess(float(np.max(np.abs(x[-64:]))), 0.01)      # quiet at the seam
+        self.assertLess(float(np.max(np.abs(x[:64]))), 0.01)
 
     def test_files_are_ogg_vorbis(self):
         for f in os.listdir(SOUNDS):
@@ -461,9 +489,13 @@ const fire = (type, e, h) => { e = { type, isTrusted: true, detail: 1, button: 0
 globalThis.window = globalThis;
 const noop = () => {};
 const el = () => ({ dataset: {}, style: { setProperty: noop }, animate: () => ({ finished: Promise.resolve(), cancel: noop }), classList: { add: noop, remove: noop, toggle: noop, contains: () => false } });
-let DIALOGS = [];
-globalThis.document = { documentElement: el(), hidden: false, addEventListener: listen, querySelector: () => null,
-  querySelectorAll: s => s.includes('.cs-o') ? DIALOGS : [] };
+let DIALOGS = [], LOADERS = [], COVER = null;
+/* LOADERS: loading indicators (see loader() in the tests); COVER: something over the middle of the window */
+globalThis.document = { documentElement: el(), body: {}, hidden: false, addEventListener: listen, querySelector: () => null,
+  querySelectorAll: s => s.includes('.cs-o') ? DIALOGS : s.includes('.du-radar') ? LOADERS : [],
+  elementFromPoint: () => COVER || LOADERS[0] || null };
+globalThis.innerWidth = 1280; globalThis.innerHeight = 800;
+globalThis.getComputedStyle = () => ({ overflowX: 'visible', overflowY: 'visible' });
 globalThis.addEventListener = listen; globalThis.removeEventListener = noop;
 globalThis.matchMedia = () => ({ matches: false });
 globalThis.requestAnimationFrame = noop; globalThis.setInterval = () => 0;
@@ -476,14 +508,15 @@ globalThis.AudioBuffer = AudioBuffer;
 const param = () => ({ value: 1, cancelScheduledValues: noop, setTargetAtTime: noop });
 globalThis.AudioContext = class { constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; }
   createGain() { return { gain: param(), connect: noop, disconnect: noop }; }
-  createBufferSource() { const s = { connect: noop, stop: noop, start(when) { started.push({ file: s.buffer && s.buffer.file, when: when || 0 }); setTimeout(() => s.onended && s.onended(), 20); } }; return s; }
+  createBufferSource() { const s = { connect: noop, stop() { if (s.loop) loopsStopped.push(s.buffer.file); setTimeout(() => s.onended && s.onended(), 5); },
+    start(when) { started.push({ file: s.buffer && s.buffer.file, when: when || 0, loop: !!s.loop }); if (!s.loop) setTimeout(() => s.onended && s.onended(), 20); } }; return s; }
   resume() { return Promise.resolve(); } decodeAudioData(a) { const b = new AudioBuffer(); b.file = a.file; return Promise.resolve(b); } };
-const fetched = [], started = [];
+const fetched = [], started = [], loopsStopped = [];
 globalThis.fetch = u => { fetched.push(u); return Promise.resolve({ ok: true, arrayBuffer: () => { const a = new ArrayBuffer(8); a.file = u.replace(/^sounds\/|\.ogg$/g, ''); return Promise.resolve(a); } }); };
 eval(require('fs').readFileSync(process.env.CORE_JS, 'utf8'));
 const played = [], real = SH.sound;
 const rec = (ev, o) => { const r = real(ev, o); if (r) played.push(ev); return r; };
-Object.assign(rec, real); Object.defineProperty(rec, 'last', { get: () => real.last }); SH.sound = rec;
+Object.assign(rec, real); Object.defineProperty(rec, 'last', { get: () => real.last }); Object.defineProperty(rec, 'looping', { get: () => real.looping }); SH.sound = rec;
 eval(require('fs').readFileSync(process.env.SOUNDS_JS, 'utf8'));
 const tick = ms => new Promise(r => setTimeout(r, ms));
 const out = x => { process.stdout.write(JSON.stringify(x)); process.exit(0); };
@@ -675,6 +708,57 @@ class Wiring(unittest.TestCase):
         self.assertEqual(out["clickFinding"], [])
         self.assertEqual(out["clickDevice"], [])
         self.assertEqual(out["clickDriver"], ["click"])
+
+    def test_the_loading_loop_follows_what_is_on_screen(self):
+        out = self.run_js(r"""
+          SH.booted = true; SH.state.view = 'drivers';
+          /* a loading indicator (Driver Updater's radar): in its module's view, rendered, 200 px square */
+          const loader = (mod = 'drivers') => { const v = { id: 'v-' + mod }; const l = { closest: s => s === '.view' ? v : null,
+            matches: () => false, checkVisibility: () => true, parentElement: null, contains: x => x === l,
+            getBoundingClientRect: () => ({ left: 100, top: 100, right: 300, bottom: 300, width: 200, height: 200 }) }; return l; };
+          SH.emit('boot');
+          const loops = () => started.filter(s => s.loop).length;
+          const r = {};
+          LOADERS = [loader()]; await tick(250); r.early = loops(); await tick(500);
+          r.started = loops(); r.file = started.filter(s => s.loop).map(s => s.file); r.looping = SH.sound.looping;
+          LOADERS = [loader()]; await tick(450); r.rerender = loops();          /* re-rendered: the same loop goes on */
+          SH.state.view = 'home'; await tick(300); r.moduleSwitch = [SH.sound.looping, loopsStopped.length];
+          SH.state.view = 'drivers'; await tick(700); r.back = loops();
+          SH.emit('window', { shown: false }); await tick(30); r.hidden = SH.sound.looping;
+          await tick(500); r.stillHidden = SH.sound.looping;
+          SH.emit('window', { shown: true }); await tick(300);
+          LOADERS = []; await tick(300); let n = loops();
+          LOADERS = [loader()]; await tick(250); LOADERS = []; await tick(600); r.quick = loops() - n;   /* a quick load */
+          n = loops(); LOADERS = [loader(), loader()]; await tick(900); r.two = loops() - n; r.twoLooping = SH.sound.looping;
+          COVER = { contains: () => false }; await tick(300); r.covered = SH.sound.looping; COVER = null;
+          LOADERS = [loader('storage')]; await tick(900); r.otherModule = SH.sound.looping;          /* not the one in view */
+          /* the scan ends: scan_complete fades the loop, which stays off while the radar is still drawn */
+          LOADERS = [loader()]; await tick(900); r.beforeDone = SH.sound.looping;
+          SH.sound('scan_complete'); await tick(30); r.done = SH.sound.looping; await tick(600); r.afterDone = SH.sound.looping;
+          LOADERS = []; await tick(300); LOADERS = [loader()]; await tick(900); r.nextScan = SH.sound.looping;
+          LOADERS = []; await tick(300);
+          SH.state.settings.soundTasks = false; LOADERS = [loader()]; await tick(900); r.tasksOff = SH.sound.looping;
+          out(r);
+        """)
+        self.assertEqual(out["early"], 0)                    # not before 400 ms
+        self.assertEqual(out["started"], 1)
+        self.assertEqual(out["file"], ["loading"])
+        self.assertTrue(out["looping"])
+        self.assertEqual(out["rerender"], 1)                 # never from the beginning again
+        self.assertEqual(out["moduleSwitch"], [False, 1])
+        self.assertEqual(out["back"], 2)
+        self.assertFalse(out["hidden"])
+        self.assertFalse(out["stillHidden"])
+        self.assertEqual(out["quick"], 0)
+        self.assertEqual(out["two"], 1)                      # one loop however many indicators
+        self.assertTrue(out["twoLooping"])
+        self.assertFalse(out["covered"])
+        self.assertFalse(out["otherModule"])
+        self.assertTrue(out["beforeDone"])
+        self.assertFalse(out["done"])
+        self.assertFalse(out["afterDone"])
+        self.assertTrue(out["nextScan"])
+        self.assertFalse(out["tasksOff"])
 
 
 if __name__ == "__main__":

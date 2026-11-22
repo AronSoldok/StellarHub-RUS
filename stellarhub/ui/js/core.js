@@ -860,9 +860,16 @@ const SOUND_EV = {
    transition is shorter but still there, so the swoosh stays. It follows the click: nothing of its own decides it. */
 const SWOOSH = { delay: .02, n: -1, files: [['navigate_swoosh_1', .53], ['navigate_swoosh_2', .55], ['navigate_swoosh_3', .58],
   ['navigate_swoosh_4', .57], ['navigate_swoosh_5', .59], ['navigate_swoosh_6', .46], ['navigate_swoosh_7', .54]] };
+/* The loading loop (SH.sound.loop): loading.ogg is one seamless 2.1 s cycle (a sonar ping and two echoes, one turn of
+   Driver Updater's radar) played with loop = true, gapless, while a loading indicator is on screen (js/sounds.js
+   decides when). Group Tasks (soundTasks). Its trim puts it about 2 dB under navigate's swooshes and 7 above hover: a
+   background, not an event. It is a voice of its own (it never counts in the 4 at once and never cuts anything); it
+   fades out in about 150 ms. A notification or a finished task (tier 2 or more: scan_complete, success, error...)
+   fades it first and it stays off until the indicator has gone. Never while the page is hidden. */
+const LOOP = { file: 'loading', g: .25, fade: .05 };
 const sndFile = ev => SOUND_EV[ev].f || ev;
 const SOUND_CAT = { ui: 'soundUi', alerts: 'soundAlerts', tasks: 'soundTasks', system: 'soundSystem' };
-const snd = { ctx: null, master: null, buf: new Map(), failed: new Map(), last: {}, lastAny: -1e9, hist: [], voices: [], gestureAt: -1e9, act: null };
+const snd = { ctx: null, master: null, buf: new Map(), failed: new Map(), last: {}, lastAny: -1e9, hist: [], voices: [], gestureAt: -1e9, act: null, loop: null, loopHeld: false };
 function sndCtx() {
   if (snd.ctx) return snd.ctx;
   const C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
@@ -901,7 +908,7 @@ function sndStart(v, b, o) {
     return;
   }
   const src = ctx.createBufferSource(), g = ctx.createGain();
-  src.buffer = b; g.gain.value = v.trim * (o.gain ?? 1);
+  src.buffer = b; src.loop = !!v.loop; g.gain.value = v.trim * (o.gain ?? 1);
   src.connect(g); g.connect(snd.master);
   src.onended = () => { v.ended = true; try { g.disconnect(); } catch {} };
   v.src = src; v.g = g; src.start(v.delay ? ctx.currentTime + v.delay : 0);
@@ -926,6 +933,7 @@ function sound(ev, o = {}) {
   if (ev === 'toast' && now - snd.lastAny < 350) return false;
   snd.voices = snd.voices.filter(v => !v.ended);
   if (d.tier >= 2) snd.voices.forEach(v => { if (v.tier < d.tier && now - v.at < 100) sndStop(v); });
+  if (d.tier >= 2 && loopOn()) { loopStop(); snd.loopHeld = true; }  /* the task is over: the loop fades under its sound */
   /* two long system sounds never overlap (the start sound, then "updated to x.y.z"): the newer one takes over */
   if (d.tier === 3) snd.voices.forEach(v => { if (v.tier === 3) sndStop(v, .04); });
   snd.voices = snd.voices.filter(v => !v.ended);
@@ -945,6 +953,26 @@ function sound(ev, o = {}) {
   }
   return true;
 }
+/* the loading loop (see LOOP). loop(true) while an indicator is on screen: starts it, or keeps the one playing (never
+   from the beginning again); loop(false) when none is: fades it and lets the next indicator start it again. Returns
+   whether it plays. */
+function loopOn() { return !!(snd.loop && !snd.loop.ended); }
+function loopStop() { if (snd.loop) { sndStop(snd.loop, LOOP.fade); snd.loop = null; } }
+function sndLoop(on) {
+  if (!on) { snd.loopHeld = false; loopStop(); return false; }
+  const st = state.settings;
+  if (snd.loopHeld || st.sounds === false || st.soundTasks === false || !(+st.soundVolume > 0) || pageHidden()) { loopStop(); return false; }
+  if (loopOn()) return true;
+  const ctx = sndCtx(); if (!ctx) return false;
+  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  const v = snd.loop = { ev: 'loading', tier: 0, at: performance.now(), trim: LOOP.g, loop: true, src: null, g: null, ended: false, cancelled: false };
+  if (!sndPlay(v, LOOP.file, {})) { snd.loop = null; return false; }
+  return true;
+}
+/* hidden (the tray, minimized), or its group turned off: it stops at once */
+on('window', d => { if (!(d && d.shown)) loopStop(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) loopStop(); });
+on('setting', ({ key, val }) => { if ((key === 'sounds' || key === 'soundTasks') && val === false) loopStop(); if (key === 'soundVolume' && !(+val > 0)) loopStop(); });
 /* a gesture: interface sounds may follow it (the controller calls SH.sound.gesture() on every button) */
 const sndGesture = () => { snd.gestureAt = performance.now(); if (snd.ctx && snd.ctx.state === 'suspended') snd.ctx.resume().catch(() => {}); };
 addEventListener('pointerdown', sndGesture, { capture: true, passive: true });
@@ -954,11 +982,12 @@ Object.assign(sound, {
   EVENTS: Object.keys(SOUND_EV),
   info: ev => SOUND_EV[ev] && { ...SOUND_EV[ev] },
   gesture: sndGesture,
+  loop: sndLoop,
   /* js/sounds.js marks the start of a click (begin) and checks at its end whether something already sounded (claimed).
      claim(): this gesture is handled and stays silent (the widget, whose sound comes when its window does). */
   begin() { const n = performance.now(); if (!snd.act || n - snd.act.at > 40) snd.act = { at: n, claimed: false }; return snd.act; },
   claim() { if (snd.act && performance.now() - snd.act.at < 40) snd.act.claimed = true; },
-  preload(list) { if (!sndCtx()) return; (list || Object.keys(SOUND_EV)).forEach(ev => { if (!SOUND_EV[ev]) return; sndLoad(sndFile(ev)); if (ev === 'navigate') SWOOSH.files.forEach(f => sndLoad(f[0])); }); },
+  preload(list) { if (!sndCtx()) return; (list || Object.keys(SOUND_EV)).forEach(ev => { if (ev === 'loading') sndLoad(LOOP.file); if (!SOUND_EV[ev]) return; sndLoad(sndFile(ev)); if (ev === 'navigate') SWOOSH.files.forEach(f => sndLoad(f[0])); }); },
   /* the files an event plays (navigate: the click and its seven swooshes) */
   files: ev => !SOUND_EV[ev] ? [] : ev === 'navigate' ? [sndFile(ev), ...SWOOSH.files.map(f => f[0])] : [sndFile(ev)],
   volume: sndVolume,
@@ -967,6 +996,8 @@ Object.assign(sound, {
 });
 /* when the last sound started (performance.now()) */
 Object.defineProperty(sound, 'last', { get: () => snd.lastAny });
+/* whether the loading loop plays */
+Object.defineProperty(sound, 'looping', { get: loopOn });
 
 /* i18n.js ran first and already put SH.t and SH.i18n here: keep them */
 /* the icon of a PC component: the network adapter is drawn as a cable port when it is wired (Ethernet), Windows for
