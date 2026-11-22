@@ -135,4 +135,6 @@ def cancel(job_id):
 
 
 def running():
-    return [j.info() for j in _jobs.values() if j.state == "running"]
+    # a copy: a task started on another thread meanwhile would change the dict while it is read ("dictionary changed
+    # size during iteration"), and asking to quit then went ahead without saying that work was still running
+    return [j.info() for j in list(_jobs.values()) if j.state == "running"]

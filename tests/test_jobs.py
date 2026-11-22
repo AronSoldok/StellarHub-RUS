@@ -44,5 +44,26 @@ class JobEndAlwaysDelivered(unittest.TestCase):
         self.assertEqual((m["state"], m["result"]), ("done", {"a": 1}))
 
 
+
+class RunningWhileJobsStart(unittest.TestCase):
+    def test_a_job_starting_meanwhile_does_not_break_the_list(self):
+        class Busy:  # reading its state starts another job, as another thread can at any moment
+            id = "busy"
+
+            @property
+            def state(self):
+                jobs._jobs.setdefault("late", jobs.Job("late"))
+                return "running"
+
+            def info(self):
+                return {"id": self.id}
+        jobs._jobs["busy"] = Busy()
+        try:
+            self.assertIn({"id": "busy"}, jobs.running())
+        finally:
+            jobs._jobs.pop("busy", None)
+            jobs._jobs.pop("late", None)
+
+
 if __name__ == "__main__":
     unittest.main()
