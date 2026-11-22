@@ -69,5 +69,6 @@
   "{x} is still running. Quit anyway?": "{x} sigue en curso. ¿Salir de todos modos?",
   "Installing the update…": "Instalando la actualización…",
   "The update could not be installed. StellarHub will open again as it was.": "No se pudo instalar la actualización. StellarHub se abrirá de nuevo como estaba.",
-  "The update could not be applied: this copy is not where it should be.": "No se pudo aplicar la actualización: esta copia no está donde debería."
+  "The update could not be applied: this copy is not where it should be.": "No se pudo aplicar la actualización: esta copia no está donde debería.",
+  "Windows protects this entry; it was left as is.": "Windows protege esta entrada; se ha dejado como estaba."
 }

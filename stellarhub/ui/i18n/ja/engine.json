@@ -69,5 +69,6 @@
   "{x} is still running. Quit anyway?": "{x} はまだ実行中です。終了しますか?",
   "Installing the update…": "更新プログラムをインストールしています…",
   "The update could not be installed. StellarHub will open again as it was.": "更新プログラムをインストールできませんでした。StellarHub は以前の状態で再び開きます。",
-  "The update could not be applied: this copy is not where it should be.": "更新を適用できませんでした: このコピーが本来の場所にありません。"
+  "The update could not be applied: this copy is not where it should be.": "更新を適用できませんでした: このコピーが本来の場所にありません。",
+  "Windows protects this entry; it was left as is.": "Windows がこの項目を保護しています。そのままにしました。"
 }

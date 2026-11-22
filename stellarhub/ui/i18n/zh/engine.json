@@ -69,5 +69,6 @@
   "{x} is still running. Quit anyway?": "{x} 仍在运行。仍要退出吗？",
   "Installing the update…": "正在安装更新…",
   "The update could not be installed. StellarHub will open again as it was.": "无法安装更新。StellarHub 将按原样重新打开。",
-  "The update could not be applied: this copy is not where it should be.": "无法应用更新：此副本不在应有的位置。"
+  "The update could not be applied: this copy is not where it should be.": "无法应用更新：此副本不在应有的位置。",
+  "Windows protects this entry; it was left as is.": "Windows 保护此项；已保持原样。"
 }
