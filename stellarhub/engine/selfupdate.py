@@ -768,6 +768,32 @@ def apply_staged_at_start(say=None, timeout=120):
     r = start(allow_uac=True)  # an all-users install without the task asks Windows once (the user staged this update)
     if not r.get("ok"):
         return False
+    handing = _hand_over_splash(say)
+    ok = _wait_staged(ver, r, say, timeout)
+    if handing is not None:
+        if ok:  # this process exits now: the updater's start screen replaces this one first (bounded)
+            end = time.monotonic() + 4
+            while time.monotonic() < end and not handing.handed() and handing.showing():
+                time.sleep(0.02)
+        elif not handing.handed():  # the update did not go ahead: the start screen is this process's own again
+            handing.hand_over(False)
+    return ok
+
+
+def _hand_over_splash(say):
+    """The start screen this process shows (when it has one), marked for the updater to take over (splash.py)."""
+    if not say:
+        return None
+    try:
+        from .. import splash
+        if splash.showing() and splash.hand_over():
+            return splash
+    except Exception as e:
+        print("[update] splash handoff:", e, flush=True)
+    return None
+
+
+def _wait_staged(ver, r, say, timeout):
     at, end = r.get("at") or time.time(), time.monotonic() + timeout
     while time.monotonic() < end:
         st = state()
@@ -892,6 +918,8 @@ def finish_update(dst, pid):
             except OSError:
                 pass
     report(st="done", ver=VERSION)
+    if sp is not None:
+        sp.hand_over()  # the updated app takes this start screen over (splash.py): never two on screen
     subprocess.Popen([exe], cwd=dst, close_fds=True)
     if sp is not None:  # no gap: hold this start screen until the updated app has put up its own
         end = time.monotonic() + 8

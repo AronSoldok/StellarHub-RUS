@@ -61,19 +61,27 @@ class MainWindowApi:
         """Opens an elevated copy and closes this one. If the user says no in UAC, nothing changes."""
         if config.is_admin():
             return True
-        # the elevated copy waits for this one to exit (it frees the single-instance lock and the WebView2 data)
+        # The start screen goes up first, marked for the elevated copy to take over (splash.hand_over): that copy then
+        # shows this very card instead of a second one on top of it. The elevated copy waits for this one to exit (it
+        # frees the single-instance lock and the WebView2 data).
+        sp = None
+        try:
+            from .. import splash
+            splash.show()
+            splash.status(tr("Opening as administrator…"))
+            splash.hand_over()
+            sp = splash
+        except Exception:
+            pass
         r = elevation.relaunch_elevated()
         if r:
-            self._handoff = True  # main() keeps the start screen up until the new copy shows its own
-            try:
-                from .. import splash
-                splash.show()
-                splash.status(tr("Opening as administrator…"))
-            except Exception:
-                pass
+            self._handoff = True  # main() keeps the start screen up until the new copy has taken it over
             threading.Timer(0.05, lambda: self.quit(True)).start()
             return True
         print("[start] relaunch as administrator: Windows did not give permission", flush=True)
+        if sp is not None:
+            sp.hand_over(False)
+            sp.close()
         return False
 
     def close_main(self):

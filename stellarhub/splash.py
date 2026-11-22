@@ -54,6 +54,14 @@ _sig(g32.CreateDIBSection, wt.HBITMAP, wt.HDC, ctypes.c_void_p, wt.UINT, ctypes.
 _sig(g32.SelectObject, wt.HGDIOBJ, wt.HDC, wt.HGDIOBJ)
 _sig(g32.DeleteObject, wt.BOOL, wt.HGDIOBJ)
 _sig(g32.DeleteDC, wt.BOOL, wt.HDC)
+_sig(u32.SetWindowTextW, wt.BOOL, wt.HWND, wt.LPCWSTR)
+_sig(u32.GetWindowTextW, ctypes.c_int, wt.HWND, wt.LPWSTR, ctypes.c_int)
+_sig(u32.GetClassNameW, ctypes.c_int, wt.HWND, wt.LPWSTR, ctypes.c_int)
+_sig(u32.IsWindowVisible, wt.BOOL, wt.HWND)
+_sig(u32.ShowWindowAsync, wt.BOOL, wt.HWND, ctypes.c_int)
+_sig(u32.GetWindowThreadProcessId, wt.DWORD, wt.HWND, ctypes.POINTER(wt.DWORD))
+_sig(u32.PostMessageW, wt.BOOL, wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM)
+_sig(u32.MsgWaitForMultipleObjects, wt.DWORD, wt.DWORD, ctypes.c_void_p, wt.BOOL, wt.DWORD, wt.DWORD)
 
 
 class WNDCLASSEXW(ctypes.Structure):
@@ -68,7 +76,8 @@ class BITMAPINFOHEADER(ctypes.Structure):
                 ("biYPelsPerMeter", ctypes.c_long), ("biClrUsed", wt.DWORD), ("biClrImportant", wt.DWORD)]
 
 
-_state ={"thread": None, "closing": None, "hwnd": None, "status": ""}
+_state = {"thread": None, "closing": None, "hwnd": None, "status": "", "handing": False, "handed": False,
+          "titled": False}
 _lock = threading.Lock()
 
 
@@ -448,73 +457,273 @@ def _blit(hwnd, img, alpha, pos):
         u32.ReleaseDC(None, screen)
 
 
+# ---------------------------------------------------------------- one start screen, also across processes
+# Several starts go through two processes: a normal copy that relaunches itself as administrator (at start, or from
+# the window), the app that runs the updater for a staged update, the new portable copy that opens the updated app.
+# Each used to put up its own start screen while the other one was still on screen: two translucent cards on top of
+# each other, each with its own animation clock and the second fading in over the first, seen as a strong flicker.
+#
+# Now the process that gives way calls hand_over() before it starts the next one. Its window title then carries its
+# animation clock (a wall-clock epoch), position, scale, light and status. The next process's show() finds that card
+# and adopts it: the same card at the same place on the same clock, so its first frame is the frame the old card
+# shows at that moment, with no fade-in. The swap itself: the new card asks the old one to hold still (WM_FREEZE);
+# the old card stops on the frame it shows and writes that frame's time in its title; the new card draws exactly that
+# frame, puts its window up and hides the old one (ShowWindowAsync), which the old card, by then only waiting on its
+# message queue, does within a millisecond: the two are never on screen together for a whole frame. The old card
+# also hides itself the moment it sees another start screen (a new card that could not ask it to hold still: one
+# with fewer rights than it). A start screen that is not handing over is never doubled either: a copy launched while
+# another copy is starting shows none of its own (other_starting(), startup.show_splash) until it really starts.
+CLASS = "StellarHubSplash"
+HANDOFF = "StellarHub handoff v1 "
+FADE_IN, FADE_OUT = .22, .28
+WM_FREEZE = 0x8000 + 0x57  # WM_APP + n: "hold still, I am about to replace you"
+FREEZE_MAX = 0.5           # a card asked to hold still that is not replaced by then goes on animating
+
+
+def handoff_title(epoch, light, pos, scale, status, frozen=None):
+    """The window title of a card that is handing over (parse_handoff reads it in the next process)."""
+    return (f"{HANDOFF}e={epoch:.4f} l={-1 if light is None else light:.4f} x={int(pos[0])} y={int(pos[1])} "
+            f"s={scale:.5f}" + ("" if frozen is None else f" f={frozen:.4f}") + f"|{status or ''}")
+
+
+def parse_handoff(title):
+    """{"e", "l" (None: no light yet), "x", "y", "s", "f" (the time of the frame it holds still on, or None),
+    "status"} from handoff_title(), or None."""
+    if not isinstance(title, str) or not title.startswith(HANDOFF):
+        return None
+    fields, _, status = title[len(HANDOFF):].partition("|")
+    try:
+        kv = dict(f.split("=", 1) for f in fields.split())
+        out = {"e": float(kv["e"]), "l": float(kv["l"]), "x": int(kv["x"]), "y": int(kv["y"]), "s": float(kv["s"]),
+               "f": float(kv["f"]) if "f" in kv else None, "status": status}
+    except (KeyError, ValueError):
+        return None
+    if out["l"] < 0:
+        out["l"] = None
+    if not (0.5 <= out["s"] <= 8) or not out["e"] > 0:
+        return None
+    return out
+
+
+def _cards(exclude=None):
+    """[(hwnd, title, visible)] for every start screen on this desktop but `exclude`."""
+    found = []
+
+    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    def cb(h, _):
+        buf = ctypes.create_unicode_buffer(32)
+        u32.GetClassNameW(h, buf, 32)
+        if buf.value == CLASS and h != exclude:
+            t = ctypes.create_unicode_buffer(512)
+            u32.GetWindowTextW(h, t, 512)
+            found.append((h, t.value, bool(u32.IsWindowVisible(h))))
+        return True
+    try:
+        u32.EnumWindows(cb, 0)
+    except Exception:
+        return []
+    return found
+
+
+def _handing_card():
+    """(hwnd, parse_handoff info) of a visible card of another process that is handing over, or None."""
+    me = os.getpid()
+    for h, title, visible in _cards(_state["hwnd"]):
+        info = parse_handoff(title) if visible else None
+        if info is None:
+            continue
+        pid = wt.DWORD()
+        u32.GetWindowThreadProcessId(h, ctypes.byref(pid))
+        if pid.value != me:
+            return h, info
+    return None
+
+
+def _title_of(h):
+    t = ctypes.create_unicode_buffer(512)
+    u32.GetWindowTextW(h, t, 512)
+    return t.value
+
+
+def _take_over(hwnd, old, info, card, epoch, pos):
+    """The swap (see above): the old card holds still on a frame, this one shows that very frame and hides it."""
+    t = None
+    if u32.PostMessageW(old, WM_FREEZE, 0, 0):
+        end = time.monotonic() + 0.3
+        while time.monotonic() < end:
+            got = parse_handoff(_title_of(old))
+            if got is None:
+                break
+            if got["f"] is not None:
+                info, t = got, got["f"]
+                break
+            time.sleep(0.002)
+    if t is None:  # it could not be asked (it runs with more rights than this one): the frame of this moment
+        t = time.time() - epoch
+    if hasattr(card, "_star"):
+        card._light_t0 = info["l"] if info["l"] is not None else t
+    if info["status"] and not _state["status"]:
+        _state["status"] = info["status"]
+    _blit(hwnd, card.frame(t, _state["status"]), 255 * min(1, max(0.0, t) / FADE_IN), pos)
+    u32.ShowWindow(hwnd, 4)
+    u32.ShowWindowAsync(old, 0)  # SW_HIDE: the card this one replaces goes in the same instant
+    print("[splash] took over the start screen of the previous process", flush=True)
+
+
 def _run(ready):
     try:  # this thread draws at the real pixel size (otherwise Windows stretches the window at 125 %/150 %)
         u32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))  # PER_MONITOR_AWARE_V2
     except (AttributeError, OSError):
         pass
+    adopt = None
     try:
-        dpi = u32.GetDpiForSystem() if hasattr(u32, "GetDpiForSystem") else 96
-    except Exception:
-        dpi = 96
-    card = _Card(dpi / 96)
-    wa = wt.RECT()
-    u32.SystemParametersInfoW(0x0030, 0, ctypes.byref(wa), 0)  # work area of the primary monitor
+        adopt = _handing_card()
+    except Exception as e:
+        print("splash handoff:", e, flush=True)
+    if adopt:
+        _state["adopting"] = True
+        info = adopt[1]
+        scale, pos, epoch = info["s"], (info["x"], info["y"]), info["e"]
+        card = _Card(scale)
+        try:  # the ring's light is ready before the first frame, as it is on the card being replaced
+            card._maps_thread = None
+            card._ring_maps()
+        except Exception as e:
+            print("splash maps:", e, flush=True)
+        if not _state["status"]:
+            _state["status"] = info["status"]
+    else:
+        try:
+            dpi = u32.GetDpiForSystem() if hasattr(u32, "GetDpiForSystem") else 96
+        except Exception:
+            dpi = 96
+        scale = dpi / 96
+        card = _Card(scale)
+        wa = wt.RECT()
+        u32.SystemParametersInfoW(0x0030, 0, ctypes.byref(wa), 0)  # work area of the primary monitor
+        W, H = card.size
+        pos = (wa.left + (wa.right - wa.left - W) // 2, wa.top + (wa.bottom - wa.top - H) // 2 - int(20 * scale))
+        epoch = None
     W, H = card.size
-    pos = (wa.left + (wa.right - wa.left - W) // 2, wa.top + (wa.bottom - wa.top - H) // 2 - int(20 * dpi / 96))
 
     proc = WNDPROC(lambda h, m, w, l: u32.DefWindowProcW(h, m, w, l))
     hinst = k32.GetModuleHandleW(None)
     wc = WNDCLASSEXW(ctypes.sizeof(WNDCLASSEXW), 0, proc, 0, 0, hinst, None, u32.LoadCursorW(None, 32514),
-                     None, None, "StellarHubSplash", None)  # IDC_APPSTARTING: the arrow with the little wheel
+                     None, None, CLASS, None)  # IDC_APPSTARTING: the arrow with the little wheel
     u32.RegisterClassExW(ctypes.byref(wc))
     # layered + tool window (no taskbar button) + topmost, as start screens are
-    hwnd = u32.CreateWindowExW(0x00080000 | 0x00000080 | 0x00000008, "StellarHubSplash", "StellarHub", 0x80000000,
+    hwnd = u32.CreateWindowExW(0x00080000 | 0x00000080 | 0x00000008, CLASS, "StellarHub", 0x80000000,
                                pos[0], pos[1], W, H, None, None, hinst, None)
     _state["hwnd"] = hwnd
-    t0 = time.monotonic()
-    _blit(hwnd, card.frame(0, ""), 0, pos)
-    u32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE: the user's current window keeps the focus
+    if epoch is None:
+        epoch = time.time()
+        _blit(hwnd, card.frame(0, ""), 0, pos)
+        u32.ShowWindow(hwnd, 4)  # SW_SHOWNOACTIVATE: the user's current window keeps the focus
+    else:
+        _take_over(hwnd, adopt[0], info, card, epoch, pos)
     ready.set()
     msg = wt.MSG()
-    fade_in, fade_out = .22, .28
     closing_at = None
+    title = "StellarHub"
+    frozen_at = shown_t = None
     while True:
         while u32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
+            if msg.message == WM_FREEZE and msg.hWnd == hwnd:
+                if _state["handing"] and shown_t is not None and frozen_at is None:
+                    frozen_at = time.monotonic()
+                continue
             u32.TranslateMessage(ctypes.byref(msg))
             u32.DispatchMessageW(ctypes.byref(msg))
-        now = time.monotonic() - t0
+        if frozen_at is not None and (not _state["handing"] or time.monotonic() - frozen_at > FREEZE_MAX):
+            frozen_at = None  # nobody took over after all: go on
+        now = time.time() - epoch
         if _state["closing"] is not None and closing_at is None:
             closing_at = now
         if now > 6 and not _state["status"]:
             _state["status"] = tr("Getting to know your PC. The first start takes a little longer.")
-        alpha = 255 * min(1, now / fade_in)
+        handing = _state["handing"] and closing_at is None
+        want = "StellarHub"
+        if handing:
+            want = handoff_title(epoch, getattr(card, "_light_t0", None), pos, scale, _state["status"],
+                                 shown_t if frozen_at is not None else None)
+        if want != title:
+            u32.SetWindowTextW(hwnd, want)
+            title = want
+        _state["titled"] = handing
+        if handing and not _state["handed"]:
+            try:
+                if not u32.IsWindowVisible(hwnd) or any(v for _h, _t, v in _cards(hwnd)):
+                    u32.ShowWindow(hwnd, 0)  # the next process has its card up (or hid this one): this one goes
+                    _state["handed"] = True
+            except Exception:
+                pass
+        alpha = 255 * min(1, max(0.0, now) / FADE_IN)
         if closing_at is not None:
-            k = (now - closing_at) / fade_out
-            if k >= 1:
+            k = (now - closing_at) / FADE_OUT
+            if k >= 1 or _state["handed"]:
                 break
             alpha *= 1 - k * k
-        try:
-            _blit(hwnd, card.frame(now, _state["status"]), alpha, pos)
-        except Exception:
-            pass
-        time.sleep(1 / 60)
+        if not _state["handed"] and frozen_at is None:
+            try:
+                _blit(hwnd, card.frame(now, _state["status"]), alpha, pos)
+                shown_t = now
+            except Exception:
+                pass
+        if frozen_at is not None:  # holding still: only the messages, so the hide comes at once
+            u32.MsgWaitForMultipleObjects(0, None, False, 2, 0x04FF)
+        elif handing:  # wake up for the next process's ShowWindowAsync instead of sleeping through it
+            u32.MsgWaitForMultipleObjects(0, None, False, 16, 0x04FF)  # QS_ALLINPUT
+        else:
+            time.sleep(1 / 60)
     u32.DestroyWindow(hwnd)
-    u32.UnregisterClassW("StellarHubSplash", hinst)
+    u32.UnregisterClassW(CLASS, hinst)
     _state["hwnd"] = None
+    _state["titled"] = False
     del proc
 
 
 def show():
-    """Shows the start screen (once). Returns right away; the card lives on its own thread."""
+    """Shows the start screen (one at a time; again after an earlier one has closed). Returns once it is on screen
+    (at most 2 s). If another process is handing its start screen over (hand_over), this one takes it over."""
     with _lock:
-        if _state["thread"] is not None:
-            return
+        th = _state["thread"]
+        if th is not None and th.is_alive():
+            if _state["closing"] is None:
+                return
+            th.join(1)  # an earlier one is fading out: let it go, then start again
+            if th.is_alive():
+                return
+        _state.update(closing=None, handing=False, handed=False, titled=False, status="", adopting=False)
         ready = threading.Event()
         th = threading.Thread(target=_run, args=(ready,), name="splash", daemon=True)
         _state["thread"] = th
         th.start()
-    ready.wait(2)
+    # taking over another process's card prepares the ring's light first: worth the wait, since the other process
+    # goes as soon as this one returns and holds the single-instance lock
+    if not ready.wait(2) and _state.get("adopting"):
+        ready.wait(5)
+
+
+def hand_over(on=True, timeout=0.5):
+    """Before starting the process that takes over (see above): marks this start screen as handing over. True once
+    the next process can find it (its title says so); False if there is no start screen up. hand_over(False) takes
+    the mark back (the next process did not start after all)."""
+    _state["handing"] = bool(on)
+    if not on:
+        return False
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        if _state["titled"]:
+            return True
+        if not showing() or _state["closing"] is not None:
+            return False
+        time.sleep(0.005)
+    return bool(_state["titled"])
+
+
+def handed():
+    """True once the next process's start screen is up and this one has hidden itself."""
+    return bool(_state["handed"])
 
 
 def status(text):
@@ -531,20 +740,13 @@ def close():
 
 def other_showing():
     """True if a start screen of ANOTHER StellarHub process is on screen (the copy this one hands over to)."""
-    found = []
+    return any(v for _h, _t, v in _cards(_state["hwnd"]))
 
-    @ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
-    def cb(h, _):
-        buf = ctypes.create_unicode_buffer(32)
-        u32.GetClassNameW(h, buf, 32)
-        if buf.value == "StellarHubSplash" and h != _state["hwnd"] and u32.IsWindowVisible(h):
-            found.append(h)
-        return True
-    try:
-        u32.EnumWindows(cb, 0)
-    except Exception:
-        return False
-    return bool(found)
+
+def other_starting():
+    """True if another StellarHub process shows its start screen without handing it over: a copy that is starting
+    (this one then waits with no start screen of its own: two cards on top of each other flicker)."""
+    return any(v and parse_handoff(t) is None for _h, t, v in _cards(_state["hwnd"]))
 
 
 def showing():

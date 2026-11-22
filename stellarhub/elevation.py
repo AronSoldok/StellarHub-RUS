@@ -73,10 +73,12 @@ def elevate_on_start():
             Path(START_HIDDEN).touch()
         except OSError:
             pass
+    splash = _hand_over_splash()
     if not config.PORTABLE and task_opens_this_copy(ADMIN_TASK) and subprocess.run(
             ["schtasks", "/run", "/tn", ADMIN_TASK], capture_output=True, creationflags=0x08000000, timeout=15).returncode == 0:
         if elevated_copy_started():
             phase("elevated copy started (task)")
+            _until_taken_over(splash)
             return True
         # Windows kept the task waiting (a task made by an older version doesn't start on battery) or it failed:
         # drop it and ask Windows the usual way; the elevated copy then makes the task again, the right way
@@ -88,9 +90,34 @@ def elevate_on_start():
     if ctypes.windll.shell32.ShellExecuteW(None, "runas", exe, args, config.base_dir(), 1) > 32:
         elevated_copy_started(10)  # keep the start screen up until the elevated copy has its own
         phase("elevated copy started (UAC)")
+        _until_taken_over(splash)
         return True
     print("[start] administrator mode was declined: opening in normal mode", flush=True)
+    if splash is not None:
+        splash.hand_over(False)
     return False  # the user said no: stay in normal mode
+
+
+def _hand_over_splash():
+    """The start screen up in this process, marked for the elevated copy to take over (splash.hand_over), or None."""
+    try:
+        from . import splash
+        if splash.showing():
+            splash.hand_over()
+            return splash
+    except Exception as e:
+        print("splash handoff:", e)
+    return None
+
+
+def _until_taken_over(splash, seconds=4):
+    """This copy is about to exit: give the elevated copy's start screen (bounded) time to replace this one, so the
+    screen is never empty in between."""
+    if splash is None:
+        return
+    end = time.monotonic() + seconds
+    while time.monotonic() < end and not splash.handed() and splash.showing():
+        time.sleep(0.02)
 
 
 def elevated_copy_started(seconds=8):

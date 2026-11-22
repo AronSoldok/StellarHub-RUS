@@ -64,6 +64,7 @@ class Launch:
         self.handoff = "--wait-pid" in argv or "--from-task" in argv  # a copy the previous one is handing over to
         self.splash = not self.hidden and os.environ.get("STELLARHUB_NO_SPLASH") != "1"
         self.debug = "--debug" in argv
+        self.splash_later = False  # another copy had its start screen up: this one shows its own once it starts
 
 
 def prepare():
@@ -78,10 +79,17 @@ def prepare():
 
 
 def show_splash(launch):
-    """The start screen comes first, before anything that can wait (StellarHub opens with it, like FL Studio)."""
+    """The start screen comes first, before anything that can wait (StellarHub opens with it, like FL Studio).
+    Never two at once: when another copy is starting with its start screen up (StellarHub opened twice), this one
+    waits without its own (acquire shows it if this copy does start); a copy handing its start screen over to this one
+    (administrator relaunch, update) gives it its card (splash.py)."""
     if launch.splash:
         try:
             from . import splash
+            if splash.other_starting():
+                launch.splash_later = True
+                phase("splash deferred: another copy is starting")
+                return
             splash.show()
             if launch.handoff or elevation.wants_elevation():
                 splash.status(tr("Opening as administrator…"))
@@ -105,6 +113,13 @@ def acquire(launch):
             return False
         if not instance.claim_single_instance(10 if launch.handoff else 0) and not instance.take_over_running_copy():
             return False
+    if launch.splash_later:
+        try:
+            from . import splash
+            splash.show()
+        except Exception as e:
+            print("splash:", e)
+            launch.splash = False
     phase("single-instance claimed")
     return True
 
