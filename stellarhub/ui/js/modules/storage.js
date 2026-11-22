@@ -767,11 +767,20 @@ async function runScan(user) {
     });
   } catch (e) {
     TM.scanning = false; if (sc) sc.classList.remove('busy');
-    if (act) act.end(e && e.cancelled ? { cancelled: true } : { ok: false, error: (e && e.message) || '' });
+    const told = act ? act.end(e && e.cancelled ? { cancelled: true } : { ok: false, error: (e && e.message) || '' }) : false;
     if (e && e.cancelled) {
       if (wasReady && TM.root) { TM.ready = true; relayout(); if (sc) anim(sc, [{ opacity: 1 }, { opacity: 0 }], { d: 260 }).finished.then(() => sc.classList.add('done')).catch(() => {}); }
       else idleCover();
       SH.toast(T('Scan cancelled.')); return;
+    }
+    /* a new scan that failed (the folder or the USB drive is gone...) leaves the map that was there: it is still what
+       the engine publishes and what the other tabs show; the next Scan goes back to that map's own target */
+    if (wasReady && TM.root) {
+      TM.ready = true; relayout();
+      if (ST.info && ST.info.target) ST.target = ST.info.target;
+      if (sc) anim(sc, [{ opacity: 1 }, { opacity: 0 }], { d: 260 }).finished.then(() => sc.classList.add('done')).catch(() => {});
+      if (!told) SH.toast(`${T("Couldn't scan.")} ${(e && e.message) || ''}`.trim(), { kind: 'error' });
+      console.error(e); return;
     }
     if (sc) { setPathText($('.st-sp', sc), T("Couldn't scan.")); $('.st-ss', sc).textContent = (e && e.message) || ''; }
     console.error(e); return;

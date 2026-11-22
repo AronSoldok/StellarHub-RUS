@@ -28,7 +28,12 @@ FILE_MIN = 1024 * 1024         # smaller files are grouped per folder (saves mem
 BIG_KEEP = 400                 # the N largest files of the whole scan
 NO_WINDOW = 0x08000000
 REPARSE = 0x400
-DATA = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "storage")
+# The snapshots of the last scans (Compare, "Last scan" on the Map). Per user, in the profile: in ProgramData a scan
+# run as administrator (or by an elevated routine) left a file the same user's normal runs could no longer replace,
+# so "Last scan" and Compare stopped moving. The old folder is still read once per target (_snap_file).
+DATA = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local"),
+                    "StellarHub", "storage")
+_LEGACY = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "storage")
 
 # ---------------- types (same keys as the UI) ----------------
 EXT_TYPE = {}
@@ -709,8 +714,59 @@ def _duplicates(job, min_mb, s):
 
 
 # ---------------- compare with the previous scan ----------------
-def _key(target):
+def _old_key(target):
     return "".join(ch if ch.isalnum() else "_" for ch in target.lower()).strip("_") or "root"
+
+
+def _key(target):
+    """The snapshot's file name: readable, plus a hash of the whole path ("C:\\a b", "C:\\a-b" and "C:\\a_b" used to
+    share one file, so one folder's Last scan and Compare showed another's)."""
+    tag = hashlib.sha1(os.path.normcase(os.path.abspath(target)).encode("utf-8", "surrogatepass")).hexdigest()[:10]
+    return f"{_old_key(target)[:60]}-{tag}"
+
+
+def _same_target(a, b):
+    try:
+        return os.path.normcase(os.path.abspath(a or "")) == os.path.normcase(os.path.abspath(b or ""))
+    except (TypeError, ValueError):
+        return False
+
+
+def _read_snap(f):
+    """A snapshot file as a dict, or None when it is missing or damaged (a crash while it was written)."""
+    try:
+        with open(f, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _snap_file(target):
+    """Where the snapshot of `target` lives. The first time, one kept by an earlier version (old name, or the old
+    ProgramData folder) is brought over if it really is this target's."""
+    f = os.path.join(DATA, _key(target) + ".json")
+    if os.path.exists(f):
+        return f
+    for d in (DATA, _LEGACY):
+        old = os.path.join(d, _old_key(target) + ".json")
+        data = _read_snap(old)
+        if data and _same_target(((data.get("last") or {}).get("target")), target):
+            try:
+                os.makedirs(DATA, exist_ok=True)
+                _write_snap(f, data)
+            except OSError:
+                return old
+            break
+    return f
+
+
+def _write_snap(f, data):
+    with open(f + ".tmp", "w", encoding="utf-8") as fh:
+        json.dump(data, fh)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(f + ".tmp", f)
 
 
 def _save_snapshot(s):
@@ -732,18 +788,13 @@ def _save_snapshot(s):
                 d, ent = s.fidx[fid]
                 bigs.append([os.path.join(_path(d), ent[1]), size, int(ent[3])])
         snap = {"v": 2, "target": s.target, "when": s.when, "size": s.root.size, "files": s.files, "dirs": dirs, "big": bigs}
-        f = os.path.join(DATA, _key(s.target) + ".json")
-        hist = []
-        prev = None
-        if os.path.exists(f):
-            with open(f, encoding="utf-8") as fh:
-                old = json.load(fh)
-            prev = old.get("last")
-            hist = old.get("history", [])
+        f = _snap_file(s.target)
+        old = _read_snap(f) or {}  # damaged: start again (it used to stop every later snapshot of this target)
+        prev = old.get("last")
+        hist = old.get("history") if isinstance(old.get("history"), list) else []
         hist = (hist + [[s.when, s.root.size]])[-24:]
-        with open(f + ".tmp", "w", encoding="utf-8") as fh:
-            json.dump({"last": snap, "prev": prev, "history": hist}, fh)
-        os.replace(f + ".tmp", f)
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        _write_snap(f, {"last": snap, "prev": prev, "history": hist})
     except Exception as e:  # comparing is an extra: it never breaks the scan
         print("storage snapshot:", e)
 
@@ -764,12 +815,8 @@ def last_scan(target="C:\\"):
         if len(target) == 2 and target[1] == ":":      # "C:" alone would be the current folder of that drive
             target += "\\"
         target = os.path.abspath(target)
-        f = os.path.join(DATA, _key(target) + ".json")
-        if not os.path.exists(f):
-            return None
-        with open(f, encoding="utf-8") as fh:
-            last = (json.load(fh) or {}).get("last") or {}
-        if not last.get("when"):
+        last = (_read_snap(_snap_file(target)) or {}).get("last") or {}
+        if not last.get("when") or not _same_target(last.get("target") or target, target):
             return None
         return {"target": last.get("target") or target, "when": int(last["when"] * 1000), "size": last.get("size") or 0,
                 "files": last.get("files") or 0}
@@ -782,11 +829,9 @@ def compare():
 
 
 def _compare(s):
-    f = os.path.join(DATA, _key(s.target) + ".json")
-    if not os.path.exists(f):
+    data = _read_snap(_snap_file(s.target))
+    if not data or not isinstance(data.get("last"), dict):
         return {"prev": None}
-    with open(f, encoding="utf-8") as fh:
-        data = json.load(fh)
     cur, prev = data.get("last"), data.get("prev")
     hist = data.get("history", [])
     if not prev or prev.get("v") != 2:   # snapshots in an older format can't be compared
