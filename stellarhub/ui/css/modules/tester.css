@@ -197,6 +197,12 @@ html[data-int=min] #v-tester .sp-spk.play .sp-cone i,html[data-int=min] #v-teste
   #v-tester .sp-cone{width:90px;height:90px}
   #v-tester .ms{grid-template-columns:210px 1fr 260px}
 }
+/* compact layout (a small window, base.css): stacked, these tests take the height their content needs and the page
+   scrolls (shell.js growCompact makes the module that tall) instead of squeezing the camera frame or the recorder */
+@media (max-width:1250px){
+  html[data-layout=scroll] #v-tester :is(.sc,.mc,.cm){height:auto;min-height:100%}
+  html[data-layout=scroll] #v-tester .cm-frame{min-height:260px}
+}
 #v-tester [hidden]{display:none!important}
 
 /* CPS test (left strip of the Mouse tab) */
