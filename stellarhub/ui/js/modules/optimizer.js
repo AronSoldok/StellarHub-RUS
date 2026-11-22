@@ -656,7 +656,10 @@ async function realStep(s, msg, setP) {
   if (s.id === 'services') {
     const sv = servicePending('bal'); const changes = {}; sv.forEach(x => changes[x.id] = x.bal);
     msg.textContent = t('Changing services…');
-    const r = await eng('services_apply', changes); last.svcBackup = r.backup; await load('services', true);
+    const r = await eng('services_apply', changes);
+    /* no backup could be saved: nothing was changed (not "adjusted"), and there is nothing to undo */
+    if (!r || (r.ok === false && !r.backup)) throw new Error((r && r.error) || t("Nothing was changed: the backup of the services couldn't be saved."));
+    last.svcBackup = r.backup; await load('services', true);
     msg.textContent = r.ok ? t('{n} services adjusted', { n: sv.length }) : t("{n} services adjusted (one didn't accept the change)", { n: sv.length }); return { log: t('Services: {n} adjusted', { n: sv.length }) };
   }
   if (s.id === 'power') {
