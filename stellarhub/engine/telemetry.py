@@ -314,6 +314,14 @@ class _Nvml:
         }
 
 
+def nvidia_asleep():
+    """True when every NVIDIA display adapter is powered down (D3), read through SetupAPI without waking it. Opening
+    NVML then wakes the card (on an Optimus laptop it stays out of D3cold while it is asked every few seconds), and a
+    sleeping card is cool anyway. False when there is none or the state can't be read."""
+    nv = [s for n, s in _display_power_states().items() if "nvidia" in (n or "").lower()]
+    return bool(nv) and all(s > 1 for s in nv)
+
+
 def nvml_once():
     """One NVML reading (temperature, memory, ...) for callers outside the sampler, or None without an NVIDIA driver."""
     nv = _Nvml()

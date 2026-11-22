@@ -16,6 +16,7 @@ from stellarhub.engine.removal import cleaner
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "stellarhub")
+_REAL_NVIDIA_ASLEEP = telemetry.nvidia_asleep
 
 
 def _sources():
@@ -95,6 +96,28 @@ class Wifi(unittest.TestCase):
 
 
 class Nvidia(unittest.TestCase):
+    def setUp(self):
+        p = mock.patch.object(telemetry, "nvidia_asleep", return_value=False)   # this PC's own card may be asleep now
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_a_card_that_is_asleep_is_not_woken_for_the_temperature(self):
+        # the temperature trigger asks every 10 s: opening NVML each time kept an Optimus laptop's card awake on battery
+        with mock.patch.object(telemetry, "nvidia_asleep", return_value=True), \
+                mock.patch.object(telemetry, "nvml_once", side_effect=AssertionError("NVML wakes the card")):
+            self.assertIsNone(autopilot.gpu_temp())
+        with mock.patch.object(telemetry, "nvidia_asleep", return_value=True), \
+                mock.patch.object(telemetry, "nvml_once", return_value={"temp": 41}):
+            self.assertEqual(autopilot.gpu_temp(wake=True), 41.0)   # the one-off "is there a card" check
+
+    def test_asleep_only_when_every_nvidia_adapter_is_powered_down(self):
+        cases = [({"Intel(R) UHD Graphics": 1, "NVIDIA GeForce RTX 4060 Laptop GPU": 4}, True),
+                 ({"Intel(R) UHD Graphics": 4, "NVIDIA GeForce RTX 4060 Laptop GPU": 1}, False),
+                 ({"Intel(R) UHD Graphics": 1}, False), ({}, False)]
+        for states, want in cases:
+            with mock.patch.object(telemetry, "_display_power_states", return_value=states):
+                self.assertIs(_REAL_NVIDIA_ASLEEP(), want, states)
+
     def test_temperature_and_memory_through_nvml(self):
         with mock.patch.object(telemetry, "nvml_once", return_value={"temp": 54, "vramTotal": 8}), \
                 mock.patch("subprocess.run", side_effect=AssertionError("no nvidia-smi")):

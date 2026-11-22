@@ -363,10 +363,14 @@ def app_running(app):
     return any((p.info.get("name") or "").lower() in names for p in psutil.process_iter(["name"]))
 
 
-def gpu_temp():
-    """The NVIDIA graphics card's temperature through NVML in this process (it was a run of nvidia-smi.exe), or None."""
+def gpu_temp(wake=False):
+    """The NVIDIA graphics card's temperature through NVML in this process (it was a run of nvidia-smi.exe), or None.
+    A card that is powered down is not woken (the temperature trigger asks every 10 s, and on an Optimus laptop that
+    kept the card awake on battery): it is cool, so None. wake=True asks anyway (the one-off "is there a card" check)."""
     try:
-        from .telemetry import nvml_once
+        from .telemetry import nvidia_asleep, nvml_once
+        if not wake and nvidia_asleep():
+            return None
         t = (nvml_once() or {}).get("temp")
         return float(t) if t is not None else None
     except Exception:
@@ -625,7 +629,7 @@ _gpu_cache = {}
 
 def _gpu_ok():
     if "ok" not in _gpu_cache:
-        _gpu_cache["ok"] = gpu_temp() is not None
+        _gpu_cache["ok"] = gpu_temp(wake=True) is not None   # a card asleep right now is still there
     return _gpu_cache["ok"]
 
 
