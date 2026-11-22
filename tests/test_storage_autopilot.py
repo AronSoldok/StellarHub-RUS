@@ -132,6 +132,29 @@ class Recycle(unittest.TestCase):
                 mock.patch.object(storage, "_bin_settings", return_value=(False, 10 * 1024 * 1024)):
             self.assertEqual(storage.can_recycle(self.f), (True, ""))
 
+    def test_restore_skips_an_odd_recycle_bin_record(self):
+        # a truncated $I file (odd length) raised UnicodeDecodeError out of restore(); it must just be skipped
+        import io
+        target = os.path.join(self.d, "back.txt")
+        name = target.encode("utf-16-le")
+        good = (2).to_bytes(8, "little") + bytes(8) + (5).to_bytes(8, "little") + \
+            (len(target) + 1).to_bytes(4, "little") + name + b"\0\0"
+        bad = (2).to_bytes(8, "little") + bytes(16) + (40).to_bytes(4, "little") + b"\x41\x00\x42"
+        files = {"$Ibad.txt": bad, "$Igood.txt": good}
+        real_open = open
+
+        def fake_listdir(p):
+            return ["S-1-5-21-x"] if p.lower().endswith("$recycle.bin") else list(files)
+
+        def fake_open(p, *a, **k):
+            b = os.path.basename(str(p))
+            return io.BytesIO(files[b]) if b in files else real_open(p, *a, **k)
+        with mock.patch.object(storage.os, "listdir", fake_listdir), mock.patch("builtins.open", fake_open), \
+                mock.patch.object(storage.os, "replace") as rep, mock.patch.object(storage.os, "remove"):
+            r = storage.restore(target)
+        self.assertTrue(r["ok"], r)
+        self.assertTrue(rep.call_args[0][0].endswith("$Rgood.txt"))
+
     def test_default_bin_size_is_windows_own(self):
         # 10% of the first 40 GB + 5% of the rest: on 1 TB that is ~53 GB, not 100 GB (Windows deletes bigger items
         # for good, silently)
@@ -269,6 +292,17 @@ class Ntfs(unittest.TestCase):
         boot[0x40] = 0xF6                      # records of 2**10 bytes
         sector, cluster, lcn, rec = ntfs._boot(self.Strict4K(boot))
         self.assertEqual((sector, cluster, lcn, rec), (4096, 4096, 786432, 1024))
+
+    def test_segments_with_clusters_smaller_than_a_record(self):
+        # 512-byte clusters, 1 KB records; the first run (3 clusters) ends in the middle of record 1
+        lay = {"rec": 1024, "cluster": 512, "runs": [(100, 3), (200, 3)]}
+        self.assertEqual(ntfs._segments(lay, 0, 3), [(100 * 512, 1024, 0), (200 * 512 + 512, 1024, 2)])
+        self.assertEqual(ntfs._segments(lay, 2, 3), [(200 * 512 + 512, 1024, 2)])   # record 2 keeps its number
+
+    def test_segments_with_normal_clusters_are_unchanged(self):
+        lay = {"rec": 1024, "cluster": 4096, "runs": [(10, 2), (None, 1), (50, 3)]}
+        self.assertEqual(ntfs._segments(lay, 0, 20), [(10 * 4096, 8 * 1024, 0), (50 * 4096, 8 * 1024, 12)])
+        self.assertEqual(ntfs._segments(lay, 5, 14), [(10 * 4096 + 5 * 1024, 3 * 1024, 5), (50 * 4096, 2 * 1024, 12)])
 
 
 # ------------------------------------------------------------------ autopilot

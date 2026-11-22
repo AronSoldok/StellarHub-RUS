@@ -1146,7 +1146,7 @@ def restore(path):
                         orig = raw[28:28 + ln * 2].decode("utf-16-le").rstrip("\0")
                     else:
                         orig = raw[24:24 + 520].decode("utf-16-le").split("\0")[0]
-                except OSError:
+                except (OSError, ValueError):   # unreadable, or a truncated/odd $I file: not a match, the rest still count
                     continue
                 if os.path.normcase(orig) == os.path.normcase(path) and (best is None or when > best[0]):
                     best = (when, os.path.join(folder, "$R" + n[2:]), os.path.join(folder, n))

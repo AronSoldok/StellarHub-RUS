@@ -136,14 +136,18 @@ def layout(volume):
 def _segments(lay, r0, r1):
     """Disk pieces [(byte offset, bytes, first record)] that hold records r0..r1-1 (sparse parts skipped)."""
     rec, cl = lay["rec"], lay["cluster"]
-    out, first = [], 0
+    # Counted in bytes of the MFT, not in whole records per run: with clusters smaller than a record (512-byte clusters,
+    # 1 KB records) a run can end in the middle of a record, and rounding each run down shifted the number of every
+    # later record (wrong parents, wrong names). A record split between two runs is the only one left out.
+    out, start = [], 0          # start: where this run begins inside the MFT, in bytes
     for lcn, clen in lay["runs"]:
-        cnt = clen * cl // rec
-        a, b = max(r0, first), min(r1, first + cnt)
+        end = start + clen * cl
+        a = max(r0, -(-start // rec))       # first record that begins inside this run
+        b = min(r1, end // rec)             # one past the last record that ends inside it
         if a < b and lcn is not None:
-            out.append((lcn * cl + (a - first) * rec, (b - a) * rec, a))
-        first += cnt
-        if first >= r1:
+            out.append((lcn * cl + a * rec - start, (b - a) * rec, a))
+        start = end
+        if start >= r1 * rec:
             break
     return out
 
