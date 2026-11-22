@@ -1093,7 +1093,11 @@ function bindDups(el) {
       if (!g.classList.contains('open')) $('[data-dt]', g).click();
       g.scrollIntoView({ block: 'nearest', behavior: SH.effInt() === 'min' ? 'auto' : 'smooth' }); g.classList.add('flash'); setTimeout(() => g.classList.remove('flash'), 1400); return; }
     const tg = e.target.closest('[data-dt]'); if (tg) { const g = tg.closest('.st-dg'); g.classList.toggle('open'); if (g.classList.contains('open')) $$('.st-dc', g).forEach((c, i) => anim(c, [{ opacity: 0, transform: 'translate3d(0,-6px,0)' }, { opacity: 1, transform: 'none' }], { d: 300, delay: 60 + i * 30 })); return; }
-    const k = e.target.closest('[data-dk]'); if (k) { const [gid, j] = k.dataset.dk.split(':').map(Number); const d = DUPS[gid]; d.keep = j;
+    const k = e.target.closest('[data-dk]'); if (k) { const [gid, j] = k.dataset.dk.split(':').map(Number); const d = DUPS[gid];
+      /* a copy already sent to the Recycle Bin (the group was cleaned in part) cannot become the one kept: the next
+         clean would then send the last copy on disk away too */
+      if (j !== d.keep && d.gone && d.gone.has(copyPath(d, d.copies[j]))) { SH.sound('unavailable'); return; }
+      d.keep = j;
       $$(`[data-dk^="${gid}:"]`, el).forEach(b => { const on = b.dataset.dk === `${gid}:${j}`; b.classList.toggle('keep', on); $('.st-dkl', b).textContent = on ? T('Keep') : T('Delete'); });
       anim($('.st-radio', k), [{ transform: 'scale(.6)' }, { transform: 'scale(1)' }], { d: 320, e: EASE.spring }); return; }
     const c = e.target.closest('[data-dclean]'); if (c) { SH.sound('delete'); const btn = c; btn.disabled = true; await cleanGroups([DUPS[+c.dataset.dclean]], el); btn.disabled = false; return; }
@@ -1127,10 +1131,11 @@ async function cleanGroups(groups, el) {
   if (!groups.length) return;
   let freed = 0; const moved = []; const failed = []; const nobin = [];
   for (const d of groups) {
-    const paths = dupPaths(d);
-    let ok = 0; d.gone = d.gone || new Set();
+    d.gone = d.gone || new Set();
+    const paths = dupPaths(d).filter(p => !d.gone.has(p));  /* a retry skips the copies already in the Recycle Bin */
+    let ok = 0;
     for (const p of paths) { const r = await toTrash(p); if (r && r.ok) { ok++; moved.push(p); d.gone.add(p); freed += d.size; } else if (r && r.noBin) nobin.push({ d, p }); else failed.push(r && r.error); }
-    if (ok === paths.length) finishGroup(d, el);
+    if (dupPaths(d).every(p => d.gone.has(p))) finishGroup(d, el);
   }
   updDups(el, 500);
   if (nobin.length) {          // nothing was deleted from those: ask before deleting for good
@@ -1147,7 +1152,8 @@ async function cleanGroups(groups, el) {
   } } });
 }
 
-const dupPaths = d => d.copies.filter((c, j) => j !== d.keep).map(c => c[2] || (c[0] + '\\' + d.name));
+const copyPath = (d, c) => c[2] || (c[0] + '\\' + d.name);
+const dupPaths = d => d.copies.filter((c, j) => j !== d.keep).map(c => copyPath(d, c));
 function finishGroup(d, el) {
   d.done = true; const b = $(`[data-dgo="${d.id}"]`, el); if (b) b.classList.add('done');
   const g = $(`[data-dg="${d.id}"]`, el); if (!g) return; const h = g.offsetHeight;
