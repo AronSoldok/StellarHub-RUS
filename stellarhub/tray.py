@@ -281,13 +281,20 @@ class Tray:
             Item(L("Check for updates"), go("updater", "overview")),
             Item(L("Analyze the disk"), go("storage", "map")),
             Menu.SEPARATOR,
-            Item(L("Turn on administrator mode"), lambda i, it: a.relaunch_admin(), visible=lambda it: not a.info()["admin"]),
+            Item(L("Turn on administrator mode"), lambda i, it: self.to_admin(), visible=lambda it: not a.info()["admin"]),
             Item(L("Settings"), lambda i, it: (a.show_main(), a._js("SH.go('settings')"))),
             Menu.SEPARATOR,
             Item(L("Quit StellarHub"), lambda i, it: a.quit()),
         )
         self.icon = _crisp_icon_class(pystray.Icon)("StellarHub", icon_image(), "StellarHub", menu)
         threading.Thread(target=self.icon.run, daemon=True, name="tray").start()
+
+    def to_admin(self):
+        """The menu's "Turn on administrator mode". While something the user started still runs here, nothing is asked
+        (relaunch_admin answers "busy") and the menu said nothing at all: now a notification says why."""
+        if self.api.relaunch_admin() == "busy":
+            from .i18n import tr
+            self.notify(tr("Something you started is still running. Open as administrator when it finishes."))
 
     def notify(self, text, title="StellarHub", on_click=None):
         """on_click: what a click on this notification does (it replaces the previous one's; None: nothing)."""

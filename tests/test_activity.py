@@ -502,6 +502,20 @@ class ApiMethods(unittest.TestCase):
         main = [c for c in vis.call_args_list if c[0][0] is a._window]
         self.assertEqual([(c[0][1], c[1].get("trim", False)) for c in main], [(True, False), (False, False), (False, True)])
 
+    def test_the_tray_says_why_administrator_mode_waits(self):
+        from stellarhub.tray import Tray
+        api = mock.Mock()
+        t = Tray(api)
+        t.icon = mock.Mock()
+        api.relaunch_admin.return_value = "busy"
+        with mock.patch("stellarhub.i18n.tr", side_effect=lambda text, **kw: text):
+            t.to_admin()
+        self.assertIn("still running", t.icon.notify.call_args[0][0])
+        t.icon.notify.reset_mock()
+        api.relaunch_admin.return_value = False  # Windows said no: nothing to add
+        t.to_admin()
+        t.icon.notify.assert_not_called()
+
     def test_notify_activity_rejects_odd_names(self):
         a = self.make()
         a._tray = mock.Mock()
