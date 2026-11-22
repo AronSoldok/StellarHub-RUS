@@ -293,6 +293,43 @@ def _cmd_paths(cmd):
     return [x.strip() for x in out if x.strip()]
 
 
+# Never asked for their working folder or their open files: Windows' core processes and security software. psutil
+# reads another process's memory for the first and duplicates its handles for the second, and opening lsass.exe or an
+# antivirus that way is what credential stealers do, so behaviour engines (Kaspersky's System Watcher, Defender) take
+# it for an attack. None of them keeps working files in a temp folder a person cleans; their exe and command line are
+# still read (that needs no such access).
+NOT_INSPECTED = frozenset({
+    "system", "system idle process", "registry", "secure system", "memory compression", "smss.exe", "csrss.exe",
+    "wininit.exe", "winlogon.exe", "services.exe", "lsass.exe", "lsaiso.exe", "lsm.exe", "fontdrvhost.exe",
+    "msmpeng.exe", "nissrv.exe", "mpdefendercoreservice.exe", "mssense.exe", "sensecncproxy.exe", "smartscreen.exe",
+    "securityhealthservice.exe", "securityhealthsystray.exe",
+    "avp.exe", "avpui.exe", "kavtray.exe", "ksde.exe", "ksdeui.exe", "vsserv.exe", "bdservicehost.exe", "bdagent.exe",
+    "bdredline.exe", "ekrn.exe", "egui.exe", "avastsvc.exe", "avastui.exe", "aswengsrv.exe", "avgsvc.exe", "avgui.exe",
+    "mbamservice.exe", "mbamtray.exe", "mcshield.exe", "mfemms.exe", "mfevtps.exe", "modulecoreservice.exe",
+    "nortonsecurity.exe", "ns.exe", "nllauncher.exe", "wrsa.exe", "csfalconservice.exe", "sentinelagent.exe",
+    "sophoshealth.exe", "savservice.exe", "coreserviceshell.exe", "psanhost.exe", "fsorsp64.exe", "f-secure.exe",
+})
+
+
+def _inspectable(name):
+    """Whether a process may be asked for its working folder and open files (NOT_INSPECTED)."""
+    return (name or "").lower() not in NOT_INSPECTED
+
+
+def _cwd(p, info):
+    """The process's working folder: from `info` when it is there (a test's stand-in), else asked, only of a process
+    that may be inspected."""
+    if "cwd" in info:
+        return info.get("cwd")
+    if not _inspectable(info.get("name")):
+        return None
+    try:
+        c = p.cwd()
+    except Exception:  # noqa: BLE001
+        return None
+    return c if isinstance(c, str) else None
+
+
 def in_use_paths(budget=IN_USE_BUDGET, on_step=None):
     """{normalized path: process name} for everything running processes are using: their working folder, their
     executable, every absolute path in their command line and (time-boxed, best effort) their open files.
@@ -304,7 +341,7 @@ def in_use_paths(budget=IN_USE_BUDGET, on_step=None):
     out = {}
     t0 = time.monotonic()
     me = os.getpid()
-    procs = list(psutil.process_iter(["name", "exe", "cwd", "cmdline"]))
+    procs = list(psutil.process_iter(["name", "exe", "cmdline"]))
     for i, p in enumerate(procs, 1):
         if on_step:
             try:
@@ -316,13 +353,13 @@ def in_use_paths(budget=IN_USE_BUDGET, on_step=None):
         except Exception:
             continue
         name = info.get("name") or tr("a program")
-        cands = [info.get("exe"), info.get("cwd")]
+        cands = [info.get("exe"), _cwd(p, info)]
         cmd = info.get("cmdline") or []
         cands += _cmd_paths(cmd)
         for x in cands:
             if x:
                 out.setdefault(_norm(x.strip().rstrip("\\")), name)
-        if p.pid != me and time.monotonic() - t0 < budget:
+        if p.pid != me and _inspectable(info.get("name")) and time.monotonic() - t0 < budget:
             try:
                 for f in p.open_files():
                     out.setdefault(_norm(f.path), name)
@@ -379,19 +416,19 @@ def in_use_isolated(budget=IN_USE_FAST_BUDGET, on_step=None, helpers=IN_USE_HELP
         win = (paths.kf("Windows") or r"C:\Windows").lower()
         me = os.getpid()
         todo = []
-        for p in psutil.process_iter(["name", "exe", "cwd", "cmdline"]):
+        for p in psutil.process_iter(["name", "exe", "cmdline"]):
             try:
                 info = p.info
             except Exception:  # noqa: BLE001
                 continue
             name = info.get("name") or tr("a program")
-            cands = [info.get("exe"), info.get("cwd")]
+            cands = [info.get("exe"), _cwd(p, info)]
             cmd = info.get("cmdline") or []
             cands += _cmd_paths(cmd)
             for x in cands:
                 if x:
                     out.setdefault(_norm(x.strip().rstrip("\\")), name)
-            if p.pid != me:
+            if p.pid != me and _inspectable(info.get("name")):
                 todo.append((0 if not (info.get("exe") or "").lower().startswith(win) else 1, p.pid, name))
         todo.sort()
         for _, pid, name in todo:
