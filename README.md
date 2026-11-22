@@ -158,7 +158,8 @@ under which conditions and what to do.
   features download in the background and install the next time you open StellarHub; big versions ask you first;
   small fixes wait in *Settings > Updates*. All of it can be turned off there.
 - **Command palette** (`Ctrl K`) to jump to any tool or action by typing.
-- **Optional administrator mode**, and a permanent one if you want it (no Windows prompt on every launch).
+- **Optional administrator mode**, and a permanent one if you want it (installed for all users, it opens without the
+  Windows prompt; a per-user install or the portable version asks Windows each time).
 - **Settings for almost everything**: theme, colors, interface size, density, corners, starfield, animation
   intensity and speed, shortcuts to Windows tools and more.
 - **Quiet interface sounds**: short, soft sounds for clicks, tabs, dialogs, notifications, scans and updates, never
@@ -265,6 +266,13 @@ with the same script.
 
 StellarHub works without it, in limited mode. Installing drivers, cleaning system files, repairing Windows or
 reading the CPU temperature and disk SMART data require it; the app suggests it quietly when needed.
+
+When something you click needs it, StellarHub asks in a small window; *Open as administrator* reopens it elevated
+right where you were (same module, tab, search and scroll) and picks up the action you asked for, with its usual
+confirmation. *Always open as administrator* (Settings > Administrator) uses a scheduled task only in an install
+for all users, whose program folder only administrators can change. In a per-user install the folder is yours,
+so any program you run could replace StellarHub.exe there: Windows asks each time instead, and a task left by an
+earlier version is removed the next time StellarHub runs as administrator.
 
 Many PCs (especially desktop motherboards) don't report the CPU temperature to Windows at all. In that case
 StellarHub reads it from [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor),
@@ -380,6 +388,7 @@ stellarhub/
 ├─ startup.py              everything before the window: command-line modes, start screen, staged update
 ├─ instance.py             single-instance lock, handoff to / takeover from another copy
 ├─ elevation.py            administrator mode: the scheduled task and the elevated relaunch
+├─ resume.py               the ticket that brings the elevated copy back to where you were (and what you asked)
 ├─ autostart.py            "open with Windows" entry
 ├─ log.py                  the [phase] start timeline, the log file, the last-resort error box
 ├─ winmgr.py               window mechanics: DPI, tray-panel placement, corners, WebView2 visibility

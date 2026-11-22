@@ -438,5 +438,16 @@
   "Found a bug?": "Hai trovato un errore?",
   "Report it on GitHub: say what you were doing and, if you can, add a screenshot.": "Segnalalo su GitHub: racconta cosa stavi facendo e, se puoi, aggiungi uno screenshot.",
   "Report on GitHub": "Segnala su GitHub",
-  "Windows asks each time. To open without asking, install StellarHub for all users.": "Windows lo chiede ogni volta. Per aprirlo senza chiedere, installa StellarHub per tutti gli utenti."
+  "Windows asks each time. To open without asking, install StellarHub for all users.": "Windows lo chiede ogni volta. Per aprirlo senza chiedere, installa StellarHub per tutti gli utenti.",
+  "This needs administrator mode": "Serve la modalità amministratore",
+  "Open StellarHub as administrator": "Apri StellarHub come amministratore",
+  "Windows asks for permission, then StellarHub reopens right here and picks up what you asked for.": "Windows chiede il permesso, poi StellarHub si riapre proprio qui e riprende ciò che hai chiesto.",
+  "Windows asks for permission, then StellarHub reopens right here.": "Windows chiede il permesso, poi StellarHub si riapre proprio qui.",
+  "From then on it opens as administrator. You can change that in Settings > Administrator.": "Da quel momento si apre come amministratore. Puoi cambiarlo in Impostazioni > Amministratore.",
+  "Open as administrator": "Apri come amministratore",
+  "Opening…": "Apertura…",
+  "Something you started is still running. Open as administrator when it finishes.": "Qualcosa che hai avviato è ancora in corso. Apri come amministratore quando finisce.",
+  "Windows didn't give permission. You're still in normal mode.": "Windows non ha dato il permesso. Sei ancora in modalità normale.",
+  "That changed while StellarHub reopened, so it was not done. Check it and try again.": "È cambiato mentre StellarHub si riapriva, quindi non è stato fatto. Controlla e riprova.",
+  "You're in administrator mode now. Pick up where you left off.": "Ora sei in modalità amministratore. Riprendi da dove eri rimasto."
 }

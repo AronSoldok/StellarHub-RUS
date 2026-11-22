@@ -48,7 +48,7 @@ SH.on('shown', ({ shown }) => {
 });
 
 /* ---------- dialogs ---------- */
-const MODALS = '.su-ov, .cs-o.on, .hg-dlg, .mdlg, .bk-dq-o, .dq-o, .u-confirm, .bug-pop';
+const MODALS = '.su-ov, .cs-o.on, .hg-dlg, .mdlg, .bk-dq-o, .dq-o, .u-confirm, .bug-pop, .ar-o';
 const vis = el => el.checkVisibility ? el.checkVisibility({ checkVisibilityCSS: true }) : !!el.offsetParent;
 /* every dialog closes with a short fade (on itself, or on its backdrop and box) before it is removed: from the moment
    that fade starts it is closed, so a click on its X, Cancel or backdrop sounds at once instead of a click */

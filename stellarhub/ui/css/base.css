@@ -626,6 +626,21 @@ html[data-lite="1"] .sheet,html[data-lite="1"] .pal{box-shadow:0 16px 40px -18px
 .bug-pop p{color:var(--mute);font-size:var(--fs-sm);line-height:1.45;margin-bottom:var(--sp-md)}
 .bug-acts{display:flex;justify-content:flex-end;gap:var(--sp-sm);flex-wrap:wrap}
 html[data-lite="1"] .bug-pop{backdrop-filter:none;background:var(--deep)}
+/* the administrator prompt (js/admin-resume.js): in the middle of the window, above everything (the settings sheet too) */
+.ar-o{position:fixed;inset:0;z-index:92;display:grid;place-items:center;padding:24px}
+.ar-o .ar-s{position:absolute;inset:0;background:color-mix(in oklab,var(--void) 62%,transparent);backdrop-filter:blur(6px)}
+.ar{position:relative;width:min(470px,100%);padding:26px 26px 20px;border-radius:var(--r-l);
+  background:radial-gradient(400px 190px at 100% 0%,color-mix(in oklab,var(--accent2) 11%,transparent),transparent 70%),
+             radial-gradient(340px 170px at 0% 100%,color-mix(in oklab,var(--accent) 8%,transparent),transparent 70%),var(--deep);
+  box-shadow:0 30px 80px -20px rgba(0,0,0,.6),0 0 0 1px var(--line2)}
+.ar-ic{width:48px;height:48px;border-radius:var(--r-m);display:grid;place-items:center;margin-bottom:16px;color:var(--accent2);background:color-mix(in oklab,var(--accent2) 14%,transparent)}
+.ar-ic svg{width:var(--ic-2xl);height:var(--ic-2xl)}
+.ar h3{font:500 var(--fs-h2)/1.2 var(--display);letter-spacing:-.02em;color:var(--ink);margin-bottom:10px}
+.ar p{color:var(--mute);font-size:var(--fs-body);line-height:1.5;margin-bottom:8px}
+.ar p b{color:var(--ink);font-weight:500}
+.ar p.ar-note{font-size:var(--fs-sm);color:var(--faint);margin-top:12px}
+.ar-a{display:flex;justify-content:flex-end;gap:var(--sp-sm);margin-top:18px;flex-wrap:wrap}
+html[data-lite="1"] .ar-o .ar-s{backdrop-filter:none}
 
 /* rolling numbers (SH.rollNumber): every character in its own column; the old one leaves up, the new one arrives from below */
 rn-c{display:inline-block;position:relative;overflow:clip;clip-path:inset(0);white-space:pre;vertical-align:baseline;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}

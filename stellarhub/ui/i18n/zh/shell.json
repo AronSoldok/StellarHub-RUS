@@ -438,5 +438,16 @@
   "Found a bug?": "发现错误了吗？",
   "Report it on GitHub: say what you were doing and, if you can, add a screenshot.": "在 GitHub 上报告：说说你当时在做什么，如果可以，请附上截图。",
   "Report on GitHub": "在 GitHub 上报告",
-  "Windows asks each time. To open without asking, install StellarHub for all users.": "Windows 每次都会询问。若要不经询问直接打开，请为所有用户安装 StellarHub。"
+  "Windows asks each time. To open without asking, install StellarHub for all users.": "Windows 每次都会询问。若要不经询问直接打开，请为所有用户安装 StellarHub。",
+  "This needs administrator mode": "这需要管理员模式",
+  "Open StellarHub as administrator": "以管理员身份打开 StellarHub",
+  "Windows asks for permission, then StellarHub reopens right here and picks up what you asked for.": "Windows 会先请求权限，然后 StellarHub 会在这里重新打开，并继续完成你要求的操作。",
+  "Windows asks for permission, then StellarHub reopens right here.": "Windows 会先请求权限，然后 StellarHub 会在这里重新打开。",
+  "From then on it opens as administrator. You can change that in Settings > Administrator.": "此后它会以管理员身份打开。你可以在“设置 > 管理员”中更改。",
+  "Open as administrator": "以管理员身份打开",
+  "Opening…": "正在打开…",
+  "Something you started is still running. Open as administrator when it finishes.": "你启动的任务仍在运行。请在它完成后再以管理员身份打开。",
+  "Windows didn't give permission. You're still in normal mode.": "Windows 未授予权限。你仍处于普通模式。",
+  "That changed while StellarHub reopened, so it was not done. Check it and try again.": "StellarHub 重新打开期间情况已有变化，所以未执行。请检查后重试。",
+  "You're in administrator mode now. Pick up where you left off.": "你现在处于管理员模式。可以从刚才的地方继续。"
 }

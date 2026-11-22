@@ -57,10 +57,25 @@ class MainWindowApi:
         self._tip_at = now
         return winmgr.show_touch_keyboard()
 
-    def relaunch_admin(self):
-        """Opens an elevated copy and closes this one. If the user says no in UAC, nothing changes."""
+    def relaunch_admin(self, ticket=None):
+        """Opens an elevated copy and closes this one. If the user says no in UAC, nothing changes. ticket: where the
+        user was and what they asked for (stellarhub/resume.py); the elevated copy gets its hash on its command line.
+        Answers True (Windows said yes: this copy quits), False (Windows said no) or "busy" (a task the user started
+        still runs here: quitting now would cut it off, so nothing is asked)."""
         if config.is_admin():
             return True
+        try:
+            from ..engine import jobs
+            if jobs.running():
+                return "busy"
+        except Exception:
+            pass
+        from .. import resume
+        extra = ()
+        if ticket is not None:
+            token = resume.save(ticket)
+            if token:
+                extra = ("--resume", token)
         # The start screen goes up first, marked for the elevated copy to take over (splash.hand_over): that copy then
         # shows this very card instead of a second one on top of it. The elevated copy waits for this one to exit (it
         # frees the single-instance lock and the WebView2 data).
@@ -73,16 +88,32 @@ class MainWindowApi:
             sp = splash
         except Exception:
             pass
-        r = elevation.relaunch_elevated()
+        r = elevation.relaunch_elevated(extra)
         if r:
             self._handoff = True  # main() keeps the start screen up until the new copy has taken it over
             threading.Timer(0.05, lambda: self.quit(True)).start()
             return True
         print("[start] relaunch as administrator: Windows did not give permission", flush=True)
+        if extra:
+            resume.discard()
         if sp is not None:
             sp.hand_over(False)
             sp.close()
         return False
+
+    def resume_take(self):
+        """The elevated copy's interface, once at boot: the ticket the normal copy left for it (stellarhub/resume.py),
+        or None. Only for the copy started with --resume <hash>, and only when it really is elevated."""
+        import sys
+        from .. import resume
+        token = resume.token_from_argv(sys.argv)
+        if not token or not config.is_admin():
+            return None
+        try:
+            return resume.take(token)
+        except Exception as e:
+            print("resume ticket:", e, flush=True)
+            return None
 
     def close_main(self):
         """The X: with "close to the tray" on it only hides the window; otherwise it quits the app."""

@@ -40,7 +40,22 @@ SH.module({
 - Anything marked `data-asm` inside a tab staggers in the first time (the shell does it).
 - Per-frame loops: `SH.tickers.add((dt, t) => { if (SH.state.view !== 'drivers') return; ... })`.
 - Live data: `SH.tele.v` (values), `SH.tele.hist[key]` (120 values), `SH.tele.on(fn)`.
-- Before anything that needs administrator rights: `if (!SH.requireAdmin('to install drivers.')) return;` (suggests without nagging).
+- Before anything that needs administrator rights: `if (!SH.requireAdmin('to install drivers.', { resume })) return;`.
+  In normal mode it opens the administrator prompt (`js/admin-resume.js`, `.ar-o`: a dialog in the middle, A = Open as
+  administrator, B / Esc = Not now) and answers false. Open as administrator reopens StellarHub elevated (start-screen
+  handover; Windows asks first; a task the user started that still runs blocks it) and the new copy comes back to the
+  same place by itself: module, tab, settings section, Home view, the text of `input[id]` search fields and the
+  scroll of the view, the tab and any scrolled element with an id. `resume: { action: 'drivers.install', args: { ids } }`
+  also runs that action again there. An action is registered by its module, `SH.resume.register('drivers.install',
+  async (args, r) => ...)`, and must be listed in `ACTIONS` in `stellarhub/resume.py` (a test keeps both lists equal).
+  It rebuilds the click from the module's state now: it looks every id from `args` up in what the module lists (args
+  come from a file any user-level program can write, so they are never trusted), clicks the same button so its usual
+  confirmation is asked again, and returns false when what it acted on is gone or changed (the user is told; nothing
+  runs). `r`: `open(mod, tab)`, `until(fn, ms)`, `str` / `strs` / `num`, `wait`. Work that can go on without the rights
+  (the steps that need them are skipped) uses `await SH.adminFirst(reason)` before it starts: true to go on, false
+  when StellarHub is reopening. The ticket: `stellarhub/resume.py` (two minutes, read once, bound to the elevated
+  copy's command line by its hash). Sample mode simulates it (the page reloads as a pretend administrator copy;
+  `?uac=deny` pretends Windows said no; `?normal=1` makes the modules that only ask inside the app ask in sample mode).
 - Confirmations: `SH.toast('Done', { action: { label: 'Undo', run } })`. No `alert`/`confirm`.
 - Palette actions: `SH.actions.add([{ t: 'Text', go: 'drivers', tab: 'backup', ic: 'download' }])`.
 - Icons: `SH.ic('name')`; add new ones with `SH.icons.add({ name: '<path d="..."/>' })` (24×24 stroke, no fill, no `stroke-width` of their own: the 1.4 px line comes from `svg.i`). Size them with the `--ic-*` tokens.
@@ -229,7 +244,7 @@ The interface does less work when "Lighter effects" (setting `lightMode`) says s
   way (a list, then the page).
 - `html.pad-mode` is on while a controller is in use; a mouse move, a touch or a key press turns it off. The ring (`#padRing`) and the hint bar (`#padHints`) exist only then. While the hint bar is up, `html.pad-hints` raises `--dockspace` so it never covers content; the page gets a `resize` event when it comes and goes, so views that measure themselves must re-fit on `resize`.
 - `SH.gamepad`: `enabled()`, `active` (controller mode is on), `inside` (the panel entered, or null), `debug` (targets and moves, for tests), `connected` (list of pads), `focus(el)`, `move(dir)`, `onButton(fn)` (every press: `{ index, name, pad }`; returns the unsubscribe), `capture({ onExit, onProgress })` / `release()` / `captured` (a test that needs the raw buttons, such as Device Tester > Controller; the user gets the navigation back by holding View + Menu for a second), `addOverlay(selector)` (a custom dialog the focus must stay inside), `glyph(name)` and `BUTTONS`.
-- `SH.modal`: whichever dialog is on top (palette, settings, component sheet, update dialog, confirmations and `.mdlg` / `.hg-dlg` / `.bk-dq-o` / `.dq-o` / `.u-confirm` dialogs inside a module, the report-a-bug popover `.bug-pop`) gets a focus trap: the rest of the app becomes `inert`, Tab and the D-pad stay inside, and the focus goes back to what opened it when it closes. This works for keyboard users too. A new dialog class must be added to `MODALS` in gamepad.js (or registered with `SH.gamepad.addOverlay`), and should carry `role="dialog"` and `aria-modal="true"`. `SH.modal.open` is the current dialog, `SH.modal.sync()` re-checks after you open or close one without a class change.
+- `SH.modal`: whichever dialog is on top (palette, settings, component sheet, update dialog, confirmations and `.mdlg` / `.hg-dlg` / `.bk-dq-o` / `.dq-o` / `.u-confirm` dialogs inside a module, the report-a-bug popover `.bug-pop`, the administrator prompt `.ar-o`) gets a focus trap: the rest of the app becomes `inert`, Tab and the D-pad stay inside, and the focus goes back to what opened it when it closes. This works for keyboard users too. A new dialog class must be added to `MODALS` in gamepad.js (or registered with `SH.gamepad.addOverlay`), and should carry `role="dialog"` and `aria-modal="true"`. `SH.modal.open` is the current dialog, `SH.modal.sync()` re-checks after you open or close one without a class change.
 - Animations of the ring use `transform` only and run only while it is visible; at intensity `min` nothing loops.
 
 ## Settings safety

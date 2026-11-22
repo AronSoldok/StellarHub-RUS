@@ -792,17 +792,26 @@ function hideNote() {
   anim(note, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'translate3d(0,-6px,0) scale(.96)' }], { d: 180 });
   if ($('#noteNever').classList.contains('on')) SH.setSetting('adminHints', false);
 }
-/* modules call this before anything that needs elevation: it suggests without nagging (at most once every 10 min) */
-SH.requireAdmin = reason => { if (state.admin) return true; if (S().adminHints && Date.now() - lastHint > 600000) { showNote(reason); SH.sound('unavailable'); } else toast(SH.t('This needs administrator mode.'), { kind: 'unavailable', action: { label: SH.t('Turn on'), run: () => askAdmin(true) } }); return false; };
+/* Modules call SH.requireAdmin before anything that needs elevation: it opens the administrator prompt in the middle of
+   the window, and the elevated copy comes back to the same place (and action). It lives in js/admin-resume.js. */
+/* Reopens StellarHub elevated (Api.relaunch_admin): the permission becomes permanent (it can be turned off in Settings >
+   Administrator). adminAsked: the administrator copy plays admin_granted when it opens (js/sounds.js). ticket: where
+   the user is and what they asked for (SH.resume.ticket). Answers true (this copy closes), false (Windows said no:
+   nothing changed, the setting is put back), 'busy' (a task still runs: nothing was asked) or undefined (sample mode). */
+SH.relaunchAdmin = async ticket => {
+  const was = !!state.settings.alwaysAdmin;
+  state.settings.alwaysAdmin = true; state.settings.adminAsked = Date.now(); await SH.call('settings_set', { alwaysAdmin: true, adminAsked: state.settings.adminAsked });
+  const r = await SH.call('relaunch_admin', ticket || null);
+  if (r !== true && r !== undefined) { state.settings.adminAsked = 0; state.settings.alwaysAdmin = was; SH.call('settings_set', { adminAsked: 0, alwaysAdmin: was }); }
+  return r;
+};
 async function askAdmin(direct) {
   if (state.admin) return; if (!direct && !noteShown) { showNote(); return; }
   hideNote();
-  /* the permission becomes permanent (it can be turned off in Settings > Administrator) */
-  /* adminAsked: the administrator copy plays admin_granted when it opens (js/sounds.js) */
-  state.settings.alwaysAdmin = true; state.settings.adminAsked = Date.now(); await SH.call('settings_set', { alwaysAdmin: true, adminAsked: state.settings.adminAsked });
-  const r = await SH.call('relaunch_admin');
+  const r = await SH.relaunchAdmin(SH.resume ? SH.resume.ticket() : null);
   if (r === true) toast(SH.t('Opening StellarHub as administrator…'));
-  else if (r === false) { state.settings.adminAsked = 0; SH.call('settings_set', { adminAsked: 0 }); toast(SH.t('Windows did not grant permission. You are still in normal mode.'), { kind: 'warning' }); }
+  else if (r === false) toast(SH.t("Windows didn't give permission. You're still in normal mode."), { kind: 'warning' });
+  else if (r === 'busy') toast(SH.t('Something you started is still running. Open as administrator when it finishes.'), { kind: 'warning' });
   else { state.settings.adminAsked = 0; setAdmin(true); SH.sound('admin_granted'); toast(SH.t('Administrator mode (simulated outside the app).')); }
 }
 /* the pill carries an icon, not a dot: a shield with a check for administrator mode, a plain shield outline for normal mode */
@@ -1004,6 +1013,10 @@ SH.boot = async () => {
   if (info) { state.version = info.version; state.codename = info.codename || ''; state.portable = !!info.portable; state.adminTask = info.adminTask !== false; const ver = $('#sheet nav .ver'); if (ver) ver.textContent = `StellarHub ${info.version}${state.codename ? ' · ' + state.codename : ''}`;
     /* the version in a corner of every view, small: support screenshots always say which one it is */
     const vt = $('#verTag'); if (vt) vt.textContent = `v${info.version}${state.codename ? ' · ' + state.codename : ''}${state.portable ? ' · ' + SH.t('portable') : ''}`; if (info.admin) { state.admin = true; paintMode(); $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
+  /* sample mode: the pretend administrator copy js/admin-resume.js reloads into */
+  if (!info) { let fake = false; try { fake = !!sessionStorage.getItem('sh.sampleAdmin'); } catch {} if (fake) { state.admin = true; paintMode(); $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
+  /* opened as administrator from the prompt: back to where the user was (and what they asked for) */
+  const resumeT = SH.resume && state.admin ? await SH.resume.take() : null;
   applyLook(); applyZoom();
   MODS.filter(m => m.id !== 'home').forEach(buildModule);
   SH.on('module:registered', def => { if (def.id !== 'home' && modById(def.id)) buildModule(modById(def.id)); });
@@ -1031,10 +1044,12 @@ SH.boot = async () => {
   }).catch(() => {});
   /* after switching language the page reloads: come back to where the user was */
   try { const sec = sessionStorage.getItem('sh.reopenSettings'); if (sec) { sessionStorage.removeItem('sh.reopenSettings'); setTimeout(() => openSettings(sec), 350); } } catch {}
+  SH.on('view', d => SH.setSetting('lastView', d.to));
+  /* reopened as administrator from the prompt: its place comes before the start view and the test routes */
+  if (resumeT) { setTimeout(() => SH.resume.restore(resumeT), 350); return; }
   /* test routes: #drivers/all opens that tab, #drivers/* walks through all of them, #home=bento forces a Home view */
   const h = decodeURIComponent(location.hash.slice(1));
   const hv = h.match(/^home=(\w+)$/); if (hv) setTimeout(() => SH.setSetting('homeVariant', hv[1]), 50);
-  SH.on('view', d => SH.setSetting('lastView', d.to));
   const sv = S().startView === 'last' ? S().lastView : S().startView;
   if (!h && sv && sv !== 'home' && modById(sv)) setTimeout(() => go(sv, { silent: true }), 700);
   const hm = h.match(/^(\w+)(?:\/([\w*]+))?$/);
