@@ -408,6 +408,24 @@ class PrivacySafety(unittest.TestCase):
                 P.persist_set("run|HKCU|x", False, "x")
         sa.assert_not_called()
 
+    def test_firewall_fix_that_windows_refuses_is_not_reported_done(self):
+        rows = [{"n": n, "on": False} for n in P._FW_PROFILES]
+        with mock.patch.object(P, "_admin", lambda: True), mock.patch.object(P, "ps_json", return_value=rows), \
+                mock.patch.object(P, "ps", return_value="Set-NetFirewallProfile : Access is denied.\r\n"):
+            with self.assertRaises(OSError):
+                P.fix("firewall")
+        self.assertTrue(all(h["undone"] for h in P.history()))     # nothing left to "undo"
+
+    def test_firewall_fix_needs_the_current_state_first(self):
+        with mock.patch.object(P, "_admin", lambda: True), mock.patch.object(P, "ps_json", return_value=[]), \
+                mock.patch.object(P, "ps") as run:
+            with self.assertRaises(OSError):
+                P.fix("firewall")
+        run.assert_not_called()
+        with mock.patch.object(P, "_admin", lambda: True), mock.patch.object(P, "ps_json", return_value=[
+                {"n": n, "on": False} for n in P._FW_PROFILES]), mock.patch.object(P, "ps", return_value="ok\r\n"):
+            self.assertTrue(P.fix("firewall")["ok"])
+
     def test_old_programdata_records_are_copied_to_the_user_folder(self):
         legacy = os.path.join(self.tmp, "old")
         new = os.path.join(self.tmp, "new")

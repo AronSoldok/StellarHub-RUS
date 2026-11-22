@@ -511,9 +511,22 @@ def fix(kind, arg=None):
         cur = ps_json("Get-NetFirewallProfile | ForEach-Object { [pscustomobject]@{ n=[string]$_.Name; on=([string]$_.Enabled -eq 'True') } }",
                       timeout=40, as_list=True)
         prev = {c["n"]: bool(c.get("on")) for c in cur if c.get("n") in profs}
+        if set(prev) != set(profs):   # the current state could not be read: an undo would have nothing to put back
+            raise OSError(tr("Not changed: the backup of the previous state couldn't be saved ({error}).",
+                             error="Get-NetFirewallProfile"))
         label = _L("Windows Firewall turned on")
         bid = _save_change({"kind": "firewall", **_label_fields(label), "prev": prev, "area": "protection"})  # raises: nothing is changed
-        ps(f"Set-NetFirewallProfile -Profile {','.join(profs)} -Enabled True", timeout=40)
+        out = ps(f"Set-NetFirewallProfile -Profile {','.join(profs)} -Enabled True -ErrorAction Stop; 'ok'", timeout=40)
+        lines = [ln.strip() for ln in (out or "").splitlines() if ln.strip()]
+        if "ok" not in lines:   # it used to be reported as done (and offered for undo) whatever Windows answered
+            try:
+                rec, f = _load_change(bid)
+                rec["undone"] = True
+                _write_json(f, rec)
+            except OSError:
+                pass
+            raise OSError(tr("Windows did not turn it on: {detail}",
+                             detail=(lines[-1] if lines else tr("no reason given"))[:300]))
         return {"ok": True, "backup": bid, "label": _lt(label)}
     if kind == "uac":
         if not _admin():
