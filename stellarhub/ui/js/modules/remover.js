@@ -399,7 +399,11 @@ function openFlow(progs, opts = {}) {
     const on = $(`.rf-st[data-i="${i}"] i`, f); anim(on, [{ transform: 'scale(.7)' }, { transform: 'scale(1)' }], { d: 420, e: EASE.spring });
     return dir;
   }
-  function setFoot(html) { foot.innerHTML = html; stagger([...foot.children], 0, 40); }
+  /* a footer that just replaced another ignores clicks for a moment: the second click of a double click on Start would
+     land on the Cancel that takes its place */
+  let footAt = 0;
+  function setFoot(html) { foot.innerHTML = html; footAt = performance.now(); stagger([...foot.children], 0, 40); }
+  foot.addEventListener('click', e => { if (performance.now() - footAt < 400) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
   function close() {
     if (busy) { SH.toast(T('Wait for this step to finish.')); return; }
     closed = true; tickers.delete(tk);
