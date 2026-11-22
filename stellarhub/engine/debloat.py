@@ -703,6 +703,8 @@ def tweak_undo(tid, reg=None):
         st = _state()
         rec = st["tweaks"].pop(tid, None)
         errors = undo_tweak(rec, reg) if rec else (default_tweak(tw, reg) or [])
+        if rec and errors:   # not everything went back: keep the backup (the user's own values) to try again
+            st["tweaks"][tid] = rec
         try:
             _save_state(st)
         except OSError as e:
@@ -909,6 +911,8 @@ def undo_all(job, reg=None):
             s = _state()
             rec = s["tweaks"].pop(tid, None)
             errs = undo_tweak(rec, reg) if rec else []
+            if rec and errs:   # kept, so a later undo still has the values to put back
+                s["tweaks"][tid] = rec
             _save_state(s)
         (res["tweakFailed"] if errs else res["tweaks"]).append(tid)
     for a in apps:

@@ -268,6 +268,21 @@ class TweakJobs(unittest.TestCase):
             D.tweak_undo("hidden", reg)
         self.assertEqual(reg.get("HKCU", adv, "Hidden"), ("dword", 2))
 
+    def test_a_failed_undo_keeps_the_backup_to_try_again(self):
+        adv = r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+        for undo in (lambda reg: D.tweak_undo("hidden", reg), lambda reg: D.undo_all(self.Job(), reg=reg)):
+            reg = FakeReg()
+            reg.seed("HKCU", adv, "Hidden", "dword", 2)
+            with mock.patch.object(D, "_admin", return_value=False):
+                D.apply(self.Job(), {"tweaks": ["hidden"]}, reg=reg)
+                reg.fail.add("Hidden")              # Windows refuses the write this time
+                undo(reg)
+                self.assertIn("hidden", D.history()["tweaks"])
+                reg.fail.clear()
+                D.tweak_undo("hidden", reg)         # the user's own value, not Windows' default
+            self.assertEqual(reg.get("HKCU", adv, "Hidden"), ("dword", 2))
+            self.assertNotIn("hidden", D.history()["tweaks"])
+
 
 class Catalog(unittest.TestCase):
     def test_matching(self):
