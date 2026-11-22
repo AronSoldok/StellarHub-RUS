@@ -249,6 +249,22 @@ class FrequencyOverride(unittest.TestCase):
             self.assertEqual(mk.d, {"exists": False, "value": None, "type": None})
         self.assertEqual(reg.read(), (False, None, None))
 
+    def test_failed_recovery_does_not_overwrite_the_original_with_zero(self):
+        """Recovery could not write the original back (the 0 of a crashed run is still there): the marker is the only
+        copy of the user's value, and the new override must put THAT back, not the 0 it reads."""
+        class FirstWriteFails(FakeReg):
+            def write(self, value, typ=winreg.REG_DWORD):
+                if not getattr(self, "failed_once", False):
+                    self.failed_once = True
+                    raise PermissionError("busy")
+                super().write(value, typ)
+        reg, mk = FirstWriteFails(0), FakeMarker({"exists": True, "value": 1440, "type": winreg.REG_DWORD})
+        with B.frequency_override(reg, mk) as lifted:
+            self.assertTrue(lifted)
+            self.assertEqual(reg.value, 0)
+        self.assertEqual(reg.read(), (True, 1440, winreg.REG_DWORD))
+        self.assertIsNone(mk.d)
+
     def test_real_marker_file_roundtrip(self):
         d = tempfile.mkdtemp()
         try:

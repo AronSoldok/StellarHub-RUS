@@ -336,8 +336,12 @@ def frequency_override(reg=None, marker=None):
     reg, marker = reg or _Reg(), marker or _Marker()
     with _RP_LOCK:
         recover_override(reg, marker)
-        exists, value, typ = reg.read()
-        prev = {"exists": bool(exists), "value": value, "type": typ}
+        # a marker still there means recovery could not put the original back: the registry holds OUR 0, and reading
+        # it would overwrite the only copy of the user's value with 0 (the limit would stay lifted for good)
+        prev = marker.load()
+        if prev is None:
+            exists, value, typ = reg.read()
+            prev = {"exists": bool(exists), "value": value, "type": typ}
         lifted = False
         try:
             marker.save(prev)  # first the copy, then the change
