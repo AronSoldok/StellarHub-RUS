@@ -222,6 +222,33 @@ class Tracking(Sandbox):
         self.assertEqual(fake.d, before)
         self.assertTrue(P.history()[0]["undone"])
 
+    def test_refused_write_of_a_value_that_existed_still_puts_the_earlier_ones_back(self):
+        # B existed and Windows refuses to write it: restoring it would be refused too, and that used to stop the
+        # rollback before A, which stayed changed (also on every undo from the history)
+        fake = FakeReg({("HKCU", "software\\x", "a"): (1, winreg.REG_DWORD), ("HKCU", "software\\x", "b"): (1, winreg.REG_DWORD)},
+                       fail_on="B")
+        before = dict(fake.d)
+        with mock.patch.object(P, "REG", fake):
+            with self.assertRaises(OSError):
+                P.apply_writes([("HKCU", "Software\\X", "A", winreg.REG_DWORD, 0), ("HKCU", "Software\\X", "B", winreg.REG_DWORD, 0),
+                                ("HKCU", "Software\\X", "C", winreg.REG_DWORD, 0)], "test")
+        self.assertEqual(fake.d, before)
+        self.assertTrue(P.history()[0]["undone"])
+
+    def test_undo_goes_on_past_a_refused_value_and_can_be_tried_again(self):
+        fake = FakeReg({("HKCU", "software\\x", "a"): (1, winreg.REG_DWORD), ("HKCU", "software\\x", "b"): (1, winreg.REG_DWORD)})
+        with mock.patch.object(P, "REG", fake):
+            bid = P.apply_writes([("HKCU", "Software\\X", "A", winreg.REG_DWORD, 0), ("HKCU", "Software\\X", "B", winreg.REG_DWORD, 0)], "test")
+            fake.fail_on = "B"
+            with self.assertRaises(OSError):
+                P.undo(bid)
+            self.assertEqual(fake.d[("HKCU", "software\\x", "a")][0], 1)   # A is back although B was refused
+            self.assertFalse(P.history()[0]["undone"])
+            fake.fail_on = None
+            P.undo(bid)
+        self.assertEqual(fake.d[("HKCU", "software\\x", "b")][0], 1)
+        self.assertTrue(P.history()[0]["undone"])
+
     def test_binary_values_round_trip(self):
         fake = FakeReg({("HKCU", "software\\x", "blob"): (b"\x03\x00\xff", winreg.REG_BINARY)})
         with mock.patch.object(P, "REG", fake):

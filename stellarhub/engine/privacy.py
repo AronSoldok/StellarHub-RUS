@@ -254,11 +254,18 @@ def _load_change(bid):
 
 
 def _restore_reg(prev):
+    """Puts every saved value back, newest first. One that Windows refuses does not stop the others (it used to: the
+    values before it in the list stayed changed, also on every later undo). Returns the errors, as text."""
+    errors = []
     for p in reversed(prev):
-        if p["exists"]:
-            REG.write(p["hive"], p["path"], p["name"], p["type"], _dec(p["data"]))
-        else:
-            REG.delete(p["hive"], p["path"], p["name"])
+        try:
+            if p["exists"]:
+                REG.write(p["hive"], p["path"], p["name"], p["type"], _dec(p["data"]))
+            else:
+                REG.delete(p["hive"], p["path"], p["name"])
+        except OSError as e:
+            errors.append(f"{p['hive']}\\{p['path']}\\{p['name']}: {e}")
+    return errors
 
 
 def apply_writes(writes, label, extra=None):
@@ -273,17 +280,24 @@ def apply_writes(writes, label, extra=None):
         ex, d, t = REG.read(hive, path, name)
         prev.append({"hive": hive, "path": path, "name": name, "exists": ex, "type": t, "data": _enc(d) if ex else None})
     bid = _save_change({"kind": "reg", **_label_fields(label), "prev": prev, **(extra or {})})
+    written = set()
     try:
         for hive, path, name, typ, data in writes:
             if data is None:
                 REG.delete(hive, path, name)
             else:
                 REG.write(hive, path, name, typ, data)
+            written.add((hive, path.lower(), name.lower()))
     except OSError:
-        _restore_reg(prev)
-        rec, f = _load_change(bid)
-        rec["undone"] = True
-        _write_json(f, rec)
+        # only what really changed goes back: the value Windows just refused would refuse again and stop the rest
+        if not _restore_reg([p for p in prev if (p["hive"], p["path"].lower(), p["name"].lower()) in written]):
+            try:
+                rec, f = _load_change(bid)
+                rec["undone"] = True
+                _write_json(f, rec)
+            except OSError:
+                pass   # all put back; only the history mark is missing (undoing it again changes nothing)
+        # else: left as not undone, so the history still offers to put the rest back
         raise
     return bid
 
@@ -310,7 +324,9 @@ def undo(bid):
     if kind == "reg":
         if any(user_needs_admin(p["hive"], p["path"]) for p in rec["prev"]) and not _admin():
             return _need_admin()
-        _restore_reg(rec["prev"])
+        bad = _restore_reg(rec["prev"])
+        if bad:   # not marked undone: it can be tried again
+            raise OSError(tr("Windows didn't accept the change") + " (" + "; ".join(bad)[:300] + ")")
     elif kind == "firewall":
         if not _admin():
             return _need_admin()
