@@ -273,6 +273,7 @@ html[data-int=min] #v-remover .wv-eye.on .pulse{animation:none;opacity:.5}
 #v-remover .qt b{font-weight:500;font-size:var(--fs-sm)}
 #v-remover .qt .bar{grid-column:2/span 2;height:3px}
 #v-remover .qz-note{margin:auto 6px 4px;padding-top:14px;font-size:var(--fs-sm);color:var(--faint);line-height:1.5}
+#v-remover .qz-kept{display:block;margin-bottom:var(--sp-sm);color:var(--mute)}
 /* history */
 #v-remover .hv-grid{height:100%;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) clamp(280px,24vw,360px);gap:var(--sp-md)}
 #v-remover .hv-main,#v-remover .hv-side{display:flex;flex-direction:column;min-height:0}

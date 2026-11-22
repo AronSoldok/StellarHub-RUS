@@ -935,7 +935,7 @@ function renderQuarantine(el) {
       <div class="days">${T('Empties itself after')} ${segHTML([['7', T('{n} days', { n: 7 })], ['14', T('{n} days', { n: 14 })], ['30', T('{n} days', { n: 30 })]], String(qDays))}</div><button class="btn danger" id="qzEmpty">${ic('trash')}${T('Empty now')}</button></div>
     <div class="qz-grid"><div class="pan qz-main" data-asm><h4>${T('Saved uninstalls')} <em>${T('click to see each item')}</em></h4><div id="qzList" class="qz-list"></div></div>
       <div class="pan qz-side" data-asm><h4>${T('What is saved')}</h4><div class="qz-types" id="qzTypes"></div>
-        <p class="qz-note">${T('Each item is saved exactly as it was: files, registry keys as .reg, and tasks and services with their settings. Restoring puts them back in place.')}</p></div></div></div>`;
+        <p class="qz-note"><span class="qz-kept" id="qzKept" hidden></span>${T('Each item is saved exactly as it was: files, registry keys as .reg, and tasks and services with their settings. Restoring puts them back in place.')}</p></div></div></div>`;
   const listEl = $('#qzList', el);
   const tot = () => { const items = sessions.flatMap(s => s.items); $('#qzS', el).textContent = sessions.length; $('#qzI', el).textContent = items.length; $('#qzM', el).textContent = fmtMB(items.reduce((a, l) => a + l.mb, 0));
     const by = {}; items.forEach(l => { by[l.type] = (by[l.type] || 0) + 1; }); const mx = Math.max(1, ...Object.values(by));
@@ -944,7 +944,9 @@ function renderQuarantine(el) {
     return `<div class="qs" data-s="${s.id}"><div class="qs-h" role="button" tabindex="0">${ic('chev', 'i cv')}${pi({ id: 'q' + s.id, h: s.h, ini: s.ini, icon: iconByName(s.prog) })}<span class="rt"><b>${esc(s.prog)}</b><span>${fmtDate(s.date)}, ${esc(SMODE[s.mode] || s.mode)}</span></span><span class="muted" style="font-size:12.5px">${PL(s.items.length, '{n} item, {size}', '{n} items, {size}', { size: fmtMB(mb) })}</span>
       <span class="left">${PL(left, '{n} day left', '{n} days left')}<span class="bar ${left < 4 ? 'warn' : ''}"><span style="transform:scaleX(${(left / qDays).toFixed(3)})"></span></span></span>${s.restorable === false ? `<span class="chip">${T('Deleted permanently')}</span>` : s.pending ? `<span class="chip warn" title="${esc(T('Some files leave at the next restart. Restore them after restarting the PC.'))}">${T('Restart pending')}</span>` : `<button class="btn sm sec" data-a="all">${ic('restore')}${T('Restore all')}</button>`}</div>
       <div class="qs-b"><div><div class="qs-in">${s.items.map(l => `<div class="qit" data-l="${l.id}">${ic(TYPES[l.type][1])}<span class="p" title="${esc(l.path)}">${esc(l.path)}</span><span class="s">${l.mb ? fmtMB(l.mb) : ''}</span>${s.restorable === false || l.restorable === false || s.pending ? '' : `<button class="btn sm ghost" data-a="one">${T('Restore')}</button>`}</div>`).join('')}</div></div></div></div>`; };
-  function draw() { tot(); listEl.innerHTML = sessions.length ? sessions.map(sHTML).join('') : SH.emptyState({ art: 'ok', title: T('The quarantine is empty'), text: T('What you remove when uninstalling is kept here for {days} days in case you need it back.', { days: qDays }) }); stagger([...listEl.children], 60, 50); }
+  /* uninstalls the automatic emptying kept because they still wait for a restart (engine init: purgeKept): a quiet line */
+  const kept = () => { const k = $('#qzKept', el), n = (realInfo && realInfo.purgeKept) || 0; if (!k) return; k.hidden = !n; k.textContent = n ? PL(n, '1 uninstall is kept until the PC restarts: some of its files are still waiting to be moved.', '{n} uninstalls are kept until the PC restarts: some of their files are still waiting to be moved.') : ''; };
+  function draw() { tot(); kept(); listEl.innerHTML = sessions.length ? sessions.map(sHTML).join('') : SH.emptyState({ art: 'ok', title: T('The quarantine is empty'), text: T('What you remove when uninstalling is kept here for {days} days in case you need it back.', { days: qDays }) }); stagger([...listEl.children], 60, 50); }
   listEl.addEventListener('click', async e => {
     const qs = e.target.closest('.qs'); if (!qs) return; const s = sessions.find(x => x.id === qs.dataset.s);
     const a = e.target.closest('[data-a]');
@@ -973,9 +975,16 @@ function renderQuarantine(el) {
     const b = e.currentTarget; if (!sessions.length) { SH.toast(T('The quarantine is already empty.')); return; }
     if (!armed) { armed = setTimeout(() => { armed = 0; b.innerHTML = `${ic('trash')}${T('Empty now')}`; }, 3000); b.innerHTML = `${ic('alert')}${T('Click again: this cannot be undone')}`; anim(b, [{ transform: 'scale(.95)' }, { transform: 'none' }], { d: 300, e: EASE.spring }); return; }
     clearTimeout(armed); armed = 0; b.innerHTML = `${ic('trash')}${T('Empty now')}`; SH.sound('delete');
-    const n = sessions.flatMap(s => s.items).length; if (REAL()) SH.engine('remover', 'quarantine_empty').catch(err => SH.toast(jobErr(err), { kind: 'error' })); sessions.splice(0); history.unshift({ type: 'empty', title: T('Quarantine emptied'), sub: PL(n, '{n} item deleted permanently', '{n} items deleted permanently'), date: new Date(TODAY) });
-    $$('.qs', listEl).forEach((q, i) => anim(q, [{ opacity: 1 }, { opacity: 0, transform: 'translateY(-10px) scale(.97)' }], { d: 220, delay: i * 50 })); setTimeout(draw, 400); SH.toast(PL(n, '{n} item deleted permanently.', '{n} items deleted permanently.')); refresh();
+    const n = sessions.flatMap(s => s.items).length;
+    /* the engine keeps what still waits for a restart (and says so): then the list is read again, not shown empty */
+    if (REAL()) { b.disabled = true; SH.engine('remover', 'quarantine_empty').then(() => { b.disabled = false; emptied(n); },
+      err => { b.disabled = false; SH.toast(jobErr(err), { ms: 7000, kind: 'error' }); loadRealSessions().then(() => { draw(); refresh(); }); }); return; }
+    emptied(n);
   });
+  function emptied(n) {
+    sessions.splice(0); history.unshift({ type: 'empty', title: T('Quarantine emptied'), sub: PL(n, '{n} item deleted permanently', '{n} items deleted permanently'), date: new Date(TODAY) });
+    $$('.qs', listEl).forEach((q, i) => anim(q, [{ opacity: 1 }, { opacity: 0, transform: 'translateY(-10px) scale(.97)' }], { d: 220, delay: i * 50 })); setTimeout(draw, 400); SH.toast(PL(n, '{n} item deleted permanently.', '{n} items deleted permanently.')); refresh();
+  }
   if (REAL()) {
     listEl.innerHTML = `<div class="empty"><b>${T('Reading the quarantine…')}</b></div>`;
     const seg = $('.seg', el);

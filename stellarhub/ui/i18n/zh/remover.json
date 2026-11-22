@@ -494,5 +494,7 @@
   "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "受保护的组件不支持批量卸载，仍可在“程序”标签页中找到。",
   "Uninstalling {name}": "正在卸载 {name}",
   "{name} uninstalled. {n} leftovers to review.": "已卸载 {name}。有 {n} 个残留项待检查。",
-  "{name} uninstalled. Nothing was left behind.": "已卸载 {name}。没有留下任何残留项。"
+  "{name} uninstalled. Nothing was left behind.": "已卸载 {name}。没有留下任何残留项。",
+  "1 uninstall is kept until the PC restarts: some of its files are still waiting to be moved.": "1 次卸载会保留到电脑重启：它的部分文件仍在等待移动。",
+  "{n} uninstalls are kept until the PC restarts: some of their files are still waiting to be moved.": "{n} 次卸载会保留到电脑重启：它们的部分文件仍在等待移动。"
 }

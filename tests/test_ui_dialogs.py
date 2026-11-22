@@ -301,6 +301,13 @@ class Dialogs(unittest.TestCase):
         self.assertEqual(out, ["err:Windows said no", "err:x", "err:Something went wrong.", "err:Something went wrong.", "admin", "ok:Done"])
         self.assertIn("r && r.backup ? { kind: 'success', action:", src)   # Undo only with a backup
 
+    def test_emptying_the_quarantine_waits_for_the_engine(self):
+        src = read("js", "modules", "remover.js")
+        # the list is emptied only once the engine said so; on its error the sessions are read again
+        self.assertRegex(src, r"SH\.engine\('remover', 'quarantine_empty'\)\.then\(\(\) => \{ b\.disabled = false; emptied\(n\); \},\s*"
+                              r"err => \{ b\.disabled = false; SH\.toast\(jobErr\(err\), \{ ms: 7000, kind: 'error' \}\); loadRealSessions\(\)")
+        self.assertIn("realInfo && realInfo.purgeKept", src)
+
     def test_report_a_bug(self):
         shell = read("js", "shell.js")
         self.assertIn("const BUG_URL = 'https://github.com/estebanarosemena/StellarHub/issues/new';", shell)

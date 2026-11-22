@@ -494,5 +494,7 @@
   "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "Os componentes protegidos não são oferecidos na desinstalação em lote. Você ainda os encontra na aba Programas.",
   "Uninstalling {name}": "Desinstalando {name}",
   "{name} uninstalled. {n} leftovers to review.": "{name} desinstalado. {n} resíduos para revisar.",
-  "{name} uninstalled. Nothing was left behind.": "{name} desinstalado. Nada ficou para trás."
+  "{name} uninstalled. Nothing was left behind.": "{name} desinstalado. Nada ficou para trás.",
+  "1 uninstall is kept until the PC restarts: some of its files are still waiting to be moved.": "1 desinstalação é mantida até o PC reiniciar: alguns dos seus arquivos ainda aguardam para ser movidos.",
+  "{n} uninstalls are kept until the PC restarts: some of their files are still waiting to be moved.": "{n} desinstalações são mantidas até o PC reiniciar: alguns dos seus arquivos ainda aguardam para ser movidos."
 }

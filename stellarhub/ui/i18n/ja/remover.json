@@ -494,5 +494,7 @@
   "Protected components are not offered for batch uninstall. You can still find them in the Programs tab.": "保護されたコンポーネントは一括アンインストールの対象外です。「プログラム」タブで確認できます。",
   "Uninstalling {name}": "{name} をアンインストール中",
   "{name} uninstalled. {n} leftovers to review.": "{name} をアンインストールしました。確認する残存ファイルが {n} 件あります。",
-  "{name} uninstalled. Nothing was left behind.": "{name} をアンインストールしました。残存ファイルはありません。"
+  "{name} uninstalled. Nothing was left behind.": "{name} をアンインストールしました。残存ファイルはありません。",
+  "1 uninstall is kept until the PC restarts: some of its files are still waiting to be moved.": "1 件のアンインストールは PC の再起動まで保持されます。一部のファイルがまだ移動を待っています。",
+  "{n} uninstalls are kept until the PC restarts: some of their files are still waiting to be moved.": "{n} 件のアンインストールは PC の再起動まで保持されます。一部のファイルがまだ移動を待っています。"
 }
