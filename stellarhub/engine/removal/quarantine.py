@@ -412,14 +412,29 @@ def _do_envpath(it, rec):
         hive, path = winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
     with winreg.OpenKey(hive, path, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
         val, typ = winreg.QueryValueEx(k, "Path")
-        parts = [p for p in str(val).split(";")]
-        new = [p for p in parts if p.strip().lower().rstrip("\\") != entry.strip().lower().rstrip("\\")]
-        if len(new) == len(parts):
+        new, removed = _path_without(str(val).split(";"), entry)
+        if not removed:
             rec["status"] = "gone"
             return
-        rec["env_old_index"] = parts.index(next(p for p in parts if p not in new))
+        rec["env_old_index"] = removed[0][0]
+        rec["env_removed"] = removed     # every copy, as written and where it was: restore puts back all of them
         winreg.SetValueEx(k, "Path", 0, typ, ";".join(new))
     system.broadcast_env_change()
+
+
+def _path_without(parts, entry):
+    """PATH parts without `entry` (any spelling of it): (kept parts, [[index, text as written] of each removed one])."""
+    key = entry.strip().lower().rstrip("\\")
+    removed = [[i, p] for i, p in enumerate(parts) if p.strip().lower().rstrip("\\") == key]
+    return [p for p in parts if p.strip().lower().rstrip("\\") != key], removed
+
+
+def _path_with(parts, removed):
+    """PATH parts with the removed entries back at their old places (lowest index first, so each lands where it was)."""
+    out = list(parts)
+    for i, text in sorted(removed, key=lambda r: r[0]):
+        out.insert(min(int(i), len(out)), text)
+    return out
 
 
 # ---------------------------------------------------------------- sessions
@@ -441,6 +456,7 @@ def sessions():
                     "restorable": m.get("mode") == "quarantine" and not m.get("restored") and
                                   any(i["status"] == "done" and i.get("restorable", True) for i in items),
                     "pendingRestart": sum(1 for i in items if i["status"] == "done" and i.get("restart_required")),
+                    "waitingRestart": _waiting_restart(items),
                     "unrestorableFiles": sum(i.get("unrestorable", 0) for i in items if i["status"] == "done"),
                     "items": [{"idx": n, "kind": i["kind"], "display": i["display"], "status": i["status"],
                                "target": i.get("target", ""), "size": i.get("size", 0),
@@ -502,8 +518,8 @@ def restore(sid, progress=None, only=None):
                 with winreg.OpenKey(hive, path, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as kk:
                     val, typ = winreg.QueryValueEx(kk, "Path")
                     parts = str(val).split(";")
-                    parts.insert(min(it.get("env_old_index", len(parts)), len(parts)), entry)
-                    winreg.SetValueEx(kk, "Path", 0, typ, ";".join(parts))
+                    removed = it.get("env_removed") or [[it.get("env_old_index", len(parts)), entry]]  # older sessions
+                    winreg.SetValueEx(kk, "Path", 0, typ, ";".join(_path_with(parts, removed)))
                 system.broadcast_env_change()
             it["status"] = "restored"
             res["ok"] += 1
@@ -523,14 +539,26 @@ def delete_session(sid):
         _rmtree(d)
 
 
-def purge(days=14):
+def purge(days=14, kept=None):
+    """Delete the sessions older than `days`. A session still waiting for the restart that moves files into it is
+    kept (deleted, those files would stay where they were): its id goes into `kept` when a list is given."""
     cutoff = time.time() - days * 86400
     n = 0
     for s in sessions():
         if (s.get("created") or 0) < cutoff:
+            if s.get("waitingRestart"):
+                if kept is not None:
+                    kept.append(s["id"])
+                continue
             delete_session(s["id"])
             n += 1
     return n
+
+
+def _waiting_restart(items):
+    """True while a file of the session is still at its old place, waiting for the restart that moves it in."""
+    return any(i.get("status") == "done" and any(os.path.lexists(src) for src, _ in i.get("pending_moves") or [])
+               for i in items)
 
 
 def stats():

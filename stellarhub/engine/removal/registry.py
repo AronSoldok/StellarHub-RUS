@@ -5,6 +5,7 @@ import winreg
 from dataclasses import dataclass
 
 NOWIN = 0x08000000  # CREATE_NO_WINDOW
+REG_TIMEOUT = 300   # seconds for one reg.exe export/import: a hung one must not hold a removal or an undo forever
 V64, V32 = winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY
 
 HIVES = {
@@ -161,7 +162,14 @@ def export_key(ref, out_file):
         args.append("/reg:32")
     elif ref.view == V64:
         args.append("/reg:64")
-    r = subprocess.run(args, capture_output=True, creationflags=NOWIN)
+    try:
+        r = subprocess.run(args, capture_output=True, creationflags=NOWIN, timeout=REG_TIMEOUT)
+    except subprocess.TimeoutExpired:   # reg.exe is killed; a half-written file is not a backup
+        try:
+            os.remove(out_file)
+        except OSError:
+            pass
+        return False
     return r.returncode == 0 and os.path.exists(out_file)
 
 
@@ -173,7 +181,11 @@ def import_reg(reg_file, view=0):
         args.append("/reg:64")
     # bytes, decoded here: reg.exe writes its localized message in the console code page, and text=True decoded it as
     # ANSI and raised on some letters ("Überprüfen", "É"), turning a restore that worked into an error
-    r = subprocess.run(args, capture_output=True, creationflags=NOWIN)
+    try:
+        r = subprocess.run(args, capture_output=True, creationflags=NOWIN, timeout=REG_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        from ...i18n import tr
+        return False, tr("Timed out")
     return r.returncode == 0, _decode(r.stderr or r.stdout).strip()
 
 

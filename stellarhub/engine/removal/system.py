@@ -151,8 +151,23 @@ def delete_task(path):
 
 
 def export_task(path):
-    code, xml = run(["schtasks", "/Query", "/TN", path, "/XML"])
-    return xml if code == 0 else None
+    """The task's XML, kept to recreate it on restore, or None. The console is switched to UTF-8 first (as in
+    _tasks_schtasks): in the OEM code page a name or path outside it (Chinese, emoji...) came back as "?" and the
+    restored task would point somewhere else. The name travels in an environment variable, inside quotes, so no
+    character of it is read by cmd (task names cannot contain a double quote)."""
+    try:
+        r = subprocess.run('cmd /d /c chcp 65001 >nul & schtasks /Query /TN "%SH_TASK_NAME%" /XML',
+                           capture_output=True, creationflags=NOWIN, timeout=60,
+                           env={**os.environ, "SH_TASK_NAME": str(path)})
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0 or not r.stdout:
+        return None
+    try:
+        xml = r.stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        xml = _text(r.stdout)
+    return xml.lstrip("﻿")
 
 
 def set_task_enabled(path, enabled):

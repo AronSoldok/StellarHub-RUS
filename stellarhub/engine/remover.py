@@ -111,12 +111,13 @@ def _migrate():
 def init():
     _migrate()
     s = settings.load()
+    kept = []   # old sessions still waiting for a restart to receive their files: not purged yet
     try:
-        purged = quarantine.purge(int(s["quarantine_days"]))
+        purged = quarantine.purge(int(s["quarantine_days"]), kept=kept)
     except Exception:
         purged = 0
     return {"admin": system.is_admin(), "settings": s, "pending_reboot": system.pending_reboot(),
-            "quarantine": quarantine.stats(), "purged": purged}
+            "quarantine": quarantine.stats(), "purged": purged, "purgeKept": len(kept)}
 
 
 def set_settings(changes):
@@ -352,10 +353,13 @@ def batch_uninstall(job, pids, opts=None):
     for n, pid in enumerate(pids):
         if job.cancelled:
             break
-        p = _get(pid)
-        job.progress(n / max(1, len(pids)), p["name"], force=True, index=n, total=len(pids), pid=pid, status="running")
-        entry = {"program": _ui(p)}
+        name = str(pid)
+        entry = {"program": {"id": pid, "name": name}}
         try:
+            p = _get(pid)   # inside the try: one program that is gone from the list must not stop the others
+            name = p["name"]
+            entry["program"] = _ui(p)
+            job.progress(n / max(1, len(pids)), name, force=True, index=n, total=len(pids), pid=pid, status="running")
             if (p.get("protected") or {}).get("blocked"):
                 raise PermissionError(tr("Essential Windows component"))
             uninstaller.close_processes(p)
@@ -373,7 +377,7 @@ def batch_uninstall(job, pids, opts=None):
             entry["error"] = str(e)
             status = "error"
         results.append(entry)
-        job.progress((n + 1) / max(1, len(pids)), p["name"], force=True, index=n, total=len(pids), pid=pid, status=status)
+        job.progress((n + 1) / max(1, len(pids)), name, force=True, index=n, total=len(pids), pid=pid, status=status)
     return {"results": results}
 
 
@@ -433,11 +437,16 @@ def quarantine_delete(sid):
 
 
 def quarantine_empty():
-    n = 0
+    n, kept = 0, 0
     for s in quarantine.sessions():
+        if s.get("waitingRestart"):   # its files only move in at the next restart: deleted now, they would stay put
+            kept += 1
+            continue
         quarantine.delete_session(s["id"])
         n += s.get("count", 0)
-    settings.log("empty", "Quarantine emptied", {"items": n})
+    settings.log("empty", "Quarantine emptied", {"items": n, "kept": kept})
+    if kept:   # the rest was emptied; the interface shows this as an error toast
+        raise OSError(tr("Restart the PC first: some files are still waiting to be moved to the quarantine"))
     return n
 
 

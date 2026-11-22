@@ -218,6 +218,119 @@ class RegImportOutput(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("Vorgang", out)
 
+    def test_a_hung_reg_exe_is_given_up(self):
+        tmp = tempfile.mkdtemp(prefix="mrq_reg_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        out = os.path.join(tmp, "k.reg")
+
+        def hung(args, **kw):
+            self.assertIn("timeout", kw)
+            with open(out, "w") as fh:          # half-written before it hung
+                fh.write("Windows Registry Editor")
+            raise subprocess.TimeoutExpired(args, kw["timeout"])
+        with mock.patch.object(registry.subprocess, "run", hung):
+            self.assertFalse(registry.export_key(RegRef("HKCU", TEST_KEY), out))
+            self.assertFalse(os.path.exists(out))
+            ok, msg = registry.import_reg(out)
+        self.assertFalse(ok)
+        self.assertTrue(msg)
+
+
+class TaskExport(unittest.TestCase):
+    def test_the_xml_is_read_in_utf8_and_the_name_never_reaches_cmd(self):
+        xml = '<?xml version="1.0" encoding="UTF-16"?>\r\n<Task><Exec><Command>C:\\Users\\张伟\\app.exe</Command></Exec></Task>'
+        seen = {}
+
+        def fake(cmd, **kw):
+            seen["cmd"], seen["env"] = cmd, kw.get("env") or {}
+            return subprocess.CompletedProcess(cmd, 0, xml.encode("utf-8"), b"")
+        name = r"\Vendor\Update & Sync"
+        with mock.patch.object(quarantine.system.subprocess, "run", fake):
+            got = quarantine.system.export_task(name)
+        self.assertEqual(got, xml)
+        self.assertIn("chcp 65001", seen["cmd"])       # the console speaks UTF-8, not the OEM code page
+        self.assertNotIn(name, seen["cmd"])            # "&" in the name is never parsed by cmd
+        self.assertEqual(seen["env"].get("SH_TASK_NAME"), name)
+        with mock.patch.object(quarantine.system.subprocess, "run",
+                               return_value=subprocess.CompletedProcess("", 1, b"", b"ERROR")):
+            self.assertIsNone(quarantine.system.export_task(name))
+
+
+class EnvPath(unittest.TestCase):
+    def test_every_copy_comes_back_in_its_place(self):
+        parts = [r"C:\Windows", r"C:\Tool\bin", r"C:\Other", r"c:\tool\BIN\\", r"C:\Last"]
+        kept, removed = quarantine._path_without(parts, r"C:\Tool\bin")
+        self.assertEqual(kept, [r"C:\Windows", r"C:\Other", r"C:\Last"])
+        self.assertEqual(len(removed), 2)
+        self.assertEqual(quarantine._path_with(kept, removed), parts)   # both copies, as written, where they were
+
+    def test_older_sessions_with_one_index_still_restore(self):
+        self.assertEqual(quarantine._path_with(["a", "c"], [[1, "b"]]), ["a", "b", "c"])
+        self.assertEqual(quarantine._path_with(["a"], [[9, "b"]]), ["a", "b"])
+
+
+class WaitingForRestart(unittest.TestCase):
+    """A session whose files only move into it at the next restart is not deleted by the purge or Empty."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="mrq_wait_")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.src = os.path.join(self.tmp, "locked.dll")      # still at its old place
+        with open(self.src, "w") as f:
+            f.write("x")
+        self.sids = []
+        for waiting in (True, False):
+            sid = f"20000101-000000-MiniRevoTestWait-{int(waiting)}"
+            os.makedirs(quarantine._session_dir(sid), exist_ok=True)
+            item = {"kind": "file", "target": self.src, "display": "x", "status": "done", "stored": "s"}
+            if waiting:
+                item["pending_moves"] = [[self.src, os.path.join(quarantine._session_dir(sid), "files", "0_x")]]
+            quarantine._save({"id": sid, "program": "t", "created": 1.0, "mode": "quarantine", "items": [item]})
+            self.sids.append(sid)
+            self.addCleanup(quarantine.delete_session, sid)
+
+    def test_purge_keeps_it_and_says_so(self):
+        kept = []
+        quarantine.purge(14, kept=kept)
+        ids = {s["id"] for s in quarantine.sessions()}
+        self.assertIn(self.sids[0], ids)
+        self.assertNotIn(self.sids[1], ids)
+        self.assertIn(self.sids[0], kept)
+
+    def test_empty_keeps_it_and_says_so(self):
+        from stellarhub.engine import remover
+        real = quarantine.sessions
+        with mock.patch.object(remover.settings, "log"), \
+                mock.patch.object(remover.quarantine, "sessions",
+                                  lambda: [s for s in real() if s["id"] in self.sids]):   # only this test's sessions
+            with self.assertRaises(OSError):
+                remover.quarantine_empty()
+        ids = {s["id"] for s in quarantine.sessions()}
+        self.assertIn(self.sids[0], ids)
+        self.assertNotIn(self.sids[1], ids)
+
+
+class BatchUninstall(unittest.TestCase):
+    def test_one_unknown_program_does_not_stop_the_batch(self):
+        from stellarhub.engine import remover
+
+        class Job:
+            cancelled = False
+
+            def progress(self, *a, **k):
+                pass
+        good = {"id": "good", "name": "Good App"}
+        get = lambda pid: good if pid == "good" else (_ for _ in ()).throw(KeyError("gone"))   # noqa: E731
+        with mock.patch.object(remover, "_get", get), \
+                mock.patch.object(remover.uninstaller, "close_processes"), \
+                mock.patch.object(remover.uninstaller, "uninstall", return_value={"ok": True}) as un, \
+                mock.patch.object(remover.uninstaller, "still_registered", return_value=False), \
+                mock.patch.object(remover.scanner, "scan", return_value={"items": []}), \
+                mock.patch.object(remover.settings, "log"), mock.patch.object(remover, "_all", return_value=[]):
+            r = remover.batch_uninstall(Job(), ["missing", "good"], {"restore_point": False})
+        self.assertEqual([("error" in e) for e in r["results"]], [True, False])
+        un.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
