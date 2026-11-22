@@ -339,6 +339,15 @@ class Dialogs(unittest.TestCase):
         self.assertIn("function setFoot(html) { foot.innerHTML = html; footAt = performance.now();", src)
         self.assertIn("foot.addEventListener('click', e => { if (performance.now() - footAt < 400) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);", src)
 
+    def test_toasts_never_go_to_the_top_bar(self):
+        place = js_function(read("js", "shell.js"), "placeToasts")
+        self.assertNotIn("'top'", place)                       # beside the dock, or (no room at all) just above it
+        self.assertIn("at = 'side'", place)
+        self.assertIn("at = 'above'", place)
+        css = read("css", "base.css")
+        self.assertNotIn(".toasts[data-at=top]", css)
+        self.assertRegex(css, r"html\[data-toasts=above\]\{--dockspace:\d+px\}")   # the strip above the dock is kept free
+
     def test_report_a_bug(self):
         shell = read("js", "shell.js")
         self.assertIn("const BUG_URL = 'https://github.com/estebanarosemena/StellarHub/issues/new';", shell)

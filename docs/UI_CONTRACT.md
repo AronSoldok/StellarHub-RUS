@@ -72,10 +72,13 @@ SH.module({
   panel or column with its content centred. Grids use `repeat(auto-fit, minmax(...))`: no cell hanging in a corner.
 - Hover: everything that can be clicked (buttons, tabs, rows and cards that act, switches, checkboxes, selects) shows a
   calm hover in the shared language (a raised fill, a lighter edge or ink colour, the pointer cursor); plain text never.
-- Toasts (`SH.toast`) never cover the content, the dock, its magnified icons or the hint bar (shell.js placeToasts):
-  beside the dock, inside the strip the page keeps free for it (`--dockspace`), when the window leaves room to its right;
-  otherwise in the top bar, over the search field, one at a time. Only what fits in the lane stays up: the oldest leave
-  first, the newest is always shown. With a controller, X runs the newest toast's action. A toast refreshed by the same
+- Toasts (`SH.toast`) live bottom right and never cover the content, the dock, its magnified icons, the hint bar or the
+  version tag, and never sit in the top bar (shell.js placeToasts): beside the dock, to its right, the newest centred on
+  the dock bar (never lower than its bottom edge), older ones stacking upward only up to the strip the page keeps free
+  for the dock (`--dockspace`). A narrow window gives the lane the width there is (at least 200 px) and the text wraps.
+  Only when even that is missing (a compact handheld layout): one slim bar centred just above the dock and the hint
+  bar; `html[data-toasts=above]` then raises `--dockspace` for good (and fires `resize`), so it never covers a panel.
+  Only what fits in the lane stays up: the oldest leave first, the newest is always shown. With a controller, X runs the newest toast's action. A toast refreshed by the same
   message (or `group`) runs the newest call's action.
 - The version tag (`.ver-tag`, bottom left of every view, shell.js) is plain text that never takes the pointer; only the
   report-a-bug icon to its left (`#bugBtn`) does: it opens a small popover (`.bug-pop`) whose button opens a new GitHub issue.

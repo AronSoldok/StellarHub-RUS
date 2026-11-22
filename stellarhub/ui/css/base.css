@@ -488,11 +488,16 @@ html[data-neb=hi] .atmo{filter:brightness(max(1,var(--neb,1))) saturate(max(1,va
 html[data-quick=off] .h-quick{display:none}
 
 /* --tb / --tw: set by shell.js (placeToasts) so the stack sits beside the dock or above it, never over it */
-.toasts{position:fixed;right:26px;bottom:var(--tb,168px);z-index:70;display:flex;flex-direction:column;align-items:flex-end;gap:var(--sp-sm);pointer-events:none;max-width:var(--tw,min(420px,calc(100vw - 52px)))}
+.toasts{position:fixed;right:16px;bottom:var(--tb,20px);z-index:70;display:flex;flex-direction:column;align-items:flex-end;gap:var(--sp-sm);pointer-events:none;width:var(--tw,min(420px,calc(100vw - 32px)));max-width:var(--tw,min(420px,calc(100vw - 32px)))}
 .toast{max-width:100%}
-/* the top-bar lane (shell.js placeToasts, a window with no room beside the dock): one toast over the search field */
-.toasts[data-at=top]{top:var(--tt,8px);bottom:auto;right:auto;left:var(--tl,50%);transform:translateX(-50%);align-items:center;z-index:72}
-.toasts[data-at=top] .toast{min-height:46px}
+/* a narrow lane: the text wraps (two or three lines) instead of leaving the lane */
+.toast>span{min-width:0;overflow-wrap:anywhere}
+/* the lane above the dock (shell.js placeToasts, only when there is no room beside it): one slim bar, centred on the dock */
+.toasts[data-at=above]{right:auto;left:var(--tl,50%);transform:translateX(-50%);align-items:center}
+.toasts[data-at=above] .toast{min-height:38px;padding-top:4px;padding-bottom:4px}
+/* while toasts use the strip above the dock, the page keeps it free (it never covers a panel) */
+html[data-toasts=above]{--dockspace:154px}
+html[data-toasts=above].pad-hints{--dockspace:182px}
 .swatch.custom{background:conic-gradient(from 200deg,var(--s),var(--s2),var(--s));display:grid;place-items:center}
 .swatch.custom span{width:18px;height:18px;border-radius:50%;background:rgba(6,10,20,.55);display:grid;place-items:center;color:#fff}
 .swatch.custom svg{width:var(--ic-xs);height:var(--ic-xs);stroke-width:var(--ic-w-bold)}

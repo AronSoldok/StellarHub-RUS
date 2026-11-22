@@ -183,9 +183,11 @@ for 12-14 px marks inside filled badges). Seven sizes: `--ic-xs` 12, `--ic-s` 14
   danger; `sm` and `lg`.
 - Tabs (`.subnav`) and segmented controls (`.seg`): a sliding glass indicator moved by a spring.
 - Dock: the active module is marked by a small coral planet on an ice orbit, the brand mark in miniature.
-- Toasts: dark glass with a small planet as the signifier, action in coral. Their own lane, never over content or the
-  dock: beside the dock in the strip under the content when the window leaves room, otherwise in the top bar over the
-  search field, one at a time.
+- Toasts: dark glass with a small planet as the signifier, action in coral. Their own lane, bottom right, never over
+  content, the dock, the hint bar or the version tag, never in the top bar: beside the dock, the newest centred on the
+  dock bar (never lower), older ones stacking upward only within the dock's band; a narrow window gives them the width
+  there is (at least 200 px) and the text wraps. Only with no room at all beside the dock (a compact handheld layout):
+  one slim bar centred just above the dock, in a strip the page then keeps free.
 - Hover: every clickable element answers calmly (a raised fill, a lighter edge or ink colour, the pointer cursor); the
   primary ones (dock, buttons, tiles, button rows) also tick with `hover`, the rest with the quieter `hover_soft`.
 - Live indicators: steady dots with a ring; only indeterminate progress sweeps loop.

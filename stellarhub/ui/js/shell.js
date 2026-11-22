@@ -842,56 +842,70 @@ $('#noteNever').addEventListener('click', e => e.currentTarget.classList.toggle(
 /* ================= toasts ================= */
 /* At most 3 at a time; a repeated toast refreshes instead of stacking. Opening/closing the same thing (e.g. the widget)
    replaces the previous toast of the same group.
-   Toasts have a lane of their own and never cover the content, the dock, its magnified icons or their tooltips:
-   - beside the dock (bottom-aligned with it) when the window leaves room to its right: inside the strip the page keeps
-     free for the dock (--dockspace), so only as many toasts as fit under the content's bottom edge stay up (the
-     oldest go early);
-   - otherwise (a narrower window, a handheld at 125 % or more) in the top bar, over the search field, between the
-     brand and the buttons on the right: one at a time, the newest.
-   placeToasts() measures the dock at rest and the top bar (a few layout reads) when a toast appears and when the window
-   resizes (the zoom, the controller's hint bar). */
-const MAX_TOASTS = 3, TOAST_EDGE = 26, TOAST_GAP = 18, TOAST_MIN = 300;
-let toastRoom = { at: 'side', max: 999, n: MAX_TOASTS };
+   Toasts have a lane of their own, bottom right, and never cover the content, the dock, its magnified icons or their
+   tooltips, the controller's hint bar or the version tag:
+   - beside the dock, to its right, in the dock's band: the newest is centred on the dock bar (never lower than its
+     bottom edge), older ones stack upward only as far as the strip the page keeps free for the dock (--dockspace), so
+     the oldest go early. A narrow window gives them the width there is (at least TOAST_MIN) and the text wraps.
+   - only when even that is missing (a compact handheld layout): one at a time, a slim bar centred directly above the
+     dock (and above the hint bar). html[data-toasts=above] then reserves that strip in --dockspace for good, so it
+     never covers a panel and the layout doesn't jump when a toast comes.
+   placeToasts() measures the dock at rest and the hint bar (a few layout reads) when a toast appears and when the
+   window resizes (the zoom, the controller's hint bar). */
+const MAX_TOASTS = 3, TOAST_EDGE = 16, TOAST_GAP = 14, TOAST_MIN = 200, TOAST_W = 420;
+let toastRoom = { at: 'side', max: 999, n: MAX_TOASTS, dh: 0 };
 function placeToasts() {
   const box = $('#toasts'); if (!box) return;
   const r = dock.getBoundingClientRect(); if (!r.width) return;
   const last = dks[dks.length - 1].el, tip = $('.tip', last), lr = last.getBoundingClientRect();
   /* the widest the magnification can make the dock on each side (the pill grows by half the extra width) and how far
-     the last icon's tooltip reaches past its own centre */
+     the last icon's tooltip (above the dock) reaches past its own centre */
   const grow = BASE * GROW * 1.6, tipHalf = tip ? tip.offsetWidth / 2 : 0;
-  const right = Math.max(r.right + grow, lr.left + lr.width / 2 + grow + tipHalf);
-  const room = innerWidth - TOAST_EDGE - right - TOAST_GAP;
+  const hb = ROOT.classList.contains('pad-hints') ? $('#padHints') : null, hr = hb && hb.getBoundingClientRect();
+  const hints = hr && hr.width ? hr : null;
+  const band = Math.max(r.right + grow, hints ? hints.right : 0);
+  const room = innerWidth - TOAST_EDGE - band - TOAST_GAP;
+  const bottom = innerHeight - r.bottom;
+  let at;
   if (room >= TOAST_MIN) {
-    /* the strip under the content: from the dock's bottom up to where the page's content ends (--dockspace) */
-    const ds = parseFloat(getComputedStyle(ROOT).getPropertyValue('--dockspace')) || 118, bottom = innerHeight - r.bottom;
-    box.style.setProperty('--tb', `${Math.round(bottom)}px`); box.style.setProperty('--tw', `${Math.floor(Math.min(420, room))}px`);
-    box.style.removeProperty('--tl'); box.style.removeProperty('--tt');
-    toastRoom = { at: 'side', max: Math.max(44, ds - bottom - 4), n: MAX_TOASTS };
+    at = 'side';
+    /* above the dock's top only where the last icon's tooltip can't be: else they stay in the dock's band */
+    const clear = innerWidth - TOAST_EDGE - Math.max(band, lr.left + lr.width / 2 + grow + tipHalf) - TOAST_GAP >= Math.min(TOAST_W, room);
+    const ds = parseFloat(getComputedStyle(ROOT).getPropertyValue('--dockspace')) || 118;
+    box.style.setProperty('--tb', `${Math.round(bottom)}px`); box.style.setProperty('--tw', `${Math.floor(Math.min(TOAST_W, room))}px`);
+    box.style.removeProperty('--tl');
+    toastRoom = { at, max: clear ? Math.max(r.height, ds - bottom - 4) : r.height + 4, n: MAX_TOASTS, dh: r.height };
   } else {
-    /* the top bar, between the brand and the buttons on the right, over the search field */
-    const br = $('#brand').getBoundingClientRect(), mp = $('.top .right').firstElementChild.getBoundingClientRect();
-    const span = Math.max(220, mp.left - br.right - 28), top = parseFloat(getComputedStyle(ROOT).getPropertyValue('--top')) || 62;
-    box.style.setProperty('--tl', `${Math.round((br.right + mp.left) / 2)}px`); box.style.setProperty('--tt', '8px');
-    box.style.setProperty('--tw', `${Math.floor(Math.min(520, span))}px`);
-    toastRoom = { at: 'top', max: top + 2, n: 1 };
+    at = 'above';
+    const top = Math.min(r.top, hints ? hints.top : Infinity);
+    box.style.setProperty('--tb', `${Math.round(innerHeight - top + 8)}px`); box.style.setProperty('--tl', `${Math.round(r.left + r.width / 2)}px`);
+    box.style.setProperty('--tw', `${Math.floor(Math.min(560, innerWidth - 2 * TOAST_EDGE))}px`);
+    toastRoom = { at, max: 999, n: 1, dh: 0 };
   }
-  box.dataset.at = toastRoom.at;
+  box.dataset.at = at;
+  /* the strip above the dock is kept free (--dockspace) while toasts use it; the views re-fit on 'resize' */
+  if (ROOT.dataset.toasts !== at) { ROOT.dataset.toasts = at; dispatchEvent(new Event('resize')); }
   fitToasts();
 }
-/* only what fits in the lane stays up: the oldest leave first (the newest is always shown) */
+/* only what fits in the lane stays up: the oldest leave first (the newest is always shown); beside the dock the newest
+   is centred on the dock bar */
 function fitToasts() {
   const box = $('#toasts'); if (!box) return;
   const live = [...box.children].filter(x => !x.dataset.dead);
   let h = 0; const keep = [];
+  const newest = live[live.length - 1], pad = newest && toastRoom.dh ? Math.max(0, (toastRoom.dh - newest.offsetHeight) / 2) : 0;
   for (let i = live.length - 1; i >= 0; i--) {
     const th = live[i].offsetHeight + (keep.length ? 8 : 0);
-    if (keep.length && (keep.length >= toastRoom.n || h + th > toastRoom.max)) break;
+    if (keep.length && (keep.length >= toastRoom.n || pad + h + th > toastRoom.max)) break;
     h += th; keep.push(live[i]);
   }
+  box.style.paddingBottom = pad ? `${Math.round(pad)}px` : '';
   live.filter(x => !keep.includes(x)).forEach(x => x._kill && x._kill());
 }
 let toastPlaceRaf = 0;
 addEventListener('resize', () => { cancelAnimationFrame(toastPlaceRaf); toastPlaceRaf = requestAnimationFrame(placeToasts); });
+/* the lane is chosen from the start, so a strip reserved above the dock is there before the first toast */
+SH.on('boot', () => requestAnimationFrame(placeToasts));
 function toast(text, o = {}) {
   const box = $('#toasts'); const group = o.group || text;
   placeToasts();
@@ -918,10 +932,10 @@ function toast(text, o = {}) {
   t.innerHTML = `<span>${esc(text)}</span>`;
   t._kill = kill; setAction(t, o.action);
   box.appendChild(t);
-  const fromTop = toastRoom.at === 'top';  /* in the top bar it drops in from above, beside the dock it slides in from the side */
-  anim(t, [{ opacity: 0, transform: fromTop ? 'translate3d(0,-14px,0) scale(.96)' : 'translate3d(24px,0,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 440, e: EASE.spring });
+  const fromTop = toastRoom.at === 'above';  /* above the dock it rises a little, beside the dock it slides in from the side */
+  anim(t, [{ opacity: 0, transform: fromTop ? 'translate3d(0,10px,0) scale(.96)' : 'translate3d(24px,0,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 440, e: EASE.spring });
   function kill() { if (t.dataset.dead) return; t.dataset.dead = '1'; clearTimeout(t._timer);
-    anim(t, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: fromTop ? 'translate3d(0,-10px,0) scale(.97)' : 'translate3d(24px,0,0) scale(.96)' }], { d: 220 }).finished.then(() => flip(() => t.remove())).catch(() => t.remove()); }
+    anim(t, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: fromTop ? 'translate3d(0,8px,0) scale(.97)' : 'translate3d(24px,0,0) scale(.96)' }], { d: 220 }).finished.then(() => flip(() => t.remove())).catch(() => t.remove()); }
   /* the toasts left in the stack glide into the gap instead of jumping */
   function flip(fn) { const before = new Map([...box.children].map(x => [x, x.getBoundingClientRect().top])); fn(); [...box.children].forEach(x => { const b = before.get(x); if (b == null) return; const d = b - x.getBoundingClientRect().top; if (Math.abs(d) > 1) anim(x, [{ transform: `translate3d(0,${d}px,0)` }, { transform: 'none' }], { d: 320, keep: true }); }); }
   t._kill = kill; t._timer = setTimeout(kill, o.ms || 3600);
@@ -962,7 +976,7 @@ function bugOpen() {
   document.body.appendChild(p); bugPop = p; bugBtn.setAttribute('aria-expanded', 'true');
   /* above the button, and above the dock and the controller's hint bar where they reach this far left */
   const pr = p.getBoundingClientRect(); let top = pr.top;
-  for (const o of [$('#dock'), $('#padHints')]) { const r = o && o.getBoundingClientRect(); if (r && r.width && r.height && r.left < pr.right + 8 && r.top < pr.bottom + 8) top = Math.min(top, r.top - 10 - pr.height); }
+  for (const o of [$('#dock'), $('#padHints'), ...$$('#toasts .toast:not([data-dead])')]) { const r = o && o.getBoundingClientRect(); if (r && r.width && r.height && r.left < pr.right + 8 && r.top < pr.bottom + 8) top = Math.min(top, r.top - 10 - pr.height); }
   if (top < pr.top) p.style.bottom = `${Math.max(44, Math.round(innerHeight - top - pr.height))}px`;
   anim(p, [{ opacity: 0, transform: 'translate3d(0,8px,0) scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 260, e: EASE.spring });
   addEventListener('keydown', bugKey, true); addEventListener('pointerdown', bugOut, true);
