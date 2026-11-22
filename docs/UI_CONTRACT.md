@@ -59,7 +59,10 @@ SH.module({
 - Toasts (`SH.toast`) never cover the content, the dock, its magnified icons or the hint bar (shell.js placeToasts):
   beside the dock, inside the strip the page keeps free for it (`--dockspace`), when the window leaves room to its right;
   otherwise in the top bar, over the search field, one at a time. Only what fits in the lane stays up: the oldest leave
-  first, the newest is always shown. With a controller, X runs the newest toast's action.
+  first, the newest is always shown. With a controller, X runs the newest toast's action. A toast refreshed by the same
+  message (or `group`) runs the newest call's action.
+- The version tag (`.ver-tag`, bottom left of every view, shell.js) is plain text that never takes the pointer; only the
+  report-a-bug icon to its left (`#bugBtn`) does: it opens a small popover (`.bug-pop`) whose button opens a new GitHub issue.
 - `SH.lastRun` lays out its own children (a fixed 28 px clock, then the text column): a module's `cls` only adds
   spacing, and must not be a class the module already uses for something else.
 
@@ -226,7 +229,7 @@ The interface does less work when "Lighter effects" (setting `lightMode`) says s
   way (a list, then the page).
 - `html.pad-mode` is on while a controller is in use; a mouse move, a touch or a key press turns it off. The ring (`#padRing`) and the hint bar (`#padHints`) exist only then. While the hint bar is up, `html.pad-hints` raises `--dockspace` so it never covers content; the page gets a `resize` event when it comes and goes, so views that measure themselves must re-fit on `resize`.
 - `SH.gamepad`: `enabled()`, `active` (controller mode is on), `inside` (the panel entered, or null), `debug` (targets and moves, for tests), `connected` (list of pads), `focus(el)`, `move(dir)`, `onButton(fn)` (every press: `{ index, name, pad }`; returns the unsubscribe), `capture({ onExit, onProgress })` / `release()` / `captured` (a test that needs the raw buttons, such as Device Tester > Controller; the user gets the navigation back by holding View + Menu for a second), `addOverlay(selector)` (a custom dialog the focus must stay inside), `glyph(name)` and `BUTTONS`.
-- `SH.modal`: whichever dialog is on top (palette, settings, component sheet, update dialog, confirmations and `.mdlg` / `.hg-dlg` / `.bk-dq-o` / `.dq-o` dialogs inside a module) gets a focus trap: the rest of the app becomes `inert`, Tab and the D-pad stay inside, and the focus goes back to what opened it when it closes. This works for keyboard users too. A new dialog class must be added to `MODALS` in gamepad.js (or registered with `SH.gamepad.addOverlay`), and should carry `role="dialog"` and `aria-modal="true"`. `SH.modal.open` is the current dialog, `SH.modal.sync()` re-checks after you open or close one without a class change.
+- `SH.modal`: whichever dialog is on top (palette, settings, component sheet, update dialog, confirmations and `.mdlg` / `.hg-dlg` / `.bk-dq-o` / `.dq-o` / `.u-confirm` dialogs inside a module, the report-a-bug popover `.bug-pop`) gets a focus trap: the rest of the app becomes `inert`, Tab and the D-pad stay inside, and the focus goes back to what opened it when it closes. This works for keyboard users too. A new dialog class must be added to `MODALS` in gamepad.js (or registered with `SH.gamepad.addOverlay`), and should carry `role="dialog"` and `aria-modal="true"`. `SH.modal.open` is the current dialog, `SH.modal.sync()` re-checks after you open or close one without a class change.
 - Animations of the ring use `transform` only and run only while it is visible; at intensity `min` nothing loops.
 
 ## Settings safety

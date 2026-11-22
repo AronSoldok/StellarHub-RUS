@@ -308,6 +308,37 @@ class Dialogs(unittest.TestCase):
                               r"err => \{ b\.disabled = false; SH\.toast\(jobErr\(err\), \{ ms: 7000, kind: 'error' \}\); loadRealSessions\(\)")
         self.assertIn("realInfo && realInfo.purgeKept", src)
 
+    def test_the_update_queue_reports_each_run_alone(self):
+        fin = js_function(read("js", "modules", "updater.js"), "finishedToast")
+        out = self.run_js(r"""
+          const toasts = []; SH.toast = x => toasts.push(x); const S = {};
+          const Q = { list: [{ st: 'done' }, { st: 'done' }, { st: 'fail' }], act: null };
+          """ + fin + r"""
+          finishedToast();
+          Q.list.push({ st: 'done' });   /* a second run with one more update */
+          finishedToast();
+          out(toasts);
+        """)
+        self.assertEqual(out, ["2 updates installed. 1 failed.", "1 update installed."])
+
+    def test_a_reused_confirmation_is_not_hidden_by_the_last_fade(self):
+        monitor = js_function(read("js", "modules", "monitor.js"), "confirmDlg")
+        out = self.run_js(r"""
+          const _t = t; const mv = document.body.appendChild(new El('section')); mv.setAttribute('id', 'v-monitor');
+          """ + monitor + r"""
+          confirmDlg({ title: 'End a', text: 'x', yes: 'End task' }, noop);
+          const dlg = $('.mdlg', mv); $('[data-d="no"]', dlg).click();          /* its fade ends on a later tick */
+          confirmDlg({ title: 'End b', text: 'x', yes: 'End task' }, noop);
+          await tick(20);
+          out(dlg.classList.contains('on'));
+        """)
+        self.assertTrue(out)
+
+    def test_a_new_footer_ignores_the_second_click_of_a_double_click(self):
+        src = read("js", "modules", "remover.js")
+        self.assertIn("function setFoot(html) { foot.innerHTML = html; footAt = performance.now();", src)
+        self.assertIn("foot.addEventListener('click', e => { if (performance.now() - footAt < 400) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);", src)
+
     def test_report_a_bug(self):
         shell = read("js", "shell.js")
         self.assertIn("const BUG_URL = 'https://github.com/estebanarosemena/StellarHub/issues/new';", shell)
