@@ -214,6 +214,29 @@ class SingleInstance(unittest.TestCase):
         self.assertFalse(os.path.exists(instance._port_file()))
 
 
+class EarlyExit(unittest.TestCase):
+    """A copy that has nothing more to do (the running copy showed itself, the elevated copy or the installer took
+    over) ends its process at once: an interpreter exit while the prefetch thread is loading .NET crashed in
+    pythonnet's shutdown (0xE0434352, a Windows Error Reporting crash at every second double click)."""
+
+    def test_handed_over_copies_end_at_once(self):
+        from stellarhub import app
+        for step in ("acquire", "start_background_work", "webview2_present"):
+            with mock.patch.object(app.startup, "run_command", return_value=False),                     mock.patch.object(app.startup, "prepare"), mock.patch.object(app.startup, "start_prefetch"),                     mock.patch.object(app.startup, "show_splash"), mock.patch.object(app.startup, "no_webview2"),                     mock.patch.object(app.startup, "acquire", return_value=step != "acquire"),                     mock.patch.object(app.startup, "start_background_work", return_value=step != "start_background_work"),                     mock.patch.object(app.startup, "webview2_present", return_value=False),                     mock.patch.object(app, "_leave", side_effect=SystemExit) as leave:
+                with self.assertRaises(SystemExit):
+                    app.main()
+            leave.assert_called_once()
+
+    def test_leave_terminates_instead_of_shutting_net_down(self):
+        from stellarhub import app
+        k32 = mock.Mock(**{"GetCurrentProcess.return_value": 12345})
+        with mock.patch.object(app.ctypes, "windll", mock.Mock(kernel32=k32)),                 mock.patch.object(app.os, "_exit") as exit_:
+            app._leave()
+        k32.TerminateProcess.assert_called_once()
+        self.assertEqual(k32.TerminateProcess.call_args[0][1], 0)
+        exit_.assert_called_once_with(0)  # (only reached if TerminateProcess could not end it)
+
+
 class Jobs(unittest.TestCase):
     def test_finished_jobs_need_no_timer_thread(self):
         from stellarhub.engine import jobs

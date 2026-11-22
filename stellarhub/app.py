@@ -7,6 +7,7 @@
   log         [phase] timeline and the log file  jssender   ordered evaluate_js per window
 
 The names below are re-exported because tests, the engine (autopilot, hangar read SETTINGS) and run.py use them."""
+import ctypes
 import json
 import os
 import sys
@@ -41,6 +42,26 @@ def _drop_test_profile(wait=3.0):
         shutil.rmtree(WEB_DIR, ignore_errors=True)
 
 
+def _leave():
+    """This copy has nothing more to do (the running copy was shown, the elevated copy or the installer took over).
+    The prefetch thread may be halfway through loading .NET (pythonnet) by now, and any normal exit, os._exit too,
+    shuts that runtime down: it then failed with an unhandled .NET exception ("GIL must always be released...", exit
+    code 0xE0434352), a crash report for Windows Error Reporting at every second double click, and such a copy stayed
+    in the background for up to 25 s. The process is ended at once instead, with nothing left to save."""
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    try:
+        k32 = ctypes.windll.kernel32
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        k32.TerminateProcess(ctypes.c_void_p(k32.GetCurrentProcess()), 0)
+    except Exception:
+        pass
+    os._exit(0)
+
+
 def main():
     if startup.run_command(sys.argv):
         return
@@ -48,12 +69,12 @@ def main():
     startup.start_prefetch()  # imports and the tray icon load while the start screen comes up
     startup.show_splash(launch)
     if not startup.acquire(launch):
-        return
+        _leave()
     if not startup.start_background_work(launch):
-        return  # the installer (or the new portable copy) takes over and opens StellarHub again, updated
+        _leave()  # the installer (or the new portable copy) takes over and opens StellarHub again, updated
     if not startup.webview2_present():
         startup.no_webview2()
-        return
+        _leave()
     import webview
     _phase("webview imported")
 
