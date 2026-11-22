@@ -340,7 +340,7 @@ Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"
 ; every library (15-20 s with only the start screen, seen in 2.0.0), so they are loaded once first, as the
 ; post-install step does for a normal install (whichever runs first, the second pass takes a fraction of a second)
 Filename: "{app}\{#AppExe}"; Parameters: "--warm"; StatusMsg: "{cm:StatusWarm}"; Check: IsSelfUpdate; Flags: runhidden waituntilterminated
-Filename: "{app}\{#AppExe}"; Check: IsSelfUpdate; Flags: nowait runasoriginaluser
+Filename: "{app}\{#AppExe}"; Check: ReopenAfterUpdate; Flags: nowait runasoriginaluser
 Filename: "{app}\{#AppExe}"; Description: "{cm:RunApp}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 Filename: "{#AppUrl}/releases/tag/v{#AppVersion}"; Description: "{cm:RunNotes,{#AppVersion}}"; Flags: shellexec nowait postinstall skipifsilent runasoriginaluser unchecked
 
@@ -706,6 +706,14 @@ begin
   Result := ExpandConstant('{param:SELFUPDATE|}') <> '';
 end;
 
+{ an elevated updater passes /NOREOPEN=1: from an elevated Setup, runasoriginaluser does nothing, so the app would
+  open elevated (or as the administrator who answered the prompt); the reopener StellarHub left, which runs as the
+  user, opens it instead }
+function ReopenAfterUpdate: Boolean;
+begin
+  Result := IsSelfUpdate and (ExpandConstant('{param:NOREOPEN|}') = '');
+end;
+
 function WantDesktopIcon: Boolean;
 begin
   Result := DesktopBox.Checked;
@@ -839,7 +847,7 @@ begin
   begin
     WriteSelfUpdateState('failed');
     { the installation did not finish: StellarHub (the previous version, put back above) opens again, and says so }
-    if IsSelfUpdate and FileExists(AppDirAtInstall + '\{#AppExe}') then
+    if ReopenAfterUpdate and FileExists(AppDirAtInstall + '\{#AppExe}') then
       ExecAsOriginalUser(AppDirAtInstall + '\{#AppExe}', '', AppDirAtInstall, SW_SHOWNORMAL, ewNoWait, Code);
   end;
 end;

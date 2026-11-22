@@ -461,7 +461,9 @@ def spawn_reopener(timeout_min=20):
           " try { $s = Get-Content -Raw -LiteralPath $f -ErrorAction Stop | ConvertFrom-Json } catch {} }"
           " until (($s -and ($s.st -eq 'done' -or $s.st -eq 'failed' -or $s.st -eq 'cancelled')) -or ((Get-Date) -gt $end));"
           " Start-Sleep -Milliseconds 400;"
-          " if (-not (Get-Process -Name StellarHub -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe })) { Start-Process -FilePath $exe }")
+          " $sid = (Get-Process -Id $PID).SessionId;"
+          " if (-not (Get-Process -Name StellarHub -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $sid -and"
+          " ($_.Path -eq $exe -or -not $_.Path) })) { Start-Process -FilePath $exe }")
     # a hidden console of its own (not DETACHED_PROCESS: PowerShell started without a console by a windowed app
     # dies right away), no inherited handles, and out of any job the app may be in, so it outlives the app
     args = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", ps]
@@ -653,6 +655,10 @@ def run_updater():
         if prefetch:  # downloaded and checked: it is installed the next time StellarHub opens (app.py)
             _write_state(st="staged", ver=ver)
             return 0
+        if _cancelled():  # Cancel pressed while the file was checked: never "ready" (the app would close for nothing)
+            _rm(exe)
+            _write_state(st="cancelled", ver=ver)
+            return 0
         portable = _portable()
         if portable:
             try:
@@ -682,6 +688,11 @@ def run_updater():
         args = [exe, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCANCEL",
                 "/LOG=" + os.path.join(d, "setup.log"), "/SELFUPDATE=" + state_path()]
         args.append("/ALLUSERS" if per_machine() else "/CURRENTUSER")
+        if _admin():
+            # Setup's "open StellarHub" would run elevated from here (Inno's runasoriginaluser does nothing when Setup
+            # itself was started elevated): the app would come back as administrator, or as the account that
+            # answered the prompt. The reopener the app left (spawn_reopener) runs as the user and opens it instead.
+            args.append("/NOREOPEN=1")
         args.append("/DIR=" + install_dir())
         proc = subprocess.Popen(args, creationflags=DETACHED, close_fds=True, cwd=d)
         if sp is not None:
@@ -691,10 +702,11 @@ def run_updater():
         _write_state(st="failed", why="error", error=str(e)[:200])
         if closed:
             _alert(tr("The update could not be installed. StellarHub will open again as it was."))
-            try:
-                subprocess.Popen([sys.executable], cwd=install_dir(), close_fds=True)
-            except OSError:
-                pass
+            if not _admin():  # elevated: the user's reopener opens it (as the user) once it reads "failed"
+                try:
+                    subprocess.Popen([sys.executable], cwd=install_dir(), close_fds=True)
+                except OSError:
+                    pass
         return 5
 
 
@@ -861,8 +873,13 @@ def finish_update(dst, pid):
                 json.dump(kw, fh)
         except OSError:
             pass
-    if not os.path.isfile(exe) or not os.path.realpath(src).startswith(dst + os.sep):
+    here = os.path.realpath(src)
+    if not os.path.isfile(exe) or not _under(here, dst) or os.path.normcase(here) == os.path.normcase(dst):
+        # (_under, not startswith(dst + os.sep): a copy at the root of a drive, E:\, has dst "E:\" already)
+        report(st="failed", why="apply", error="unexpected location")
         _alert(tr("The update could not be applied: this copy is not where it should be."))
+        if os.path.isfile(exe):
+            subprocess.Popen([exe], cwd=dst, close_fds=True)
         return 2  # only ever from <dst>\update\...
     sp = _splash("Installing the update…")  # up while the old copy closes and the files are put in place
     try:

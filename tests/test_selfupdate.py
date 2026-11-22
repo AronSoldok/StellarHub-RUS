@@ -205,6 +205,16 @@ class CheckAndDownload(ServedUpdates):
         self.assertNotIn("/VERYSILENT", args)
         self.assertIn("/CURRENTUSER", args)  # installed for one user: the update too
         self.assertTrue(any(a.startswith("/SELFUPDATE=") for a in args))
+        self.assertNotIn("/NOREOPEN=1", args)  # not elevated: Setup opens the app again itself, as the user
+
+    def test_an_elevated_updater_leaves_the_reopening_to_the_user(self):
+        """From an elevated updater, Setup's "open StellarHub" would run elevated (or as the administrator who
+        answered the prompt): it is told not to, and the reopener the app left (as the user) opens it."""
+        self.serve()
+        with mock.patch.object(su, "_admin", return_value=True), mock.patch.object(su, "per_machine", return_value=False):
+            code, st, popen = self.run_it()
+        self.assertEqual(code, 0)
+        self.assertIn("/NOREOPEN=1", popen.call_args[0][0])
 
     def test_an_unsigned_release_is_never_downloaded_or_run(self):
         self.serve(sig=None)  # no .sig asset: pick() gives nothing
@@ -437,7 +447,14 @@ class PortableFinish(unittest.TestCase):
         open(os.path.join(dst, "StellarHub.exe"), "w").close()
         with mock.patch.object(su, "install_dir", lambda: os.path.join(root, "elsewhere")), mock.patch.object(su.subprocess, "Popen") as popen:
             self.assertEqual(su.finish_update(dst, "1"), 2)
-        popen.assert_not_called()
+        # nothing is copied; the old program (which closed for the update) opens again as it was
+        self.assertEqual(popen.call_args[0][0], [os.path.join(dst, "StellarHub.exe")])
+        self.assertFalse([n for n in os.listdir(dst) if n.endswith(".old")])
+
+    def test_a_copy_at_the_root_of_a_drive_can_update(self):
+        """A portable copy in E:\\ : dst + os.sep was "E:\\\\" and never matched, so it could never update."""
+        self.assertTrue(su._under("E:\\update\\new", "E:\\"))
+        self.assertFalse(su._under("F:\\update\\new", "E:\\"))
 
 
 class InstallModes(ServedUpdates):

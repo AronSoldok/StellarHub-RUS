@@ -108,6 +108,31 @@ class SingleInstance(unittest.TestCase):
             self.assertLess(time.time() - t, 4)
         self.assertEqual(FakeApi.shown, 1)
 
+    def test_a_quitting_copy_does_not_answer_show(self):
+        """Quit, then open StellarHub again within a second: the copy that is closing must not answer "ok" (the new
+        one would exit thinking it was shown, and nothing would open); it says nothing and the new one waits."""
+        class Quitting:
+            _quitting = True
+            shown = 0
+
+            def show_main(self):
+                Quitting.shown += 1
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        with mock.patch.object(instance, "SINGLE_PORT", port):
+            instance.listen_single(Quitting())
+            self.assertFalse(instance.ask_running_to_show(0.6))
+        self.assertEqual(Quitting.shown, 0)
+
+    def test_a_copy_that_just_started_is_given_a_minute(self):
+        young = mock.Mock(create_time=lambda: time.time() - 5)
+        old = mock.Mock(create_time=lambda: time.time() - 600)
+        self.assertLess(instance._age(young), 10)
+        self.assertGreater(instance._age(old), 500)
+        self.assertEqual(instance._age(mock.Mock(create_time=mock.Mock(side_effect=OSError))), 60.0)
+
 
 class Jobs(unittest.TestCase):
     def test_finished_jobs_need_no_timer_thread(self):

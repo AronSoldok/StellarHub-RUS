@@ -61,10 +61,12 @@ def listen_single(api):
                     conn.settimeout(2)  # a client that connects and says nothing must not block "show" or "quit"
                     msg = conn.recv(16)
                     if msg.startswith(b"show"):
+                        if getattr(api, "_quitting", False):
+                            continue  # no answer: the new copy waits for the lock this one is about to free
                         t = threading.Thread(target=api.show_main, daemon=True, name="single-show")
                         t.start()
                         t.join(1.2)  # a window thread that is stuck must not keep the other copy waiting
-                        if not t.is_alive():
+                        if not t.is_alive() and not getattr(api, "_quitting", False):
                             conn.sendall(b"ok")
                     elif msg.startswith(b"quit"):  # the installer closes the running copy before updating it
                         conn.sendall(b"bye")
@@ -173,6 +175,14 @@ def other_copies():
     return out
 
 
+def _age(pr):
+    """Seconds since the process started (0 when unknown, so it is not given extra time)."""
+    try:
+        return max(0.0, time.time() - pr.create_time())
+    except Exception:
+        return 60.0
+
+
 def take_over_running_copy():
     """The single-instance lock is taken. Returns True when this copy got it (and must start), False when it has
     nothing more to do: the running copy showed itself, or the user was told why not.
@@ -215,6 +225,15 @@ def take_over_running_copy():
             time.sleep(0.3)
     except Exception:
         pass
+    # a copy started less than a minute ago may just be slow to start (a cold boot, started in the tray with no start
+    # screen): it gets that minute before it is taken for stuck
+    end = time.monotonic() + max([0.0] + [60 - _age(p) for p in others])
+    while time.monotonic() < end:
+        if claim_single_instance(0):
+            return True
+        if ask_running_to_show(0.6):
+            return False
+        time.sleep(0.3)
     print(f"[start] the running copy does not answer ({[p.pid for p in others]}): ending it", flush=True)
     try:
         from . import splash
