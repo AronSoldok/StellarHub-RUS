@@ -243,15 +243,16 @@ def install_staged_update(splash_on):
         return False
     try:
         from .engine import selfupdate
-        if not selfupdate.staged():
+        ver = selfupdate.staged()
+        if not ver:
             return False
         try:
-            auto = settings.load_strict().get("autoUpdateFeatures")
+            prefs = settings.load_strict()
         except OSError as e:  # unreadable for now: the choice is unknown, so nothing is installed and nothing is said
             print("staged update: the settings can't be read right now:", e)
             return False
-        if auto is False:
-            return False
+        if prefs.get("autoUpdateFeatures") is False or prefs.get("skipVersion") == ver:
+            return False  # off, or the user chose to skip this version after it was downloaded
         say = None
         if splash_on:
             from . import splash

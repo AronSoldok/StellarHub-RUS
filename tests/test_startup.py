@@ -264,6 +264,18 @@ class StagedUpdateAtStart(unittest.TestCase):
         fatal.assert_not_called()
         apply.assert_not_called()
 
+    def test_a_skipped_version_is_not_installed_even_if_it_was_already_downloaded(self):
+        from stellarhub import config, settings, startup
+        from stellarhub.engine import selfupdate
+        for prefs, installs in (({"skipVersion": "9.9.9"}, False), ({"skipVersion": "9.9.8"}, True), ({}, True),
+                                ({"autoUpdateFeatures": False}, False)):
+            with mock.patch.object(config, "FROZEN", True), mock.patch.object(config, "ISOLATED", False), \
+                    mock.patch.object(selfupdate, "staged", return_value="9.9.9"), \
+                    mock.patch.object(settings, "load_strict", return_value=prefs), \
+                    mock.patch.object(selfupdate, "apply_staged_at_start", return_value=True) as apply:
+                self.assertEqual(startup.install_staged_update(False), installs, prefs)
+                self.assertEqual(apply.called, installs, prefs)
+
 
 if __name__ == "__main__":
     unittest.main()
