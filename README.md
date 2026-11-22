@@ -196,9 +196,9 @@ every later update is silent; uninstalling removes it.
 | New features | 1.**2**.0 | Downloads in the background and installs the next time you open StellarHub (*Settings > Updates > Install new features automatically*) |
 | Small fixes | 1.2.**3** | Never interrupts you: it waits in *Settings > Updates* |
 
-Every big and feature version also gets a **name**: a figure of Greek or Roman mythology that is also a star, moon
-or constellation, short and easy to say. **2.0.0 was _Atlas_, 2.1.0 is _Orion_**; small fixes keep the name of their
-version. It shows in a corner of every view (`v2.1.0 · ORION`) and on the start screen, engraved on the planet.
+Every big version also gets a **name**: a figure of Greek or Roman mythology that is also a star, moon or
+constellation, short and easy to say. **2.x is _Atlas_**; feature and fix versions keep the name of their big
+version. It shows in a corner of every view (`v2.1.0 · ATLAS`) and on the start screen, engraved on the planet.
 
 #### Why an antivirus may flag it
 

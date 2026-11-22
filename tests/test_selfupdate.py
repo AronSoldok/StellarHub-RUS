@@ -196,7 +196,8 @@ class CheckAndDownload(ServedUpdates):
 
     def test_updater_verifies_and_hands_over_to_the_installer(self):
         self.serve()
-        code, st, popen = self.run_it()
+        with mock.patch.object(su, "_admin", return_value=False):  # CI runners are elevated
+            code, st, popen = self.run_it()
         self.assertEqual(code, 0)
         self.assertEqual(st["st"], "installing")
         args = popen.call_args[0][0]
@@ -447,8 +448,9 @@ class PortableFinish(unittest.TestCase):
         open(os.path.join(dst, "StellarHub.exe"), "w").close()
         with mock.patch.object(su, "install_dir", lambda: os.path.join(root, "elsewhere")), mock.patch.object(su.subprocess, "Popen") as popen:
             self.assertEqual(su.finish_update(dst, "1"), 2)
-        # nothing is copied; the old program (which closed for the update) opens again as it was
-        self.assertEqual(popen.call_args[0][0], [os.path.join(dst, "StellarHub.exe")])
+        # nothing is copied; the old program (which closed for the update) opens again as it was (by its real
+        # path: where the temp folder is a short 8.3 name, like CI's RUNNER~1, the two spellings differ)
+        self.assertEqual(popen.call_args[0][0], [os.path.join(os.path.realpath(dst), "StellarHub.exe")])
         self.assertFalse([n for n in os.listdir(dst) if n.endswith(".old")])
 
     def test_a_copy_at_the_root_of_a_drive_can_update(self):
