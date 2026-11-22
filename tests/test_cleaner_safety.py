@@ -205,10 +205,15 @@ class TempCleanerSafety(unittest.TestCase):
     def test_short_name_temp_root_still_sees_the_programs_using_it(self):
         # %TEMP% is often C:\Users\JOHNSM~1\...; processes report the long name: both must be the same folder
         import ctypes
-        long_root = os.path.join(self.root, "A temp folder with a long name")
+        made = os.path.join(self.root, "A temp folder with a long name")
+        _touch(os.path.join(made, "busy", "data.bin"), 30)
+        _age_dirs(made, 30)
+        # self.root comes from this process's own %TEMP%, itself a short name on some PCs (and on CI): the long form
+        # must be long all the way, as processes report it, or the test compares two short spellings
+        buf = ctypes.create_unicode_buffer(1024)
+        n = ctypes.windll.kernel32.GetLongPathNameW(made, buf, 1024)
+        long_root = buf.value if 0 < n < 1024 else made
         work = os.path.join(long_root, "busy")
-        _touch(os.path.join(work, "data.bin"), 30)
-        _age_dirs(long_root, 30)
         buf = ctypes.create_unicode_buffer(1024)
         n = ctypes.windll.kernel32.GetShortPathNameW(long_root, buf, 1024)
         short_root = buf.value if 0 < n < 1024 else long_root

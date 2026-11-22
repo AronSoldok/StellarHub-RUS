@@ -341,6 +341,30 @@ class ReparseUnknown(unittest.TestCase):
             self.assertEqual(fh.read(), "keep me")
 
 
+class PackagedRestore(unittest.TestCase):
+    def test_powershell_gets_long_names(self):
+        # with the Store Python the move back goes through Windows PowerShell, whose Move-Item can't find 8.3 paths
+        import ctypes
+        tmp = tempfile.mkdtemp(prefix="mrq_pk_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        longd = os.path.join(tmp, "A folder with a long name")
+        os.makedirs(longd)
+        src = os.path.join(longd, "stored.bin")
+        with open(src, "w") as fh:
+            fh.write("x")
+        buf = ctypes.create_unicode_buffer(1024)
+        n = ctypes.windll.kernel32.GetShortPathNameW(longd, buf, 1024)
+        if not 0 < n < 1024 or "~" not in buf.value:
+            self.skipTest("8.3 names are turned off on this drive")
+        short = buf.value
+        with mock.patch.object(quarantine.paths, "running_packaged", return_value=True), \
+                mock.patch.object(quarantine.system, "powershell", return_value=(0, "")) as ps:
+            quarantine._real_move(os.path.join(short, "stored.bin"), os.path.join(short, "new", "back.bin"))
+        cmd = ps.call_args[0][0]
+        self.assertNotIn("~", cmd)
+        self.assertIn(os.path.join(paths._long_name(longd), "new", "back.bin").replace("'", "''"), cmd)
+
+
 class BatchUninstall(unittest.TestCase):
     def test_one_unknown_program_does_not_stop_the_batch(self):
         from stellarhub.engine import remover

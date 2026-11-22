@@ -209,6 +209,9 @@ def _real_move(src, dst):
     """Move back to its place. With the Store Python, AppData is virtualized: a child process is used."""
     os.makedirs(os.path.dirname(dst), exist_ok=True) if not paths.running_packaged() else None
     if paths.running_packaged():
+        # Windows PowerShell's Move-Item can't find an 8.3 path ("No object exists at C:\Users\JOHNSM~1"): a leftover
+        # found through a short %TEMP%, or a short data folder, failed to restore. Long names (the part that exists).
+        src, dst = paths._long_name(src), paths._long_name(dst)
         ps_src, ps_dst = src.replace("'", "''"), dst.replace("'", "''")
         code, out = system.powershell(
             f"New-Item -ItemType Directory -Force -Path (Split-Path -LiteralPath '{ps_dst}') | Out-Null; "
