@@ -409,9 +409,10 @@ begin
                  HasWebView2In(HKCU, WebView2Key));
 end;
 
-{ Where the WebView2 bootstrapper runs from. {tmp} is inside the user's %TEMP%, which any program running as the user
-  can change: fine for a per-user install (Setup is not elevated), but an all-users install runs elevated, so there it
-  is copied into {app}\update (Program Files: administrators only) and checked and run from that copy. }
+{ Where the WebView2 bootstrapper runs from. Setup's temporary folder is inside the user's %TEMP%, which any program
+  running as the user can change: fine for a per-user install (Setup is not elevated), but an all-users install runs
+  elevated, so there it is copied into the update folder of the install folder (Program Files: administrators only)
+  and checked and run from that copy. }
 function WebView2Setup(Param: String): String;
 begin
   if IsAdminInstallMode then
@@ -808,7 +809,7 @@ begin
       Exec(Exe, '--admin-task ' + Args, '', SW_HIDE, ewWaitUntilTerminated, Code);
     end
     else
-      Log('Installing for this user only: StellarHub sets up its administrator task the first time it opens.');
+      Log('Installing for this user only: no administrator task (StellarHub asks Windows each time it opens as administrator).');
   end;
 
   { no scheduled task is made here any more: a per-user install updates itself directly, and an all-users install

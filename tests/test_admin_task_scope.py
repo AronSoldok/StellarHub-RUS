@@ -188,6 +188,13 @@ class Installer(unittest.TestCase):
         self.assertIn("FileCopy(", trusted)  # checked on the copy it then runs
         self.assertIn("F := WebView2Setup('')", trusted)
 
+    def test_code_comments_hold_no_braces(self):
+        """A { comment } in [Code] ends at the first closing brace: "{tmp}" inside one broke the compile."""
+        code = self.iss[re.search(r"^\[Code\]$", self.iss, re.M).start():]
+        code = re.sub(r"'[^'\n]*'", "''", code)  # strings may hold braces
+        for m in re.finditer(r"\{([^}]*)\}", code):
+            self.assertNotIn("{", m.group(1), m.group(0)[:80])
+
     def test_powershell_only_loads_its_own_modules(self):
         trusted = re.search(r"function WebView2SetupTrusted: Boolean;(.*?)\nend;", self.iss, re.S).group(1)
         self.assertIn("$env:PSModulePath = $PSHOME", trusted)
