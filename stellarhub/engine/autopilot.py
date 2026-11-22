@@ -1546,6 +1546,14 @@ def _worker():
 
 
 def _tick():
+    # The whole check holds the lock: it reads state.json, changes it and saves it at the end, and run() (on a job
+    # thread) records each run's "last" time and "try again tomorrow" in the same file. A run that ended in between
+    # had its record erased by this save (notSince saw "never ran", the retry the next day was lost).
+    with _lock:
+        _tick_locked()
+
+
+def _tick_locked():
     restore_mute()
     s = _settings()
     routines = [r for r in (s.get("autopilotRoutines") or []) if isinstance(r, dict)]
