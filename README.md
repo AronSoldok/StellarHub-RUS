@@ -197,8 +197,8 @@ every later update is silent; uninstalling removes it.
 | Small fixes | 1.2.**3** | Never interrupts you: it waits in *Settings > Updates* |
 
 Every big and feature version also gets a **name**: a figure of Greek or Roman mythology that is also a star, moon
-or constellation, short and easy to say. **2.0.0 is _Atlas_**; small fixes keep the name of their version. It shows in
-a corner of every view (`v2.0.0 · ATLAS`) and on the start screen, engraved on the planet.
+or constellation, short and easy to say. **2.0.0 was _Atlas_, 2.1.0 is _Orion_**; small fixes keep the name of their
+version. It shows in a corner of every view (`v2.1.0 · ORION`) and on the start screen, engraved on the planet.
 
 #### Why an antivirus may flag it
 
@@ -410,6 +410,8 @@ designs/                   the early design explorations
 - [x] Controller navigation and a controller tester (2.0.0)
 - [x] Desktop-tower 3D view, lighter mode for battery and integrated graphics (2.0.0)
 - [x] Long work followed from anywhere: dock rings, Home, taskbar progress and completion notices (2.0.0)
+- [x] Handheld gaming PCs and small screens: compact scrolling layout, full controller navigation, handheld 3D view (2.1.0)
+- [x] 3D views for tablets, all-in-ones and mini PCs (2.1.0)
 - [ ] Code-signed releases (SignPath Foundation)
 
 ## 🤝 Contributing
