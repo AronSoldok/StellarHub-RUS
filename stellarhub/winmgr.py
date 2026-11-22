@@ -148,11 +148,14 @@ def watch_ui(window, busy_fn=None, every=2.0, limit=8.0):
     threading.Thread(target=run, daemon=True, name="ui-watchdog").start()
 
 
-def wv_visible(window, on):
+def wv_visible(window, on, trim=False):
     """Tells WebView2 whether the window can be seen. A WebView2 whose window is hidden in the tray keeps
     painting and running requestAnimationFrame at full speed (measured: 11% GPU and over 100% CPU for a window
     nobody sees) unless its controller gets IsVisible = False. The WinForms control keeps that controller in a
-    private field, and does not update it when the form is hidden."""
+    private field, and does not update it when the form is hidden.
+    trim: the window is put away for a while (the main window hidden in the tray): WebView2 is also asked to keep
+    its memory low (MemoryUsageTargetLevel.Low, Microsoft's advice for an inactive WebView), and back to Normal as
+    soon as trim is False again. Scripts keep running either way."""
     if window is None:
         return
     try:
@@ -169,7 +172,23 @@ def wv_visible(window, on):
                     c.IsVisible = on
             except Exception as e:
                 print("webview visibility:", e)
+            _memory_target(form, trim)
         form.BeginInvoke(Action(apply))
+    except Exception:
+        pass
+
+
+def _memory_target(form, low):
+    """WebView2's memory target (window thread): Low while put away, Normal otherwise. A runtime without it is left
+    as it is."""
+    try:
+        core = form.webview.CoreWebView2
+        if core is None:
+            return
+        from Microsoft.Web.WebView2.Core import CoreWebView2MemoryUsageTargetLevel as Level
+        want = Level.Low if low else Level.Normal
+        if core.MemoryUsageTargetLevel != want:
+            core.MemoryUsageTargetLevel = want
     except Exception:
         pass
 

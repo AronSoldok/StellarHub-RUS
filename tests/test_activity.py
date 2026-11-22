@@ -489,6 +489,19 @@ class ApiMethods(unittest.TestCase):
         self.assertIn("shown: false", shown[1])
         self.assertIn("shown: true", shown[2])
 
+    def test_hidden_in_the_tray_the_page_is_asked_to_keep_its_memory_low(self):
+        """Hidden in the tray, WebView2 is told to keep its memory low (measured: the process tree's working set
+        went from ~660 MB to ~180-560 MB); a minimized window comes back often and keeps its memory."""
+        a = self.make()
+        a._js = lambda *x, **k: None
+        a._sampler = None
+        with mock.patch("stellarhub.winmgr.wv_visible") as vis:
+            for visible, minimized in ((True, False), (True, True), (False, False)):
+                a._visible, a._minimized = visible, minimized
+                a._tele_refresh()
+        main = [c for c in vis.call_args_list if c[0][0] is a._window]
+        self.assertEqual([(c[0][1], c[1].get("trim", False)) for c in main], [(True, False), (False, False), (False, True)])
+
     def test_notify_activity_rejects_odd_names(self):
         a = self.make()
         a._tray = mock.Mock()

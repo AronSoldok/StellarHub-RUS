@@ -83,7 +83,7 @@ class EngineApi:
 
     def _tele_refresh(self):
         shown = self._visible and not self._minimized
-        winmgr.wv_visible(self._window, shown)
+        winmgr.wv_visible(self._window, shown, trim=not self._visible)  # (minimized: back soon, not trimmed)
         if getattr(self, "_told_shown", None) != shown:
             # the page cannot rely on document.hidden for this (WebView2 may keep it "visible" while the window is
             # hidden or minimized): SH.activity uses it to tell the end of long work in a Windows notification instead
