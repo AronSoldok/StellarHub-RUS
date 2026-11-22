@@ -19,6 +19,28 @@ def work_area():
         return None
 
 
+# The main window in logical px (pywebview multiplies them by the scale). Below 1100 x 700 CSS px the interface uses
+# its compact layout (the page scrolls), so the window may be smaller than that.
+MAIN_SIZE, MAIN_MIN = (1600, 960), (1024, 576)
+
+
+def main_window_sizes(work=None, scale=None):
+    """(size, min_size) of the main window in logical px, both inside the primary monitor's work area. A minimum
+    larger than the screen is never allowed: 1100 x 700 at 150 % on a handheld's 1080p screen is 1650 x 1050 device
+    px, taller than its 1008 px work area, and Windows would keep the window that tall, its bottom (the dock with it)
+    off the screen."""
+    if work is None:
+        wa = work_area()
+        work = (wa.right - wa.left, wa.bottom - wa.top) if wa else None
+    if scale is None:
+        scale = sys_scale()
+    if not work or work[0] <= 0 or work[1] <= 0 or not scale or scale <= 0:
+        return MAIN_SIZE, MAIN_MIN
+    ww, wh = int(work[0] / scale), int(work[1] / scale)
+    size = (min(MAIN_SIZE[0], ww), min(MAIN_SIZE[1], wh))
+    return size, (min(MAIN_MIN[0], ww), min(MAIN_MIN[1], wh))
+
+
 def tool_window_style(hwnd):
     """Tool window: no taskbar button, no Alt+Tab, shows on every virtual desktop. Raises on failure."""
     u = ctypes.windll.user32

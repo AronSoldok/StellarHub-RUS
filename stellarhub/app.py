@@ -48,9 +48,10 @@ def main():
     from .chrome import Chrome
     _phase("chrome imported")
 
+    (win_w, win_h), win_min = winmgr.main_window_sizes()
     window = webview.create_window(
         title, url=str(Path(config.UI_DIR) / "index.html"), js_api=api,
-        width=1600, height=960, min_size=(1100, 700), frameless=True, easy_drag=False, shadow=True,
+        width=win_w, height=win_h, min_size=win_min, frameless=True, easy_drag=False, shadow=True,
         background_color=BG, text_select=False, hidden=launch.hidden,
         x=-32000 if launch.splash else None, y=-32000 if launch.splash else None,
     )

@@ -443,7 +443,7 @@ SH.openPalette = openPal;
 
 /* ================= settings ================= */
 const ACCENTS = [['#FF7A66', '#9ED6FF', SH.t('Coral and ice')], ['#9ED6FF', '#FF9E7A', SH.t('Ice and coral')], ['#F4C26B', '#8FD3E8', SH.t('Amber')], ['#7FE0B4', '#FFB08A', SH.t('Mint')], ['#FF8FB1', '#A6E3FF', SH.t('Pink')], ['#C9D4E8', '#FF7A66', SH.t('Silver')]];
-const ZOOMS = [['1', '100 %'], ['1.1', '110 %'], ['1.15', '115 %'], ['1.25', '125 %'], ['1.4', '140 %']];
+const ZOOMS = [['0.8', '80 %'], ['0.9', '90 %'], ['1', '100 %'], ['1.1', '110 %'], ['1.15', '115 %'], ['1.25', '125 %'], ['1.4', '140 %']];
 /* language picker: flags drawn as small SVGs (no emoji, which Windows shows as letters) */
 const STAR = (cx, cy, r, rot = 0) => { let d = ''; for (let i = 0; i < 10; i++) { const a = rot - Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .4 : r; d += (i ? 'L' : 'M') + (cx + rr * Math.cos(a)).toFixed(2) + ' ' + (cy + rr * Math.sin(a)).toFixed(2); } return d + 'Z'; };
 const FLAGS = {
@@ -692,28 +692,22 @@ function alwaysAdminOn() {
 }
 /* what Reset settings keeps: the user's data, not preferences (engine side: app.py reset_settings, same list) */
 const RESET_KEEP = ['autopilotRoutines', 'autopilotLog', 'autopilotSchema', 'autopilotNotify', 'activity', 'pending', 'hangarKits', 'updIgnored', 'updSchedule', 'cleanExclusions', 'testerKbMissing', 'cpsBest', 'uiPort', 'language'];
-/* Automatic size: the largest zoom at which the layouts still have the room they are designed for, measured on
-   the window itself (not the screen), so it adapts when the window is resized or moved to another monitor. */
-const DESIGN_W = 1440, DESIGN_H = 820;
-/* ...and the least room any layout can work with. A size the user picked is capped so the window never has
-   less than this many CSS pixels (at the minimum window, 1100 x 700, 125% would leave 880 x 560: lists with one
-   row, the dock over the content). The cap is temporary: the choice is kept and applies again in a bigger window. */
-const MIN_VW = 1000, MIN_VH = 640, ZSTEPS = [1.4, 1.25, 1.15, 1.1, 1, .92, .85];
+/* Interface size: the rules are in js/zoom.js (SH.zoomRule, tested in tests/test_zoom.py). Automatic never leaves the
+   layouts less room than they are designed for when a smaller zoom can give it to them (a handheld's 1080p screen at
+   150 % gets 90 %), and grows only where there is room to spare. Measured on the window itself (not the screen), so it
+   adapts when the window is resized or moved to another monitor. A size the user picked is capped while the window is
+   too small for it: the choice is kept and applies again in a bigger window. */
 let autoZoom = 1, curZoom = 1, zoomCapped = 0;
 function effectiveZoom() {
   zoomCapped = 0;
   if (isAutoZoom()) return autoZoom;
-  const want = +S().zoom, w = innerWidth * curZoom, h = innerHeight * curZoom; // the window's size at 100 %
-  const z = ZSTEPS.find(x => x <= want && w / x >= MIN_VW && h / x >= MIN_VH) || ZSTEPS[ZSTEPS.length - 1];
+  const want = +S().zoom, z = SH.zoomRule.capped(want, innerWidth * curZoom, innerHeight * curZoom); // the window's size at 100 %
   if (z < want) zoomCapped = z;
-  return Math.min(z, want);
+  return z;
 }
 function zoomNote() { return zoomCapped ? SH.t('Reduced to {pct}% while the window is this small, so everything fits.', { pct: Math.round(zoomCapped * 100) }) : ''; }
 function paintZoomNote() { const n = $('#zoomNote'); if (n) n.textContent = zoomNote(); }
-function computeAutoZoom() {
-  const w = innerWidth * curZoom, h = innerHeight * curZoom; // the window's size at 100 %
-  autoZoom = [1.25, 1.15, 1.1, 1, .92, .85].find(z => w / z >= DESIGN_W && h / z >= DESIGN_H) || .85;
-}
+function computeAutoZoom() { autoZoom = SH.zoomRule.auto(innerWidth * curZoom, innerHeight * curZoom); }
 let zoomTimer = 0;
 addEventListener('resize', () => {
   clearTimeout(zoomTimer);
