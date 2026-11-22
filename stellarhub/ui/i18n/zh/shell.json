@@ -433,5 +433,9 @@
   "Notification sound": "通知声音",
   "The notification sound is “UI_Single_Set 2_01” from “UI Utility Pack Vol 1” by JC Sounds on OpenGameArt, licensed under CC BY 4.0; trimmed, faded and loudness-normalized.": "通知声音是 JC Sounds 在 OpenGameArt 上发布的“UI Utility Pack Vol 1”中的“UI_Single_Set 2_01”，采用 CC BY 4.0 许可；已剪辑、添加淡出并统一响度。",
   "Analyze automatically when opening a module": "打开模块时自动分析",
-  "Storage Checker, Super Optimizer, Privacy & Security and Program Updater check the PC as soon as you open them. Off: they show the last results and wait for you to press Analyze.": "存储分析、超级优化、隐私和安全性和程序更新会在打开时立即检查电脑。关闭时：它们显示上次的结果，等你点击“扫描”。"
+  "Storage Checker, Super Optimizer, Privacy & Security and Program Updater check the PC as soon as you open them. Off: they show the last results and wait for you to press Analyze.": "存储分析、超级优化、隐私和安全性和程序更新会在打开时立即检查电脑。关闭时：它们显示上次的结果，等你点击“扫描”。",
+  "Report a bug": "报告错误",
+  "Found a bug?": "发现错误了吗？",
+  "Report it on GitHub: say what you were doing and, if you can, add a screenshot.": "在 GitHub 上报告：说说你当时在做什么，如果可以，请附上截图。",
+  "Report on GitHub": "在 GitHub 上报告"
 }

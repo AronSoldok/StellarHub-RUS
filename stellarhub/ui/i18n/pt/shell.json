@@ -433,5 +433,9 @@
   "Notification sound": "Som de notificação",
   "The notification sound is “UI_Single_Set 2_01” from “UI Utility Pack Vol 1” by JC Sounds on OpenGameArt, licensed under CC BY 4.0; trimmed, faded and loudness-normalized.": "O som de notificação é “UI_Single_Set 2_01”, de “UI Utility Pack Vol 1” de JC Sounds no OpenGameArt, licenciado sob CC BY 4.0; cortado, com fade e com o volume normalizado.",
   "Analyze automatically when opening a module": "Analisar automaticamente ao abrir um módulo",
-  "Storage Checker, Super Optimizer, Privacy & Security and Program Updater check the PC as soon as you open them. Off: they show the last results and wait for you to press Analyze.": "Analisador de armazenamento, Super Otimizador, Privacidade e segurança e Atualizador de programas verificam o PC assim que você os abre. Desativado: mostram os últimos resultados e esperam você clicar em Verificar."
+  "Storage Checker, Super Optimizer, Privacy & Security and Program Updater check the PC as soon as you open them. Off: they show the last results and wait for you to press Analyze.": "Analisador de armazenamento, Super Otimizador, Privacidade e segurança e Atualizador de programas verificam o PC assim que você os abre. Desativado: mostram os últimos resultados e esperam você clicar em Verificar.",
+  "Report a bug": "Relatar um erro",
+  "Found a bug?": "Encontrou um erro?",
+  "Report it on GitHub: say what you were doing and, if you can, add a screenshot.": "Relate no GitHub: conte o que você estava fazendo e, se puder, adicione uma captura de tela.",
+  "Report on GitHub": "Relatar no GitHub"
 }

@@ -301,6 +301,19 @@ class Dialogs(unittest.TestCase):
         self.assertEqual(out, ["err:Windows said no", "err:x", "err:Something went wrong.", "err:Something went wrong.", "admin", "ok:Done"])
         self.assertIn("r && r.backup ? { kind: 'success', action:", src)   # Undo only with a backup
 
+    def test_report_a_bug(self):
+        shell = read("js", "shell.js")
+        self.assertIn("const BUG_URL = 'https://github.com/estebanarosemena/StellarHub/issues/new';", shell)
+        self.assertIn("SH.call('open_url', BUG_URL) === undefined) window.open(BUG_URL)", shell)
+        self.assertRegex(read("index.html"), r'<button class="bug-btn" id="bugBtn" type="button" aria-label="Report a bug" title="Report a bug"[^>]*data-t-attr="aria-label title"')
+        for f, pat in (("gamepad.js", r"const OVERLAYS = \[(.*?)\];"), ("gamepad.js", r"const MODALS = \[(.*?)\];"),
+                       ("sounds.js", r"const MODALS = '(.*?)';")):
+            self.assertIn(".bug-pop", re.search(pat, read("js", f)).group(1), f)
+        self.assertIn(".ver-tag", re.search(r"const FLOATING = '(.*?)';", read("js", "gamepad.js")).group(1))
+        css = read("css", "base.css")
+        self.assertRegex(css, r"\.ver-tag\{[^}]*pointer-events:none")
+        self.assertRegex(css, r"\.bug-btn\{pointer-events:auto")
+
     def test_update_confirmation_is_a_known_dialog(self):
         for f, pat in (("gamepad.js", r"const OVERLAYS = \[(.*?)\];"), ("gamepad.js", r"const MODALS = \[(.*?)\];"),
                        ("sounds.js", r"const MODALS = '(.*?)';")):

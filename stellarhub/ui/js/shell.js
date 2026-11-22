@@ -922,6 +922,42 @@ async function renderLangs() {
 }
 SH.toast = toast;
 
+/* ================= report a bug: the small icon to the left of the version (bottom left) ================= */
+/* A popover above it says how, and "Report on GitHub" opens a new issue in the browser. It is a dialog like the
+   others (gamepad.js OVERLAYS / MODALS, sounds.js MODALS): focus trap, B or Esc or a click outside closes it. */
+SH.icons.add({ bugreport: '<rect x="4" y="4" width="16" height="16" rx="4.5"/><path d="M12 8v5M12 16.25v.01"/>' });
+const BUG_URL = 'https://github.com/estebanarosemena/StellarHub/issues/new';
+const bugBtn = $('#bugBtn');
+let bugPop = null;
+function bugClose() {
+  const p = bugPop; if (!p) return; bugPop = null;
+  removeEventListener('keydown', bugKey, true); removeEventListener('pointerdown', bugOut, true);
+  bugBtn.setAttribute('aria-expanded', 'false');
+  anim(p, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(0,6px,0) scale(.98)' }], { d: 160 }).finished.then(() => p.remove()).catch(() => p.remove());
+}
+function bugKey(e) { if (e.key === 'Escape' && bugPop && !state.palOpen && !state.setOpen) { e.preventDefault(); e.stopImmediatePropagation(); bugClose(); } }
+function bugOut(e) { if (bugPop && !bugPop.contains(e.target) && !bugBtn.contains(e.target)) bugClose(); }
+function bugOpen() {
+  if (bugPop) { bugClose(); return; }
+  const p = document.createElement('div'); p.className = 'bug-pop pan';
+  p.setAttribute('role', 'dialog'); p.setAttribute('aria-modal', 'true'); p.setAttribute('aria-labelledby', 'bugT');
+  p.innerHTML = `<h3 id="bugT">${esc(SH.t('Found a bug?'))}</h3><p>${esc(SH.t('Report it on GitHub: say what you were doing and, if you can, add a screenshot.'))}</p>
+    <div class="bug-acts"><button class="btn ghost sm" data-close>${esc(SH.t('Not now'))}</button><button class="btn pri sm" data-bug-go>${ic('external')}${esc(SH.t('Report on GitHub'))}</button></div>`;
+  document.body.appendChild(p); bugPop = p; bugBtn.setAttribute('aria-expanded', 'true');
+  /* above the button, and above the dock and the controller's hint bar where they reach this far left */
+  const pr = p.getBoundingClientRect(); let top = pr.top;
+  for (const o of [$('#dock'), $('#padHints')]) { const r = o && o.getBoundingClientRect(); if (r && r.width && r.height && r.left < pr.right + 8 && r.top < pr.bottom + 8) top = Math.min(top, r.top - 10 - pr.height); }
+  if (top < pr.top) p.style.bottom = `${Math.max(44, Math.round(innerHeight - top - pr.height))}px`;
+  anim(p, [{ opacity: 0, transform: 'translate3d(0,8px,0) scale(.97)' }, { opacity: 1, transform: 'none' }], { d: 260, e: EASE.spring });
+  addEventListener('keydown', bugKey, true); addEventListener('pointerdown', bugOut, true);
+  p.addEventListener('click', async e => {
+    if (e.target.closest('[data-close]')) { bugClose(); return; }
+    if (e.target.closest('[data-bug-go]')) { bugClose(); if (await SH.call('open_url', BUG_URL) === undefined) window.open(BUG_URL); }
+  });
+  setTimeout(() => { const b = $('[data-bug-go]', p); if (b && bugPop === p) b.focus({ preventScroll: true }); }, 40);
+}
+if (bugBtn) { bugBtn.innerHTML = ic('bugreport'); bugBtn.addEventListener('click', bugOpen); SH.on('view', bugClose); }
+
 /* ================= keyboard ================= */
 const ORDER = DOCK.filter(x => x !== '|');
 addEventListener('keydown', e => {

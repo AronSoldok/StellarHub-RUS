@@ -611,8 +611,21 @@ html[data-lite="1"] .dock::before{box-shadow:0 8px 20px -10px rgba(0,0,0,.7)}
 html[data-lite="1"] .sheet,html[data-lite="1"] .pal{box-shadow:0 16px 40px -18px rgba(0,0,0,.85)}
 
 /* the version, bottom left of every view (support screenshots): small and quiet, never in the way */
-.ver-tag{position:fixed;left:18px;bottom:14px;z-index:30;pointer-events:none;font:500 10.5px/1 var(--text);letter-spacing:.06em;color:var(--faint);opacity:.75;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.6)}
-.ver-tag:empty{display:none}
+.ver-tag{position:fixed;left:18px;bottom:14px;z-index:30;display:flex;align-items:center;gap:8px;pointer-events:none}
+.ver-t{font:500 10.5px/1 var(--text);letter-spacing:.06em;color:var(--faint);opacity:.75;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.ver-t:empty{display:none}
+/* report a bug: a small icon to the left of the version; only it takes the pointer (the version text never does) */
+.bug-btn{pointer-events:auto;display:grid;place-items:center;width:22px;height:22px;margin:-4px -2px -4px -4px;border-radius:var(--r-xs);color:var(--faint);opacity:.75;
+  transition:color calc(167ms*var(--f)),opacity calc(167ms*var(--f)),background-color calc(167ms*var(--f))}
+.bug-btn svg.i{width:var(--ic-s);height:var(--ic-s);filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+.bug-btn:hover,.bug-btn[aria-expanded=true]{color:var(--ink);opacity:1;background:var(--raise2)}
+.bug-btn:focus-visible{color:var(--ink);opacity:1;outline-offset:1px;border-radius:var(--r-xs)}
+.bug-pop{position:fixed;left:14px;bottom:44px;z-index:75;width:min(320px,calc(100vw - 28px));padding:16px 18px 14px;
+  box-shadow:var(--rim),var(--lift-hi);backdrop-filter:blur(18px) saturate(1.2);transform-origin:12px 100%}
+.bug-pop h3{font:600 var(--fs-lg)/1.25 var(--display);color:var(--ink);margin-bottom:6px}
+.bug-pop p{color:var(--mute);font-size:var(--fs-sm);line-height:1.45;margin-bottom:var(--sp-md)}
+.bug-acts{display:flex;justify-content:flex-end;gap:var(--sp-sm);flex-wrap:wrap}
+html[data-lite="1"] .bug-pop{backdrop-filter:none;background:var(--deep)}
 
 /* rolling numbers (SH.rollNumber): every character in its own column; the old one leaves up, the new one arrives from below */
 rn-c{display:inline-block;position:relative;overflow:clip;clip-path:inset(0);white-space:pre;vertical-align:baseline;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
