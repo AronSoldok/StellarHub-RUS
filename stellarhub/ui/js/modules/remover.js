@@ -599,8 +599,12 @@ function openFlow(progs, opts = {}) {
       setFoot(`<span class="t">${r.sessions.length ? T('Everything is in the quarantine in case something stopped working.') : ''}</span>${r.sessions.length ? `<button class="btn ghost" id="rfUndo">${ic('restore')}${T('Undo')}</button>` : ''}<button class="btn pri" data-x>${T('Done')}</button>`);
       const u = $('#rfUndo', f); if (u) u.onclick = async () => {
         SH.sound('undo'); u.disabled = true; u.textContent = T('Restoring…');
-        for (const sid of r.sessions) { try { await SH.job('remover', 'quarantine_restore', [sid]); } catch (e) { SH.toast(jobErr(e), { kind: 'error' }); } }
-        SH.toast(T('Leftovers put back in place.')); SH.logActivity(T('Leftovers put back in place'), { sub: one ? one.name : T('{n} programs', { n: progs.length }), ic: 'restore', go: 'remover', tab: 'quarantine' });
+        /* what could not be put back is said (the engine counts it in `failed`), never "put back in place" for it */
+        let back = 0, failed = 0, why = '';
+        for (const sid of r.sessions) { try { const q = await SH.job('remover', 'quarantine_restore', [sid]) || {}; back += q.ok || 0; failed += q.failed || 0; why = why || (q.errors || [])[0] || ''; } catch (e) { failed++; why = why || jobErr(e); } }
+        if (failed) SH.toast(PL(failed, 'Could not restore {n} item: {error}', 'Could not restore {n} items: {error}', { error: why }), { ms: 6000, kind: 'error' });
+        if (!back) { u.disabled = false; u.innerHTML = `${ic('restore')}${T('Undo')}`; ensureReal(true).then(refresh); return; }
+        if (!failed) SH.toast(T('Leftovers put back in place.')); SH.logActivity(T('Leftovers put back in place'), { sub: one ? one.name : T('{n} programs', { n: progs.length }), ic: 'restore', go: 'remover', tab: 'quarantine' });
         ensureReal(true).then(refresh); close();
       };
       ensureReal(true).then(refresh); opts.onDone && opts.onDone(); return;
