@@ -151,7 +151,13 @@ def _move_tree(src, dst, result):
                     shutil.copy2(f, t)
                     os.remove(f)
                 except OSError:
-                    _locked_file(f, t, result)
+                    try:
+                        if os.path.lexists(t):
+                            os.remove(t)     # the copy of a file that stays: one place only (restore would clash)
+                    except OSError:
+                        pass
+                    if not _locked_file(f, t, result):
+                        _left_behind(f, result)
         for lk in links:
             try:
                 os.replace(lk, os.path.join(tdir, os.path.basename(lk)))
@@ -161,6 +167,39 @@ def _move_tree(src, dst, result):
                 except OSError:
                     pass
     _remove_empty_dirs(src, result)
+
+
+def _left_behind(f, result):
+    """A file of a folder that could be neither moved (or deleted) nor scheduled for the restart (in use, and no
+    administrator rights): it stays where it was. Counted, so the item does not claim it is gone."""
+    result["_left"] = result.get("_left", 0) + 1
+    try:
+        result["_left_bytes"] = result.get("_left_bytes", 0) + os.path.getsize(f)
+    except OSError:
+        pass
+
+
+def _merge_back(stored, target):
+    """Puts the files and links of a stored folder back into `target`, which still exists because some of its files
+    stayed (in use when it was removed). Nothing in `target` is replaced: a name that exists there again is an error,
+    and that file stays in the quarantine."""
+    clash = 0
+    for dp, files, dirs, links in paths.walk_nolinks(stored):
+        rel = os.path.relpath(dp, stored)
+        tdir = target if rel == "." else os.path.join(target, rel)
+        for f in files + links:
+            t = os.path.join(tdir, os.path.basename(f))
+            if os.path.lexists(t):
+                clash += 1
+                continue
+            _real_move(f, t)
+        if not clash:
+            try:
+                os.rmdir(dp)
+            except OSError:
+                pass
+    if clash:
+        raise OSError(tr("Something already exists at the original path"))
 
 
 def _remove_empty_dirs(root, result):
@@ -193,6 +232,8 @@ def _delete_tree(path, result):
                 except OSError:
                     if system.delete_on_reboot(fp):
                         result["reboot"] += 1
+                    else:
+                        _left_behind(fp, result)
         _remove_empty_dirs(path, result)
     else:
         try:
@@ -349,7 +390,8 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
             rec["status"] = "done"
             result["ok"] += 1
         _save(manifest)
-    result.pop("_pending", None)
+    for k in ("_pending", "_left", "_left_bytes"):
+        result.pop(k, None)
     result["restart_required"] = result["reboot"] > 0
     manifest["result"] = {k: v for k, v in result.items() if k != "errors"}
     _save(manifest)
@@ -386,6 +428,7 @@ def _do_path(it, rec, sdir, n, mode, result):
         return
     size = paths.path_size(src)
     before, lost0, pend0 = result["reboot"], result["reboot_unrestorable"], len(result["_pending"])
+    left0, left_b0 = result.get("_left", 0), result.get("_left_bytes", 0)
     if mode == "delete":
         _delete_tree(src, result)
     else:
@@ -403,6 +446,11 @@ def _do_path(it, rec, sdir, n, mode, result):
         rec["restart_required"] = True
     if result["reboot_unrestorable"] > lost0:
         rec["unrestorable"] = result["reboot_unrestorable"] - lost0   # files deleted at restart, no copy kept
+    left, left_b = result.get("_left", 0) - left0, result.get("_left_bytes", 0) - left_b0
+    if left:   # still in place: not freed, and said (the item stays "done": what did move can be restored)
+        rec["left"] = left
+        result["errors"].append(f"{rec['display'][:90]}: {tr('Some of its files are in use: close the program and try again.')}")
+        size = max(0, size - left_b)
     result["freed"] += size
     rec["size"] = size
 
@@ -492,8 +540,13 @@ def restore(sid, progress=None, only=None):
                 if (pend and not os.path.lexists(it["stored"])) or any(os.path.lexists(a) for a, _ in pend):
                     raise OSError(tr("Restart the PC first: some files are still waiting to be moved to the quarantine"))
                 if os.path.lexists(it["target"]):
-                    raise OSError(tr("Something already exists at the original path"))
-                _real_move(it["stored"], it["target"])
+                    # a folder that kept some files in use (it["left"]) is still there: what moved goes back into it
+                    if not (it.get("left") and os.path.isdir(it["target"]) and not paths.is_reparse_point(it["target"])
+                            and os.path.isdir(it["stored"])):
+                        raise OSError(tr("Something already exists at the original path"))
+                    _merge_back(it["stored"], it["target"])
+                else:
+                    _real_move(it["stored"], it["target"])
             elif k in ("regkey", "service"):
                 ok, out = registry.import_reg(it["reg_file"], it.get("view", 0))
                 if not ok:

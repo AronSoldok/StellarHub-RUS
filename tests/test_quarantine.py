@@ -125,6 +125,47 @@ class Quarantine(unittest.TestCase):
         self.assertFalse(os.path.exists(self.file))
         quarantine.delete_session(r["session"])
 
+    def test_a_file_that_stays_is_said_not_counted_as_freed(self):
+        # in use and no administrator rights to schedule it for the restart: it stays where it was, and the result
+        # says so instead of reporting the whole folder removed
+        locked = open(os.path.join(self.app, "sub", "b.bin"), "rb")  # without FILE_SHARE_DELETE
+        try:
+            with mock.patch.object(quarantine, "_move_on_reboot", return_value=False), \
+                    mock.patch.object(quarantine.system, "delete_on_reboot", return_value=False):
+                r = quarantine.remove(self.prog, self.items()[:1], [self.prog])
+        finally:
+            locked.close()
+        self.assertTrue(os.path.exists(os.path.join(self.app, "sub", "b.bin")))
+        self.assertEqual(len(r["errors"]), 1, r["errors"])
+        self.assertEqual(r["freed"], 4)                 # a.txt only, not the 2000 bytes still in place
+        self.assertNotIn("_left", r)
+        s = next(x for x in quarantine.sessions() if x["id"] == r["session"])
+        self.assertTrue(s["restorable"])                # what did move can still come back...
+        rr = quarantine.restore(r["session"])           # ...into the folder that is still there
+        self.assertEqual(rr["failed"], 0, rr["errors"])
+        with open(os.path.join(self.app, "a.txt")) as f:
+            self.assertEqual(f.read(), "hola")
+        self.assertEqual(os.path.getsize(os.path.join(self.app, "sub", "b.bin")), 2000)
+        quarantine.delete_session(r["session"])
+
+    def test_restoring_into_the_folder_never_replaces_what_is_there(self):
+        locked = open(os.path.join(self.app, "sub", "b.bin"), "rb")
+        try:
+            with mock.patch.object(quarantine, "_move_on_reboot", return_value=False), \
+                    mock.patch.object(quarantine.system, "delete_on_reboot", return_value=False):
+                r = quarantine.remove(self.prog, self.items()[:1], [self.prog])
+        finally:
+            locked.close()
+        with open(os.path.join(self.app, "a.txt"), "w") as f:   # the program wrote it again meanwhile
+            f.write("new")
+        rr = quarantine.restore(r["session"])
+        self.assertEqual(rr["failed"], 1)
+        with open(os.path.join(self.app, "a.txt")) as f:
+            self.assertEqual(f.read(), "new")
+        s = next(x for x in quarantine.sessions() if x["id"] == r["session"])
+        self.assertTrue(s["restorable"])                # the old a.txt is still in the quarantine
+        quarantine.delete_session(r["session"])
+
     def test_missing_items_are_not_errors(self):
         shutil.rmtree(self.app)
         r = quarantine.remove(self.prog, self.items()[:1], [self.prog])
