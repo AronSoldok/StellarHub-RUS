@@ -18,6 +18,7 @@ from .log import phase
 
 ADMIN_TASK = r"StellarHub\Open as administrator"
 START_HIDDEN = str(Path(paths.local_dir()) / "start-hidden")  # see elevate_on_start
+CHECKS_STAMP = str(Path(paths.local_dir()) / "admin-checks")  # see admin_maintenance
 LEGACY_ADMIN_TASKS = (r"StellarHub\Abrir como administrador",)  # name used by earlier versions
 
 
@@ -98,16 +99,19 @@ def ensure_admin_task():
 
 
 def repair_update_task():
-    """The updater's task, if an older installer made it the old way (it didn't run on battery): made again."""
+    """The updater's task, if an older installer made it the old way (it didn't run on battery): made again.
+    False when the check itself failed."""
     if config.PORTABLE or not config.FROZEN:
-        return
+        return True
     try:
         from . import schtask
         from .engine import selfupdate
         if selfupdate._task_exists() and schtask.outdated(schtask.query_xml(selfupdate.TASK)):
             selfupdate.ensure_task()
+        return True
     except Exception as e:
         print("update task:", e)
+        return False
 
 
 def delete_admin_task():
@@ -143,17 +147,62 @@ def remove_unsafe_admin_task():
     return gone
 
 
+def admin_task_current():
+    """True when the administrator task exists, opens this copy and was made the current way (schtask.outdated).
+    One schtasks query."""
+    from . import schtask
+    xml = schtask.query_xml(ADMIN_TASK)
+    found = _command_in(xml)
+    return found is not None and _opens_this_copy(found) and not schtask.outdated(xml)
+
+
 def sync_admin_task():
-    """An elevated copy at start: an all-users install with the setting on makes its task again; any other copy
-    removes an unsafe one an earlier version left (remove_unsafe_admin_task)."""
+    """An elevated copy: an all-users install with the setting on makes its task again when it is missing, opens
+    another copy or was made the old way (it is no longer replaced at every start); any other copy removes an unsafe
+    one an earlier version left (remove_unsafe_admin_task). False when that failed."""
     try:
         if uses_admin_task():
-            if settings.read().get("alwaysAdmin"):
+            if settings.read().get("alwaysAdmin") and not admin_task_current():
                 ensure_admin_task()
         else:
             remove_unsafe_admin_task()
+        return True
     except Exception as e:
         print("admin task:", e, flush=True)
+        return False
+
+
+def _checks_key():
+    from . import VERSION
+    return f"{VERSION}|{os.path.normcase(sys.executable)}"
+
+
+def admin_maintenance():
+    """What an elevated copy checks at start, with as few schtasks.exe runs as it can: a burst of them at every start
+    of a new, unsigned program is what antivirus behaviour engines weigh, and these checks rarely find anything.
+      * an all-users install with "Always open as administrator" on: its task (sync_admin_task), except when this copy
+        was opened by that very task (--from-task: it exists and opens this copy);
+      * the leftovers of earlier versions: an unsafe administrator task (per-user, portable and source copies) and an
+        update task made the old way (repair_update_task). Looked for once per version and program path (a stamp in
+        the local data folder), and again until the check succeeds."""
+    try:
+        with open(CHECKS_STAMP, encoding="utf-8") as fh:
+            due = fh.read().strip() != _checks_key()
+    except OSError:
+        due = True
+    ok = True
+    if due or (uses_admin_task() and "--from-task" not in sys.argv):
+        ok = sync_admin_task()
+    if not due:
+        return
+    ok = repair_update_task() and ok
+    if ok:
+        try:
+            Path(CHECKS_STAMP).parent.mkdir(parents=True, exist_ok=True)
+            with open(CHECKS_STAMP, "w", encoding="utf-8") as fh:
+                fh.write(_checks_key())
+        except OSError:
+            pass
 
 
 def wants_elevation():
@@ -264,8 +313,6 @@ def elevated_copy_started(seconds=8):
 def task_command(name):
     """(command, arguments) of the scheduled task's action, with the XML's escapes undone ("&amp;" in a path with "&"
     never matched: the Windows prompt at every start), or None if there is no such task."""
-    import html
-    import re
     import subprocess
     try:
         r = subprocess.run(["schtasks", "/query", "/tn", name, "/xml"], capture_output=True, timeout=10,
@@ -275,7 +322,15 @@ def task_command(name):
     if r.returncode != 0:
         return None
     raw = r.stdout
-    xml = raw.decode("utf-16", "replace") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("oem", "replace")
+    return _command_in(raw.decode("utf-16", "replace") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("oem", "replace"))
+
+
+def _command_in(xml):
+    """(command, arguments) of a task definition's action, with the XML's escapes undone, or None."""
+    import html
+    import re
+    if not xml:
+        return None
     cmd = re.search(r"<Command>(.*?)</Command>", xml, re.S)
     arg = re.search(r"<Arguments>(.*?)</Arguments>", xml, re.S)
     if not cmd:
@@ -286,8 +341,11 @@ def task_command(name):
 def task_opens_this_copy(name):
     """True if the scheduled task exists and launches this same program (the exe, or run.py from source)."""
     found = task_command(name)
-    if found is None:
-        return False
+    return found is not None and _opens_this_copy(found)
+
+
+def _opens_this_copy(found):
+    """True if a task's (command, arguments) launch this same program (the exe, or run.py from source)."""
     exe, _args = config.launch_cmd()
 
     def norm(t):

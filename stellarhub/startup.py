@@ -140,9 +140,9 @@ def start_background_work(launch):
         from .engine import selfupdate
         threading.Thread(target=selfupdate.cleanup_after_update, daemon=True).start()
     if config.is_admin() and not config.ISOLATED:
-        # an all-users install makes its task again; any other copy removes an unsafe one an earlier version left
-        threading.Thread(target=elevation.sync_admin_task, daemon=True).start()
-        threading.Thread(target=elevation.repair_update_task, daemon=True).start()
+        # an all-users install makes its task again if it is missing; leftovers of earlier versions (an unsafe task,
+        # an update task made the old way) are looked for once per version, not at every start (admin_maintenance)
+        threading.Thread(target=elevation.admin_maintenance, daemon=True).start()
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(config.APP_ID)
     except Exception:
