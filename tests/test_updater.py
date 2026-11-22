@@ -84,3 +84,33 @@ class WingetLanguages(unittest.TestCase):
             rows = u.parse_table(text)
             self.assertEqual(len(rows), 1, text)
             self.assertEqual((rows[0]["name"], rows[0]["id"], rows[0]["available"], rows[0]["source"]), ("Git", "Git.Git", "2.51.0", "winget"))
+
+
+class Defender(unittest.TestCase):
+    """Defender's definitions update and its running mode, in any language. Nothing runs: the command is mocked."""
+
+    class Job:
+        cancelled = False
+
+        def log(self, line):
+            pass
+
+    def update(self, code, out):
+        from unittest import mock
+        with mock.patch.object(u, "_stream", return_value=(code, out)):
+            return u._defender_update(self.Job(), {}, lambda *a, **k: None)[0]
+
+    def test_an_error_that_contains_ok_is_not_a_success(self):
+        err = ("Update-MpSignature : Virus and spyware definitions update was completed with errors.\n"
+               "    + CategoryInfo          : NotSpecified: (MSFT_MpSignature:ROOT\Microsoft\...MSFT_MpSignature) [Update-MpSignature], CimException\n"
+               "    + FullyQualifiedErrorId : HRESULT 0x8050a004,Update-MpSignature\n"
+               "At line:1 char:1 + Update-MpSignature -ErrorAction Stop; 'ok' (Invoke)\n")
+        self.assertEqual(self.update(1, err), "fail")
+        self.assertEqual(self.update(0, "ok\n"), "done")
+
+    def test_running_mode_in_other_languages(self):
+        for mode in ("Normal", "ejecución normal", "Normale", "EDR Block Mode"):
+            self.assertTrue(u.defender_running(mode), mode)
+        for mode in ("", None, "Passive Mode", "SxS Passive Mode", "Modo pasivo", "Modalità passiva", "Mode passif",
+                     "Passiver Modus", "Not running", "No se está ejecutando", "Non in esecuzione"):
+            self.assertFalse(u.defender_running(mode), mode)

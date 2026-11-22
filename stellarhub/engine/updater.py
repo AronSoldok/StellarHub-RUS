@@ -515,6 +515,14 @@ $cv=Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
 """
 
 
+def defender_running(mode):
+    """Defender's running mode (AMRunningMode) says it protects the PC. Windows writes it in its own language
+    ("ejecución normal", "Modo pasivo", "No se está ejecutando"...): any mode counts except a passive or not running
+    one, in the languages StellarHub speaks (a Spanish "Modo pasivo" used to count as on: only English was checked)."""
+    low = str(mode or "").strip().lower()
+    return bool(low) and not re.search(r"pass?i[vf]|\bnot?\b|\bnon\b|\bpas\b|nicht|未|停止|無効|关闭", low)
+
+
 def _pretty_title(t):
     t = re.sub(r"^9[A-Z0-9]{11}-", "", t or "")  # Store entries: "9NRZT3Q9R3DL-Microsoft.X"
     return t
@@ -576,8 +584,7 @@ def scan_windows(job):
     av = [a["n"] for a in (r.get("av") or []) if a.get("n")]
     third = [a for a in av if "defender" not in a.lower()]
     mode = (r.get("mpMode") or "").strip()
-    # "ejecución normal" = Defender running mode on a Spanish Windows
-    defender_on = mode.lower() in ("normal", "ejecución normal") or (mode and "passive" not in mode.lower() and "not" not in mode.lower())
+    defender_on = defender_running(mode)
     prod = r.get("prod") or "Windows"
     try:  # the registry still says "Windows 10" on Windows 11
         if int(str(r.get("build", "0")).split(".")[0]) >= 22000:
@@ -844,7 +851,11 @@ def _defender_update(job, it, report):
     report("down", .3)
     code, out = _stream(["powershell.exe", "-NoProfile", "-Command", "Update-MpSignature -ErrorAction Stop; 'ok'"],
                         job.log, job=job, timeout=900)
-    return ("done", None) if "ok" in out else ("fail", tr("Defender isn't active or couldn't be updated."))
+    if job.cancelled:
+        return "cancel", tr("Cancelled")
+    # the 'ok' line, not "ok" anywhere: PowerShell's error text has it too ("Invoke", "token"...)
+    ok = code == 0 and any(ln.strip() == "ok" for ln in (out or "").splitlines())
+    return ("done", None) if ok else ("fail", tr("Defender isn't active or couldn't be updated."))
 
 
 def install(job, items):
