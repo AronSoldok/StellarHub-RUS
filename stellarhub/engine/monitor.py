@@ -638,10 +638,16 @@ def _current_dns(alias):
     row = ps_json("Get-DnsClientServerAddress -InterfaceAlias '%s' -AddressFamily IPv4 | Select-Object -ExpandProperty ServerAddresses"
                   % alias.replace("'", "''"), timeout=20, as_list=True)
     servers = [str(x) for x in (row or []) if x]
-    dhcp = ps_json("(Get-NetIPInterface -InterfaceAlias '%s' -AddressFamily IPv4).Dhcp" % alias.replace("'", "''"), timeout=20)
-    if dhcp is None:
+    # Whether the DNS (not the address) comes from DHCP: the adapter's NameServer value is empty then, and holds the
+    # servers typed in by hand otherwise (network() reads it the same way). Get-NetIPInterface's Dhcp is about the IP
+    # address: an adapter with an automatic address and DNS set by hand was saved as "automatic", so undoing a DNS
+    # change, or choosing "automatic", left the user's own DNS servers lost.
+    ns = ps_json("$a = Get-NetAdapter -InterfaceAlias '%s' -ErrorAction Stop; [string](Get-ItemProperty -ErrorAction Stop "
+                 "('HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces\\' + $a.InterfaceGuid)).NameServer"
+                 % alias.replace("'", "''"), timeout=20)
+    if ns is None:
         return None
-    return str(dhcp).lower() in ("enabled", "1", "true"), servers
+    return not str(ns).strip(), servers
 
 
 def _dns_cmds(alias, dhcp, servers):
