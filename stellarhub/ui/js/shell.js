@@ -906,6 +906,23 @@ let toastPlaceRaf = 0;
 addEventListener('resize', () => { cancelAnimationFrame(toastPlaceRaf); toastPlaceRaf = requestAnimationFrame(placeToasts); });
 /* the lane is chosen from the start, so a strip reserved above the dock is there before the first toast */
 SH.on('boot', () => requestAnimationFrame(placeToasts));
+/* The text of a toast: at most three lines (then "…"; the whole text is its tooltip). A raw "access denied" from
+   Windows ([WinError 5], in any language) reads as a plain sentence, with the technical part (a path, a registry key)
+   as a small second line. */
+const ACCESS_DENIED = /\[WinError 5\]|Access is denied|Acceso denegado|Acesso negado|Accesso negato|Accès refusé|Acc[eè]s refus[ée]|拒绝访问|アクセスが拒否/i;
+function toastText(span, text) {
+  text = String(text == null ? '' : text);
+  let main = text, tech = '';
+  if (ACCESS_DENIED.test(text)) {
+    /* "Nothing was fixed: HKLM\…\x.exe: [WinError 5] Access is denied" -> "Nothing was fixed. Windows denied access." */
+    const i = text.indexOf(':'), lead = i > 0 && i < 90 && !/[\\/[]/.test(text.slice(0, i)) ? text.slice(0, i).trim() : '';
+    main = lead ? `${lead.replace(/[.。]$/, '')}. ${SH.t('Windows denied access.')}` : SH.t('Windows denied access.');
+    tech = (lead ? text.slice(i + 1) : text).trim();
+  }
+  span.title = text;
+  span.innerHTML = `<span class="tm">${esc(main)}</span>${tech ? `<small class="tt">${esc(tech)}</small>` : ''}`;
+}
+SH.toastText = toastText;
 function toast(text, o = {}) {
   const box = $('#toasts'); const group = o.group || text;
   placeToasts();
@@ -924,12 +941,12 @@ function toast(text, o = {}) {
     b.textContent = a.label;
   };
   if (same) {
-    same.querySelector('span').textContent = text; setAction(same, o.action); clearTimeout(same._timer); same._timer = setTimeout(same._kill, o.ms || 3600);
+    toastText(same.firstElementChild, text); setAction(same, o.action); fitToasts(); clearTimeout(same._timer); same._timer = setTimeout(same._kill, o.ms || 3600);
     anim(same, [{ transform: 'scale(1)' }, { transform: 'scale(1.04)', offset: .4 }, { transform: 'scale(1)' }], { d: 320, keep: true });
     return;
   }
   const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.dataset.group = group;
-  t.innerHTML = `<span>${esc(text)}</span>`;
+  const sp = document.createElement('span'); t.appendChild(sp); toastText(sp, text);
   t._kill = kill; setAction(t, o.action);
   box.appendChild(t);
   const fromTop = toastRoom.at === 'above';  /* above the dock it rises a little, beside the dock it slides in from the side */

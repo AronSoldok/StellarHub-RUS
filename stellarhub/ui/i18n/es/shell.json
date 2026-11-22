@@ -447,5 +447,6 @@
   "Windows didn't give permission. You're still in normal mode.": "Windows no dio permiso. Sigues en modo normal.",
   "That changed while StellarHub reopened, so it was not done. Check it and try again.": "Eso cambió mientras StellarHub se volvía a abrir, así que no se hizo. Revísalo e inténtalo de nuevo.",
   "You're in administrator mode now. Pick up where you left off.": "Ya estás en modo administrador. Sigue donde lo dejaste.",
-  "Windows asks each time.": "Windows lo pregunta cada vez."
+  "Windows asks each time.": "Windows lo pregunta cada vez.",
+  "Windows denied access.": "Windows denegó el acceso."
 }

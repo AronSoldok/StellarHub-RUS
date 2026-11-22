@@ -163,7 +163,8 @@ class Dialogs(unittest.TestCase):
         return json.loads(r.stdout)
 
     def test_a_refreshed_toast_undoes_the_latest_item(self):
-        toast = js_function(read("js", "shell.js"), "toast")
+        shell = read("js", "shell.js")
+        toast = "\n".join([js_line(shell, "const ACCESS_DENIED = "), js_function(shell, "toastText"), js_function(shell, "toast")])
         out = self.run_js(r"""
           const box = document.body.appendChild(new El('div')); box.setAttribute('id', 'toasts');
           const placeToasts = noop, fitToasts = noop; let toastRoom = { at: 'side' };
@@ -177,8 +178,15 @@ class Dialogs(unittest.TestCase):
           toast('Saved.'); toast('Saved.', { action: { label: 'View', run: () => undone.push('view') } });
           const saved = box.children[1], label = $('button', saved).textContent; $('button', saved).click();
           toast('Moved.', { action: { label: 'Undo', run: noop } }); toast('Moved.');
-          out({ n, btns, undone, label, gone: $('button', box.children[2]) === null });
+          const gone = $('button', box.children[2]) === null;
+          /* a raw "access denied" reads as a sentence; the technical part is a second line, the whole text the tooltip */
+          const raw = 'Nothing was fixed: HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\TabTip.exe: [WinError 5] Acceso denegado';
+          toast(raw, { kind: 'error' }); const d = box.children[3];
+          out({ n, btns, undone, label, gone, main: $('.tm', d).textContent, tech: $('.tt', d).textContent, title: d.firstElementChild.title === raw });
         """)
+        self.assertEqual(out["main"], "Nothing was fixed. Windows denied access.")
+        self.assertTrue(out["tech"].startswith("HKLM\\SOFTWARE") and out["tech"].endswith("Acceso denegado"))
+        self.assertTrue(out["title"])
         self.assertEqual(out["n"], 1)                       # still one toast
         self.assertEqual(out["btns"], 1)                    # with one button
         self.assertEqual(out["undone"], ["second", "view"])  # the latest item, not the first

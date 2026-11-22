@@ -447,5 +447,6 @@
   "Windows didn't give permission. You're still in normal mode.": "Windows が許可しませんでした。通常モードのままです。",
   "That changed while StellarHub reopened, so it was not done. Check it and try again.": "StellarHub を開き直す間に状況が変わったため、実行しませんでした。確認してからもう一度お試しください。",
   "You're in administrator mode now. Pick up where you left off.": "管理者モードになりました。中断したところから続けてください。",
-  "Windows asks each time.": "毎回 Windows が確認します。"
+  "Windows asks each time.": "毎回 Windows が確認します。",
+  "Windows denied access.": "Windows によってアクセスが拒否されました。"
 }

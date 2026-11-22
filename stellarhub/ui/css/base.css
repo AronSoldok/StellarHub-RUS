@@ -266,6 +266,9 @@ body.frameless:not(.win-max) .rz{display:block}
 .es-sm .es-art{width:100px;height:63px;margin-bottom:var(--sp-sm)}
 .es-sm b{font-size:var(--fs-body)}
 .es-sm p{font-size:var(--fs-sm)}
+/* engine text in a sentence (a path, a registry key, a hash, a URL: one long word) wraps instead of running out of an
+   empty state, a dialog or a popover */
+:is(.es,.empty,.note,.bug-pop,.dq,.bk-dq,.mdlg .box,.hg-dbox,.u-cbox,.su-box,.qz-note) :is(p,h3,li),.es>b{overflow-wrap:anywhere}
 /* results kept from an earlier analysis (SH.lastRun): their age and the button that analyzes again */
 /* the last-analysis strip (SH.lastRun): a fixed 28 px clock box, then the text column (min-width:0 so it ellipsizes
    instead of pushing), then the button; children are matched with > so a module class (cls) can never re-lay them out */
@@ -491,7 +494,11 @@ html[data-quick=off] .h-quick{display:none}
 .toasts{position:fixed;right:16px;bottom:var(--tb,20px);z-index:70;display:flex;flex-direction:column;align-items:flex-end;gap:var(--sp-sm);pointer-events:none;width:var(--tw,min(420px,calc(100vw - 32px)));max-width:var(--tw,min(420px,calc(100vw - 32px)))}
 .toast{max-width:100%}
 /* a narrow lane: the text wraps (two or three lines) instead of leaving the lane */
-.toast>span{min-width:0;overflow-wrap:anywhere}
+.toast>span{min-width:0;overflow-wrap:anywhere;display:flex;flex-direction:column;gap:2px}
+/* at most three lines (the whole text is the tooltip); a technical second line (a path, an error code) at most one */
+.toast .tm,.toast .tt{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+.toast .tm{-webkit-line-clamp:3}
+.toast .tt{-webkit-line-clamp:1;font-size:var(--fs-cap);font-weight:400;color:var(--mute)}
 /* the lane above the dock (shell.js placeToasts, only when there is no room beside it): one slim bar, centred on the dock */
 .toasts[data-at=above]{right:auto;left:var(--tl,50%);transform:translateX(-50%);align-items:center}
 .toasts[data-at=above] .toast{min-height:38px;padding-top:4px;padding-bottom:4px}
@@ -554,7 +561,7 @@ html[data-corners=soft] :is(.row,.vit,.pend,.nx,.tool,.dk,.pal .it,.pal .hl,.cs-
   box-shadow:var(--rim),0 22px 48px -20px rgba(0,0,0,.9),0 4px 12px -6px rgba(0,0,0,.5)}
 .toast::before{content:"";flex:none;width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--deep),0 0 0 3px color-mix(in oklab,var(--accent2) 65%,transparent)}
 .toast>span{padding:4px 0}
-.toast .btn{height:28px;background:var(--acc-soft);color:var(--accent);border:1px solid var(--acc-line)}
+.toast .btn{flex:none;height:28px;background:var(--acc-soft);color:var(--accent);border:1px solid var(--acc-line)}
 .toast .btn:hover{background:color-mix(in oklab,var(--accent) 20%,transparent)}
 
 
