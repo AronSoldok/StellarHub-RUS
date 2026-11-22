@@ -21,7 +21,7 @@ const DEFAULTS = {
   theme: 'deep', accent: '#FF7A66', accent2: '#9ED6FF', zoom: 'auto', intensity: reduceMQ.matches ? 'min' : 'max',
   stars: true, camera: true, parallax: true, homeVariant: 'bento', adminHints: true, trayOnClose: true,
   startWithWindows: false, autoUpdate: true, autoUpdateFeatures: true, skipVersion: '', language: 'auto', density: 'comfortable',
-  sounds: true, soundVolume: .6, soundUi: true, soundAlerts: true, soundTasks: true, soundSystem: true,
+  sounds: true, soundVolume: .4, soundUi: true, soundAlerts: true, soundTasks: true, soundSystem: true,
   widgetStats: ['cpu', 'gpu', 'gpuTemp', 'ram', 'down', 'ping'], widgetLayout: 'grid',
   starCount: 400, starSpeed: 1.5, starBright: 1.2, widgetMode: 'full', widgetWasOpen: false, alwaysAdmin: false, twinkle: true, shooting: true, nebula: 1, animSpeed: 1, panelAlpha: 1.75, corners: 'mid',
   countUp: true, startView: 'home', quickActions: true, confirmDanger: true, teleRate: '1000', measurePing: true, lastView: 'home', batterySaver: true, lightMode: 'auto', registryCleaner: false,

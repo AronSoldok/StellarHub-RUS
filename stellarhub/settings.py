@@ -58,7 +58,7 @@ def plays_exit_sound(s):
     """Whether quitting plays the exit sound: sounds on (the default), the System group on, the volume above 0."""
     s = s if isinstance(s, dict) else {}
     try:
-        vol = float(s.get("soundVolume", 0.6))
+        vol = float(s.get("soundVolume", 0.4))
     except (TypeError, ValueError):
         vol = 0.6
     return s.get("sounds", True) is not False and s.get("soundSystem", True) is not False and vol > 0

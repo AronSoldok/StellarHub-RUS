@@ -278,7 +278,7 @@ class Sanitizer(unittest.TestCase):
     def test_defaults(self):
         d = self.run_js("DEFAULTS")
         self.assertIs(d["sounds"], True)
-        self.assertEqual(d["soundVolume"], 0.6)
+        self.assertEqual(d["soundVolume"], 0.4)
         for k in ("soundUi", "soundAlerts", "soundTasks", "soundSystem"):
             self.assertIs(d[k], True, k)
 
