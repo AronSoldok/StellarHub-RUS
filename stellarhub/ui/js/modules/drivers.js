@@ -41,7 +41,9 @@ function ask(title, body, ok = t('Continue'), danger = false) {
     anim($('.dq-s', o), [{ opacity: 0 }, { opacity: 1 }], { d: 200 });
     anim($('.dq', o), [{ opacity: 0, transform: 'translate3d(0,12px,0) scale(.96)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
     const done = v => { anim(o, [{ opacity: 1 }, { opacity: 0 }], { d: 160 }).finished.then(() => o.remove()).catch(() => o.remove()); document.removeEventListener('keydown', key, true); res(v); };
-    const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); done(false); } if (e.key === 'Enter') { e.preventDefault(); done(true); } };
+    /* Enter answers yes, but not on Cancel (focused with Tab, Enter there means Cancel) and not a held key repeating
+       (the Enter that opened the dialog, kept down, would confirm "Disable the device" by itself) */
+    const key = e => { if (e.key === 'Escape') { e.stopImmediatePropagation(); done(false); } if (e.key === 'Enter') { e.preventDefault(); if (e.repeat) return; const a = document.activeElement; done(!(a && o.contains(a) && a.closest('[data-n]'))); } };
     document.addEventListener('keydown', key, true);
     o.addEventListener('click', e => { if (e.target.closest('[data-y]')) done(true); else if (e.target.closest('[data-n]') || e.target.classList.contains('dq-s')) done(false); });
     setTimeout(() => $('[data-y]', o).focus(), 30);
