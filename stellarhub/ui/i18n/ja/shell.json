@@ -417,7 +417,7 @@
   "Interface": "インターフェイス",
   "Clicks, tabs, menus, panels, switches and controller moves.": "クリック、タブ、メニュー、パネル、スイッチ、コントローラーでの移動。",
   "Messages, warnings, errors and achievements.": "メッセージ、警告、エラー、実績。",
-  "Scans, refreshing, deleting, undoing and copying.": "スキャン、更新、削除、元に戻す、コピー。",
+  "Scans, loading, refreshing, deleting, undoing and copying.": "スキャン、読み込み、更新、削除、元に戻す、コピー。",
   "Opening and quitting, administrator mode, updates, controllers, the widget and the keyboard test.": "起動と終了、管理者モード、更新、コントローラー、ウィジェット、キーボード テスト。",
   "Play a sample": "サンプルを再生",
   "Hear how loud they are.": "音量を確認できます。",

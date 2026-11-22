@@ -511,7 +511,7 @@ function sectionHTML(id) {
       ${rng('soundVolume', t('Volume'), '', 0, 1, .05, RNG_FMT.soundVolume)}
       ${tog('soundUi', t('Interface'), t('Clicks, tabs, menus, panels, switches and controller moves.'))}
       ${tog('soundAlerts', t('Notifications'), t('Messages, warnings, errors and achievements.'))}
-      ${tog('soundTasks', t('Tasks'), t('Scans, refreshing, deleting, undoing and copying.'))}
+      ${tog('soundTasks', t('Tasks'), t('Scans, loading, refreshing, deleting, undoing and copying.'))}
       ${tog('soundSystem', t('System'), t('Opening and quitting, administrator mode, updates, controllers, the widget and the keyboard test.'))}
       <div class="set inline"><div class="lbl"><div>${t('Play a sample')}<span>${t('Hear how loud they are.')}</span></div></div><button class="btn sec" data-act="soundsample">${ic('speaker')}${t('Play a sample')}</button></div>`;
     case 'home': return `<h3>${t('Home')}</h3><p>${t('What you see when you open StellarHub.')}</p>
@@ -837,7 +837,8 @@ addEventListener('pointerdown', e => { if (noteShown && !note.contains(e.target)
 SH.on('view', () => { if (noteShown) hideNote(); }); SH.on('tab', () => { if (noteShown) hideNote(); });
 $('#adminYes').addEventListener('click', () => askAdmin(true));
 $('#adminNo').addEventListener('click', hideNote);
-$('#noteNever').addEventListener('click', e => e.currentTarget.classList.toggle('on'));
+/* "Don't suggest this again": the whole line is one checkbox button (its text too; Enter, Space and the controller's A) */
+$('#noteNeverBtn').addEventListener('click', e => { const on = $('#noteNever').classList.toggle('on'); e.currentTarget.setAttribute('aria-checked', String(on)); });
 
 /* ================= toasts ================= */
 /* At most 3 at a time; a repeated toast refreshes instead of stacking. Opening/closing the same thing (e.g. the widget)

@@ -419,7 +419,7 @@
   "Interface": "界面",
   "Clicks, tabs, menus, panels, switches and controller moves.": "点击、标签页、菜单、面板、开关和手柄移动。",
   "Messages, warnings, errors and achievements.": "消息、警告、错误和成就。",
-  "Scans, refreshing, deleting, undoing and copying.": "扫描、刷新、删除、撤销和复制。",
+  "Scans, loading, refreshing, deleting, undoing and copying.": "扫描、加载、刷新、删除、撤销和复制。",
   "Opening and quitting, administrator mode, updates, controllers, the widget and the keyboard test.": "打开和退出、管理员模式、更新、手柄、小组件和键盘测试。",
   "Play a sample": "试听",
   "Hear how loud they are.": "听听音量大小。",

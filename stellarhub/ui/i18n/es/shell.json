@@ -417,7 +417,7 @@
   "Interface": "Interfaz",
   "Clicks, tabs, menus, panels, switches and controller moves.": "Clics, pestañas, menús, paneles, interruptores y movimientos con el mando.",
   "Messages, warnings, errors and achievements.": "Mensajes, avisos, errores y logros.",
-  "Scans, refreshing, deleting, undoing and copying.": "Análisis, recargar, eliminar, deshacer y copiar.",
+  "Scans, loading, refreshing, deleting, undoing and copying.": "Análisis, cargas, recargar, eliminar, deshacer y copiar.",
   "Opening and quitting, administrator mode, updates, controllers, the widget and the keyboard test.": "Abrir y salir, modo administrador, actualizaciones, mandos, el widget y la prueba del teclado.",
   "Play a sample": "Reproducir una muestra",
   "Hear how loud they are.": "Escucha a qué volumen suenan.",

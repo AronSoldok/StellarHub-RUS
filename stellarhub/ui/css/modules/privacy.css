@@ -83,7 +83,9 @@ html[data-int=min] #v-privacy .pv-radar .blip .dot,html[data-int=min] #v-privacy
 #v-privacy .pv-radar.scanning~.pv-sw{opacity:1;animation:pvSpin calc(4200ms*var(--f) + 1400ms) linear infinite;will-change:transform}
 html[data-int=min] #v-privacy .pv-radar.scanning~.pv-sw{animation:none;opacity:.4}
 #v-privacy .pv-rest{border:1px solid color-mix(in oklab,var(--accent2) 60%,transparent);opacity:0}
-#v-privacy .pv-cap{font-size:var(--fs-cap);margin:-14px 0 14px;max-width:260px}
+/* the radar's caption (its own class: it used to share .pv-cap with the App permissions buttons and took their hover,
+   and their own rules hid those buttons on short windows). Same box as before: width, padding, text to the left. */
+#v-privacy .pv-rcap{font-size:var(--fs-cap);margin:-14px 0 14px;max-width:260px;width:100%;padding:9px 10px;text-align:left}
 #v-privacy .pv-rl::after{content:attr(data-n);position:absolute;right:-5px;top:-5px;min-width:14px;height:14px;padding:0 3px;border-radius:7px;font:600 9.5px/14px var(--text);text-align:center;
   background:var(--raise3);color:var(--ink);display:none}
 #v-privacy .pv-rl[data-n]::after{display:block}
@@ -467,7 +469,7 @@ html[data-int=min] #v-privacy .pv-bspin{animation-duration:2.4s}
   #v-privacy .pv-lt{display:none}
   #v-privacy .pv-ovl>.pv-rw{margin:20px auto 20px;min-height:96px}
   #v-privacy .pv-sub{margin-bottom:8px}
-  #v-privacy .pv-cap{display:none}
+  #v-privacy .pv-rcap{display:none}
   #v-privacy .pv-st{margin-top:10px}
 }
 #v-privacy [hidden]{display:none!important}

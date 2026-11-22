@@ -127,7 +127,8 @@ body.frameless:not(.win-max) .rz{display:block}
 .note.on{pointer-events:auto}
 .note p{color:var(--mute);font-size:12.5px;margin-bottom:12px}
 .note p b{color:var(--ink);font-weight:500}
-.note label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--faint);margin-top:10px;cursor:pointer}
+.note-never{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--faint);margin-top:10px;padding:2px 6px 2px 0;border-radius:var(--r-s);text-align:left}
+.note-never:hover .check{border-color:color-mix(in oklab,var(--ink) 40%,transparent)}
 .row-btns{display:flex;gap:8px}
 
 /* ---------- buttons and common controls ---------- */

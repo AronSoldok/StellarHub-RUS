@@ -383,7 +383,7 @@ function renderOverview(el, ctx) {
     <div class="pan pv-ovl" data-asm>
       <div class="pv-lives" id="pvLive">${liveHTML()}</div>
       <div class="pv-rw" title="${esc(t('The closer to the center, the more serious.'))}">${radarSVG()}</div>
-      <div class="pv-cap faint">${t('The closer to the center, the more serious.')}</div>
+      <div class="pv-rcap faint">${t('The closer to the center, the more serious.')}</div>
       <div class="pv-sc"><b id="pvScore">0</b><span><em id="pvScoreL">${t('checking…')}</em>${gaugeHTML()}</span></div>
       <div class="pv-st" id="pvSt"></div><div class="pv-sub muted" id="pvSub"></div>
       <button class="btn pri lg pv-cta" id="pvFixAll" disabled>${ic('sparkle')}<span>${t('Fix what is safe')}</span></button>

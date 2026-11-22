@@ -414,7 +414,6 @@ class HoverSounds(unittest.TestCase):
         ".field:has": "the frame of a select: the select inside it sounds",
         "#v-autopilot .ap-name": "a text field (a routine's name): typed into, not clicked",
         "#v-autopilot .si-grip": "the grip of a step row (.si), which sounds itself",
-        "#v-privacy .pv-cap": "the capabilities are buttons (they sound); the caption under the radar shares the class",
     }
     CONTROL = {"button", "a", "select", "summary"}
     ACTS = re.compile(r'role="(button|tab|option|menuitem|switch|checkbox)"|tabindex="0"|data-go\b')
@@ -471,6 +470,25 @@ class HoverSounds(unittest.TestCase):
                                                    "#v-optimizer .db-it:not(.keep, .rmv, .d, .done)"})
         self.assertIn("${ROWS}", sounds_const("SOFT"))
         self.assertIn("${ROW_ACTS}", sounds_const("CLICKABLE"))
+
+    def test_small_controls_that_were_not_real_ones(self):
+        # the radar's caption has a class of its own (it shared .pv-cap with the App permissions buttons: their hover,
+        # and their display:none on short windows)
+        privacy = read("js", "modules", "privacy.js")
+        self.assertIn('<div class="pv-rcap faint">', privacy)
+        self.assertNotRegex(privacy, r'<div class="pv-cap\b')
+        self.assertNotRegex(read("css", "modules", "privacy.css"), r"\.pv-cap\{display:none\}")
+        # the admin note's "Don't suggest this again": one checkbox button, its text included (a <label> without a
+        # control did nothing when its text was clicked, and the box could not be reached with the keyboard)
+        html = read("index.html")
+        self.assertIn('<button type="button" class="note-never" id="noteNeverBtn" role="checkbox" aria-checked="false">'
+                      '<span class="check" id="noteNever">', html)
+        self.assertNotRegex(html, r"<label>(?:(?!</label>).)*class=\"check\"")
+        shell = read("js", "shell.js")
+        self.assertIn("$('#noteNeverBtn').addEventListener('click'", shell)
+        self.assertIn("setAttribute('aria-checked', String(on))", shell)
+        # Settings > Sound > Tasks names the loading loop
+        self.assertIn("t('Scans, loading, refreshing, deleting, undoing and copying.')", shell)
 
     def test_the_tray_panel_has_its_hover_and_click(self):
         src = read("js", "tray-panel.js")
