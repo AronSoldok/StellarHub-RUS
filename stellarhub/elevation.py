@@ -168,8 +168,9 @@ def task_opens_this_copy(name):
     cmd = re.search(r"<Command>(.*?)</Command>", xml, re.S)
     arg = re.search(r"<Arguments>(.*?)</Arguments>", xml, re.S)
 
-    def norm(t):
-        return os.path.normcase(t.replace("&quot;", '"').strip().strip('"'))
+    def norm(t):  # the XML's escapes undone ("&amp;" in a path with "&" never matched: the Windows prompt at every start)
+        import html
+        return os.path.normcase(html.unescape(t).strip().strip('"'))
     if not cmd or norm(cmd.group(1)) != norm(exe):
         return False
     return config.FROZEN or (arg is not None and norm(str(Path(config.base_dir()) / "run.py")) in norm(arg.group(1)))

@@ -508,7 +508,10 @@ def _task_exists():
     raw = r.stdout
     xml = raw.decode("utf-16", "replace") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("oem", "replace")
     m = re.search(r"<Command>(.*?)</Command>", xml, re.S)
-    return bool(m) and os.path.normcase(m.group(1).replace("&quot;", "").strip().strip('"')) == os.path.normcase(sys.executable)
+    # the XML escapes the path ("&amp;" in a folder named "Tom & Jerry"): compared as plain text, such a task never
+    # matched, so every update asked Windows again and made the task once more
+    import html
+    return bool(m) and os.path.normcase(html.unescape(m.group(1)).strip().strip('"')) == os.path.normcase(sys.executable)
 
 
 def ensure_task():

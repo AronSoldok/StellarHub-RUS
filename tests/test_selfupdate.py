@@ -553,3 +553,25 @@ class InstallModes(ServedUpdates):
             startup.uninstall_cleanup()
         self.assertEqual([c[0][0][3] for c in run.call_args_list], [elevation.ADMIN_TASK])
         delete.assert_called_once_with()
+
+
+class TaskPaths(unittest.TestCase):
+    """The scheduled tasks are matched to this copy by the path in their XML, where Windows escapes &, < and >."""
+
+    def query(self, command, args=""):
+        xml = (f'<?xml version="1.0" encoding="UTF-16"?><Task><Actions><Exec><Command>{command}</Command>'
+               f'<Arguments>{args}</Arguments></Exec></Actions></Task>')
+        return mock.Mock(returncode=0, stdout=b"\xff\xfe" + xml.encode("utf-16-le"))
+
+    def test_a_folder_with_an_ampersand_still_matches(self):
+        from stellarhub import config, elevation
+        exe = "D:\Tom & Jerry\StellarHub\StellarHub.exe"
+        with mock.patch.object(su.sys, "executable", exe), \
+                mock.patch.object(su.subprocess, "run", return_value=self.query("D:\Tom &amp; Jerry\StellarHub\StellarHub.exe")):
+            self.assertTrue(su._task_exists())
+        with mock.patch.object(su.subprocess, "run", return_value=self.query("&quot;D:\Tom &amp; Jerry\StellarHub\StellarHub.exe&quot;")), \
+                mock.patch.object(config, "FROZEN", True), mock.patch.object(config, "launch_cmd", return_value=(exe, "--from-task")):
+            self.assertTrue(elevation.task_opens_this_copy(elevation.ADMIN_TASK))
+        with mock.patch.object(su.sys, "executable", exe), \
+                mock.patch.object(su.subprocess, "run", return_value=self.query("D:\Other\StellarHub.exe")):
+            self.assertFalse(su._task_exists())
