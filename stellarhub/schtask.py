@@ -74,9 +74,9 @@ def create(name, command, args="", desc="", multi="Parallel", limit="PT0S"):
         with os.fdopen(fd, "wb") as fh:
             fh.write(task_xml(command, args, desc, multi, limit).encode("utf-16"))  # with BOM, as schtasks wants
         r = subprocess.run(["schtasks", "/create", "/tn", name, "/xml", path, "/f"], capture_output=True,
-                           creationflags=NO_WINDOW)
+                           creationflags=NO_WINDOW, timeout=30)  # a stuck Task Scheduler must not hold the updater
         return r.returncode == 0
-    except OSError:
+    except (OSError, subprocess.SubprocessError):
         return False
     finally:
         try:

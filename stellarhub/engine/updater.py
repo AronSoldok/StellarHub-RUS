@@ -721,6 +721,30 @@ def scan_dev(job):
 
 # ---------------------------------------------------------------- install (changes the system: only from the UI)
 _SIZE = {"KB": 1 / 1024, "MB": 1, "GB": 1024}
+_SIZES_RE = re.compile(r"([\d.,]+)\s*(KB|MB|GB)\s*/\s*([\d.,]+)\s*(KB|MB|GB)")
+
+
+def _number(t):
+    """"1.50", "1,5", "1,234.5" or "1.234,5" (winget writes numbers the Windows way); None when it isn't one."""
+    if "," in t and "." in t:  # the later one is the decimal point
+        t = t.replace(",", "") if t.rfind(".") > t.rfind(",") else t.replace(".", "").replace(",", ".")
+    try:
+        return float(t.replace(",", "."))
+    except ValueError:
+        return None
+
+
+def download_sizes(line):
+    """(downloaded, total) in MB from a winget progress line ("12.5 MB / 80.0 MB"), or None. A number it can't read
+    is no progress, never an error: an error here ended the reading of winget's output halfway while winget, and
+    the installer it started, went on unseen."""
+    m = _SIZES_RE.search(line or "")
+    if not m:
+        return None
+    got, tot = _number(m.group(1)), _number(m.group(3))
+    if got is None or tot is None:
+        return None
+    return got * _SIZE[m.group(2)], tot * _SIZE[m.group(4)]
 
 
 def _winget_upgrade(job, it, report):
@@ -734,10 +758,9 @@ def _winget_upgrade(job, it, report):
     state = {"phase": "down", "p": 0.0, "mb": None}
 
     def on_text(s):
-        m = re.search(r"([\d.,]+)\s*(KB|MB|GB)\s*/\s*([\d.,]+)\s*(KB|MB|GB)", s)
+        m = download_sizes(s)
         if m:
-            got = float(m.group(1).replace(",", ".")) * _SIZE[m.group(2)]
-            tot = float(m.group(3).replace(",", ".")) * _SIZE[m.group(4)]
+            got, tot = m
             state["mb"] = tot
             state["p"] = got / tot if tot else 0
             report("down", state["p"], mb=tot)

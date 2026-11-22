@@ -119,7 +119,7 @@ def _init_from_settings():
     try:
         with open(path, encoding="utf-8") as fh:
             pref = json.load(fh).get("language")
-    except (OSError, ValueError):
+    except (OSError, ValueError, AttributeError):  # (AttributeError: a settings file that is not an object)
         pref = None
     set_language(pref)
 

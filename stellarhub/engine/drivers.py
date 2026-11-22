@@ -656,12 +656,13 @@ def rollback(job, instance_id, inf, hwid):
     rp = _restore_point(tr("StellarHub: before rolling back a driver"))
     job.progress(.4, tr("Installing the previous version"), force=True)
     reboot = ctypes.c_int(0)
-    newdev = ctypes.windll.newdev
+    # use_last_error: Windows' error code is kept right after the call (GetLastError() read later can be another one)
+    newdev = ctypes.WinDLL("newdev", use_last_error=True)
     newdev.UpdateDriverForPlugAndPlayDevicesW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_int)]
     ok = newdev.UpdateDriverForPlugAndPlayDevicesW(None, str(hwid), path, 1, ctypes.byref(reboot))  # INSTALLFLAG_FORCE
-    err = ctypes.GetLastError()
+    err = ctypes.get_last_error() & 0xFFFFFFFF
     _cache["at"] = 0
-    return {"ok": bool(ok), "reboot": bool(reboot.value), "restorePoint": rp, "msg": None if ok else tr("Windows returned error {code}.", code=err)}
+    return {"ok": bool(ok), "reboot": bool(reboot.value), "restorePoint": rp, "msg": None if ok else tr("Windows returned error {code}.", code=f"0x{err:08X}")}
 
 
 # ================= DriverStore: old copies of the same driver =================

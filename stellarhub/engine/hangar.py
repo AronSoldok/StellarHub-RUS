@@ -483,10 +483,9 @@ def _install_one(job, it, opts, report):
     state = {"phase": "down", "mb": None, "note": None}
 
     def on_text(s):
-        m = re.search(r"([\d.,]+)\s*(KB|MB|GB)\s*/\s*([\d.,]+)\s*(KB|MB|GB)", s)
+        m = U.download_sizes(s)
         if m:
-            got = float(m.group(1).replace(",", ".")) * U._SIZE[m.group(2)]
-            tot = float(m.group(3).replace(",", ".")) * U._SIZE[m.group(4)]
+            got, tot = m
             state["mb"], state["p"] = tot, (got / tot if tot else 0)
             report("down", state["p"], mb=tot)
             return
