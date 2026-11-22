@@ -355,6 +355,14 @@ Filename: "{app}\{#AppExe}"; Parameters: "--uninstall-cleanup"; RunOnceId: "Clea
 ; says so (see below)
 Type: filesandordirs; Name: "{app}\update"
 Type: filesandordirs; Name: "{localappdata}\StellarHub\webview"
+; the start screen's drawing (kept once per version and scale) and the app's small notes (the single-instance port
+; when the usual one was taken, the once-per-version administrator checks, a hidden start, update flags): without
+; them the folder below was never empty and stayed behind
+Type: filesandordirs; Name: "{localappdata}\StellarHub\splash"
+Type: files; Name: "{localappdata}\StellarHub\instance-*.port"
+Type: files; Name: "{localappdata}\StellarHub\admin-checks"
+Type: files; Name: "{localappdata}\StellarHub\start-hidden"
+Type: files; Name: "{localappdata}\StellarHub\update.*"
 Type: dirifempty; Name: "{localappdata}\StellarHub"
 
 [Code]
