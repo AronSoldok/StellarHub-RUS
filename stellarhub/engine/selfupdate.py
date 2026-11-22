@@ -492,9 +492,11 @@ def spawn_reopener(timeout_min=20):
           " $sid = (Get-Process -Id $PID).SessionId;"
           " if (-not (Get-Process -Name StellarHub -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $sid -and"
           " ($_.Path -eq $exe -or -not $_.Path) })) { Start-Process -FilePath $exe }")
-    # a hidden console of its own (not DETACHED_PROCESS: PowerShell started without a console by a windowed app
-    # dies right away), no inherited handles, and out of any job the app may be in, so it outlives the app
-    args = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", ps]
+    # a console of its own that has no window (CREATE_NO_WINDOW; not DETACHED_PROCESS: PowerShell started without a
+    # console by a windowed app dies right away), so neither "-WindowStyle Hidden" nor "-ExecutionPolicy Bypass" (which
+    # never applies to -Command) is passed: both are what antivirus behaviour rules match on. No inherited handles, and
+    # out of any job the app may be in, so it outlives the app
+    args = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps]
     kw = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
     try:
         subprocess.Popen(args, creationflags=NO_WINDOW | NEW_GROUP | BREAKAWAY, **kw)

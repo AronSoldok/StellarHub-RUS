@@ -67,7 +67,7 @@ def _load_json(path, default):
 def _ps_job(job, script, timeout=900):
     """Cancellable PowerShell: if the user cancels, the process is killed."""
     pre = ("$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; ")
-    p = subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+    p = subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive",
                           "-Command", pre + script], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                          stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
     out = {}
@@ -321,7 +321,7 @@ def install(job, ids, restore_point=True):
                 job.progress(1, tr("Those drivers are no longer available"), step="search", phase="none", force=True)
     script = _INSTALL.replace("__IDS__", json.dumps(ids))
     try:
-        run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+        run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
              "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; " + script],
             on_line=on_line, job=job, timeout=3600)
     except Exception:

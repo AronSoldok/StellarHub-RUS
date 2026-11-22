@@ -79,7 +79,9 @@ def ps(script, timeout=None):
     timeout = timeout or 90
     with _Slot(slow):
         try:
-            p = subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            # no "-ExecutionPolicy Bypass": the policy never applies to a -Command string, and the Windows modules
+            # these scripts use load under any policy; on a command line it is what malware droppers look like
+            p = subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive",
                                   "-Command", _PRE + script], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
         except FileNotFoundError:

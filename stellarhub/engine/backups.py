@@ -441,7 +441,7 @@ def protected_volumes():
 def _ps_obj(script, timeout=120):
     """Runs a PowerShell script that ends in one object and returns it parsed (None if there is no answer)."""
     try:
-        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
                             "$ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.Encoding]::UTF8; "
                             + script.strip() + " | ConvertTo-Json -Depth 5 -Compress"],
                            capture_output=True, timeout=timeout, creationflags=NO_WINDOW)

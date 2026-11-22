@@ -851,7 +851,7 @@ def _wu_install(job, it, report):
                            reboot=len(parts) > 2 and parts[2] == "1")
         else:
             job.log(s)
-    _stream(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+    _stream(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
             on_text, job=job, timeout=7200)
     if job.cancelled:
         return "cancel", tr("Cancelled")
