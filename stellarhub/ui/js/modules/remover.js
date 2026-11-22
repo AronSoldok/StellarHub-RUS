@@ -391,7 +391,7 @@ function openFlow(progs, opts = {}) {
   anim(f, [{ opacity: 0, transform: 'translate3d(0,24px,0) scale(.97)', filter: 'blur(10px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 520, e: EASE.spring });
   const body = $('.rf-body', f), foot = $('.rf-foot', f), lineSp = new Spring(0, 120, 18);
   const tk = dt => { lineSp.step(dt); $('.ln span', f).style.transform = `scaleX(${lineSp.v.toFixed(4)})`; }; tickers.add(tk);
-  let step = -1, mode = opts.mode || (one && one.silent ? 'silent' : 'normal'), level = 'moderate', items = opts.items || [], sel = new Set(), closed = false, busy = false;
+  let step = -1, mode = opts.mode || (one && one.silent ? 'silent' : 'normal'), level = 'moderate', items = opts.items || [], sel = new Set(), closed = false, busy = false, answered = false;
   const MODE_NAME = { normal: TC('Normal'), silent: T('Silent'), forced: T('Forced') };
   function setStep(i) {
     const dir = i >= step ? 1 : -1; step = i; lineSp.t = i / (STEPS.length - 1);
@@ -562,12 +562,15 @@ function openFlow(progs, opts = {}) {
     function sumFoot() {
       const s = items.filter(l => sel.has(l.id)); const mb = s.reduce((a, l) => a + l.mb, 0);
       $('.t', foot).innerHTML = items.length ? T('<b>{n} of {total}</b> selected, {size}. High-confidence items are selected by default. Everything goes to the quarantine.', { n: s.length, total: items.length, size: fmtMB(mb) }) : '';
-      const b = $('#rfDel', f); if (b) b.disabled = !s.length;
+      const b = $('#rfDel', f); if (b) b.disabled = !s.length || answered;
       syncGroups();
     }
     setFoot(`<span class="t"></span>${items.length ? `<button class="btn ghost" id="rfKeep">${T('Keep all')}</button><button class="btn pri lg" id="rfDel">${ic('trash')}${T('Remove selected')}</button>` : `<button class="btn pri lg" id="rfKeep">${T('Finish')}</button>`}`); sumFoot();
-    $('#rfKeep', f).onclick = () => stepDone([]);
-    const del = $('#rfDel', f); if (del) del.onclick = async () => { SH.sound('delete'); busy = true; del.disabled = true; del.innerHTML = T('Moving to the quarantine…'); const chosen = items.filter(l => sel.has(l.id)); stepDone(chosen); };
+    /* one answer only: Keep all while the leftovers are being moved (or a double click) would finish twice, and its
+       forget_scan would drop the scan the removal is still using */
+    const keep = $('#rfKeep', f), del = $('#rfDel', f), answer = () => { if (answered) return false; answered = true; keep.disabled = true; if (del) del.disabled = true; return true; };
+    keep.onclick = () => { if (answer()) stepDone([]); };
+    if (del) del.onclick = async () => { if (!answer()) return; SH.sound('delete'); busy = true; del.innerHTML = T('Moving to the quarantine…'); const chosen = items.filter(l => sel.has(l.id)); stepDone(chosen); };
   }
   /* 6. done */
   async function realRemove(chosen) {
