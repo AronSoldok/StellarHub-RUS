@@ -227,6 +227,9 @@ function renderSwitch() {
   sw.innerHTML = `<div class="seg"><span class="ind"></span>${vs.map(v => `<button data-v="${v.id}"${v.id === (current && current.id) ? ' class="on"' : ''}>${ic(VARIANT_IC[v.id] || 'layers')}${esc(v.short || v.name)}</button>`).join('')}</div>`;
   requestAnimationFrame(() => SH.placeSeg($('.seg', sw), true));
 }
+/* the ctx a view keeps while it is mounted is made out here: a closure made inside mountVariant shares its scope, oldWrap
+   included, so each view kept the one before it alive (its whole DOM, listeners and 3D canvas), a chain that grew with every switch */
+const variantCtx = (stage, intro) => ({ PC, tele: SH.tele, openComponent: (cid, el) => SH.openComponent(cid, el), motion, stage, intro });
 function mountVariant(id, intro) {
   const stage = $('#stage'); if (!stage) return;
   const def = registry.variants[id] || variantList()[0]; if (!def || def === current) return;
@@ -238,7 +241,7 @@ function mountVariant(id, intro) {
       .finished.then(() => oldWrap.remove()).catch(() => oldWrap.remove());
     anim(wrap, [{ opacity: 0, transform: 'scale(1.05)', filter: 'blur(14px)' }, { opacity: 1, transform: 'scale(1)', filter: 'blur(0px)' }], { d: 520, delay: 100, e: EASE.out });
   }
-  const ctx = { PC, tele: SH.tele, openComponent: (cid, el) => SH.openComponent(cid, el), motion, stage, intro: !!intro || !!old };
+  const ctx = variantCtx(stage, !!intro || !!old);
   try { def.mount(wrap, ctx); } catch (e) { console.error(e); wrap.innerHTML = `<div class="empty"><b>${t('This view failed')}</b>${esc(e.message)}</div>`; }
   $$('#vswitch button').forEach(x => x.classList.toggle('on', x.dataset.v === def.id)); const sg = $('#vswitch .seg'); if (sg) SH.placeSeg(sg);
 }

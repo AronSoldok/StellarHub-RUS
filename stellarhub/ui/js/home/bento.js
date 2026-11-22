@@ -285,7 +285,7 @@ function onVis() { if (document.hidden) fansRun(false); }
 function unmount() {
   if (tick) tickers.delete(tick); tick = null; offs.forEach(f => f()); offs = []; tiles = [];
   gfan.anims.forEach(a => a.cancel()); gfan.anims = []; gfan.running = false; if (gfan.ro) gfan.ro.disconnect(); gfan.ro = null;
-  removeEventListener('resize', fitGpuArt); document.removeEventListener('visibilitychange', onVis); root = null;
+  removeEventListener('resize', fitGpuArt); document.removeEventListener('visibilitychange', onVis); root = null; barEl = {};
 }
 
 SH.homeVariant({
