@@ -464,10 +464,22 @@ def _drivers_count():
     return len(drivers.list_drivers(max_age=600))
 
 
+def _sys_drive_usage():
+    """Space on the Windows drive (C: on almost every PC; a Windows installed on another letter may have no C: at all,
+    and psutil then raised and Home had no PC sheet)."""
+    for root in (os.environ.get("SystemDrive", "C:").rstrip("\\") + "\\", "C:\\"):
+        try:
+            return psutil.disk_usage(root)
+        except OSError:
+            continue
+    import types
+    return types.SimpleNamespace(total=0, used=0, free=0)
+
+
 def counts():
     if fakepc.active():
         return fakepc.counts()
-    du = psutil.disk_usage("C:\\")
+    du = _sys_drive_usage()
     return {"programs": _programs_count(), "drivers": _drivers_count(), "freeC": round(du.free / GB)}
 
 
@@ -564,7 +576,7 @@ def _build():
     disks = r.get("disks") or []
     sd = str(r.get("sysDisk") if r.get("sysDisk") is not None else "")
     sysd = next((d for d in disks if str(d.get("id")) == sd), disks[0] if disks else {})
-    du = psutil.disk_usage("C:\\")
+    du = _sys_drive_usage()
     nets = r.get("nets") or []
     net = nets[0] if nets else {}
     audio = r.get("audio") or []
@@ -604,7 +616,7 @@ def _build():
     comps.append({"id": "ssd", "name": "Storage", "title": f"{sysd['name']} {cap}" if sysd.get("name") else _T("Disk {size}", size=cap),
                   "rows": [[N_("Type"), f"{sysd.get('media', '')} {sysd.get('bus', '')}".strip() or "–"],
                            [N_("Used on C:"), f"{round(du.used / GB)} GB"], [N_("Free on C:"), f"{round(du.free / GB)} GB"],
-                           [N_("Disks"), str(len(disks))]], "bar": round(du.used / du.total, 3)})
+                           [N_("Disks"), str(len(disks))]], "bar": round(du.used / du.total, 3) if du.total else 0})
     if mons:
         comps.append({"id": "display", "name": "Displays", "title": _T("{n} displays" if len(mons) > 1 else "{n} display", n=len(mons)),
                       "rows": [[(N_("Internal") if m["internal"] else N_("External")), " ".join(x for x in (m["vendor"], m["name"] or m["code"], f'{m["inches"]}"' if m["inches"] else "") if x)] for m in mons],
@@ -690,7 +702,7 @@ def pc_info():
     try:
         with open(_CACHE, encoding="utf-8") as fh:
             cached = json.load(fh)
-        if cached.get("v") != CACHE_VERSION:
+        if not isinstance(cached, dict) or cached.get("v") != CACHE_VERSION:   # damaged (not an object) or older
             return pc_info_fresh()
         _mem = cached
         _refresh_async()

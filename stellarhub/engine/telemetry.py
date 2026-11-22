@@ -280,8 +280,8 @@ class _Nvml:
                 return False
             self.dev = dev
             return True
-        except OSError:
-            self.missing = True  # no NVIDIA driver on this PC
+        except (OSError, AttributeError):
+            self.missing = True  # no NVIDIA driver on this PC (or one too old to have nvmlInit_v2)
             return False
 
     def shutdown(self):
@@ -593,7 +593,10 @@ class Sampler:
             out["state"] = "idle"
             out["vramTotal"] = self._nv_last.get("vramTotal")
             return out
-        nv = self._nv.read() if "nvidia" in dname.lower() else None
+        try:
+            nv = self._nv.read() if "nvidia" in dname.lower() else None
+        except Exception:  # noqa: BLE001  a driver that fails a call must not take every other reading with it
+            nv = None
         if nv:
             self._nv_last = nv
             out.update(temp=nv["temp"], power=nv["power"], clock=nv["clock"], fan=nv["fan"], vramTotal=nv["vramTotal"])
