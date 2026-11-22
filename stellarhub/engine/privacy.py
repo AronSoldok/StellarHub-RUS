@@ -882,6 +882,13 @@ def _smartscreen():
     return {"apps": apps, "appsManaged": pol is not None, "edge": edge, "edgeManaged": epol is not None, "store": store}
 
 
+def defender_normal(mode):
+    """Defender is the active antivirus ("Normal"; Windows has been seen writing it in its own language, "ejecución
+    normal" on a Spanish Windows), not passive, off or not running."""
+    m = str(mode or "").strip().lower()
+    return "normal" in m and "passive" not in m and "pasiv" not in m
+
+
 def protection(job):
     adm = _admin()
     job.progress(.05, tr("Asking Windows Security…"))
@@ -908,7 +915,7 @@ def protection(job):
         avs.append({"name": p.get("n") or "?", "on": bool(on), "uptodate": fresh is not False, "defender": d})
     defender = None
     if mp:
-        active = (mp.get("mode") or "").lower() == "normal" and bool(mp.get("av"))
+        active = defender_normal(mp.get("mode")) and bool(mp.get("av"))
         defender = {"active": active, "mode": mp.get("mode"), "rt": bool(mp.get("rt")), "sig": mp.get("sig"),
                     "sigDays": _iso_days(mp.get("sig")), "quick": mp.get("quick"), "quickDays": _iso_days(mp.get("quick")),
                     "full": mp.get("full"), "tamper": bool(mp.get("tamper")), "version": mp.get("ver")}
@@ -1056,7 +1063,7 @@ def quick_scan(job):
     """Microsoft Defender quick scan (only when Defender is the active antivirus)."""
     mp = _mpcmdrun()
     st = ps_json("Get-MpComputerStatus | Select-Object AMRunningMode, AntivirusEnabled", timeout=30) or {}
-    if not mp or (st.get("AMRunningMode") or "").lower() != "normal" or not st.get("AntivirusEnabled"):
+    if not mp or not defender_normal(st.get("AMRunningMode")) or not st.get("AntivirusEnabled"):
         raise RuntimeError(tr("Microsoft Defender isn't the active antivirus, so it can't scan. Use your antivirus instead."))
     job.progress(None, tr("Scanning the places malware usually hides…"), force=True)
     t0 = time.time()
@@ -1165,11 +1172,11 @@ def _svc_by_pid():
         import psutil
         for s in psutil.win_service_iter():
             try:
-                d = s.as_dict()
+                pid = s.pid()  # only its status: as_dict() also read every service's description and config (5x slower)
             except Exception:
                 continue
-            if d.get("pid"):
-                out.setdefault(d["pid"], []).append(d.get("name"))
+            if pid:
+                out.setdefault(pid, []).append(s.name())
     except Exception:
         pass
     _SVC_CACHE.update(t=time.time(), d=out)
