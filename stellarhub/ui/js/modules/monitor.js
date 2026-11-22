@@ -695,7 +695,7 @@ function makeRow(p) {
 function fillRow(el, p) {
   if (p.icon && el.dataset.ic !== '1') { el.dataset.ic = '1'; $('.mono', el).outerHTML = mono(p.n, p.icon); }
   const sub = $('.pn span', el); const st = procSub(p); if (sub.textContent !== st) sub.textContent = st;
-  $$('.c', el).forEach(c => { const k = c.dataset.c; c.textContent = CELL[k](p[k]); c.style.setProperty('--h', clamp01(p[k] / HEAT[k]).toFixed(3)); });
+  $$('.c', el).forEach(c => { const k = c.dataset.c; c.textContent = CELL[k](p[k]); c.style.setProperty('--h', (Math.round(clamp01(p[k] / HEAT[k]) * 50) / 50).toFixed(2)); });  /* (in 2 % steps: a tint that moved by 0.1 % started a half-second repaint of the cell, 70 of them every sample) */
 }
 /* the rows only change places every few seconds (or right away when the user asks: sort, search, end task), so they stay readable */
 let lastReorder = 0;
