@@ -884,15 +884,23 @@ function toast(text, o = {}) {
      plain toast, whose sound keeps quiet right after another one */
   if (!o.silent) SH.sound(o.kind || 'toast');  /* o.silent: the moment already had its sound */
   toast.lastAt = performance.now();
+  /* action.sound: 'undo' for an Undo button; anything else clicks. The button runs the toast's CURRENT action (t._act):
+     a refreshed toast speaks for the latest event, so its Undo undoes that one, not the first (two results deleted, two
+     devices disabled in a row) */
+  const setAction = (t, a) => {
+    let b = $('button', t); t._act = a || null;
+    if (!a) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('button'); b.className = 'btn sm'; t.appendChild(b); b.addEventListener('click', () => { const x = t._act; if (!x) return; if (x.sound) SH.sound(x.sound); x.run(); t._kill(); }); }
+    b.textContent = a.label;
+  };
   if (same) {
-    same.querySelector('span').textContent = text; clearTimeout(same._timer); same._timer = setTimeout(same._kill, o.ms || 3600);
+    same.querySelector('span').textContent = text; setAction(same, o.action); clearTimeout(same._timer); same._timer = setTimeout(same._kill, o.ms || 3600);
     anim(same, [{ transform: 'scale(1)' }, { transform: 'scale(1.04)', offset: .4 }, { transform: 'scale(1)' }], { d: 320, keep: true });
     return;
   }
   const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.dataset.group = group;
-  t.innerHTML = `<span>${esc(text)}</span>${o.action ? `<button class="btn sm">${esc(o.action.label)}</button>` : ''}`;
-  /* action.sound: 'undo' for an Undo button; anything else clicks */
-  if (o.action) $('button', t).addEventListener('click', () => { if (o.action.sound) SH.sound(o.action.sound); o.action.run(); kill(); });
+  t.innerHTML = `<span>${esc(text)}</span>`;
+  t._kill = kill; setAction(t, o.action);
   box.appendChild(t);
   const fromTop = toastRoom.at === 'top';  /* in the top bar it drops in from above, beside the dock it slides in from the side */
   anim(t, [{ opacity: 0, transform: fromTop ? 'translate3d(0,-14px,0) scale(.96)' : 'translate3d(24px,0,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 440, e: EASE.spring });
