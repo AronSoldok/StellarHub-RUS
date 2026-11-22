@@ -651,3 +651,36 @@ class ElevatedUpdaterTakesNoOrders(ServedUpdates):
         self.assertTrue(os.path.normcase(env["TEMP"]).endswith(os.path.normcase("\Temp")))
         self.assertEqual(env["TEMP"], env["TMP"])
         self.assertNotEqual(os.path.normcase(env["TEMP"]), os.path.normcase(os.environ.get("TEMP", "")))
+
+
+class HelpersAndPortableData(unittest.TestCase):
+    def test_a_waiting_updater_or_other_helper_is_not_the_open_app(self):
+        import types
+        exe = su.sys.executable
+
+        def proc(pid, *args):
+            return types.SimpleNamespace(info={"pid": pid, "name": os.path.basename(exe), "exe": exe,
+                                               "cmdline": [exe, *args]})
+        helpers = [proc(11, "--self-update"), proc(12, "--quit"), proc(13, "--warm"), proc(14, "--multiprocessing-fork")]
+        with mock.patch("psutil.process_iter", return_value=helpers):
+            self.assertFalse(su._app_running())
+        with mock.patch("psutil.process_iter", return_value=helpers + [proc(15, "--tray")]):
+            self.assertTrue(su._app_running())
+        with mock.patch("psutil.process_iter", return_value=[types.SimpleNamespace(
+                info={"pid": 16, "name": os.path.basename(exe), "exe": None, "cmdline": None})]):
+            self.assertTrue(su._app_running())  # another account's copy (nothing readable) still counts
+
+    def test_the_new_portable_copy_uses_the_old_copys_data(self):
+        from stellarhub import paths
+        root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, root, True)
+        dst = os.path.join(root, "StellarHub")
+        new = os.path.join(dst, "update", "new", "StellarHub")
+        os.makedirs(new)
+        os.makedirs(os.path.join(dst, "Data"))
+        with mock.patch.object(paths, "PORTABLE", True), mock.patch.object(paths, "_portable_data", None), \
+                mock.patch.object(paths, "program_dir", lambda: new), mock.patch.dict(os.environ, {}, clear=False), \
+                mock.patch.object(paths.sys, "argv", ["StellarHub.exe", "--finish-update", dst, "123"]):
+            os.environ.pop("STELLARHUB_PORTABLE_DATA", None)
+            self.assertEqual(paths.data_dir(), os.path.join(dst, "Data"))
+        self.assertFalse(os.path.exists(os.path.join(new, "Data")))

@@ -56,13 +56,24 @@ PORTABLE = _portable()
 _portable_data = None
 
 
+def _portable_root():
+    """The portable copy whose Data folder this process uses: its own, except for the new copy that is putting itself
+    in place (--finish-update <old copy> <pid>, run from the old copy's update folder): its user's data is the old
+    copy's, and looking for its own made an empty Data folder inside the update."""
+    if "--finish-update" in sys.argv:
+        i = sys.argv.index("--finish-update")
+        if len(sys.argv) > i + 1 and sys.argv[i + 1]:
+            return sys.argv[i + 1]
+    return program_dir()
+
+
 def _portable_data_dir():
     """<program>\\Data, or, when the drive is read-only or full (a locked USB stick, a read-only share), a folder for
     this copy in %LOCALAPPDATA% so StellarHub still starts and works."""
     global _portable_data
     if _portable_data:
         return _portable_data
-    d = env("STELLARHUB_PORTABLE_DATA") or os.path.join(program_dir(), "Data")
+    d = env("STELLARHUB_PORTABLE_DATA") or os.path.join(_portable_root(), "Data")
     try:
         os.makedirs(d, exist_ok=True)
         probe = os.path.join(d, ".write-test")

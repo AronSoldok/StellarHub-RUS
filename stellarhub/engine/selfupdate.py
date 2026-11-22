@@ -123,18 +123,28 @@ def _alert(msg):
         pass
 
 
-def _splash(text):
+def _language(settings_file=None):
+    """This process speaks the user's language (start screen, message boxes). settings_file: where the user's
+    settings are when this copy's own are not theirs: the new portable copy in the update folder has none of its own,
+    and looking for them gave it an empty Data folder (and the start screen in English)."""
+    from .. import i18n
+    pref = None
+    try:
+        with open(settings_file or os.path.join(_data_dir(), "settings.json"), encoding="utf-8") as fh:
+            pref = (json.load(fh) or {}).get("language")
+    except (OSError, ValueError, AttributeError):
+        pass
+    i18n.set_language(pref)
+
+
+def _splash(text, settings_file=None):
     """The start screen in this process (the updater and the portable --finish-update have no window of their own),
     so the screen is never empty between the old app closing and the new one opening. None if it can't be shown."""
+    _language(settings_file)
     if os.environ.get("STELLARHUB_NO_SPLASH") == "1":
         return None
     try:
-        from .. import i18n, splash
-        try:
-            with open(os.path.join(_data_dir(), "settings.json"), encoding="utf-8") as fh:
-                i18n.set_language((json.load(fh) or {}).get("language"))
-        except (OSError, ValueError, AttributeError):
-            pass
+        from .. import splash
         splash.show()
         splash.status(tr(text))
         return splash
@@ -562,6 +572,10 @@ def _cancelled():
     return os.path.exists(_cancel_flag())
 
 
+_HELPERS = ("--self-update", "--finish-update", "--quit", "--warm", "--setup", "--admin-task", "--update-task",
+            "--uninstall-cleanup", "--multiprocessing")
+
+
 def _app_running():
     """Another StellarHub.exe from this folder (not this updater) is still open."""
     try:
@@ -569,9 +583,13 @@ def _app_running():
     except ImportError:
         return False
     me, exe = os.getpid(), os.path.normcase(sys.executable)
-    for p in psutil.process_iter(["pid", "name", "exe"]):
+    for p in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
         try:
             if p.info["pid"] == me or (p.info["name"] or "").lower() != os.path.basename(exe).lower():
+                continue
+            # a helper of this program is not the app: another updater waiting for this one's lock (it was counted,
+            # and this one waited ten minutes for it and gave up), the installer's --quit, a --warm...
+            if any(str(a).startswith(_HELPERS) for a in (p.info["cmdline"] or [])[1:]):
                 continue
             if p.info["exe"] is None or os.path.normcase(p.info["exe"]) == exe:
                 return True
@@ -954,11 +972,13 @@ def finish_update(dst, pid):
     if not os.path.isfile(exe) or not _under(here, dst) or os.path.normcase(here) == os.path.normcase(dst):
         # (_under, not startswith(dst + os.sep): a copy at the root of a drive, E:\, has dst "E:\" already)
         report(st="failed", why="apply", error="unexpected location")
+        _language(os.path.join(dst, "Data", "settings.json"))
         _alert(tr("The update could not be applied: this copy is not where it should be."))
         if os.path.isfile(exe):
             subprocess.Popen([exe], cwd=dst, close_fds=True)
         return 2  # only ever from <dst>\update\...
-    sp = _splash("Installing the update…")  # up while the old copy closes and the files are put in place
+    # up while the old copy closes and the files are put in place, in the language of the copy being updated
+    sp = _splash("Installing the update…", os.path.join(dst, "Data", "settings.json"))
     try:
         import psutil
         psutil.Process(int(pid)).wait(timeout=60)
