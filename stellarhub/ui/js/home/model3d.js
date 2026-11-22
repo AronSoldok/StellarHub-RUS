@@ -19,6 +19,10 @@ function webglOK() {
   } catch { return false; }
 }
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || '#ffffff';
+/* the drawing buffer's pixels per CSS pixel: the screen's own (Windows scaling x the interface zoom), up to 2, so the model is
+   crisp at 125-200 %. Battery and integrated graphics do not lower it: there the scene only renders when something changes
+   (no idle floating), so a still model costs nothing. adapt() still steps it down if the GPU cannot keep up while animating. */
+const pixelRatio = () => softGL ? 1 : Math.min(2, Math.max(1, devicePixelRatio || 1));
 const fin = (x, d = null) => (typeof x === 'number' && Number.isFinite(x)) ? x : d; // telemetry can be null: never NaN
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const TAU = Math.PI * 2;
@@ -59,6 +63,7 @@ const POSE_L = POSE;
 const sceneKind = () => { const t = ctxRef && ctxRef.PC && ctxRef.PC.type; return t === 'desktop' ? 'tower' : ['handheld', 'tablet', 'aio', 'mini'].includes(t) ? t : 'laptop'; };
 const isTower = () => sceneKind() === 'tower';
 let SP = SPOTS;
+let unsubPad = null;
 let focused = null, leaveT = 0, dragging = false, lastX = 0, lastY = 0, lastT = 0, idleT = 0, vAz = 0, vEl = 0;
 const halo = {}; // id -> {mats, k, s, part}
 
@@ -240,8 +245,8 @@ function kbCanvases(keys) {
   });
   return { glowC, legC };
 }
-function screenBG(W, H) {
-  const c = mk(W, H), g = c.getContext('2d'), a = css('--accent'), b = css('--accent2');
+function screenBG(W, H, k = 1) {
+  const c = mk(W * k, H * k), g = c.getContext('2d'); g.scale(k, k); const a = css('--accent'), b = css('--accent2');
   const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, '#050b1a'); gr.addColorStop(.55, '#0a1430'); gr.addColorStop(1, '#161131'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
   glow(g, W * .9, H * 1.05, W * .62, rgba(a, .34)); glow(g, W * .06, -H * .05, W * .5, rgba(b, .2));
   let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
@@ -262,6 +267,14 @@ function screenBG(W, H) {
   g.fillStyle = 'rgba(232,237,246,.5)'; g.fillRect(ix + 34 * 3 + 6, H - 6, 8, 2);
   return c;
 }
+/* the live dashboard's canvas and texture: 1024 x 640 layout units drawn at 2x on a high-density screen, with mipmaps and
+   anisotropic filtering so its text stays sharp both close up and at an angle */
+function liveScreenTex(R0, aniso) {
+  const k = pixelRatio() > 1 ? 2 : 1, W = 1024, H = 640, c = mk(W * k, H * k);
+  R0.scr = { c, g: c.getContext('2d'), k, W, H, bg: screenBG(W, H, k), a: css('--accent'), b: css('--accent2') };
+  const tex = canvasTex(c, true, Math.max(1, aniso || 1)); tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter; R0.screenTex = tex;
+  return tex;
+}
 function shadowCanvas() {
   const c = mk(512, 512), g = c.getContext('2d');
   g.filter = 'blur(26px)'; g.fillStyle = 'rgba(0,0,0,.62)'; g.beginPath(); g.roundRect(256 - 180, 256 - 170, 360, 340, 40); g.fill();
@@ -278,9 +291,9 @@ function haloCanvas() {
 
 /* ---------- the live screen: a small dashboard, redrawn a few times per second ---------- */
 function drawScreen() {
-  const sc = R.scr, g = sc.g, W = sc.c.width, H = sc.c.height, v = SH.tele.v || {}, a = sc.a, b = sc.b;
+  const sc = R.scr, g = sc.g, k = sc.k || 1, W = sc.W, H = sc.H, v = SH.tele.v || {}, a = sc.a, b = sc.b;
   const cpu = fin(v.cpu), gpu = fin(v.gpu);
-  g.drawImage(sc.bg, 0, 0);
+  g.setTransform(k, 0, 0, k, 0, 0); g.drawImage(sc.bg, 0, 0, W, H);
   g.textBaseline = 'alphabetic'; g.textAlign = 'left';
   // header
   g.fillStyle = '#e8edf6'; g.font = FONT(600, 24, 'Unbounded'); g.fillText('StellarHub', 50, 70);
@@ -357,7 +370,7 @@ function setEnv(R0) {
 function build(canvas) {
   R0tex = [];
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: !softGL, alpha: true, powerPreference: state.lite ? 'low-power' : 'high-performance' });
-  const dpr = Math.min(softGL || state.lite ? 1 : 1.5, devicePixelRatio || 1);
+  const dpr = pixelRatio();
   renderer.setPixelRatio(dpr); renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
   const scene = new THREE.Scene();
@@ -573,8 +586,7 @@ function build(canvas) {
   const lid = new THREE.Mesh(loft(BW, LD, .15, [[0, .005], [.007, 0], [LT - .014, 0], [LT, .017]], 8), [mat.lidOut, mat.lidSide, mat.lidSide]); lid.position.z = LD / 2; lidPivot.add(lid);
   const bezel = new THREE.Mesh(new THREE.ShapeGeometry(rshape(BW - .03, LD - .03, .135), 8), mat.bezel); bezel.rotation.x = Math.PI / 2; bezel.position.set(0, -.0008, LD / 2); lidPivot.add(bezel);
   // live screen
-  const scrC = mk(1024, 640); R0.scr = { c: scrC, g: scrC.getContext('2d'), bg: screenBG(1024, 640), a: css('--accent'), b: css('--accent2') };
-  const screenTex = canvasTex(scrC, true, 1); screenTex.generateMipmaps = false; screenTex.minFilter = THREE.LinearFilter; R0.screenTex = screenTex;
+  const screenTex = liveScreenTex(R0, aniso);
   mat.screen = new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false, color: 0x000000 });
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(SCR.w, SCR.h), mat.screen); screen.rotation.x = Math.PI / 2; screen.position.set(0, -.0016, SCR.z); lidPivot.add(screen); R0.screen = screen;
   // webcam
@@ -603,7 +615,7 @@ function refreshLook() {
   R.lights.rimA.color.copy(a); R.lights.rimB.color.copy(b); R.outline.material.color.copy(b);
   R.kbUni.uA.value.copy(a); R.kbUni.uB.value.copy(b); R.kbMats.forEach(m => { m.uniforms.uA.value.copy(a); m.uniforms.uB.value.copy(b); });
   Object.values(halo).forEach(h => h.mats.forEach(m => m.color.copy(a)));
-  R.scr.bg = screenBG(R.scr.c.width, R.scr.c.height); R.scr.a = css('--accent'); R.scr.b = css('--accent2'); R.scrNew = true;
+  R.scr.bg = screenBG(R.scr.W, R.scr.H, R.scr.k); R.scr.a = css('--accent'); R.scr.b = css('--accent2'); R.scrNew = true;
   if (R.onLook) R.onLook(a, b);
   setEnv(R); dirty = true;
 }
@@ -641,10 +653,41 @@ function onUp() {
   S.offAz.vel = vAz * .9; S.offAz.t = S.offAz.v + vAz * .22; S.offEl.vel = vEl * .6; S.offEl.t = Math.max(-.3, Math.min(.85, S.offEl.v + vEl * .1));
   clearTimeout(idleT); idleT = setTimeout(() => { S.offAz.t = 0; S.offEl.t = 0; }, 1700);
 }
+/* controller (gamepad.js hands these over while the focus is in the viewer, or Home does not scroll): the right stick orbits,
+   with the same springs as a drag (so it glides and settles), LB / RB held zoom out / in, pressing the stick resets the view */
+let padMoving = false;
+function padOwns(el) {
+  if (!root || !R || state.view !== 'home') return false;
+  if (el && root.contains(el)) return true;
+  /* elsewhere on Home only when nothing there would scroll with the stick (the page, or a panel the focus is in) */
+  const v = root.closest('.view'); if (v && v.scrollHeight > v.clientHeight + 2) return false;
+  for (let p = el && el.parentElement; p && p !== v; p = p.parentElement) if (p.scrollHeight > p.clientHeight + 8 && /(auto|scroll)/.test(getComputedStyle(p).overflowY)) return false;
+  return true;
+}
+function padStick(x, y, dt, held) {
+  const dz = v => { const a = Math.abs(v); return a < .16 ? 0 : Math.sign(v) * ((a - .16) / .84) ** 1.7; };
+  const sx = dz(x), sy = dz(y), zin = held('RB'), zout = held('LB');
+  if (sx || sy) {
+    S.offAz.t -= sx * 2.6 * dt; S.offEl.t = clamp(S.offEl.t + sy * 1.5 * dt, -.3, .85);
+    if (!padMoving) { padMoving = true; clearTimeout(idleT); } dirty = true;
+  } else if (padMoving) { padMoving = false; clearTimeout(idleT); idleT = setTimeout(() => { S.offAz.t = 0; S.offEl.t = 0; }, 2600); }
+  if (zin !== zout) { S.zoom.t = clamp(S.zoom.t * Math.exp((zout ? 1 : -1) * .9 * dt), .68, 1.35); dirty = true; }
+}
+function padPress(name) {
+  if (name === 'LB' || name === 'RB') return true;   /* held: zoom (padStick); Home has no tabs to page through */
+  if (name === 'RS') { clearTimeout(idleT); S.zoom.t = 1; S.offAz.t = 0; S.offEl.t = 0; dirty = true; return true; }
+  return false;
+}
+const PAD_HOOK = { owns: padOwns, stick: padStick, press: padPress, hints: () => [['RS', SH.t('Rotate, press to reset')], ['LB RB', SH.t('Zoom')]] };
+function paintHint() {
+  const h = root && $('.m3-hint', root); if (!h) return;
+  h.textContent = SH.gamepad && SH.gamepad.active ? SH.t('Right stick to rotate it, LB and RB to zoom, press the stick to reset.') : SH.t('Drag to rotate it. Scroll to zoom in.');
+}
 function onWheel(e) { e.preventDefault(); S.zoom.t = Math.max(.68, Math.min(1.35, S.zoom.t * Math.exp(e.deltaY * .0011))); dirty = true; }
 
 function resize() {
   if (!R || !root) return; const w = root.clientWidth, h = root.clientHeight; if (!w || !h) return;
+  const pr = pixelRatio(); if (pr !== R.dpr0) { R.dpr0 = R.dpr = pr; R.lowFps = false; R.renderer.setPixelRatio(pr); }   /* the interface zoom or the screen changed */
   R.w = w; R.h = h; R.renderer.setSize(w, h, false); R.camera.aspect = w / h;
   const list = $('.m3-list', root); const shift = list ? (list.offsetWidth + 16) / 2 : 0;
   R.camera.setViewOffset(w, h, -shift, 0, w, h); R.camera.updateProjectionMatrix();
@@ -656,13 +699,14 @@ function adapt(dt) {
   R.fa += dt; R.fn++; if (R.fn < 90) return;
   const avg = R.fa / R.fn; R.fa = R.fn = 0;
   if (avg <= 1 / 44) return;
-  if (R.dpr > .75) { R.dpr = Math.max(.75, R.dpr - .25); R.renderer.setPixelRatio(R.dpr); if (R.w) R.renderer.setSize(R.w, R.h, false); }
+  if (R.dpr > 1) { R.dpr = Math.max(1, R.dpr - .25); R.renderer.setPixelRatio(R.dpr); if (R.w) R.renderer.setSize(R.w, R.h, false); }
   else R.lowFps = true;
 }
 
-/* on battery: render at 1x and, below, at most 30 fps; the idle floating stops (the scene only renders when it changes) */
+/* lighter effects (battery, integrated graphics): at most 30 fps (see frame) and no idle floating, so the scene only renders when it
+   changes; the resolution stays the screen's (pixelRatio) so the model stays sharp */
 SH.on('power', () => {
-  if (!R) return; const d = state.lite ? Math.min(R.dpr, 1) : Math.min(R.dpr0, devicePixelRatio || 1, 1.5);
+  if (!R) return; const d = R.dpr0 = pixelRatio();
   if (d !== R.dpr) { R.dpr = d; R.renderer.setPixelRatio(d); if (R.w) R.renderer.setSize(R.w, R.h, false); }
   R.lowFps = false; R.fa = R.fn = 0; dirty = true;
 });
@@ -757,7 +801,7 @@ function fanBlades(nB = 9, r0 = .13, r1 = .56, sweep = .9) {
 function buildTower(canvas) {
   R0tex = [];
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: !softGL, alpha: true, powerPreference: state.lite ? 'low-power' : 'high-performance' });
-  const dpr = Math.min(softGL || state.lite ? 1 : 1.5, devicePixelRatio || 1);
+  const dpr = pixelRatio();
   renderer.setPixelRatio(dpr); renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(30, 1, .1, 100), pmrem = new THREE.PMREMGenerator(renderer);
@@ -867,8 +911,7 @@ function buildTower(canvas) {
   const M = new THREE.Group(); M.position.set(4.6, 0, 1.7); M.rotation.y = -.3; rig.add(M);
   const MW = 5.2, MH = 3.25, MY = 2.5;
   M.add(new THREE.Mesh(merge([box(MW + .16, MH + .16, .12, 0, MY, 0), box(.4, 1.05, .1, 0, .6, -.12), box(1.8, .05, 1.0, 0, .025, -.08)]), mat.bezel));
-  const scrC = mk(1024, 640); R0.scr = { c: scrC, g: scrC.getContext('2d'), bg: screenBG(1024, 640), a: css('--accent'), b: css('--accent2') };
-  const screenTex = canvasTex(scrC, true, 1); screenTex.generateMipmaps = false; screenTex.minFilter = THREE.LinearFilter; R0.screenTex = screenTex;
+  const screenTex = liveScreenTex(R0, aniso);
   mat.screen = new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false, color: 0x000000 });
   const screen = new THREE.Mesh(new THREE.PlaneGeometry(MW, MH), mat.screen); screen.position.set(0, MY, .062); M.add(screen); R0.screen = screen;
 
@@ -891,7 +934,7 @@ function buildTower(canvas) {
 function sceneBase(canvas, extra = {}) {
   R0tex = [];
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: !softGL, alpha: true, powerPreference: state.lite ? 'low-power' : 'high-performance' });
-  const dpr = Math.min(softGL || state.lite ? 1 : 1.5, devicePixelRatio || 1);
+  const dpr = pixelRatio();
   renderer.setPixelRatio(dpr); renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
   const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(30, 1, .1, 100), pmrem = new THREE.PMREMGenerator(renderer);
@@ -921,8 +964,7 @@ function groundShadow(R0, w, d, x = 0, z = 0, opacity = .9) {
   return s;
 }
 function liveScreen(R0, w, h) {
-  const scrC = mk(1024, 640); R0.scr = { c: scrC, g: scrC.getContext('2d'), bg: screenBG(1024, 640), a: css('--accent'), b: css('--accent2') };
-  const tex = canvasTex(scrC, true, 1); tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; R0.screenTex = tex;
+  const tex = liveScreenTex(R0, R0.aniso);
   R0.mat.screen = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, color: 0x000000 });
   const s = new THREE.Mesh(new THREE.PlaneGeometry(w, h), R0.mat.screen); R0.screen = s;
   return s;
@@ -1508,6 +1550,11 @@ SH.homeVariant({
     const list = $('.m3-list', root);
     list.addEventListener('pointerover', e => { const r = e.target.closest('.m3-row'); if (r) focus(r.dataset.comp); });
     list.addEventListener('pointerleave', unfocusSoon);
+    /* the keyboard or the controller focusing a row shows its component, as hovering it does */
+    list.addEventListener('focusin', e => { const r = e.target.closest('.m3-row'); if (r) focus(r.dataset.comp); });
+    list.addEventListener('focusout', e => { if (!list.contains(e.relatedTarget)) unfocusSoon(); });
+    paintHint(); unsubPad = SH.on('gamepad:mode', paintHint);
+    if (SH.gamepad && SH.gamepad.setHook) SH.gamepad.setHook(PAD_HOOK);
     list.addEventListener('click', e => { const r = e.target.closest('.m3-row'); if (r) ctx.openComponent(r.dataset.comp, r); });
     if (ctx.intro) {
       /* the list fills the stage height (top:0/bottom:0): it only slides in sideways, without the -50% from when it was centered */
@@ -1545,6 +1592,7 @@ SH.homeVariant({
   unmount() {
     mounted = false; token++; tickers.delete(frame); timers.forEach(clearTimeout); timers = []; clearTimeout(leaveT); clearTimeout(idleT);
     removeEventListener('pointermove', onMove); removeEventListener('pointerup', onUp); dragging = false;
+    if (unsubPad) unsubPad(); unsubPad = null; if (SH.gamepad && SH.gamepad.hook === PAD_HOOK) SH.gamepad.setHook(null); padMoving = false;
     if (unsubLook) unsubLook(); unsubLook = null; if (unsubTele) unsubTele(); unsubTele = null; if (ro) ro.disconnect(); ro = null;
     release();
     POSE = POSE_L; SP = SPOTS; Object.keys(halo).forEach(k => delete halo[k]); focused = null; root = null; ctxRef = null;
