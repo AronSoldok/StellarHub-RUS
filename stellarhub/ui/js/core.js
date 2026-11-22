@@ -319,7 +319,8 @@ function tickTo(el, value, o) {
     const dt = Math.min(.1, (now - prev) / 1000); prev = now;
     const gap = tk.to - tk.cur;
     tk.cur = Math.abs(gap) < 1 ? tk.to : tk.cur + gap * (1 - Math.exp(-dt * 9));   /* ~90% of the way in a quarter second */
-    el.textContent = tk.f(Math.round(tk.cur));
+    const txt = tk.f(Math.round(tk.cur));
+    if (txt !== el.textContent) { el.textContent = txt; if (o.sound !== false) countTick(el); }  /* count_tick (see the sounds) */
     tk.raf = tk.cur === tk.to || el._tk !== tk ? 0 : requestAnimationFrame(step);
   };
   tk.raf = requestAnimationFrame(step);
@@ -338,8 +339,8 @@ function rollNumber(el, value, o = {}) {
   if (rn && rn.timer) { rn.next = { txt, num: num ? value : null, o }; return; } /* a newer value replaces the waiting one */
   if (rn && rn.txt === txt && (rn.cols || el.textContent === txt)) return;
   if (!rn || plain || !rn.cols) {
-    if (plain) { el.textContent = txt; el._rn = { txt, num: num ? value : null, cols: null, t: performance.now() }; }
-    else { build(el, txt); el._rn.num = num ? value : null; }
+    if (plain) { const was = el.textContent; el.textContent = txt; el._rn = { txt, num: num ? value : null, cols: null, t: performance.now() }; if (o.tick && num && was !== txt && o.sound !== false) countTick(el); painted(el, o); }
+    else { build(el, txt); el._rn.num = num ? value : null; painted(el, o); }
     return;
   }
   const wait = rn.t + ROLL_GAP - performance.now();
@@ -375,7 +376,10 @@ function rollNumber(el, value, o = {}) {
   }
   el.setAttribute('aria-label', txt);
   rn.cols = out; rn.txt = txt; rn.num = num ? value : null; rn.t = performance.now();
+  painted(el, o);
 }
+/* the number on screen has just changed: a percentage plays its step now, with the paint (o.percent: the value shown) */
+function painted(el, o) { if (o.percent != null) sndPercent(el, o.percent); }
 const setCh = (e, ch) => { e.dataset.c = ch; if (/\d/.test(ch)) e.dataset.d = ''; else delete e.dataset.d; };
 function build(el, txt) {
   el.textContent = ''; el.setAttribute('aria-label', txt); el.style.whiteSpace = 'nowrap'; /* columns are atomic: never wrap between them */
@@ -609,6 +613,23 @@ const actInfo = mod => { const m = MODS.find(x => x.id === mod), x = ACT_EXTRA[m
    WebView2 can keep document.visibilityState "visible" for a hidden window; document.hidden counts too. */
 let winHidden = false;
 const pageHidden = () => document.hidden || winHidden;
+/* SH.onScreen(el): the user can see el now. In the view in front (or outside the views: the header, a dialog),
+   rendered and not transparent, inside the window and the scroll boxes around it, and not covered at the middle of
+   what shows of it (the palette, a dialog, the Settings sheet). The window hidden: never. */
+function onScreen(el) {
+  if (!el || !el.getBoundingClientRect || pageHidden()) return false;
+  const v = el.closest && el.closest('.view'); if (v && v.id !== 'v-' + state.view) return false;
+  if (el.checkVisibility ? !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) : !el.offsetParent) return false;
+  const r = el.getBoundingClientRect();
+  let l = Math.max(r.left, 0), t = Math.max(r.top, 0), rt = Math.min(r.right, innerWidth), b = Math.min(r.bottom, innerHeight);
+  for (let p = el.parentElement; p && p !== document.body && l < rt && t < b; p = p.parentElement) {
+    const cs = getComputedStyle(p); if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+    const q = p.getBoundingClientRect(); l = Math.max(l, q.left); t = Math.max(t, q.top); rt = Math.min(rt, q.right); b = Math.min(b, q.bottom);
+  }
+  if (!(l < rt && t < b)) return false;
+  const hit = document.elementFromPoint((l + rt) / 2, (t + b) / 2);
+  return !!hit && (el.contains(hit) || hit.contains(el));
+}
 /* the user is looking at that module (its own result UI answers): no toast, no badge */
 const actHere = mod => { mod = actMod(mod); if (pageHidden()) return false; return mod === 'backups' ? !!state.setOpen : state.view === mod; };
 /* user: it is shown (started by the user, or by the module and running past the grace period); bg: the module started it */
@@ -844,7 +865,8 @@ const SOUND_EV = {
   unavailable: { c: 'alerts', g: .45, gap: 400, tier: 2 }, achievement: { c: 'alerts', g: .55, gap: 1500, tier: 3 },
   /* tasks */
   scan_start: { c: 'tasks', g: .5, gap: 500, tier: 1 }, scan_complete: { c: 'tasks', g: .92, gap: 300, tier: 2 },
-  progress_tick: { c: 'tasks', g: .25, gap: 400, tier: 0 }, refresh: { c: 'tasks', g: .45, gap: 300, tier: 1, user: 1 },
+  progress_tick: { c: 'tasks', g: .25, gap: 400, tier: 0 },
+  count_tick: { c: 'tasks', g: .5, gap: 83, tier: 0, n: 4 }, percent_step: { c: 'tasks', g: .37, gap: 85, tier: 0, steps: 9 }, refresh: { c: 'tasks', g: .45, gap: 300, tier: 1, user: 1 },
   delete: { c: 'tasks', g: .5, gap: 200, tier: 1, user: 1 }, undo: { c: 'tasks', g: .5, gap: 200, tier: 1, user: 1 },
   copy: { c: 'tasks', g: .45, gap: 200, tier: 1, user: 1 }, screenshot: { c: 'tasks', g: .5, gap: 300, tier: 2 },
   /* system */
@@ -865,11 +887,32 @@ const SWOOSH = { delay: .02, n: -1, files: [['navigate_swoosh_1', .53], ['naviga
    decides when). Group Tasks (soundTasks). Its trim puts it about 2 dB under navigate's swooshes and 7 above hover: a
    background, not an event. It is a voice of its own (it never counts in the 4 at once and never cuts anything); it
    fades out in about 150 ms. A notification or a finished task (tier 2 or more: scan_complete, success, error...)
-   fades it first and it stays off until the indicator has gone. Never while the page is hidden. */
-const LOOP = { file: 'loading', g: .25, fade: .05 };
+   ducks it for `duck` ms: it may be another module's work that ended in the background, so the loop comes back if an
+   indicator is still asking for it then, and ends if none is (the end of the visible one stops it). Never while the
+   page is hidden. */
+const LOOP = { file: 'loading', g: .25, fade: .05, duck: 700 };
+/* count_tick ("blip"): a muted dry blip for each visible change of a big number counting up on screen
+   (SH.rollNumber(el, n, { tick: true }): the files a scan has read), at most ~12 a second; one of `n` micro-variants
+   (count_tick_1..4), never the same twice in a row; about 5 dB under hover. percent_step ("glass pluck"): one soft
+   pluck each time a percentage on screen shows a higher whole number (SH.rollNumber(el, text, { percent }): the
+   Benchmark score), from the same code that paints it, so the pitch always matches the number shown; `steps`
+   pre-rendered pitches at equal loudness, E major pentatonic E5..B6 (percent_step_0..8, step = min(8, floor(pct * 9 /
+   101))). A step that comes inside the gap is dropped, never queued: no sound is ever late. Both in the Tasks group,
+   only for an element on screen (onScreen). */
 const sndFile = ev => SOUND_EV[ev].f || ev;
+/* the file to play now: an event with steps takes the one asked for (o.step); one with variants (n) one at random,
+   never the one it played last */
+function sndPick(ev, o = {}) {
+  const d = SOUND_EV[ev];
+  if (d.steps) return `${ev}_${Math.max(0, Math.min(d.steps - 1, o.step | 0))}`;
+  const n = d.n; if (!n) return sndFile(ev);
+  let k; do k = 1 + Math.floor(Math.random() * n); while (n > 1 && k === snd.lastVar[ev]);
+  snd.lastVar[ev] = k; return `${ev}_${k}`;
+}
+const sndFiles = ev => { const d = SOUND_EV[ev];
+  return d.steps ? Array.from({ length: d.steps }, (_, i) => `${ev}_${i}`) : d.n ? Array.from({ length: d.n }, (_, i) => `${ev}_${i + 1}`) : [sndFile(ev)]; };
 const SOUND_CAT = { ui: 'soundUi', alerts: 'soundAlerts', tasks: 'soundTasks', system: 'soundSystem' };
-const snd = { ctx: null, master: null, buf: new Map(), failed: new Map(), last: {}, lastAny: -1e9, hist: [], voices: [], gestureAt: -1e9, act: null, loop: null, loopHeld: false };
+const snd = { ctx: null, master: null, buf: new Map(), failed: new Map(), last: {}, lastAny: -1e9, hist: [], voices: [], gestureAt: -1e9, act: null, loop: null, loopAsk: -1e9, loopT: 0, lastVar: {} };
 function sndCtx() {
   if (snd.ctx) return snd.ctx;
   const C = window.AudioContext || window.webkitAudioContext; if (!C) return null;
@@ -908,7 +951,8 @@ function sndStart(v, b, o) {
     return;
   }
   const src = ctx.createBufferSource(), g = ctx.createGain();
-  src.buffer = b; src.loop = !!v.loop; g.gain.value = v.trim * (o.gain ?? 1);
+  src.buffer = b; src.loop = !!v.loop;
+  g.gain.value = v.duck ? 0 : v.trim * (o.gain ?? 1);
   src.connect(g); g.connect(snd.master);
   src.onended = () => { v.ended = true; try { g.disconnect(); } catch {} };
   v.src = src; v.g = g; src.start(v.delay ? ctx.currentTime + v.delay : 0);
@@ -921,6 +965,9 @@ function sound(ev, o = {}) {
   const d = SOUND_EV[ev]; if (!d) return false;
   const st = state.settings, now = performance.now();
   if (!o.preview && (st.sounds === false || st[SOUND_CAT[d.c]] === false)) return false;
+  /* a plain toast inside a click on a control js/sounds.js will sound (a switch: toggle_on / toggle_off) stays quiet:
+     the control's own sound says it, and an on and an off no longer sound the same */
+  if (ev === 'toast' && snd.act && snd.act.own && !snd.act.claimed && now - snd.act.at < 40) return false;
   /* this gesture has its sound: js/sounds.js adds no click to it */
   if (snd.act && now - snd.act.at < 40) snd.act.claimed = true;
   if (!(+st.soundVolume > 0)) return false;
@@ -933,7 +980,7 @@ function sound(ev, o = {}) {
   if (ev === 'toast' && now - snd.lastAny < 350) return false;
   snd.voices = snd.voices.filter(v => !v.ended);
   if (d.tier >= 2) snd.voices.forEach(v => { if (v.tier < d.tier && now - v.at < 100) sndStop(v); });
-  if (d.tier >= 2 && loopOn()) { loopStop(); snd.loopHeld = true; }  /* the task is over: the loop fades under its sound */
+  if (d.tier >= 2) loopDuck();  /* a task is over (maybe elsewhere): the loop steps aside for its sound */
   /* two long system sounds never overlap (the start sound, then "updated to x.y.z"): the newer one takes over */
   if (d.tier === 3) snd.voices.forEach(v => { if (v.tier === 3) sndStop(v, .04); });
   snd.voices = snd.voices.filter(v => !v.ended);
@@ -943,7 +990,7 @@ function sound(ev, o = {}) {
   snd.last[ev] = now; snd.lastAny = now; snd.hist.push({ tier: d.tier, at: now });
   const v = { ev, tier: d.tier, at: now, trim: d.g, src: null, g: null, ended: false, cancelled: false };
   snd.voices.push(v);
-  if (!sndPlay(v, sndFile(ev), o)) return false;
+  if (!sndPlay(v, sndPick(ev, o), o)) return false;
   if (ev === 'navigate') {
     /* the swoosh under the click: the next one in turn, as a quiet voice of its own (tier 0: it never cuts anything) */
     SWOOSH.n = (SWOOSH.n + 1) % SWOOSH.files.length;
@@ -957,11 +1004,24 @@ function sound(ev, o = {}) {
    from the beginning again); loop(false) when none is: fades it and lets the next indicator start it again. Returns
    whether it plays. */
 function loopOn() { return !!(snd.loop && !snd.loop.ended); }
-function loopStop() { if (snd.loop) { sndStop(snd.loop, LOOP.fade); snd.loop = null; } }
+function loopStop() { if (snd.loop) { sndStop(snd.loop, LOOP.fade); snd.loop = null; } clearTimeout(snd.loopT); }
+function loopDuck() {
+  const v = snd.loop; if (!v || v.ended) return;
+  v.duck = true; if (v.g && snd.ctx) v.g.gain.setTargetAtTime(0, snd.ctx.currentTime, .03);
+  clearTimeout(snd.loopT);
+  snd.loopT = setTimeout(() => {
+    if (snd.loop !== v || v.ended) return;
+    v.duck = false;
+    /* an indicator still on screen asked for it a moment ago (sounds.js asks every 200 ms): back; otherwise it ends */
+    if (performance.now() - snd.loopAsk > 450 || pageHidden()) { loopStop(); return; }
+    if (v.g && snd.ctx) v.g.gain.setTargetAtTime(v.trim, snd.ctx.currentTime, .08);
+  }, LOOP.duck);
+}
 function sndLoop(on) {
-  if (!on) { snd.loopHeld = false; loopStop(); return false; }
+  if (!on) { loopStop(); return false; }
   const st = state.settings;
-  if (snd.loopHeld || st.sounds === false || st.soundTasks === false || !(+st.soundVolume > 0) || pageHidden()) { loopStop(); return false; }
+  if (st.sounds === false || st.soundTasks === false || !(+st.soundVolume > 0) || pageHidden()) { loopStop(); return false; }
+  snd.loopAsk = performance.now();
   if (loopOn()) return true;
   const ctx = sndCtx(); if (!ctx) return false;
   if (ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -973,6 +1033,21 @@ function sndLoop(on) {
 on('window', d => { if (!(d && d.shown)) loopStop(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) loopStop(); });
 on('setting', ({ key, val }) => { if ((key === 'sounds' || key === 'soundTasks') && val === false) loopStop(); if (key === 'soundVolume' && !(+val > 0)) loopStop(); });
+/* count_tick for a counter that changed on screen (the gap is checked first: the on-screen test is the costly part) */
+function countTick(el) {
+  if (performance.now() - (snd.last.count_tick ?? -1e9) < SOUND_EV.count_tick.gap || !onScreen(el)) return false;
+  return sound('count_tick');
+}
+/* percent_step for el, which shows pct (0-100) from this very moment: called by rollNumber where it paints the
+   number, so the pitch is the one of the number on screen. One pluck per higher whole number shown (going down or
+   starting again says nothing); inside the gap it is dropped. */
+function sndPercent(el, pct) {
+  const n = Math.max(0, Math.min(100, Math.round(+pct || 0)));
+  if (!el || el._pct === n) return false;
+  const up = el._pct != null && n > el._pct; el._pct = n;
+  if (!up || !onScreen(el)) return false;
+  return sound('percent_step', { step: Math.min(8, Math.floor(n * 9 / 101)) });
+}
 /* a gesture: interface sounds may follow it (the controller calls SH.sound.gesture() on every button) */
 const sndGesture = () => { snd.gestureAt = performance.now(); if (snd.ctx && snd.ctx.state === 'suspended') snd.ctx.resume().catch(() => {}); };
 addEventListener('pointerdown', sndGesture, { capture: true, passive: true });
@@ -987,9 +1062,9 @@ Object.assign(sound, {
      claim(): this gesture is handled and stays silent (the widget, whose sound comes when its window does). */
   begin() { const n = performance.now(); if (!snd.act || n - snd.act.at > 40) snd.act = { at: n, claimed: false }; return snd.act; },
   claim() { if (snd.act && performance.now() - snd.act.at < 40) snd.act.claimed = true; },
-  preload(list) { if (!sndCtx()) return; (list || Object.keys(SOUND_EV)).forEach(ev => { if (ev === 'loading') sndLoad(LOOP.file); if (!SOUND_EV[ev]) return; sndLoad(sndFile(ev)); if (ev === 'navigate') SWOOSH.files.forEach(f => sndLoad(f[0])); }); },
+  preload(list) { if (!sndCtx()) return; (list || Object.keys(SOUND_EV)).forEach(ev => { if (ev === 'loading') sndLoad(LOOP.file); if (!SOUND_EV[ev]) return; sndFiles(ev).forEach(sndLoad); if (ev === 'navigate') SWOOSH.files.forEach(f => sndLoad(f[0])); }); },
   /* the files an event plays (navigate: the click and its seven swooshes) */
-  files: ev => !SOUND_EV[ev] ? [] : ev === 'navigate' ? [sndFile(ev), ...SWOOSH.files.map(f => f[0])] : [sndFile(ev)],
+  files: ev => !SOUND_EV[ev] ? [] : ev === 'navigate' ? [sndFile(ev), ...SWOOSH.files.map(f => f[0])] : sndFiles(ev),
   volume: sndVolume,
   /* fades everything out, starting `at` seconds from now (the window closing) */
   fadeOut(at = 0, len = .12) { if (snd.master && snd.ctx) snd.master.gain.setTargetAtTime(0, snd.ctx.currentTime + at, len / 3); },
@@ -998,6 +1073,8 @@ Object.assign(sound, {
 Object.defineProperty(sound, 'last', { get: () => snd.lastAny });
 /* whether the loading loop plays */
 Object.defineProperty(sound, 'looping', { get: loopOn });
+/* whether it is ducked under a notification right now */
+Object.defineProperty(sound, 'ducked', { get: () => !!(snd.loop && snd.loop.duck) });
 
 /* i18n.js ran first and already put SH.t and SH.i18n here: keep them */
 /* the icon of a PC component: the network adapter is drawn as a cable port when it is wired (Ethernet), Windows for
@@ -1007,7 +1084,7 @@ const compIcon = c => !c ? 'cpu' : c.id === 'sys' ? 'windows'
 window.SH = Object.assign(window.SH || {}, {
   $, $$, ROOT, state, DEFAULTS, FACT, ORBIT, motion, effInt, on, emit, call, apiReady, loadSettings, setSetting, compIcon,
   engine, job, activity, logActivity, activityText, fmtUptime, setPending, Spring, springEase, EASE, anim, assemble, tickers, fmt1, fmtInt, fmtBytes, countUp, rollNumber, fitText, esc,
-  ic, icons, emptyState, emptyArt, ago, lastRun, autoAnalyze, chartKit, PC, MODS, modById, registry, module, homeVariant, actions,
+  ic, icons, emptyState, emptyArt, ago, lastRun, onScreen, autoAnalyze, chartKit, PC, MODS, modById, registry, module, homeVariant, actions,
   go: () => {}, toast: () => {}, openComponent: () => {}, sfScan, sound,
   /* the window coming in after the start screen, and going away when StellarHub closes, updates or reopens as
      administrator (app.py calls these): a short fade instead of a cut */

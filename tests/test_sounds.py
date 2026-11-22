@@ -57,21 +57,31 @@ def loop_info():
     return m.group(1), float(m.group(2))
 
 
+def event_files(ev, d):
+    """the files an event plays: its own; percent_step_0..8 for one with steps; count_tick_1..4 for one with variants"""
+    if "steps" in d:
+        return [f"{ev}_{i}" for i in range(int(d["steps"]))]
+    return [f"{ev}_{i}" for i in range(1, int(d["n"]) + 1)] if "n" in d else [d.get("f", ev)]
+
+
 class SoundFiles(unittest.TestCase):
     def test_every_event_has_its_file_and_credit(self):
         table = sound_table()
-        self.assertEqual(len(table), 38)
+        self.assertEqual(len(table), 40)
         files = {f[:-4] for f in os.listdir(SOUNDS) if f.endswith(".ogg")}
         sw = [f for f, _ in swooshes()]
         self.assertEqual(sw, [f"navigate_swoosh_{i}" for i in range(1, 8)])
         self.assertEqual(table["navigate"]["f"], "navigate_click")
         self.assertEqual(loop_info()[0], "loading")                                       # the loop is no event
         self.assertNotIn("loading", table)
-        self.assertEqual({d.get("f", ev) for ev, d in table.items()} | set(sw) | {"loading"}, files)   # no file is left over
+        self.assertEqual(event_files("count_tick", table["count_tick"]), [f"count_tick_{i}" for i in range(1, 5)])
+        self.assertEqual(event_files("percent_step", table["percent_step"]), [f"percent_step_{i}" for i in range(9)])
+        want = {f for ev, d in table.items() for f in event_files(ev, d)}
+        self.assertEqual(want | set(sw) | {"loading"}, files)                            # no file is left over
         self.assertNotIn("navigate", files)                                              # the old one is gone
         with open(os.path.join(SOUNDS, "CREDITS.json"), encoding="utf-8") as fh:
             credits = json.load(fh)
-        self.assertEqual(len(credits), 46)
+        self.assertEqual(len(credits), len(files))
         loading = next(c for c in credits if c["event"] == "loading")
         self.assertEqual((loading["license"], loading["sourceUrl"]), ("CC0-1.0", ""))
         self.assertIn("Orbital", loading["family"])
@@ -112,6 +122,25 @@ class SoundFiles(unittest.TestCase):
         self.assertEqual(t["key_type"]["user"], 1)
         self.assertEqual(t["map_hover"]["gap"], 35)
         self.assertNotIn("user", t["map_hover"])               # a hover, like hover itself
+
+    def test_counters_and_percent_steps_are_quiet_task_sounds(self):
+        """count_tick and percent_step: Tasks group (Settings > Sound), never cut anything, need no gesture (the work
+        moves them, not a click); count_tick at most ~12 a second, in 4 variants; percent_step in 9 pitches, ~85 ms
+        apart. The switches stay Interface sounds."""
+        t = sound_table()
+        for ev in ("count_tick", "percent_step"):
+            self.assertEqual((t[ev]["c"], t[ev]["tier"]), ("tasks", 0), ev)
+            self.assertNotIn("user", t[ev])
+        self.assertGreaterEqual(t["count_tick"]["gap"], 83)
+        self.assertEqual(t["count_tick"]["n"], 4)
+        self.assertEqual((t["percent_step"]["steps"], t["percent_step"]["gap"]), (9, 85))
+        # the Benchmark score: the step goes with the paint of the number (rollNumber), never on its own
+        bench = read("js", "modules", "benchmark.js")
+        self.assertIn("SH.rollNumber(sc, fmtInt(p * 100) + '%', { percent: p * 100 })", bench)
+        self.assertNotIn("SH.sound.percent", bench)
+        self.assertNotIn("percent:", re.search(r"Object\.assign\(sound, \{(.*?)\n\}\);", read("js", "core.js"), re.S).group(1))
+        for ev in ("toggle_on", "toggle_off"):
+            self.assertEqual(t[ev]["c"], "ui")
 
     def test_hover_soft_is_a_quiet_interface_tick(self):
         """The secondary elements' hover: Interface group, never cuts anything, needs no gesture (it is a hover) and
@@ -175,6 +204,18 @@ class SoundFiles(unittest.TestCase):
         lv = raw(f) + 20 * math.log10(g)
         self.assertAlmostEqual(lv, -38.4, delta=1)
         self.assertGreater(lv, level("hover") + 5)
+        # the counter's blips: between the secondary hover and hover (they come up to 12 a second)
+        g = t["count_tick"]["g"]
+        for i in range(1, 5):
+            lv = raw(f"count_tick_{i}") + 20 * math.log10(g)
+            self.assertAlmostEqual(lv, -50.5, delta=1, msg=i)
+            self.assertLess(lv, level("hover") - 4)
+            self.assertGreater(lv, level("hover_soft") + 1)
+        # the percent plucks: about the progress ticks' level, a little over at the bottom of the scale
+        g = t["percent_step"]["g"]
+        for i in range(9):
+            lv = raw(f"percent_step_{i}") + 20 * math.log10(g)
+            self.assertAlmostEqual(lv, -43.6, delta=2, msg=i)
 
     def test_the_loading_loop_is_one_seamless_cycle(self):
         """loading.ogg is exactly one 2.1 s cycle whose end runs into its start (loop = true, no click at the seam)."""
@@ -507,11 +548,23 @@ const fire = (type, e, h) => { e = { type, isTrusted: true, detail: 1, button: 0
 globalThis.window = globalThis;
 const noop = () => {};
 const el = () => ({ dataset: {}, style: { setProperty: noop }, animate: () => ({ finished: Promise.resolve(), cancel: noop }), classList: { add: noop, remove: noop, toggle: noop, contains: () => false } });
-let DIALOGS = [], LOADERS = [], COVER = null;
-/* LOADERS: loading indicators (see loader() in the tests); COVER: something over the middle of the window */
+let DIALOGS = [], LOADERS = [], COVER = null, HIT = null;
+/* LOADERS: loading indicators (see loader() in the tests); COVER: something over the middle of the window; HIT: what
+   is under it otherwise (a counter), else the first loader */
 globalThis.document = { documentElement: el(), body: {}, hidden: false, addEventListener: listen, querySelector: () => null,
   querySelectorAll: s => s.includes('.cs-o') ? DIALOGS : s.includes('.du-radar') ? LOADERS : [],
-  elementFromPoint: () => COVER || LOADERS[0] || null };
+  elementFromPoint: () => COVER || HIT || LOADERS[0] || null, createElement: tag => node(tag) };
+/* a small DOM node, enough for SH.rollNumber's cells */
+function node(tag) { const n = { tag, dataset: {}, style: { setProperty: noop }, children: [], parentNode: null, _text: '',
+  get textContent() { return this.children.length ? this.children.map(c => c.textContent).join('') : this._text; },
+  set textContent(v) { this.children.forEach(c => { c.parentNode = null; }); this.children = []; this._text = String(v); },
+  get firstChild() { return this.children[0] || null; },
+  appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+  insertBefore(c, ref) { c.parentNode = this; const i = ref ? this.children.indexOf(ref) : -1; if (i < 0) this.children.push(c); else this.children.splice(i, 0, c); return c; },
+  remove() { const p = this.parentNode; if (p) { p.children = p.children.filter(x => x !== this); this.parentNode = null; } },
+  querySelectorAll: () => [], setAttribute(k, v) { this['@' + k] = v; }, getAttribute(k) { return this['@' + k] ?? null; },
+  animate: () => ({ cancel: noop, onfinish: null, finished: Promise.resolve() }) }; return n; }
+let SEQ = 0;   /* one counter for what the page paints and what the audio starts, to see what came right before what */
 globalThis.innerWidth = 1280; globalThis.innerHeight = 800;
 globalThis.getComputedStyle = () => ({ overflowX: 'visible', overflowY: 'visible' });
 globalThis.addEventListener = listen; globalThis.removeEventListener = noop;
@@ -526,15 +579,16 @@ globalThis.AudioBuffer = AudioBuffer;
 const param = () => ({ value: 1, cancelScheduledValues: noop, setTargetAtTime: noop });
 globalThis.AudioContext = class { constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; }
   createGain() { return { gain: param(), connect: noop, disconnect: noop }; }
-  createBufferSource() { const s = { connect: noop, stop() { if (s.loop) loopsStopped.push(s.buffer.file); setTimeout(() => s.onended && s.onended(), 5); },
-    start(when) { started.push({ file: s.buffer && s.buffer.file, when: when || 0, loop: !!s.loop }); if (!s.loop) setTimeout(() => s.onended && s.onended(), 20); } }; return s; }
+  createBufferSource() { const s = { connect: noop, playbackRate: { value: 1 }, stop() { if (s.loop) loopsStopped.push(s.buffer.file); setTimeout(() => s.onended && s.onended(), 5); },
+    start(when) { started.push({ file: s.buffer && s.buffer.file, when: when || 0, loop: !!s.loop, rate: s.playbackRate.value, seq: ++SEQ, t: performance.now() }); if (!s.loop) setTimeout(() => s.onended && s.onended(), 20); } }; return s; }
   resume() { return Promise.resolve(); } decodeAudioData(a) { const b = new AudioBuffer(); b.file = a.file; return Promise.resolve(b); } };
 const fetched = [], started = [], loopsStopped = [];
 globalThis.fetch = u => { fetched.push(u); return Promise.resolve({ ok: true, arrayBuffer: () => { const a = new ArrayBuffer(8); a.file = u.replace(/^sounds\/|\.ogg$/g, ''); return Promise.resolve(a); } }); };
 eval(require('fs').readFileSync(process.env.CORE_JS, 'utf8'));
 const played = [], real = SH.sound;
 const rec = (ev, o) => { const r = real(ev, o); if (r) played.push(ev); return r; };
-Object.assign(rec, real); Object.defineProperty(rec, 'last', { get: () => real.last }); Object.defineProperty(rec, 'looping', { get: () => real.looping }); SH.sound = rec;
+Object.assign(rec, real); Object.defineProperty(rec, 'last', { get: () => real.last }); Object.defineProperty(rec, 'looping', { get: () => real.looping });
+Object.defineProperty(rec, 'ducked', { get: () => real.ducked }); SH.sound = rec;
 eval(require('fs').readFileSync(process.env.SOUNDS_JS, 'utf8'));
 const tick = ms => new Promise(r => setTimeout(r, ms));
 const out = x => { process.stdout.write(JSON.stringify(x)); process.exit(0); };
@@ -750,10 +804,18 @@ class Wiring(unittest.TestCase):
           n = loops(); LOADERS = [loader(), loader()]; await tick(900); r.two = loops() - n; r.twoLooping = SH.sound.looping;
           COVER = { contains: () => false }; await tick(300); r.covered = SH.sound.looping; COVER = null;
           LOADERS = [loader('storage')]; await tick(900); r.otherModule = SH.sound.looping;          /* not the one in view */
-          /* the scan ends: scan_complete fades the loop, which stays off while the radar is still drawn */
-          LOADERS = [loader()]; await tick(900); r.beforeDone = SH.sound.looping;
-          SH.sound('scan_complete'); await tick(30); r.done = SH.sound.looping; await tick(600); r.afterDone = SH.sound.looping;
-          LOADERS = []; await tick(300); LOADERS = [loader()]; await tick(900); r.nextScan = SH.sound.looping;
+          /* the scan in view ends: its scan_complete ducks the loop and the radar goes, so the loop ends there */
+          LOADERS = [loader()]; await tick(900); r.beforeDone = SH.sound.looping; let m = loops();
+          SH.sound('scan_complete'); r.doneDucked = SH.sound.ducked; LOADERS = [];
+          await tick(900); r.afterDone = [SH.sound.looping, loops() - m];
+          /* the owner's case: an analysis in A, the user goes to B (A's loop stops) and starts one there (B's loop);
+             A ends in the background: its scan_complete only ducks B's loop, which comes back, not from the start */
+          LOADERS = [loader()]; await tick(900); SH.state.view = 'storage'; LOADERS = []; await tick(300); r.leftA = SH.sound.looping;
+          LOADERS = [loader('storage')]; await tick(900); m = loops(); r.bLoop = SH.sound.looping;
+          SH.sound('scan_complete'); await tick(30); r.bDucked = [SH.sound.looping, SH.sound.ducked];
+          await tick(900); r.bBack = [SH.sound.looping, SH.sound.ducked, loops() - m];
+          LOADERS = []; await tick(300); r.bEnd = SH.sound.looping;
+          SH.state.view = 'drivers'; LOADERS = [loader()]; await tick(900); r.nextScan = SH.sound.looping;
           LOADERS = []; await tick(300);
           SH.state.settings.soundTasks = false; LOADERS = [loader()]; await tick(900); r.tasksOff = SH.sound.looping;
           out(r);
@@ -773,11 +835,118 @@ class Wiring(unittest.TestCase):
         self.assertFalse(out["covered"])
         self.assertFalse(out["otherModule"])
         self.assertTrue(out["beforeDone"])
-        self.assertFalse(out["done"])
-        self.assertFalse(out["afterDone"])
+        self.assertTrue(out["doneDucked"])                   # under the scan's own sound
+        self.assertEqual(out["afterDone"], [False, 0])       # its indicator went: it ends, no restart
+        self.assertFalse(out["leftA"])
+        self.assertTrue(out["bLoop"])
+        self.assertEqual(out["bDucked"], [True, True])       # A's end, elsewhere: B's loop only steps aside...
+        self.assertEqual(out["bBack"], [True, False, 0])     # ...and comes back, the same voice
+        self.assertFalse(out["bEnd"])
         self.assertTrue(out["nextScan"])
         self.assertFalse(out["tasksOff"])
 
+    def test_a_switch_says_on_or_off_even_when_its_handler_shows_a_toast(self):
+        """Scheduled Tasks' routine switch shows "turned on/off" toasts: the plain toast's sound used to come first and
+        take the click, so on and off sounded the same."""
+        out = self.run_js(r"""
+          const ctl = (token, on = false) => { const e = { token, on, disabled: false, dataset: {},
+            classList: { contains: c => c === 'on' && e.on }, getAttribute: () => null,
+            matches: s => s.split(',').map(x => x.trim()).includes(token), closest(s) { return this.matches(s) ? this : null; } }; return e; };
+          const sw = ctl('.toggle'), btn = ctl('button');
+          SH.sound.preload(['toggle_on', 'toggle_off', 'toast', 'click']); await tick(30);
+          const press = async (el, handler, x = {}) => { played.length = 0; fire('pointerdown', { target: el }); fire('click', { target: el, ...x }, handler); await tick(450); return played.slice(); };
+          const flip = () => { sw.on = !sw.on; SH.sound('toast'); };   /* what the handler does: the switch, then SH.toast(...) */
+          const r = {};
+          r.on = await press(sw, flip);
+          r.off = await press(sw, flip);
+          r.keyOn = await press(sw, flip, { detail: 0 });             /* Space on the switch */
+          r.button = await press(btn, () => SH.sound('toast'));       /* a button that only says something: its click */
+          r.buttonKey = await press(btn, () => SH.sound('toast'), { detail: 0 });   /* Enter: no click sound, so the toast */
+          r.success = await press(btn, () => SH.sound('success'));    /* a notification still wins */
+          out(r);
+        """)
+        self.assertEqual(out["on"], ["toggle_on"])
+        self.assertEqual(out["off"], ["toggle_off"])
+        self.assertEqual(out["keyOn"], ["toggle_on"])
+        self.assertEqual(out["button"], ["click"])
+        self.assertEqual(out["buttonKey"], ["toast"])
+        self.assertEqual(out["success"], ["success"])
+
+    def test_count_ticks_follow_a_counter_on_screen(self):
+        out = self.run_js(r"""
+          globalThis.requestAnimationFrame = f => setTimeout(() => f(performance.now()), 16);
+          SH.state.view = 'storage';
+          const view = { id: 'v-storage' };
+          const n = { dataset: {}, textContent: '', closest: s => s === '.view' ? view : null, checkVisibility: () => true,
+            parentElement: null, contains: x => x === n, getBoundingClientRect: () => ({ left: 10, top: 10, right: 200, bottom: 60, width: 190, height: 50 }) };
+          HIT = n;
+          SH.sound.preload(['count_tick']); await tick(30);
+          const ticks = () => started.filter(s => /^count_tick/.test(s.file)).map(s => s.file);
+          SH.rollNumber(n, 1000, { tick: true }); await tick(50);
+          const r = { first: ticks().length };
+          let v = 1000; const t0 = Date.now();
+          while (Date.now() - t0 < 1000) { v += 1500; SH.rollNumber(n, v, { tick: true }); await tick(40); }
+          await tick(300);
+          r.perSecond = ticks().length / ((Date.now() - t0) / 1000); r.files = ticks(); r.text = n.textContent;
+          const before = ticks().length;
+          SH.state.view = 'home';                                    /* another module in front: the counter is not seen */
+          for (let i = 0; i < 10; i++) { v += 1500; SH.rollNumber(n, v, { tick: true }); await tick(40); }
+          await tick(300); r.offScreen = ticks().length - before;
+          out(r);
+        """)
+        self.assertEqual(out["first"], 0)                            # its first value is no change
+        self.assertGreaterEqual(out["perSecond"], 6)
+        self.assertLessEqual(out["perSecond"], 12.5)                 # about 12 a second at most
+        self.assertTrue(all(re.fullmatch(r"count_tick_[1-4]", f) for f in out["files"]), out["files"])
+        self.assertTrue(all(a != b for a, b in zip(out["files"], out["files"][1:])), out["files"])   # never twice in a row
+        self.assertEqual(out["offScreen"], 0)
+
+    def test_percent_steps_go_with_the_painted_number(self):
+        """The Benchmark score: SH.rollNumber paints the percentage (at most every ~240 ms, the latest value) and the
+        pluck for that very number starts in the same call, right after the paint; a step inside the 85 ms gap is
+        dropped, never queued, so no sound ever comes late or with another number's pitch."""
+        out = self.run_js(r"""
+          SH.state.view = 'benchmark';
+          const view = { id: 'v-benchmark' };
+          const sc = Object.assign(node('b'), { closest: s => s === '.view' ? view : null, checkVisibility: () => true,
+            parentElement: null, contains: x => x === sc, getBoundingClientRect: () => ({ left: 10, top: 10, right: 200, bottom: 60, width: 190, height: 50 }) });
+          const paints = [], set = sc.setAttribute;
+          sc.setAttribute = function (k, v) { if (k === 'aria-label') paints.push({ txt: v, seq: ++SEQ, t: performance.now() }); return set.call(this, k, v); };
+          HIT = sc;
+          SH.sound.preload(['percent_step']); await tick(30);
+          const plucks = () => started.filter(s => /^percent_step_/.test(s.file));
+          const show = p => SH.rollNumber(sc, SH.fmtInt(p) + '%', { percent: p });
+          show(0); await tick(20);
+          const r = { first: plucks().length };                        /* a run starting at 0: nothing */
+          for (let p = 0; p <= 100; p += 1.3) { show(p); await tick(22); }
+          show(100); await tick(600);
+          r.paints = paints.map(x => ({ ...x })); r.plucks = plucks().map(x => ({ file: x.file, seq: x.seq, t: x.t }));
+          /* going down (a new run) says nothing */
+          let k = plucks().length; show(30); await tick(400); r.down = plucks().length - k;
+          /* drawn at once (lighter effects: no roll, every value painted): two higher numbers 20 ms apart, the second
+             falls in the gap and is dropped, not played later */
+          SH.state.settings.countUp = false; k = plucks().length;
+          show(40); await tick(20); show(41); await tick(400); r.burst = plucks().length - k;
+          SH.state.view = 'home'; k = plucks().length; show(60); await tick(100); r.offScreen = plucks().length - k;
+          out(r);
+        """)
+        self.assertEqual(out["first"], 0)
+        paints, plucks = out["paints"], out["plucks"]
+        self.assertGreaterEqual(len(plucks), 5)
+        by_seq = {p["seq"]: p for p in paints}
+        for pl in plucks:
+            paint = by_seq.get(pl["seq"] - 1)                         # the event right before it: the paint
+            self.assertIsNotNone(paint, pl)
+            self.assertLess(pl["t"] - paint["t"], 2)                  # same call, not later
+            shown = int(re.sub(r"\D", "", paint["txt"]))
+            self.assertEqual(pl["file"], f"percent_step_{min(8, shown * 9 // 101)}", paint["txt"])
+        self.assertLessEqual(len(plucks), len(paints) - 1)            # never more than the numbers painted
+        steps = [int(p["file"].rsplit("_", 1)[1]) for p in plucks]
+        self.assertEqual(steps, sorted(steps))                         # it only climbs
+        self.assertEqual((steps[0] <= 1, steps[-1]), (True, 8))
+        self.assertEqual(out["down"], 0)
+        self.assertEqual(out["burst"], 1)
+        self.assertEqual(out["offScreen"], 0)
 
 if __name__ == "__main__":
     unittest.main()

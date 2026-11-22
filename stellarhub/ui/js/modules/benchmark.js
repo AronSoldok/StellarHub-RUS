@@ -619,7 +619,7 @@ async function runFull() {
   const sc = $('#bmScore', el); sc.textContent = '0%'; sc.dataset.v = 0; ringSet(0, false);
   const W8 = [.28, .08, .34, .30]; let rec = null;
   const stepEl = i => $(`.bm-st[data-i="${i}"]`, mid);
-  const setStep = (i, frac) => { const before = W8.slice(0, i).reduce((a, b) => a + b, 0); const p = before + W8[i] * clamp(frac, 0, 1); ringSet(p); SH.rollNumber(sc, fmtInt(p * 100) + '%'); benchProg(p, FULL_STEPS[i].n);
+  const setStep = (i, frac) => { const before = W8.slice(0, i).reduce((a, b) => a + b, 0); const p = before + W8[i] * clamp(frac, 0, 1); ringSet(p); SH.rollNumber(sc, fmtInt(p * 100) + '%', { percent: p * 100 }); benchProg(p, FULL_STEPS[i].n);
     const u = $('.bm-sp u', stepEl(i)); if (u) u.style.transform = `scaleX(${clamp(frac, 0, 1)})`; };
   const live = (k, title, v, unit) => { $('#lvK', mid).textContent = k; if ($('#lvT', mid).textContent !== title) { $('#lvT', mid).textContent = title; sp.reset(); } if (!nil(v)) { $('#lvV', mid).textContent = fmtV(v); $('#lvU', mid).textContent = unit; sp.push(v); } };
   const res = {};

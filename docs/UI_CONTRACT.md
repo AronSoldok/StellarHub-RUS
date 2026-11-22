@@ -96,7 +96,9 @@ Tokens: `--void --deep --raise --raise2 --raise3 --line --line2 --ink --mute --f
 
 ## Sounds
 
-`SH.sound(event, opts)` (core.js) plays `ui/sounds/<event>.ogg` (or the file its `f` names); the 38 events are the keys
+`SH.sound(event, opts)` (core.js) plays `ui/sounds/<event>.ogg` (or the file its `f` names, or one of `<event>_1..n`
+at random for an event with `n` variants, never the same twice in a row, or `<event>_<opts.step>` for one with
+`steps`); the 40 events are the keys
 of `SOUND_EV`, each with its group, gain trim (set from the file's loudest 100 ms), minimum gap and priority.
 `navigate` (a module change from the dock, the palette or a shortcut; `go()` in shell.js plays it) is two sounds:
 `navigate_click.ogg` at once and, 20 ms later, one of seven soft swooshes (`navigate_swoosh_1..7.ogg`, `SWOOSH` in
@@ -145,14 +147,26 @@ skeleton rows, the Hangar catalog's placeholders, any skeleton block 100 px tall
 module in view, rendered, inside the window and its scroll boxes and not covered at its middle (the palette, a dialog,
 the Settings sheet). It starts after 400 ms (a quick load stays silent), goes on across re-renders, and fades in about
 150 ms when none is left: the work ended or failed, another module or tab, scrolled away, covered, the window hidden.
-One loop however many indicators; a notification or a finished task (`scan_complete`, `success`, `error`...) fades it
-first and it stays off until the indicator goes. A new loading state adds its selector to `LOADING`; spinners in
-buttons and the progress bars of installs, cleanups and tests stay out (they have their own progress and sounds), and
-so does the benchmark (it measures the PC). `SH.sound.loop(on)` and `SH.sound.looping` are the engine's side (core.js).
+One loop however many indicators. A notification or a finished task (`scan_complete`, `success`, `error`...) only ducks
+it for 700 ms (it may be another module's work, ended in the background): it comes back if an indicator on screen still
+asks for it, and ends if none does; only the end of the visible indicator stops it. A new loading state adds its
+selector to `LOADING`; spinners in buttons and the progress bars of installs, cleanups and tests stay out (they have
+their own progress and sounds), and so does the benchmark's loop (it has its percent steps). `SH.sound.loop(on)`,
+`SH.sound.looping` and `SH.sound.ducked` are the engine's side (core.js). `SH.onScreen(el)` is the visibility test.
+
+Counters and percentages (group `soundTasks`, only for an element on screen): `count_tick` ("blip"), a muted dry blip
+for each visible change of a number fed to `SH.rollNumber(el, n, { tick: true })` (Storage's files read), at most ~12 a
+second, one of `count_tick_1..4`, never the same twice in a row (`{ sound: false }` keeps a counter quiet);
+`percent_step` ("glass pluck"), `SH.rollNumber(el, text, { percent })` (the Benchmark score): each time the number
+painted on screen is a higher whole percent, `percent_step_<step>.ogg` plays in that same call (step = min(8,
+floor(pct × 9 / 101)), nine pitches at equal loudness, E major pentatonic E5 to B6), so the pitch always matches the
+number shown; one inside its 85 ms gap is dropped, never queued; going down or starting again says nothing.
 
 Rules: one sound per user action. Interface sounds need a click, key or controller press in the last 1.5 s, and the
 first one within 100 ms wins, so a sound that belongs to a click must be played synchronously in the click handler
 (before any `await`); if it can only come later, call `SH.sound.claim()` in the handler and play it when ready. A
+plain toast shown by the handler of a control that has its own sound (a switch's `toggle_on`/`toggle_off`, a new
+choice, a pointer click) stays quiet: the control speaks. A
 notification (success, error, a finished scan) replaces a click that began in the last 100 ms. Nothing plays while
 the window is hidden. Settings: `sounds`, `soundVolume`, `soundUi`, `soundAlerts`, `soundTasks`, `soundSystem`
 (Settings > Sound); lighter effects and intensity `min` mute nothing.

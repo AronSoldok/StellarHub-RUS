@@ -60,6 +60,50 @@
   "durationMs": 279
  },
  {
+  "event": "count_tick_1",
+  "id": "count_tick.orbital-blip-1",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 19,
+  "note": "a muted dry blip, one of four micro-variants, for a number counting up on screen"
+ },
+ {
+  "event": "count_tick_2",
+  "id": "count_tick.orbital-blip-2",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 19,
+  "note": "a muted dry blip, one of four micro-variants, for a number counting up on screen"
+ },
+ {
+  "event": "count_tick_3",
+  "id": "count_tick.orbital-blip-3",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 19,
+  "note": "a muted dry blip, one of four micro-variants, for a number counting up on screen"
+ },
+ {
+  "event": "count_tick_4",
+  "id": "count_tick.orbital-blip-4",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 19,
+  "note": "a muted dry blip, one of four micro-variants, for a number counting up on screen"
+ },
+ {
   "event": "delete",
   "id": "delete.orbital-delete",
   "family": "Orbital (original)",
@@ -291,6 +335,105 @@
   "sourceUrl": "",
   "attribution": "",
   "durationMs": 478
+ },
+ {
+  "event": "percent_step_0",
+  "id": "percent_step.orbital-glass-pluck-E5",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 57,
+  "note": "a soft glass pluck at E5 (+0 semitones, E major pentatonic), step 0 of 9 at equal loudness, for a percentage rising on screen"
+ },
+ {
+  "event": "percent_step_1",
+  "id": "percent_step.orbital-glass-pluck-F#5",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 57,
+  "note": "a soft glass pluck at F#5 (+2 semitones, E major pentatonic), step 1 of 9 at equal loudness, for a percentage rising on screen"
+ },
+ {
+  "event": "percent_step_2",
+  "id": "percent_step.orbital-glass-pluck-G#5",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 57,
+  "note": "a soft glass pluck at G#5 (+4 semitones, E major pentatonic), step 2 of 9 at equal loudness, for a percentage rising on screen"
+ },
+ {
+  "event": "percent_step_3",
+  "id": "percent_step.orbital-glass-pluck-B5",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 57,
+  "note": "a soft glass pluck at B5 (+7 semitones, E major pentatonic), step 3 of 9 at equal loudness, for a percentage rising on screen"
+ },
+ {
+  "event": "percent_step_4",
+  "id": "percent_step.orbital-glass-pluck-C#6",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 57,
+  "note": "a soft glass pluck at C#6 (+9 semitones, E major pentatonic), step 4 of 9 at equal loudness, for a percentage rising on screen"
+ },
+ {
+  "event": "percent_step_5",
+  "id": "percent_step.orbital-glass-pluck-E6",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 57,
+  "note": "a soft glass pluck at E6 (+12 semitones, E major pentatonic), step 5 of 9 at equal loudness, for a percentage rising on screen"
+ },
+ {
+  "event": "percent_step_6",
+  "id": "percent_step.orbital-glass-pluck-F#6",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 57,
+  "note": "a soft glass pluck at F#6 (+14 semitones, E major pentatonic), step 6 of 9 at equal loudness, for a percentage rising on screen"
+ },
+ {
+  "event": "percent_step_7",
+  "id": "percent_step.orbital-glass-pluck-G#6",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 57,
+  "note": "a soft glass pluck at G#6 (+16 semitones, E major pentatonic), step 7 of 9 at equal loudness, for a percentage rising on screen"
+ },
+ {
+  "event": "percent_step_8",
+  "id": "percent_step.orbital-glass-pluck-B6",
+  "family": "Orbital (original)",
+  "license": "CC0-1.0",
+  "author": "StellarHub project (procedurally generated, _tools/build_round8.py)",
+  "sourceUrl": "",
+  "attribution": "",
+  "durationMs": 57,
+  "note": "a soft glass pluck at B6 (+19 semitones, E major pentatonic), step 8 of 9 at equal loudness, for a percentage rising on screen"
  },
  {
   "event": "progress_tick",

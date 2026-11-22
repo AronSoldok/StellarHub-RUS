@@ -125,7 +125,12 @@ addEventListener('click', e => {
   const act = sound.begin();
   dialogChange();
   const el = e.target.closest && e.target.closest(`${TOGGLE}, ${CHOICE}, ${CLICKABLE}`);
-  pre.set(e, { act, el, wasOn: !!(el && el.matches(CHOICE) && (el.classList.contains('on') || el.getAttribute('aria-selected') === 'true')) });
+  const wasOn = !!(el && el.matches(CHOICE) && (el.classList.contains('on') || el.getAttribute('aria-selected') === 'true'));
+  pre.set(e, { act, el, wasOn });
+  /* this click will have the control's own sound (a switch, a new choice, a press with the pointer or the controller's
+     A): a plain toast its handler shows stays quiet (core.js) */
+  const pad = SH.sound.viaPad === true;
+  if (el && !el.disabled && (e.isTrusted || pad) && (el.matches(TOGGLE) || (el.matches(CHOICE) && !wasOn) || e.detail > 0 || pad)) act.own = true;
 }, true);
 addEventListener('click', e => {
   const p = pre.get(e);
@@ -205,23 +210,11 @@ const LOADING = [
 ].join(', ');
 const LOAD_SK = 100;     /* a bare .sk block counts from this height (a chart, a panel being read), not a line of text */
 const LOAD_AFTER = 400, LOAD_EVERY = 200;
-const inView = el => { const v = el.closest('.view'); return !!v && v.id === 'v-' + state.view; };
-/* the middle of the part of el that the window and its scroll boxes let through, or null */
-function shownAt(el) {
-  let r = el.getBoundingClientRect(), l = Math.max(r.left, 0), t = Math.max(r.top, 0), rt = Math.min(r.right, innerWidth), b = Math.min(r.bottom, innerHeight);
-  for (let p = el.parentElement; p && p !== document.body && l < rt && t < b; p = p.parentElement) {
-    const s = getComputedStyle(p); if (s.overflowX === 'visible' && s.overflowY === 'visible') continue;
-    const q = p.getBoundingClientRect(); l = Math.max(l, q.left); t = Math.max(t, q.top); rt = Math.min(rt, q.right); b = Math.min(b, q.bottom);
-  }
-  return l < rt && t < b ? [(l + rt) / 2, (t + b) / 2] : null;
-}
+/* on screen: SH.onScreen (core.js), the same test count_tick and percent_step use */
 function loading() {
   for (const el of $$(LOADING)) {
-    if (!inView(el) || !(el.checkVisibility ? el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }) : el.offsetParent)) continue;
     if (el.matches('.sk') && el.getBoundingClientRect().height < LOAD_SK) continue;  /* (a skeleton row counts by itself) */
-    const at = shownAt(el); if (!at) continue;
-    const hit = document.elementFromPoint(at[0], at[1]);
-    if (hit && (el.contains(hit) || hit.contains(el))) return true;
+    if (SH.onScreen(el)) return true;
   }
   return false;
 }
