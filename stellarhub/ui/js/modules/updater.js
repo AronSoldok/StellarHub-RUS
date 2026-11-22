@@ -344,7 +344,10 @@ function stepQueue() {
   updQRow(cur, true);
 }
 function finishedToast() {
-  const done = Q.list.filter(q => q.st === 'done').length, fail = Q.list.filter(q => q.st === 'fail').length, adm = Q.list.filter(q => q.st === 'admin').length;
+  /* this run only: what an earlier run already reported (still listed in the queue) is not counted again */
+  const fresh = Q.list.filter(q => !q.told);
+  const done = fresh.filter(q => q.st === 'done').length, fail = fresh.filter(q => q.st === 'fail').length, adm = fresh.filter(q => q.st === 'admin').length;
+  fresh.forEach(q => { if (['done', 'fail', 'admin', 'cancel'].includes(q.st)) q.told = true; });
   const act = Q.act; Q.act = null;
   if (!done && !fail && !adm) { if (act) act.end({ cancelled: true }); return; }
   const msg = [done === 1 ? t('{n} update installed.', { n: done }) : t('{n} updates installed.', { n: done })];
@@ -468,7 +471,7 @@ function queueClicks(e) {
     renderQueueHead(); rerenderAll(); SH.toast(REAL && Q.list.some(q => q.cancelAfter) ? t('What is installing now will finish; the rest is cancelled.') : t('Queue cancelled. What was already installed stays.'), { group: 'upd-q' }); return true;
   }
   if (e.target.closest('[data-qclear]')) { Q.list = Q.list.filter(q => ['down', 'inst'].includes(q.st)); $(`#v-${ID} .u-qlist`).innerHTML = ''; renderQueue(); return true; }
-  const r = e.target.closest('[data-retry]'); if (r) { const q = Q.list[+r.dataset.retry]; q.st = 'queued'; q.p = 0; q.ph = 0; q.msg = null; q.cancelAfter = false; q.sp.set(0); updQRow(q); startQueue(); return true; }
+  const r = e.target.closest('[data-retry]'); if (r) { const q = Q.list[+r.dataset.retry]; q.st = 'queued'; q.p = 0; q.ph = 0; q.msg = null; q.cancelAfter = false; q.told = false; q.sp.set(0); updQRow(q); startQueue(); return true; }
   if (e.target.closest('[data-admin]')) { SH.go('admin'); return true; }
   return false;
 }
