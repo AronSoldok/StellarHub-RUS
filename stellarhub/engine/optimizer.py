@@ -748,13 +748,105 @@ _SYS32 = re.compile(r"(?i)([\\/])system32(?=[\\/]|$)")
 
 def _variants(p, view):
     """The paths a 32-bit program could mean (System32 is really SysWOW64 for it). 64-bit entries are checked as
-    they are; 32-bit ones, and the user's (HKCU is shared by both), both ways."""
+    they are; 32-bit ones, and the user's (HKCU is shared by both), both ways. Program Files and Program Files (x86)
+    (and their Common Files) are tried both ways for every entry: a WOW6432Node entry that says "C:\\Program
+    Files\\Common Files\\..." may mean the x86 folder, and a file found in either one is not missing."""
     out = [p]
     if view != V64:
         w = _SYS32.sub(r"\1SysWOW64", p)
         if w != p:
             out.append(w)
+    low = p.lower()
+    for a, b in _pf_pairs():
+        for x, y in ((a, b), (b, a)):
+            if x and y and low.startswith(x.lower() + "\\"):
+                out.append(y + p[len(x):])
     return out
+
+
+def _pf_pairs():
+    env = os.environ
+    pf64 = env.get("ProgramW6432") or env.get("ProgramFiles") or r"C:\Program Files"
+    pf86 = env.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"
+    cf64 = env.get("CommonProgramW6432") or os.path.join(pf64, "Common Files")
+    cf86 = env.get("CommonProgramFiles(x86)") or os.path.join(pf86, "Common Files")
+    return ((cf64.rstrip("\\"), cf86.rstrip("\\")), (pf64.rstrip("\\"), pf86.rstrip("\\")))
+
+
+_INBOX_APPS = {"tabtip.exe"}   # the touch keyboard (StellarHub itself opens it); Windows keeps its App Path
+
+
+def _inbox_app_path(name, target):
+    """True for an App Path that belongs to Windows itself: a known inbox app, or a target in the Windows folder,
+    in Common Files\\microsoft shared, or in a Program Files folder named "Windows ..." or "Internet Explorer"."""
+    if str(name or "").lower() in _INBOX_APPS:
+        return True
+    t = os.path.normcase(os.path.normpath(str(target or ""))) if target else ""
+    if not t:
+        return False
+    win = os.environ.get("SystemRoot") or os.environ.get("windir") or r"C:\Windows"
+    (cf64, cf86), pfs = _pf_pairs()
+    roots = [win, os.path.join(cf64, "microsoft shared"), os.path.join(cf86, "microsoft shared")]
+    if any(t == os.path.normcase(r) or t.startswith(os.path.normcase(r) + "\\") for r in roots):
+        return True
+    for pf in pfs:
+        pre = os.path.normcase(pf) + "\\"
+        if t.startswith(pre):
+            first = t[len(pre):].split("\\", 1)[0]
+            if first.startswith("windows") or first == "internet explorer":
+                return True
+    return False
+
+
+_PROTECTED_MSG = "Windows protects this entry; it was left as is."
+_TI_SID = "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"   # NT SERVICE\TrustedInstaller
+
+
+def _key_owner(hkey):
+    """The owner SID (as text) of an open registry key, or None."""
+    try:
+        adv, k32 = ctypes.windll.advapi32, ctypes.windll.kernel32
+        owner, sd, text = ctypes.c_void_p(), ctypes.c_void_p(), ctypes.c_wchar_p()
+        # SE_REGISTRY_KEY = 4, OWNER_SECURITY_INFORMATION = 1
+        if adv.GetSecurityInfo(ctypes.c_void_p(int(hkey)), 4, 1, ctypes.byref(owner), None, None, None,
+                               ctypes.byref(sd)) != 0:
+            return None
+        try:
+            if not adv.ConvertSidToStringSidW(owner, ctypes.byref(text)):
+                return None
+            try:
+                return text.value
+            finally:
+                k32.LocalFree(text)
+        finally:
+            k32.LocalFree(sd)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _windows_protected(ref):
+    """True when Windows keeps this registry entry to itself: the key is owned by TrustedInstaller, or (where this
+    run could change it: the user's own keys, or any key as administrator) opening it with the rights the fix needs is
+    refused. Reads only; a key that no longer exists is not protected."""
+    root = registry.HIVES[ref.hive]
+    try:
+        with winreg.OpenKey(root, ref.path, 0, winreg.KEY_READ | ref.view) as k:
+            if _key_owner(k) == _TI_SID:
+                return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True   # not even readable
+    if ref.hive == "HKLM" and not _admin():
+        return False  # an ordinary user can't tell yet; the fix asks for administrator mode first
+    need = winreg.KEY_SET_VALUE if ref.value is not None else winreg.KEY_ALL_ACCESS   # what registry_fix opens it with
+    try:
+        winreg.OpenKey(root, ref.path, 0, need | ref.view).Close()
+    except PermissionError:
+        return True
+    except OSError:
+        pass
+    return False
 
 
 def _definitely_missing(path, view=0, expand=True):
@@ -819,6 +911,8 @@ def registry_scan(job):
     groups = {}
 
     def add(g, ref, why):
+        if _windows_protected(ref):   # an entry Windows keeps to itself could only fail to be fixed: not offered
+            return
         groups.setdefault(g, []).append({"id": ref.to_str(), "k": ref.display(), "why": why})
 
     HK = winreg.HKEY_LOCAL_MACHINE
@@ -846,6 +940,8 @@ def registry_scan(job):
             if not d:
                 continue
             target = os.path.expandvars(str(d).strip().strip('"'))
+            if _inbox_app_path(sub, target):   # Windows' own (the touch keyboard...): never offered
+                continue
             if _definitely_missing(str(d), view):
                 add("Broken app paths", RegRef(hive, p, view), tr("Points to {path}, which no longer exists.", path=target))
     # 3. startup entries that point to nothing
@@ -956,6 +1052,9 @@ def registry_fix(job, ids):
         if abort:
             failed.append(f"{ref.display()}: {abort}")
             continue
+        if _windows_protected(ref):   # it would only fail (access denied), maybe halfway: left as is, said plainly
+            failed.append(f"{ref.display()}: {tr(_PROTECTED_MSG)}")
+            continue
         root = _reg_root(ref)
         if root not in sess:
             sess[root] = [os.path.join(root, "registry", bid), []]
@@ -992,12 +1091,15 @@ def registry_fix(job, ids):
                 registry.delete_tree(ref)
             fixed += 1
         except OSError as e:
-            man.pop()
+            gone = man.pop()
+            if gone.get("kind") == "key":   # some subkeys may already be gone: put the whole key back from its .reg
+                registry.import_reg(gone["file"], gone.get("view", 0))
             try:
                 write_json_atomic(mf, man)
             except OSError:
                 pass
-            failed.append(f"{ref.display()}: {e}")
+            denied = isinstance(e, PermissionError) or getattr(e, "winerror", None) == 5
+            failed.append(f"{ref.display()}: {tr(_PROTECTED_MSG) if denied else e}")
     for root, (folder, man) in list(sess.items()):
         if not man:  # nothing was saved there: don't leave an empty backup
             shutil.rmtree(folder, ignore_errors=True)

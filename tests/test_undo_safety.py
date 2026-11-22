@@ -44,10 +44,81 @@ class Tmp(unittest.TestCase):
         self.machine = os.path.join(self.tmp, "machine")
         self.user = os.path.join(self.tmp, "user")
         for p in (mock.patch.object(O, "DATA", self.machine), mock.patch.object(O, "USER_DATA", self.user),
-                  mock.patch.object(O, "_admin", return_value=True)):
+                  mock.patch.object(O, "_admin", return_value=True),
+                  # the registry is mocked in these tests: the real keys' owner and rights are not what is tested
+                  mock.patch.object(O, "_windows_protected", return_value=False)):
             p.start()
             self.addCleanup(p.stop)
 
+
+class WindowsOwnedEntries(unittest.TestCase):
+    """Registry cleaner on entries Windows owns (owner's bug: TabTip.exe offered under WOW6432Node, then Access denied)."""
+    ENV = {"ProgramW6432": r"C:\Program Files", "ProgramFiles(x86)": r"C:\Program Files (x86)",
+           "CommonProgramW6432": r"C:\Program Files\Common Files",
+           "CommonProgramFiles(x86)": r"C:\Program Files (x86)\Common Files", "SystemRoot": r"C:\Windows"}
+
+    def setUp(self):
+        p = mock.patch.dict(os.environ, self.ENV)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_inbox_app_paths(self):
+        self.assertTrue(O._inbox_app_path("TabTip.exe", r"C:\Program Files\Common Files\microsoft shared\ink\TabTip.exe"))
+        self.assertTrue(O._inbox_app_path("x.exe", r"C:\Program Files (x86)\Common Files\Microsoft Shared\ink\x.exe"))
+        self.assertTrue(O._inbox_app_path("wmplayer.exe", r"C:\Program Files\Windows Media Player\wmplayer.exe"))
+        self.assertTrue(O._inbox_app_path("iexplore.exe", r"C:\Program Files (x86)\Internet Explorer\iexplore.exe"))
+        self.assertTrue(O._inbox_app_path("x.exe", r"C:\Windows\System32\x.exe"))
+        self.assertFalse(O._inbox_app_path("foo.exe", r"C:\Program Files\Foo\foo.exe"))
+
+    def test_32_bit_entry_found_in_the_x86_common_files_is_not_missing(self):
+        real = os.stat
+
+        def fake_stat(p, *a, **k):
+            if p.lower() == r"c:\program files (x86)\common files\vendor\tool.exe":
+                return real(__file__)
+            raise FileNotFoundError(p)
+        with mock.patch.object(O, "_drive_ready", return_value=True), mock.patch("os.stat", side_effect=fake_stat):
+            self.assertFalse(O._definitely_missing(r"C:\Program Files\Common Files\Vendor\tool.exe", V32))
+            self.assertTrue(O._definitely_missing(r"C:\Program Files\Common Files\Vendor\gone.exe", V32))
+
+    def test_scan_never_offers_the_touch_keyboard_or_a_protected_key(self):
+        base = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
+        apps = {"TabTip.exe": r"C:\Program Files\Common Files\microsoft shared\ink\TabTip.exe",
+                "locked.exe": r"C:\StellarHubTestNowhere\locked.exe", "gone.exe": r"C:\StellarHubTestNowhere\gone.exe"}
+
+        def subkeys(root, path, view=0):
+            return list(apps) if path == base and view == V32 else []
+
+        def get_value(root, path, name, view=0, default=None):
+            sub = path.rsplit("\\", 1)[-1]
+            return apps.get(sub) if path.startswith(base) and name == "" and view == V32 else default
+        with mock.patch.object(registry, "subkeys", subkeys), mock.patch.object(registry, "get_value", get_value), \
+                mock.patch.object(registry, "values", return_value=[]), \
+                mock.patch.object(O, "_drive_ready", return_value=True), \
+                mock.patch.object(O, "_windows_protected", side_effect=lambda ref: ref.path.endswith("locked.exe")):
+            groups = O.registry_scan(Job())
+        keys = [i["k"] for g in groups for i in g["items"]]
+        self.assertEqual(len(keys), 1)
+        self.assertTrue(keys[0].endswith("gone.exe"))
+
+    def test_protected_key_is_detected_without_changing_it(self):
+        key = r"Software\MiniRevoTest\Protected"
+        winreg.CloseKey(winreg.CreateKey(winreg.HKEY_CURRENT_USER, key))
+        self.addCleanup(lambda: registry.delete_tree(RegRef("HKCU", r"Software\MiniRevoTest")))
+        ref = RegRef("HKCU", key)
+        self.assertFalse(O._windows_protected(ref))                       # the user's own key
+        with mock.patch.object(O, "_key_owner", return_value=O._TI_SID):
+            self.assertTrue(O._windows_protected(ref))                    # owned by TrustedInstaller
+        real_open = winreg.OpenKey
+
+        def deny_write(root, path, res=0, access=winreg.KEY_READ):
+            if access & winreg.KEY_SET_VALUE:
+                raise PermissionError(13, "Access is denied")
+            return real_open(root, path, res, access)
+        with mock.patch.object(O.winreg, "OpenKey", deny_write):
+            self.assertTrue(O._windows_protected(ref))                    # its rights refuse the change
+        self.assertFalse(O._windows_protected(RegRef("HKCU", r"Software\MiniRevoTest\NotThere")))
+        self.assertTrue(registry.key_exists(ref))
 
 class FalsePositives(unittest.TestCase):
     def test_unplugged_or_network_paths_are_not_missing(self):
@@ -127,6 +198,35 @@ class RegistryFix(Tmp):
         self.assertTrue(u["ok"])
         args = sv.call_args[0]
         self.assertEqual((args[0], args[1], args[2]), (ref, b"\x01\x02", winreg.REG_BINARY))
+
+    def test_access_denied_is_said_plainly_and_the_others_still_go(self):
+        run = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+        locked, fine = RegRef("HKLM", run, V64, "Locked"), RegRef("HKLM", run, V64, "Old Tool")
+
+        def delete_value(ref):
+            if ref.value == "Locked":
+                raise PermissionError(13, "[WinError 5] Access is denied")
+        r, m = self.fix([locked.to_str(), fine.to_str()], delete_value=delete_value)
+        self.assertEqual(r["fixed"], 1)
+        self.assertEqual(len(r["failed"]), 1)
+        self.assertIn("Windows protects this entry", r["failed"][0])
+        self.assertNotIn("WinError", r["failed"][0])
+
+    def test_a_protected_entry_is_not_touched(self):
+        ref = RegRef("HKLM", r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\TabTip.exe", V32)
+        with mock.patch.object(O, "_windows_protected", return_value=True):
+            r, m = self.fix([ref.to_str()])
+        self.assertEqual(r["fixed"], 0)
+        self.assertIn("Windows protects this entry", r["failed"][0])
+        m["export_key"].assert_not_called()
+        m["delete_tree"].assert_not_called()
+
+    def test_a_key_that_fails_halfway_is_put_back_from_its_backup(self):
+        ref = RegRef("HKLM", r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\half.exe", V32)
+        with mock.patch.object(registry, "import_reg", return_value=(True, "")) as imp:
+            r, m = self.fix([ref.to_str()], delete_tree=mock.Mock(side_effect=PermissionError(13, "Access is denied")))
+        self.assertEqual(r["fixed"], 0)
+        imp.assert_called_once()
 
     def test_whole_key_uses_reg_export(self):
         ref = RegRef("HKLM", r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\gone.exe", V32)
