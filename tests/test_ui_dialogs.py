@@ -8,7 +8,8 @@ and run in Node against a small stand-in for the DOM.
   Update queues once, and the dialog is a known overlay for the controller, the focus trap and the dialog sounds.
 - Storage Checker's duplicates: a retry after a partial clean skips the copies already in the Recycle Bin and finishes
   the group; a copy already in the Recycle Bin cannot become the one kept.
-- Program Remover's leftover review answers once (Keep all while the leftovers are being moved does nothing)."""
+- Program Remover's leftover review answers once (Keep all while the leftovers are being moved does nothing).
+- Live Monitor: a DNS change the engine applied only in part is an error whose toast still offers Undo."""
 import json
 import os
 import re
@@ -407,6 +408,37 @@ class Dialogs(unittest.TestCase):
         self.assertIn("if (del) del.onclick = async () => { if (!answer()) return;", src)
         self.assertIn("b.disabled = !s.length || answered;", src)
 
+
+    def test_a_dns_change_that_failed_half_way_offers_undo(self):
+        src = read("js", "modules", "monitor.js")
+        start = src.index("  seg.addEventListener('click', e => {\n    const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return;\n    const again = { action: 'monitor.dns'")
+        i, depth = src.index("{", src.index("=>", start)), 0
+        for k in range(i, len(src)):
+            depth += {"{": 1, "}": -1}.get(src[k], 0)
+            if depth == 0:
+                break
+        handler = src[start:k + 1] + ");"
+        out = self.run_js(r"""
+          const _t = t, el = document.body.appendChild(new El('section'));
+          el.innerHTML = '<div class="seg"><button data-v="auto" class="on">Auto</button><button data-v="cf">Cloudflare</button></div><span id="nDnsTxt">Automatic</span>';
+          const seg = $('.seg', el), S = (r, id) => $('#' + id, r), DNSN = { auto: 'Automatic', cf: 'Cloudflare' }, adapter = { alias: 'Wi-Fi' };
+          const cache = { net: 1 }, REAL = () => true, setSeg = noop, calls = [], toasts = [];
+          const eng = async (fn, ...a) => { calls.push([fn, ...a]); return fn === 'set_dns' ? { ok: false, error: 'Only IPv4 was changed', backup: 'b1' } : { ok: true }; };
+          const confirmDlg = (o, yes) => yes();
+          Object.assign(SH, { requireAdmin: () => true, placeSeg: noop, logActivity: noop, toast: (m, o = {}) => toasts.push([m, o]) });
+          """ + handler + r"""
+          $('[data-v="cf"]', seg).click(); await tick(5);
+          const [msg, o] = toasts[0], on = $('.on', seg).dataset.v, cached = 'net' in cache;
+          await o.action.run(); await tick(5);
+          out({ msg, kind: o.kind, label: o.action.label, on, cached, calls, last: toasts[toasts.length - 1][0] });
+        """)
+        self.assertEqual(out["msg"], "Could not change the DNS: Only IPv4 was changed")
+        self.assertEqual(out["kind"], "error")
+        self.assertEqual(out["label"], "Undo")
+        self.assertEqual(out["on"], "auto")             # the choice shown goes back to what it was
+        self.assertFalse(out["cached"])                 # and the network panel reads the adapter again
+        self.assertEqual(out["calls"], [["set_dns", "Wi-Fi", "cf"], ["dns_undo", "b1"]])
+        self.assertEqual(out["last"], "DNS restored.")
 
 if __name__ == "__main__":
     unittest.main()

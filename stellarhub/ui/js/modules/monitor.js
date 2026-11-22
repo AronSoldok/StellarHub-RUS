@@ -546,9 +546,10 @@ R.network = (el, t) => {
       try { r = REAL() ? await eng('set_dns', adapter.alias, b.dataset.v) : (await new Promise(res => setTimeout(res, 800)), { ok: true, backup: 'sample' }); }
       finally { btns.forEach(x => { x.disabled = false; }); seg.classList.remove('pending'); }
       if (!(r && r.ok)) { btns.forEach(x => x.classList.toggle('on', x === prevOn)); SH.placeSeg(seg); txt.textContent = prevTxt; }
-      if (r && r.ok) { setSeg(b.dataset.v);
-        const bid = r.backup, g = { group: 'dnsUndo', ms: 120000 };
-        SH.toast(_t('DNS changed to {name}.', { name }), bid ? { group: 'dnsUndo', ms: 10000, action: { label: _t('Undo'), sound: 'undo', run: async () => {
+      /* Undo puts back the backup the engine took first: after a change, and also after one that failed half way (the engine
+         answers ok:false with the backup when some of the change was applied) */
+      const g = { group: 'dnsUndo', ms: 120000 };
+      const undo = bid => ({ label: _t('Undo'), sound: 'undo', run: async () => {
           if (seg.classList.contains('pending')) { SH.toast(_t('Wait until the current change finishes.'), { ...g, kind: 'unavailable' }); return; }
           if (!SH.requireAdmin(_t('to change the DNS server.'))) return;
           const bs = $$('button', seg), tx = S(el, 'nDnsTxt'), curTxt = tx ? tx.textContent : '';
@@ -560,10 +561,13 @@ R.network = (el, t) => {
           finally { bs.forEach(x => { x.disabled = false; }); seg.classList.remove('pending'); }
           if (u && u.ok) { delete cache.net; if (prevOn && prevOn.isConnected) { bs.forEach(x => x.classList.toggle('on', x === prevOn)); SH.placeSeg(seg); } if (tx) tx.textContent = prevTxt; SH.toast(_t('DNS restored.'), { group: 'dnsUndo' }); }
           else { if (tx) tx.textContent = curTxt; if (u && u.needAdmin) SH.requireAdmin(_t('to change the DNS server.')); else SH.toast(u && u.error ? _t('Could not restore the DNS: {msg}', { msg: u.error }) : _t('Could not restore the DNS.'), { group: 'dnsUndo', kind: 'error' }); }
-        } } } : {});
+        } });
+      if (r && r.ok) { setSeg(b.dataset.v);
+        SH.toast(_t('DNS changed to {name}.', { name }), r.backup ? { group: 'dnsUndo', ms: 10000, action: undo(r.backup) } : {});
         SH.logActivity && SH.logActivity(_t('DNS changed to {name}', { name }), { sub: adapter.alias, ic: 'globe', go: 'monitor', tab: 'network' }); delete cache.net; }
       else if (r && r.needAdmin) SH.requireAdmin(_t('to change the DNS server.'), { resume: again });
-      else SH.toast(r && r.error ? _t('Could not change the DNS: {msg}', { msg: r.error }) : _t('Could not change the DNS.'), { kind: 'error' });
+      else { if (r && r.backup) delete cache.net;
+        SH.toast(r && r.error ? _t('Could not change the DNS: {msg}', { msg: r.error }) : _t('Could not change the DNS.'), r && r.backup ? { kind: 'error', group: 'dnsUndo', ms: 10000, action: undo(r.backup) } : { kind: 'error' }); }
     });
   });
 };
