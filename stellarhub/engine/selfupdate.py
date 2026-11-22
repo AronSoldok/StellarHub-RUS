@@ -135,25 +135,23 @@ def _alert(msg):
 
 
 def _language(settings_file=None):
-    """This process speaks the user's language (start screen, message boxes). settings_file: where the user's
-    settings are when this copy's own are not theirs: the new portable copy in the update folder has none of its own,
-    and looking for them gave it an empty Data folder (and the start screen in English)."""
+    """The start screen speaks the user's language. settings_file: where the user's settings are when this copy's own
+    are not theirs (the new portable copy in the update folder: paths._portable_root). Nothing changes when they can't
+    be read."""
     from .. import i18n
-    pref = None
     try:
         with open(settings_file or os.path.join(_data_dir(), "settings.json"), encoding="utf-8") as fh:
-            pref = (json.load(fh) or {}).get("language")
+            i18n.set_language((json.load(fh) or {}).get("language"))
     except (OSError, ValueError, AttributeError):
         pass
-    i18n.set_language(pref)
 
 
 def _splash(text, settings_file=None):
     """The start screen in this process (the updater and the portable --finish-update have no window of their own),
     so the screen is never empty between the old app closing and the new one opening. None if it can't be shown."""
-    _language(settings_file)
     if os.environ.get("STELLARHUB_NO_SPLASH") == "1":
         return None
+    _language(settings_file)
     try:
         from .. import splash
         splash.show()
@@ -995,7 +993,6 @@ def finish_update(dst, pid):
     if not os.path.isfile(exe) or not _under(here, dst) or os.path.normcase(here) == os.path.normcase(dst):
         # (_under, not startswith(dst + os.sep): a copy at the root of a drive, E:\, has dst "E:\" already)
         report(st="failed", why="apply", error="unexpected location")
-        _language(os.path.join(dst, "Data", "settings.json"))
         _alert(tr("The update could not be applied: this copy is not where it should be."))
         if os.path.isfile(exe):
             subprocess.Popen([exe], cwd=dst, close_fds=True)

@@ -16,6 +16,17 @@ os.environ["STELLARHUB_NO_SPLASH"] = "1"  # the updater shows the start screen; 
 from stellarhub import ed25519
 from stellarhub.engine import selfupdate as su
 
+
+def setUpModule():  # the updater sets the start screen's language: the rest of the suite keeps its own
+    from stellarhub import i18n
+    setUpModule.saved = (i18n._lang, i18n._dict)
+
+
+def tearDownModule():
+    from stellarhub import i18n
+    i18n._lang, i18n._dict = setUpModule.saved
+
+
 SEED = bytes(range(32))  # a throwaway key for these tests; the real one never leaves the owner's PC
 PUB = ed25519.public_key(SEED).hex()
 OTHER_SEED = bytes(range(1, 33))
