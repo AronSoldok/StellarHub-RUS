@@ -824,13 +824,18 @@ $('#adminNo').addEventListener('click', hideNote);
 $('#noteNever').addEventListener('click', e => e.currentTarget.classList.toggle('on'));
 
 /* ================= toasts ================= */
-/* bottom right, at most 3 at a time; a repeated toast refreshes instead of stacking.
-   Opening/closing the same thing (e.g. the widget) replaces the previous toast of the same group.
-   They never cover the dock, its magnified icons or their tooltips: beside the dock (bottom-aligned with it) when the
-   window leaves room to its right, otherwise stacked above it, clear of the tallest magnified icon and its tooltip.
-   placeToasts() measures the dock at rest (one layout read) when a toast appears and when the window resizes (the zoom,
-   the controller's hint bar). */
+/* At most 3 at a time; a repeated toast refreshes instead of stacking. Opening/closing the same thing (e.g. the widget)
+   replaces the previous toast of the same group.
+   Toasts have a lane of their own and never cover the content, the dock, its magnified icons or their tooltips:
+   - beside the dock (bottom-aligned with it) when the window leaves room to its right: inside the strip the page keeps
+     free for the dock (--dockspace), so only as many toasts as fit under the content's bottom edge stay up (the
+     oldest go early);
+   - otherwise (a narrower window, a handheld at 125 % or more) in the top bar, over the search field, between the
+     brand and the buttons on the right: one at a time, the newest.
+   placeToasts() measures the dock at rest and the top bar (a few layout reads) when a toast appears and when the window
+   resizes (the zoom, the controller's hint bar). */
 const MAX_TOASTS = 3, TOAST_EDGE = 26, TOAST_GAP = 18, TOAST_MIN = 300;
+let toastRoom = { at: 'side', max: 999, n: MAX_TOASTS };
 function placeToasts() {
   const box = $('#toasts'); if (!box) return;
   const r = dock.getBoundingClientRect(); if (!r.width) return;
@@ -840,17 +845,34 @@ function placeToasts() {
   const grow = BASE * GROW * 1.6, tipHalf = tip ? tip.offsetWidth / 2 : 0;
   const right = Math.max(r.right + grow, lr.left + lr.width / 2 + grow + tipHalf);
   const room = innerWidth - TOAST_EDGE - right - TOAST_GAP;
-  let bottom, width;
-  if (room >= TOAST_MIN) { bottom = innerHeight - r.bottom; width = Math.min(420, room); }
-  else {
-    /* above the dock: its top, the tallest magnified icon, the tooltip over it (14 px away) and a gap */
-    const tipH = tip ? tip.offsetHeight + 14 : 44;
-    bottom = innerHeight - r.top + BASE * GROW + tipH + TOAST_GAP;
-    const hints = document.getElementById('padHints'); if (hints && ROOT.classList.contains('pad-hints')) { const h = hints.getBoundingClientRect(); if (h.height) bottom = Math.max(bottom, innerHeight - h.top + TOAST_GAP); }
-    width = Math.min(420, innerWidth - TOAST_EDGE * 2);
+  if (room >= TOAST_MIN) {
+    /* the strip under the content: from the dock's bottom up to where the page's content ends (--dockspace) */
+    const ds = parseFloat(getComputedStyle(ROOT).getPropertyValue('--dockspace')) || 118, bottom = innerHeight - r.bottom;
+    box.style.setProperty('--tb', `${Math.round(bottom)}px`); box.style.setProperty('--tw', `${Math.floor(Math.min(420, room))}px`);
+    box.style.removeProperty('--tl'); box.style.removeProperty('--tt');
+    toastRoom = { at: 'side', max: Math.max(44, ds - bottom - 4), n: MAX_TOASTS };
+  } else {
+    /* the top bar, between the brand and the buttons on the right, over the search field */
+    const br = $('#brand').getBoundingClientRect(), mp = $('.top .right').firstElementChild.getBoundingClientRect();
+    const span = Math.max(220, mp.left - br.right - 28), top = parseFloat(getComputedStyle(ROOT).getPropertyValue('--top')) || 62;
+    box.style.setProperty('--tl', `${Math.round((br.right + mp.left) / 2)}px`); box.style.setProperty('--tt', '8px');
+    box.style.setProperty('--tw', `${Math.floor(Math.min(520, span))}px`);
+    toastRoom = { at: 'top', max: top + 2, n: 1 };
   }
-  box.style.setProperty('--tb', `${Math.round(bottom)}px`); box.style.setProperty('--tw', `${Math.floor(width)}px`);
-  box.dataset.at = room >= TOAST_MIN ? 'side' : 'above';
+  box.dataset.at = toastRoom.at;
+  fitToasts();
+}
+/* only what fits in the lane stays up: the oldest leave first (the newest is always shown) */
+function fitToasts() {
+  const box = $('#toasts'); if (!box) return;
+  const live = [...box.children].filter(x => !x.dataset.dead);
+  let h = 0; const keep = [];
+  for (let i = live.length - 1; i >= 0; i--) {
+    const th = live[i].offsetHeight + (keep.length ? 8 : 0);
+    if (keep.length && (keep.length >= toastRoom.n || h + th > toastRoom.max)) break;
+    h += th; keep.push(live[i]);
+  }
+  live.filter(x => !keep.includes(x)).forEach(x => x._kill && x._kill());
 }
 let toastPlaceRaf = 0;
 addEventListener('resize', () => { cancelAnimationFrame(toastPlaceRaf); toastPlaceRaf = requestAnimationFrame(placeToasts); });
@@ -872,13 +894,14 @@ function toast(text, o = {}) {
   /* action.sound: 'undo' for an Undo button; anything else clicks */
   if (o.action) $('button', t).addEventListener('click', () => { if (o.action.sound) SH.sound(o.action.sound); o.action.run(); kill(); });
   box.appendChild(t);
-  anim(t, [{ opacity: 0, transform: 'translate3d(24px,0,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 440, e: EASE.spring });
+  const fromTop = toastRoom.at === 'top';  /* in the top bar it drops in from above, beside the dock it slides in from the side */
+  anim(t, [{ opacity: 0, transform: fromTop ? 'translate3d(0,-14px,0) scale(.96)' : 'translate3d(24px,0,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 440, e: EASE.spring });
   function kill() { if (t.dataset.dead) return; t.dataset.dead = '1'; clearTimeout(t._timer);
-    anim(t, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(24px,0,0) scale(.96)' }], { d: 220 }).finished.then(() => flip(() => t.remove())).catch(() => t.remove()); }
+    anim(t, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: fromTop ? 'translate3d(0,-10px,0) scale(.97)' : 'translate3d(24px,0,0) scale(.96)' }], { d: 220 }).finished.then(() => flip(() => t.remove())).catch(() => t.remove()); }
   /* the toasts left in the stack glide into the gap instead of jumping */
   function flip(fn) { const before = new Map([...box.children].map(x => [x, x.getBoundingClientRect().top])); fn(); [...box.children].forEach(x => { const b = before.get(x); if (b == null) return; const d = b - x.getBoundingClientRect().top; if (Math.abs(d) > 1) anim(x, [{ transform: `translate3d(0,${d}px,0)` }, { transform: 'none' }], { d: 320, keep: true }); }); }
   t._kill = kill; t._timer = setTimeout(kill, o.ms || 3600);
-  const live = [...box.children].filter(x => !x.dataset.dead); if (live.length > MAX_TOASTS) live.slice(0, live.length - MAX_TOASTS).forEach(x => x._kill && x._kill());
+  fitToasts();
 }
 async function renderLangs() {
   const el = $('#langs'); if (!el) return;

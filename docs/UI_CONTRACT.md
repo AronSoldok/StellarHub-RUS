@@ -56,8 +56,10 @@ SH.module({
   panel or column with its content centred. Grids use `repeat(auto-fit, minmax(...))`: no cell hanging in a corner.
 - Hover: everything that can be clicked (buttons, tabs, rows and cards that act, switches, checkboxes, selects) shows a
   calm hover in the shared language (a raised fill, a lighter edge or ink colour, the pointer cursor); plain text never.
-- Toasts (`SH.toast`) never cover the dock: shell.js places the stack beside it when the window leaves room, otherwise
-  above it, clear of the magnified icons and their tooltips.
+- Toasts (`SH.toast`) never cover the content, the dock, its magnified icons or the hint bar (shell.js placeToasts):
+  beside the dock, inside the strip the page keeps free for it (`--dockspace`), when the window leaves room to its right;
+  otherwise in the top bar, over the search field, one at a time. Only what fits in the lane stays up: the oldest leave
+  first, the newest is always shown. With a controller, X runs the newest toast's action.
 - `SH.lastRun` lays out its own children (a fixed 28 px clock, then the text column): a module's `cls` only adds
   spacing, and must not be a class the module already uses for something else.
 

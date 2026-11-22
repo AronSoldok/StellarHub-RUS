@@ -490,6 +490,9 @@ html[data-quick=off] .h-quick{display:none}
 /* --tb / --tw: set by shell.js (placeToasts) so the stack sits beside the dock or above it, never over it */
 .toasts{position:fixed;right:26px;bottom:var(--tb,168px);z-index:70;display:flex;flex-direction:column;align-items:flex-end;gap:var(--sp-sm);pointer-events:none;max-width:var(--tw,min(420px,calc(100vw - 52px)))}
 .toast{max-width:100%}
+/* the top-bar lane (shell.js placeToasts, a window with no room beside the dock): one toast over the search field */
+.toasts[data-at=top]{top:var(--tt,8px);bottom:auto;right:auto;left:var(--tl,50%);transform:translateX(-50%);align-items:center;z-index:72}
+.toasts[data-at=top] .toast{min-height:46px}
 .swatch.custom{background:conic-gradient(from 200deg,var(--s),var(--s2),var(--s));display:grid;place-items:center}
 .swatch.custom span{width:18px;height:18px;border-radius:50%;background:rgba(6,10,20,.55);display:grid;place-items:center;color:#fff}
 .swatch.custom svg{width:var(--ic-xs);height:var(--ic-xs);stroke-width:var(--ic-w-bold)}
