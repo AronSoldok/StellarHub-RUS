@@ -26,6 +26,21 @@ from .startup import refresh_ui_cache  # noqa: F401
 from .winmgr import panel_geometry as _panel_geometry, style_titlebar  # noqa: F401
 
 
+def _drop_test_profile(wait=3.0):
+    """An isolated test copy (STELLARHUB_ISOLATED=1) gets a WebView2 profile of its own in %TEMP%
+    (stellarhub_isolated_<pid>, config.WEB_DIR); it is removed when that copy quits, once its WebView2 processes are
+    gone, so test runs do not pile them up in the temp folder (hundreds were left, slowing every cleanup scan)."""
+    import shutil
+    try:
+        import psutil
+        kids = [k for k in psutil.Process().children(recursive=True) if k.name().lower() == "msedgewebview2.exe"]
+        psutil.wait_procs(kids, timeout=wait)
+    except Exception:
+        pass
+    if os.path.basename(WEB_DIR).startswith("stellarhub_isolated_"):  # never anything but that folder
+        shutil.rmtree(WEB_DIR, ignore_errors=True)
+
+
 def main():
     if startup.run_command(sys.argv):
         return
@@ -121,6 +136,8 @@ def main():
                 time.sleep(0.05)
         except Exception:
             pass
+    if ISOLATED:
+        _drop_test_profile()
     # The window is gone and settings are saved as they change. Background scans still running in thread pools
     # (winget, PowerShell...) would keep the process alive until they finish, so end it now.
     try:
