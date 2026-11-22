@@ -56,6 +56,12 @@ class SettingsApi:
         """With this on, StellarHub always opens as administrator. A scheduled task with highest privileges is
         used so Windows does not ask at every start (creating it does require admin)."""
         self.settings_set({"alwaysAdmin": bool(on)})
+        if config.PORTABLE:
+            # no task: the portable copy asks Windows each time it opens (elevation.elevate_on_start), as the setting
+            # says. ensure_admin_task() refuses portable copies, which showed "Could not set up starting as
+            # administrator." although the setting works; and deleting the task here would remove the installed
+            # copy's, on a PC that has both.
+            return True
         if on and config.is_admin():
             return elevation.ensure_admin_task()
         if not on:
@@ -102,7 +108,7 @@ class SettingsApi:
             return old
         if old.get("startWithWindows"):
             self.set_autostart(False)
-        if old.get("alwaysAdmin"):
+        if old.get("alwaysAdmin") and not config.PORTABLE:  # (a portable copy has no task; the installed one's stays)
             try:
                 elevation.delete_admin_task()
             except Exception:
