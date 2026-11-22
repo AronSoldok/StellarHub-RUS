@@ -111,6 +111,9 @@ class _Card:
 
     SS = 2  # supersampling
 
+    # the three small moons: (size, x offset, y offset, crater seed, bob amplitude, period, phase), fractions of the logo
+    MOONS = ((.085, -.47, -.17, 5, 3.4, 5.6, 0.0), (.06, .52, .13, 9, 2.8, 4.7, 1.9), (.042, -.13, -.46, 13, 2.2, 6.3, 3.7))
+
     def __init__(self, scale):
         s = self.s = scale
         W, H = int(720 * s), int(640 * s)
@@ -119,6 +122,36 @@ class _Card:
         n = self.n = int(340 * s)                          # logo size
         lx, ly = cx - n // 2, int(84 * s)
         self.logo_at = (lx, ly)
+        self.name_y = ly + int(n * .72) + int(58 * s)      # the ring's lowest point is at .713 of the logo
+        self.small = _font("segoeui.ttf", int(17 * s))
+        self.status_xy = (cx, self.name_y + int(40 * s))
+        # nothing may end in a hard edge: everything fades out before the window's border
+        lut = []
+        for v in range(256):               # v: elliptic distance from the center, 255 at the window's edge
+            r = v / 255
+            k = 0 if r >= .9 else 1 if r <= .54 else (lambda u: u * u * (3 - 2 * u))((.9 - r) / .36)
+            lut.append(int(255 * k))
+        self.fade = Image.radial_gradient("L").resize((W, H), Image.BILINEAR).point(lut)
+        self._status = (None, None)        # (text, its layer): drawn once per text, not at every frame
+        # The static scene and the ring's maps take 0.9 s to draw at 100 % and over 3 s at 150 % (a handheld), all
+        # before the card can appear: they are kept in the local data folder (_CardCache) and drawn only once per
+        # version and scale
+        cached = _CardCache.load(self)
+        if cached is None:
+            base, subs = self._draw_base(), [self._moon(int(n * m[0]), m[3])[0] for m in self.MOONS]
+        else:
+            base, subs = cached
+            self._maps_thread = None       # the ring's light is there from the first frame
+        self.base = base
+        self._moons = [(sub, cx + n * ox, ly + n * .53 + n * oy, amp * s, per, ph)
+                       for sub, (_d, ox, oy, _seed, amp, per, ph) in zip(subs, self.MOONS)]
+        self._moon_subs = subs
+
+    def _draw_base(self):
+        """The static scene: the patch of space, the stars, the textured logo and the name, faded at the edges."""
+        s, n, (W, H), (lx, ly) = self.s, self.n, self.size, self.logo_at
+        cx = W // 2
+        self._drawn_whole = True
         base = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 
         # --- the patch of space: dark enough to read on a light wallpaper, no edges anywhere
@@ -163,26 +196,14 @@ class _Card:
             base.alpha_composite(logo, (lx, ly))
         except Exception as e:
             print("splash logo:", e)
+            self._drawn_whole = False  # never kept: the next start draws it again
 
         # --- the name, with a real shadow
-        self.name_y = name_y = ly + int(n * .72) + int(58 * s)   # the ring's lowest point is at .713 of the logo
         name = _brand_font(int(46 * s))
-        self._shadowed(base, (cx, name_y), "StellarHub", name, (243, 246, 252, 255), dy=int(4 * s), blur=int(9 * s), a=235)
-        self.small = _font("segoeui.ttf", int(17 * s))
-        self.status_xy = (cx, name_y + int(40 * s))
-        # nothing may end in a hard edge: everything fades out before the window's border
-        lut = []
-        for v in range(256):               # v: elliptic distance from the center, 255 at the window's edge
-            r = v / 255
-            k = 0 if r >= .9 else 1 if r <= .54 else (lambda u: u * u * (3 - 2 * u))((.9 - r) / .36)
-            lut.append(int(255 * k))
-        self.fade = fade = Image.radial_gradient("L").resize((W, H), Image.BILINEAR).point(lut)
-        base.putalpha(ImageChops.multiply(base.getchannel("A"), fade))
-        self.base = base
-        self._moons = [self._moon(int(n * d), seed) + (cx + n * ox, ly + n * .53 + n * oy, amp * s, per, ph)
-                       for d, ox, oy, seed, amp, per, ph in ((.085, -.47, -.17, 5, 3.4, 5.6, 0.0),
-                                                             (.06, .52, .13, 9, 2.8, 4.7, 1.9),
-                                                             (.042, -.13, -.46, 13, 2.2, 6.3, 3.7))]
+        self._shadowed(base, (cx, self.name_y), "StellarHub", name, (243, 246, 252, 255), dy=int(4 * s), blur=int(9 * s),
+                       a=235)
+        base.putalpha(ImageChops.multiply(base.getchannel("A"), self.fade))
+        return base
 
     def _moon(self, size, seed):
         # a small grey moon: lit from the upper left like the planet, a few soft craters, a faint rim light
@@ -308,23 +329,29 @@ class _Card:
 
     def _with_moons(self, t):
         im = self.base.copy()
-        layer = Image.new("RGBA", im.size, (0, 0, 0, 0))
-        for subs, x, y, amp, per, ph in self._moons:
+        for subs, x, y, amp, per, ph in self._moons:  # (they never overlap: each is faded and put on its own)
             spr = subs[0]
             top = y + amp * math.sin(t / per * 2 * math.pi + ph) - spr.height / 2
             whole = math.floor(top)
             spr = subs[min(15, int((top - whole) * 16))]
-            layer.alpha_composite(spr, (int(round(x - spr.width / 2)), whole))
-        layer.putalpha(ImageChops.multiply(layer.getchannel("A"), self.fade))
-        im.alpha_composite(layer)
+            at = (int(round(x - spr.width / 2)), whole)
+            box = (max(0, at[0]), max(0, at[1]), min(im.width, at[0] + spr.width), min(im.height, at[1] + spr.height))
+            if box[0] >= box[2] or box[1] >= box[3]:
+                continue
+            spr = spr.crop((box[0] - at[0], box[1] - at[1], box[2] - at[0], box[3] - at[1]))
+            spr.putalpha(ImageChops.multiply(spr.getchannel("A"), self.fade.crop(box)))
+            im.alpha_composite(spr, box[:2])
         return im
 
     def _ring_maps(self):
         """The visible ring of make_icon_image (same geometry: center (.5, .53), outer radii .385 x .135, width .064,
         tilted 20 degrees; the half above the center passes behind the planet of radius .2), drawn 4x and scaled
-        down; an angle map (0-255 along the orbit) for the ring and for a wider glow region around it."""
+        down; an angle map (0-255 along the orbit) for the ring and for a wider glow region around it. A card drawn
+        whole (not read from _CardCache) is then kept for the next start."""
+        if hasattr(self, "_star"):  # read from _CardCache
+            return
         n = self.n
-        m = self.margin = int(n * .09)
+        m, (c1, c2, rxm, rym, ca, sa, _pr) = self._ring_geom()
         N = n + 2 * m
         S = N * 4
         cx, cy = (m + n * .5) * 4, (m + n * .53) * 4
@@ -347,9 +374,6 @@ class _Card:
         self._glowreg = ImageChops.multiply(glowreg, ImageChops.invert(ImageChops.multiply(
             self._back, ImageChops.invert(self._hole))))
         # angle along the orbit for every pixel that matters
-        ca, sa = math.cos(math.radians(20)), math.sin(math.radians(20))
-        c1, c2 = m + n * .5, m + n * .53
-        rxm, rym = n * .385 - n * .032, n * .135 - n * .032
         ang = Image.new("L", (N, N), 0)
         ap = ang.load()
         gp = self._glowreg.load()
@@ -361,7 +385,6 @@ class _Card:
                     a = math.atan2(uy / rym, ux / rxm) % (2 * math.pi)
                     ap[x, y] = int(a / (2 * math.pi) * 256) % 256
         self._ang = ang
-        self._geom = (c1, c2, rxm, rym, ca, sa, n * .2)
         rwp = n * .064
         hs = int(rwp * 14) | 1  # room for the whole halo: nothing may end in a square
         h = Image.new("RGBA", (hs * 4, hs * 4), (0, 0, 0, 0))
@@ -373,6 +396,16 @@ class _Card:
         h = h.filter(ImageFilter.GaussianBlur(rwp * 1.2))
         ImageDraw.Draw(h).ellipse((hc - rwp * 1.25, hc - rwp * 1.25, hc + rwp * 1.25, hc + rwp * 1.25), fill=(255, 251, 247, 255))
         self._star = h.convert("RGBa").resize((hs, hs), Image.LANCZOS).convert("RGBA")
+        if getattr(self, "_drawn_whole", False):
+            _CardCache.save(self)
+
+    def _ring_geom(self):
+        """(margin, (c1, c2, rx, ry, cos, sin, planet radius)): where the light runs, around the logo with a margin."""
+        n = self.n
+        self.margin = m = int(n * .09)
+        ca, sa = math.cos(math.radians(20)), math.sin(math.radians(20))
+        self._geom = (m + n * .5, m + n * .53, n * .385 - n * .032, n * .135 - n * .032, ca, sa, n * .2)
+        return m, self._geom
 
     @staticmethod
     def _lut(head, width, lead, gain):
@@ -395,7 +428,7 @@ class _Card:
         if not hasattr(self, "_star"):            # still being prepared: the scene without the light
             im = self._with_moons(t)
             if status:
-                self._shadowed(im, self.status_xy, status, self.small, (236, 241, 249, 228), dy=int(2 * self.s), blur=int(4 * self.s), a=235)
+                im.alpha_composite(*self._status_layer(status))
             return im
         if not hasattr(self, "_light_t0"):
             self._light_t0 = t
@@ -424,15 +457,153 @@ class _Card:
             star.putalpha(ImageChops.multiply(star.getchannel("A"), self._hole))
         layer.alpha_composite(star)
         lx, ly = self.logo_at
-        full = Image.new("RGBA", im.size, (0, 0, 0, 0))
-        full.alpha_composite(layer, (lx - m, ly - m))
+        at = (lx - m, ly - m)  # the light's square only: the rest of the card is untouched by it
         fade_in = min(1.0, (t - self._light_t0) / .5)
-        a = ImageChops.multiply(full.getchannel("A"), self.fade)
-        full.putalpha(a if fade_in >= 1 else a.point(lambda v: int(v * fade_in)))
-        im.alpha_composite(full)
+        a = ImageChops.multiply(layer.getchannel("A"), self.fade.crop((at[0], at[1], at[0] + N, at[1] + N)))
+        layer.putalpha(a if fade_in >= 1 else a.point(lambda v: int(v * fade_in)))
+        im.alpha_composite(layer, at)
         if status:
-            self._shadowed(im, self.status_xy, status, self.small, (236, 241, 249, 228), dy=int(2 * self.s), blur=int(4 * self.s), a=235)
+            im.alpha_composite(*self._status_layer(status))
         return im
+
+    def _status_layer(self, status):
+        """(layer, where) of the status line with its shadow, drawn once per text (its blur over the whole card was
+        two thirds of every frame's time) and cropped to what it covers."""
+        if self._status[0] != status:
+            layer = Image.new("RGBA", self.size, (0, 0, 0, 0))
+            self._shadowed(layer, self.status_xy, status, self.small, (236, 241, 249, 228), dy=int(2 * self.s),
+                           blur=int(4 * self.s), a=235)
+            box = layer.getbbox() or (0, 0, 1, 1)
+            self._status = (status, (layer.crop(box), box[:2]))
+        return self._status[1]
+
+
+class _CardCache:
+    """The card's static scene, its moons and the ring's maps, kept in the local data folder (one file per scale) so
+    that only the first start of a version draws them. A plain file of raw pixels: a header (JSON: what it was drawn
+    for, and each image's name, mode and size) and the images, each zlib-compressed. It lives where any program running
+    as the user can write, and the elevated copy reads it too: nothing in it is ever run or unpickled, every size is
+    checked against what the card expects, and anything off means the card is simply drawn again."""
+
+    MAGIC = b"StellarHub splash cache 1\n"
+    MAPS = ("_vis", "_glowreg", "_ang", "_hole")
+    LIMIT = 64 << 20
+
+    @staticmethod
+    def path(scale):
+        """One file per scale, and the source version's apart from the installed program's (they never share one)."""
+        import sys
+        from . import paths
+        kind = "app" if getattr(sys, "frozen", False) else "source"
+        return os.path.join(paths.local_dir(), "splash", f"card-{kind}-{int(round(scale * 1000))}.bin")
+
+    @staticmethod
+    def key(scale):
+        """What the drawing depends on: the version, the scale and the code that draws it (the exe's build, or these
+        source files)."""
+        import sys
+        try:
+            from . import CODENAME
+        except ImportError:
+            CODENAME = ""
+        if getattr(sys, "frozen", False):
+            files = [sys.executable]
+        else:
+            here = os.path.dirname(os.path.abspath(__file__))
+            files = [os.path.abspath(__file__), os.path.join(here, "tray.py")]
+        try:
+            stamp = "|".join(f"{os.path.getmtime(p):.3f}:{os.path.getsize(p)}" for p in files)
+        except OSError:
+            stamp = "?"
+        return f"{VERSION}|{CODENAME}|{scale:.5f}|{stamp}"
+
+    @classmethod
+    def expected(cls, card):
+        """name -> (mode, size) of the big images a card of this scale has."""
+        n = card.n
+        N = n + 2 * int(n * .09)
+        out = {"base": ("RGBA", card.size)}
+        out.update({m: ("L", (N, N)) for m in cls.MAPS})
+        return out
+
+    @classmethod
+    def load(cls, card):
+        """(base, moon sprites), with the ring's maps set on the card; None when nothing fitting is kept."""
+        try:
+            with open(cls.path(card.s), "rb") as fh:
+                raw = fh.read(cls.LIMIT + 1)
+            if len(raw) > cls.LIMIT or not raw.startswith(cls.MAGIC):
+                return None
+            import json
+            import zlib
+            pos = len(cls.MAGIC)
+            hlen = int.from_bytes(raw[pos:pos + 4], "little")
+            head = json.loads(raw[pos + 4:pos + 4 + hlen].decode("utf-8"))
+            if not isinstance(head, dict) or head.get("key") != cls.key(card.s):
+                return None
+            want = cls.expected(card)
+            pos += 4 + hlen
+            imgs = {}
+            for name, mode, w, h, size in head["items"]:
+                if mode not in ("RGBA", "L") or not (0 < w <= 8192 and 0 < h <= 8192) or not 0 < size <= len(raw):
+                    return None
+                if name in want and want[name] != (mode, (w, h)):
+                    return None
+                need = w * h * len(mode)
+                data = zlib.decompressobj().decompress(raw[pos:pos + size], need)  # (never more than it should be)
+                if len(data) != need:
+                    return None
+                imgs[name] = Image.frombytes(mode, (w, h), data)
+                pos += size
+            star = imgs.get("_star")
+            subs = [[imgs.get(f"moon{i}.{k}") for k in range(16)] for i in range(len(card.MOONS))]
+            if any(k not in imgs for k in want) or star is None or star.mode != "RGBA" or star.width != star.height \
+                    or any(s is None or s.mode != "RGBA" for row in subs for s in row):
+                return None
+        except FileNotFoundError:
+            return None
+        except Exception as e:  # a damaged or foreign file: the card is drawn again, and the file replaced
+            print("splash cache:", e, flush=True)
+            return None
+        card._ring_geom()
+        for m in cls.MAPS:
+            setattr(card, m, imgs[m])
+        card._star = star
+        return imgs["base"], subs
+
+    @classmethod
+    def save(cls, card):
+        """Keeps a card drawn whole (called once its ring's maps are ready). Never raises."""
+        tmp = None
+        try:
+            import json
+            import zlib
+            items = [("base", card.base), ("_star", card._star)] + [(m, getattr(card, m)) for m in cls.MAPS]
+            items += [(f"moon{i}.{k}", im) for i, row in enumerate(card._moon_subs) for k, im in enumerate(row)]
+            blobs, meta = [], []
+            for name, im in items:
+                b = zlib.compress(im.tobytes(), 1)
+                blobs.append(b)
+                meta.append([name, im.mode, im.width, im.height, len(b)])
+            head = json.dumps({"key": cls.key(card.s), "items": meta}).encode("utf-8")
+            p = cls.path(card.s)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            for f in os.listdir(os.path.dirname(p)):  # what a copy that quit while saving left
+                if f.endswith(".tmp") and time.time() - os.path.getmtime(os.path.join(os.path.dirname(p), f)) > 120:
+                    os.remove(os.path.join(os.path.dirname(p), f))
+            tmp = f"{p}.{os.getpid()}.tmp"
+            with open(tmp, "wb") as fh:
+                fh.write(cls.MAGIC + len(head).to_bytes(4, "little") + head)
+                for b in blobs:
+                    fh.write(b)
+            os.replace(tmp, p)
+        except Exception as e:
+            print("splash cache:", e, flush=True)
+            if tmp:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
 
 
 def _blit(hwnd, img, alpha, pos):

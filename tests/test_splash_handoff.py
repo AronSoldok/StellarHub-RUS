@@ -174,6 +174,82 @@ class Relaunches(unittest.TestCase):
         sp2.hand_over.assert_called_with(False)  # the update did not go ahead: the card is this process's again
 
 
+class CardCache(unittest.TestCase):
+    """The card's static scene and the ring's maps took 0.9 s (100 %) to over 3 s (150 %, a handheld) to draw before
+    the start screen could appear, at every start; they are now kept once per version and scale."""
+
+    SCALE = 0.75  # small: quick to draw
+
+    def setUp(self):
+        import os
+        import tempfile
+        self.dir = tempfile.mkdtemp()
+        p = mock.patch.object(splash._CardCache, "path", staticmethod(lambda s: os.path.join(self.dir, "card.bin")))
+        p.start()
+        self.addCleanup(p.stop)
+        self.file = os.path.join(self.dir, "card.bin")
+
+    def drawn(self):
+        card = splash._Card(self.SCALE)
+        self.assertTrue(hasattr(card, "_drawn_whole"))
+        card._ring_maps()  # (it saves the card)
+        return card
+
+    @staticmethod
+    def same(a, b):
+        from PIL import ImageChops
+        return a.size == b.size and a.mode == b.mode and ImageChops.difference(a, b).getbbox() is None
+
+    def test_the_next_card_is_read_back_pixel_for_pixel(self):
+        a = self.drawn()
+        b = splash._Card(self.SCALE)
+        self.assertFalse(hasattr(b, "_drawn_whole"))  # read, not drawn
+        self.assertTrue(hasattr(b, "_star"))          # the ring's light from the first frame
+        self.assertTrue(self.same(a.base, b.base))
+        for m in splash._CardCache.MAPS + ("_star",):
+            self.assertTrue(self.same(getattr(a, m), getattr(b, m)), m)
+        a._light_t0 = b._light_t0 = 0.0
+        for t, st in ((0.05, ""), (1.3, "Opening as administrator…"), (2.9, "")):
+            self.assertTrue(self.same(a.frame(t, st), b.frame(t, st)), t)
+
+    def test_another_version_or_scale_draws_it_again(self):
+        self.drawn()
+        with mock.patch.object(splash._CardCache, "key", staticmethod(lambda s: "another version")):
+            card = splash._Card(self.SCALE)
+        self.assertTrue(hasattr(card, "_drawn_whole"))
+
+    def test_a_damaged_or_foreign_file_is_never_trusted(self):
+        self.drawn()
+        with open(self.file, "rb") as fh:
+            good = fh.read()
+        magic = splash._CardCache.MAGIC
+        hlen = int.from_bytes(good[len(magic):len(magic) + 4], "little")
+        head = good[len(magic) + 4:len(magic) + 4 + hlen]
+        import json
+        h = json.loads(head)
+
+        def with_head(new):
+            b = json.dumps(new).encode()
+            return magic + len(b).to_bytes(4, "little") + b + good[len(magic) + 4 + hlen:]
+        bigger = dict(h, items=[[n, m, w * 2 if n == "base" else w, ht, sz] for n, m, w, ht, sz in h["items"]])
+        lying = dict(h, items=[[n, m, w, ht, sz * 50] for n, m, w, ht, sz in h["items"]])
+        moded = dict(h, items=[[n, "P" if n == "base" else m, w, ht, sz] for n, m, w, ht, sz in h["items"]])
+        for bad in (b"", good[:len(good) // 2], b"junk" + good, good[:len(magic)] + bytes([255, 255, 255, 127]),
+                    with_head(bigger), with_head(lying), with_head(moded), with_head([1, 2])):
+            with open(self.file, "wb") as fh:
+                fh.write(bad)
+            with mock.patch("builtins.print"):
+                card = splash._Card(self.SCALE)
+            self.assertTrue(hasattr(card, "_drawn_whole"), bad[:40])
+
+    def test_a_card_whose_logo_failed_is_not_kept(self):
+        import os
+        with mock.patch("stellarhub.tray.make_icon_image", side_effect=RuntimeError("no")), mock.patch("builtins.print"):
+            card = splash._Card(self.SCALE)
+            card._ring_maps()
+        self.assertFalse(os.path.exists(self.file))
+
+
 class ShowAgain(unittest.TestCase):
     def test_a_closed_start_screen_can_be_shown_again(self):
         """The administrator relaunch from the window shows the start screen a second time in a process: it used to
