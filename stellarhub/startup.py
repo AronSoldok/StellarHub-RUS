@@ -11,7 +11,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import VERSION, autostart, config, elevation, instance, settings
+from . import VERSION, autostart, config, elevation, instance, paths, settings
 from .i18n import tr
 from .log import fatal, log_to_file, phase
 
@@ -239,7 +239,7 @@ def install_staged_update(splash_on):
     """A version with new features (x.Y.0) downloaded in the background is installed here, at the start, before
     the window: the start screen says "Updating to…" and StellarHub opens again already updated. Never with
     "Install new features automatically" off, and never blocks the start if anything is off."""
-    if not config.FROZEN or config.ISOLATED and not os.environ.get("STELLARHUB_UPDATE_URL"):
+    if not config.FROZEN or config.ISOLATED and not paths.env("STELLARHUB_UPDATE_URL"):
         return False
     try:
         from .engine import selfupdate

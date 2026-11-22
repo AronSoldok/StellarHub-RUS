@@ -575,3 +575,79 @@ class TaskPaths(unittest.TestCase):
         with mock.patch.object(su.sys, "executable", exe), \
                 mock.patch.object(su.subprocess, "run", return_value=self.query("D:\Other\StellarHub.exe")):
             self.assertFalse(su._task_exists())
+
+
+class ElevatedUpdaterTakesNoOrders(ServedUpdates):
+    """An installed copy running elevated (the silent update task) ignores the test switches any program running as
+    the user could set, and runs exactly the file it verified."""
+
+    def elevated_frozen(self, on=True):
+        from stellarhub import paths
+        for p in (mock.patch.object(su.sys, "frozen", on, create=True), mock.patch.object(paths, "_elevated", lambda: on)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_test_switches_are_ignored_when_installed_and_elevated(self):
+        from stellarhub import paths
+        env = {"STELLARHUB_UPDATE_DIR": self.tmp, "STELLARHUB_UPDATE_URL": "http://127.0.0.1:9/evil.json",
+               "STELLARHUB_PORTABLE": "1", "STELLARHUB_PORTABLE_DATA": self.tmp}
+        with mock.patch.dict(os.environ, env):
+            self.elevated_frozen()
+            self.assertNotEqual(os.path.normcase(su.update_dir()), os.path.normcase(self.tmp))
+            self.assertEqual(su.update_dir(), os.path.join(su.install_dir(), "update"))
+            for k in env:
+                self.assertIsNone(paths.env(k), k)
+            self.assertFalse(paths._portable())
+            self.assertIsNone(su._pick(release("9.9.9", "http://127.0.0.1:9")))  # plain http is refused again
+            with mock.patch.object(su, "_get", return_value=b"{}") as get:
+                su._latest()
+            self.assertEqual(get.call_args[0][0], su.API)
+
+    def test_source_runs_and_tests_keep_the_switches(self):
+        from stellarhub import paths
+        with mock.patch.dict(os.environ, {"STELLARHUB_UPDATE_DIR": self.tmp}):
+            self.elevated_frozen(False)
+            with mock.patch.object(paths, "_elevated", lambda: True):  # elevated but from source
+                self.assertEqual(su.update_dir(), self.tmp)
+                self.assertEqual(paths.env("STELLARHUB_UPDATE_DIR"), self.tmp)
+
+    def test_the_verified_installer_cannot_be_swapped_before_it_runs(self):
+        self.serve()
+        tries = {}
+
+        def popen(args, **kw):
+            exe = args[0]
+            self.assertTrue(os.path.isabs(exe) and not exe.startswith("\\?\\"))
+            for what, fn in (("write", lambda: open(exe, "r+b").close()), ("delete", lambda: os.remove(exe)),
+                             ("rename", lambda: os.replace(exe, exe + ".x")),
+                             ("folder", lambda: os.replace(su.update_dir(), su.update_dir() + ".x"))):
+                try:
+                    fn()
+                    tries[what] = "allowed"
+                except OSError:
+                    tries[what] = "refused"
+            return mock.Mock(pid=1, poll=lambda: 0)
+        with mock.patch.object(su, "_admin", return_value=False), mock.patch.object(su.subprocess, "Popen", side_effect=popen):
+            code = su.run_updater()
+        self.assertEqual((code, su.state()["st"]), (0, "installing"))
+        self.assertEqual(tries, {"write": "refused", "delete": "refused", "rename": "refused", "folder": "refused"})
+        open(os.path.join(su.update_dir(), self.NAME), "r+b").close()  # released once Windows has started it
+
+    def test_held_reads_the_bytes_it_locks(self):
+        p = os.path.join(self.tmp, "a.exe")
+        with open(p, "wb") as fh:
+            fh.write(b"abc")
+        h = su._held(p)
+        try:
+            self.assertEqual(h.sha256, hashlib.sha256(b"abc").hexdigest())
+            self.assertEqual(os.path.normcase(os.path.realpath(h.path)), os.path.normcase(os.path.realpath(p)))
+        finally:
+            h.close()
+        with self.assertRaises(OSError):
+            su._held(os.path.join(self.tmp, "missing.exe"))
+
+    def test_an_elevated_installer_unpacks_in_windows_temp(self):
+        env = su._admin_temp_env()
+        self.assertTrue(os.path.normcase(env["TEMP"]).endswith(os.path.normcase("\Temp")))
+        self.assertEqual(env["TEMP"], env["TMP"])
+        self.assertNotEqual(os.path.normcase(env["TEMP"]), os.path.normcase(os.environ.get("TEMP", "")))

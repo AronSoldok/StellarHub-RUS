@@ -22,8 +22,30 @@ def program_dir():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+# Test switches that redirect where StellarHub's updates come from, where they are downloaded and checked, and what
+# runs as the program. Any program running as the user can set them (HKCU\Environment), so an installed copy that
+# runs elevated (the silent update task, "Always open as administrator") ignores them: they must never steer what
+# runs with administrator rights. Source runs and the tests keep them.
+LOCKED_WHEN_ELEVATED = ("STELLARHUB_UPDATE_DIR", "STELLARHUB_UPDATE_URL", "STELLARHUB_PORTABLE", "STELLARHUB_PORTABLE_DATA")
+
+
+def _elevated():
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def env(name, default=None):
+    """os.environ.get(name), except the LOCKED_WHEN_ELEVATED switches in an installed copy running elevated."""
+    if name in LOCKED_WHEN_ELEVATED and getattr(sys, "frozen", False) and _elevated():
+        return default
+    return os.environ.get(name, default)
+
+
 def _portable():
-    if os.environ.get("STELLARHUB_PORTABLE") == "1":  # tests run the source as if it were portable
+    if env("STELLARHUB_PORTABLE") == "1":  # tests run the source as if it were portable
         return True
     return FROZEN and os.path.isfile(os.path.join(program_dir(), MARKER))
 
@@ -40,7 +62,7 @@ def _portable_data_dir():
     global _portable_data
     if _portable_data:
         return _portable_data
-    d = os.environ.get("STELLARHUB_PORTABLE_DATA") or os.path.join(program_dir(), "Data")
+    d = env("STELLARHUB_PORTABLE_DATA") or os.path.join(program_dir(), "Data")
     try:
         os.makedirs(d, exist_ok=True)
         probe = os.path.join(d, ".write-test")
@@ -97,4 +119,4 @@ def dialogs_allowed():
     folder): a message that would be a Windows message box is only written to the log, so a test never leaves a
     modal box on someone's screen."""
     e = os.environ
-    return not (e.get("STELLARHUB_NO_DIALOGS") == "1" or e.get("STELLARHUB_ISOLATED") == "1" or e.get("STELLARHUB_UPDATE_DIR"))
+    return not (e.get("STELLARHUB_NO_DIALOGS") == "1" or e.get("STELLARHUB_ISOLATED") == "1" or env("STELLARHUB_UPDATE_DIR"))

@@ -87,7 +87,8 @@ def install_dir():
 
 def update_dir():
     """Where the updater downloads and reports: next to the program (STELLARHUB_UPDATE_DIR in tests)."""
-    return os.environ.get("STELLARHUB_UPDATE_DIR") or os.path.join(install_dir(), "update")
+    from .. import paths
+    return paths.env("STELLARHUB_UPDATE_DIR") or os.path.join(install_dir(), "update")
 
 
 def state_path():
@@ -255,7 +256,8 @@ def _get(url, limit, timeout=15):
 
 def _latest():
     """The latest release as GitHub describes it (STELLARHUB_UPDATE_URL points elsewhere in tests)."""
-    url = os.environ.get("STELLARHUB_UPDATE_URL") or API
+    from .. import paths
+    url = paths.env("STELLARHUB_UPDATE_URL") or API
     return json.loads(_get(url, 2 * 1024 * 1024).decode("utf-8"))
 
 
@@ -302,7 +304,8 @@ def _pick(rel, portable=None):
     url = str(setup.get("browser_download_url") or "")
     sig = str((assets.get(setup["name"] + ".sig") or {}).get("browser_download_url") or "")
     if not url.startswith("https://") or (sig and not sig.startswith("https://")):
-        if not os.environ.get("STELLARHUB_UPDATE_URL"):  # tests serve plain http from this PC
+        from .. import paths
+        if not paths.env("STELLARHUB_UPDATE_URL"):  # tests serve plain http from this PC
             return None
     return {"ver": ver, "setup": {"name": setup["name"], "url": url, "size": int(setup.get("size") or 0)},
             "sig_url": sig, "notes": str(rel.get("body") or "")[:20000], "url": str(rel.get("html_url") or ""),
@@ -681,23 +684,38 @@ def run_updater():
                 _write_state(st="cancelled", ver=ver)
                 return 0
             time.sleep(.3)
-        if not signature_ok(setup["name"], ver, _sha256(exe), sig):  # once more, right before it runs
+        # Once more, right before it runs, and this time the file stays open from the check until Windows has
+        # started it: nobody can change, replace or rename it (or a folder above it) in between, and it is started
+        # by its real path, so a junction swapped meanwhile can't hand Windows another file (_held).
+        try:
+            held = _held(exe)
+        except OSError as e:
             _rm(exe)
-            _write_state(st="failed", ver=ver, why="signature")
+            _write_state(st="failed", ver=ver, why="signature", error=str(e)[:200])
             return 4
-        _write_state(st="installing", ver=ver)
-        # /SILENT, not /VERYSILENT: Setup shows its small progress window (no pages, no questions) for the 20-60 s
-        # it takes, instead of nothing at all
-        args = [exe, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCANCEL",
-                "/LOG=" + os.path.join(d, "setup.log"), "/SELFUPDATE=" + state_path()]
-        args.append("/ALLUSERS" if per_machine() else "/CURRENTUSER")
-        if _admin():
-            # Setup's "open StellarHub" would run elevated from here (Inno's runasoriginaluser does nothing when Setup
-            # itself was started elevated): the app would come back as administrator, or as the account that
-            # answered the prompt. The reopener the app left (spawn_reopener) runs as the user and opens it instead.
-            args.append("/NOREOPEN=1")
-        args.append("/DIR=" + install_dir())
-        proc = subprocess.Popen(args, creationflags=DETACHED, close_fds=True, cwd=d)
+        try:
+            if not signature_ok(setup["name"], ver, held.sha256, sig):
+                held.close()
+                _rm(exe)
+                _write_state(st="failed", ver=ver, why="signature")
+                return 4
+            _write_state(st="installing", ver=ver)
+            # /SILENT, not /VERYSILENT: Setup shows its small progress window (no pages, no questions) for the 20-60
+            # s it takes, instead of nothing at all
+            args = [held.path, "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCANCEL",
+                    "/LOG=" + os.path.join(d, "setup.log"), "/SELFUPDATE=" + state_path()]
+            args.append("/ALLUSERS" if per_machine() else "/CURRENTUSER")
+            env = None
+            if _admin():
+                # Setup's "open StellarHub" would run elevated from here (Inno's runasoriginaluser does nothing when
+                # Setup itself was started elevated): the app would come back as administrator, or as the account
+                # that answered the prompt. The reopener the app left (spawn_reopener) runs as the user and opens it.
+                args.append("/NOREOPEN=1")
+                env = _admin_temp_env()
+            args.append("/DIR=" + install_dir())
+            proc = subprocess.Popen(args, creationflags=DETACHED, close_fds=True, cwd=d, env=env)
+        finally:
+            held.close()
         if sp is not None:
             _installer_window_up(proc)  # then this process exits: the installer replaces this very program
         return 0
@@ -735,6 +753,62 @@ def _one_updater(d, wait=900):
                 fh.close()
                 return None
             time.sleep(.5)
+
+
+class _held:
+    """A file opened so that, while it is open, nobody can write it, delete it or rename it or any folder above it
+    (read sharing only), with its SHA-256 read through that same handle and its real path (junctions and links
+    resolved). Windows can still run it: starting a program only needs to read it."""
+
+    def __init__(self, path):
+        import msvcrt
+        from ctypes import wintypes as wt
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateFileW.restype = ctypes.c_void_p
+        k32.CreateFileW.argtypes = [wt.LPCWSTR, wt.DWORD, wt.DWORD, ctypes.c_void_p, wt.DWORD, wt.DWORD, ctypes.c_void_p]
+        k32.GetFinalPathNameByHandleW.argtypes = [ctypes.c_void_p, wt.LPWSTR, wt.DWORD, wt.DWORD]
+        k32.CloseHandle.argtypes = [ctypes.c_void_p]
+        h = k32.CreateFileW(path, 0x80000000, 0x1, None, 3, 0x80, None)  # GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING
+        if not h or h == ctypes.c_void_p(-1).value:
+            raise OSError(ctypes.get_last_error(), "the installer could not be opened", path)
+        try:
+            buf = ctypes.create_unicode_buffer(32768)
+            n = k32.GetFinalPathNameByHandleW(h, buf, 32768, 0)
+            if not n or n >= 32768:
+                raise OSError(ctypes.get_last_error(), "the installer's real path could not be read", path)
+            real = buf.value
+            if real.startswith("\\\\?\\UNC\\"):
+                real = "\\\\" + real[8:]
+            elif real.startswith("\\\\?\\"):
+                real = real[4:]
+            self.fd = msvcrt.open_osfhandle(h, os.O_RDONLY)
+        except BaseException:
+            k32.CloseHandle(h)
+            raise
+        self.path = real
+        hs = hashlib.sha256()
+        with open(self.fd, "rb", closefd=False) as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                hs.update(chunk)
+        self.sha256 = hs.hexdigest()
+
+    def close(self):
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+
+
+def _admin_temp_env():
+    """The installer's environment when it runs elevated: its temporary folder (where Setup unpacks and runs its own
+    files) is Windows' own Temp, where a program running as the user can't change what an administrator wrote, instead
+    of the user's %TEMP%. The Windows folder is asked from Windows, not read from the (user-settable) environment."""
+    env = dict(os.environ)
+    buf = ctypes.create_unicode_buffer(260)
+    if ctypes.windll.kernel32.GetSystemWindowsDirectoryW(buf, 260):
+        tmp = os.path.join(buf.value, "Temp")
+        if os.path.isdir(tmp):
+            env["TEMP"] = env["TMP"] = tmp
+    return env
 
 
 def _sha256(path):
