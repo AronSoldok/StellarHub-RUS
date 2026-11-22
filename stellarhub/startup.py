@@ -245,7 +245,12 @@ def install_staged_update(splash_on):
         from .engine import selfupdate
         if not selfupdate.staged():
             return False
-        if settings.load_strict().get("autoUpdateFeatures") is False:
+        try:
+            auto = settings.load_strict().get("autoUpdateFeatures")
+        except OSError as e:  # unreadable for now: the choice is unknown, so nothing is installed and nothing is said
+            print("staged update: the settings can't be read right now:", e)
+            return False
+        if auto is False:
             return False
         say = None
         if splash_on:

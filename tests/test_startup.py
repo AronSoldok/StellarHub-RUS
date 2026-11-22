@@ -164,7 +164,8 @@ class SingleInstance(unittest.TestCase):
                                                "cmdline": [sys.executable, run_py]})
         procs = [proc(101), proc(202), proc(303)]
         sessions = {None: 2, 101: 2, 202: 3, 303: 0}
-        with mock.patch.object(instance, "session_id", side_effect=lambda pid=None: sessions[pid]),                 mock.patch("psutil.process_iter", return_value=procs), mock.patch.object(instance.config, "FROZEN", False):
+        with mock.patch.object(instance, "session_id", side_effect=lambda pid=None: sessions[pid]), \
+                mock.patch("psutil.process_iter", return_value=procs), mock.patch.object(instance.config, "FROZEN", False):
             self.assertEqual([p.info["pid"] for p in instance.other_copies()], [101, 303])
 
 
@@ -178,6 +179,22 @@ class Jobs(unittest.TestCase):
                     break
                 time.sleep(0.05)
         self.assertTrue(jobs._jobs[jid].ended)
+
+
+
+class StagedUpdateAtStart(unittest.TestCase):
+    def test_settings_unreadable_for_a_moment_is_not_a_failed_update(self):
+        """A settings file locked for a moment (antivirus, backup) said "The update could not be installed" at start,
+        although nothing was tried. Now the start just goes on; the staged update waits for the next start."""
+        from stellarhub import config, settings, startup
+        from stellarhub.engine import selfupdate
+        with mock.patch.object(config, "FROZEN", True), mock.patch.object(config, "ISOLATED", False), \
+                mock.patch.object(selfupdate, "staged", return_value="9.9.9"), \
+                mock.patch.object(settings, "load_strict", side_effect=OSError(32, "in use")), \
+                mock.patch.object(selfupdate, "apply_staged_at_start") as apply, mock.patch.object(startup, "fatal") as fatal:
+            self.assertFalse(startup.install_staged_update(True))
+        fatal.assert_not_called()
+        apply.assert_not_called()
 
 
 if __name__ == "__main__":

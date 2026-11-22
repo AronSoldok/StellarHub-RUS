@@ -129,7 +129,12 @@ class DriverBackupsAndInstall(unittest.TestCase):
             self.assertNotEqual(os.path.normcase(cmd[-1]), os.path.normcase(first))
             job.cancelled = True
             return 1, ""
-        with mock.patch.object(D, "default_backup_dir", return_value=self.tmp),                 mock.patch.object(D, "KNOWN_BACKUPS", os.path.join(self.tmp, "known.json")),                 mock.patch.object(D, "_need_admin", return_value=None),                 mock.patch.object(D, "_third_party_count", return_value=1),                 mock.patch.object(D.time, "strftime", return_value="2026-11-22 1530"),                 mock.patch.object(D, "run", side_effect=fake_run):
+        with mock.patch.object(D, "default_backup_dir", return_value=self.tmp), \
+                mock.patch.object(D, "KNOWN_BACKUPS", os.path.join(self.tmp, "known.json")), \
+                mock.patch.object(D, "_need_admin", return_value=None), \
+                mock.patch.object(D, "_third_party_count", return_value=1), \
+                mock.patch.object(D.time, "strftime", return_value="2026-11-22 1530"), \
+                mock.patch.object(D, "run", side_effect=fake_run):
             with self.assertRaises(Cancelled):
                 D.export(job)
         self.assertTrue(os.path.isfile(os.path.join(first, "oem1.inf")))
