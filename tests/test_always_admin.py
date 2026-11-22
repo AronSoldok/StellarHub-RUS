@@ -27,6 +27,7 @@ class AlwaysAdmin(unittest.TestCase):
 
     def test_installed_copy_uses_the_task(self):
         with mock.patch("stellarhub.api.settings_api.config.PORTABLE", False), \
+                mock.patch.object(elevation, "uses_admin_task", return_value=True), \
                 mock.patch("stellarhub.api.settings_api.config.is_admin", return_value=True), \
                 mock.patch.object(elevation, "ensure_admin_task", return_value=False) as make, \
                 mock.patch.object(elevation, "delete_admin_task") as drop:

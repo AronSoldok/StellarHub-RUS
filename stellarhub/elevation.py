@@ -1,5 +1,12 @@
 """Administrator mode: the scheduled task that opens StellarHub elevated without the Windows prompt, deciding at the
-start whether this copy must relaunch elevated, and the relaunch itself."""
+start whether this copy must relaunch elevated, and the relaunch itself.
+
+Only an all-users install gets the task (uses_admin_task): its program lives where only administrators can change it
+(Program Files, or a folder the installer registered for all users). A per-user install (%LOCALAPPDATA%\\Programs),
+the portable copy and the source version live in folders any program the user runs can write to: a task there would
+run whatever StellarHub.exe is in that folder now, elevated and without a prompt. Those copies ask Windows (UAC) at
+each start instead, and an elevated StellarHub removes a task an earlier version left pointing at such a folder
+(remove_unsafe_admin_task)."""
 import ctypes
 import os
 import sys
@@ -14,10 +21,71 @@ START_HIDDEN = str(Path(paths.local_dir()) / "start-hidden")  # see elevate_on_s
 LEGACY_ADMIN_TASKS = (r"StellarHub\Abrir como administrador",)  # name used by earlier versions
 
 
+PROGRAM_FILES = ("905E63B6-C1BF-494E-B29C-65B732D3D21A", "6D809377-6AF0-444B-8957-A3773F02200E",  # ProgramFiles, X64
+                 "7C5A40EF-A0FB-4BFC-874A-C0F2E0B9FA8E")  # ProgramFilesX86
+
+
+def _known_folder(guid):
+    """A Windows known folder, asked from Windows (never the user-settable %ProgramFiles% variables), or None."""
+    from .engine.removal.paths import _known_folder as known
+    return known(guid)
+
+
+def _under(path, root):
+    if not path or not root:
+        return False
+    path, root = os.path.normcase(os.path.abspath(path)), os.path.normcase(os.path.abspath(root))
+    return path == root or path.startswith(root.rstrip("\\/") + os.sep)
+
+
+def _registered_for_all_users(folder):
+    """True if the installer registered this folder as an all-users install: its HKLM uninstall entry, which only an
+    administrator can write. The per-user entry (HKCU) never counts here: any program the user runs can write it."""
+    import winreg
+    from .engine.selfupdate import APP_ID
+    here = os.path.normcase(os.path.abspath(folder)).rstrip("\\")
+    for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + APP_ID,
+                                0, winreg.KEY_READ | view) as k:
+                loc = winreg.QueryValueEx(k, "InstallLocation")[0]
+        except OSError:
+            continue
+        if loc and os.path.normcase(os.path.abspath(loc)).rstrip("\\") == here:
+            return True
+    return False
+
+
+def per_machine_folder(folder):
+    """The installer's and selfupdate.per_machine()'s rule: installed for all users if the installer registered the
+    folder that way, else if it lives in Program Files. Read only from what a program running as the user can't
+    change (the HKLM entry, Windows' own Program Files folders)."""
+    if not folder:
+        return False
+    try:
+        if _registered_for_all_users(folder):
+            return True
+    except Exception:
+        pass
+    return any(_under(folder, _known_folder(g)) for g in PROGRAM_FILES)
+
+
+def uses_admin_task():
+    """Whether "Always open as administrator" may use the scheduled task: only the installed program of an all-users
+    install. Per-user installs, the portable copy and the source version ask Windows at each start (module docstring)."""
+    if config.PORTABLE or not config.FROZEN:
+        return False
+    try:
+        return per_machine_folder(os.path.dirname(os.path.abspath(sys.executable)))
+    except Exception:
+        return False
+
+
 def ensure_admin_task():
-    """Creates (or updates) the scheduled task that opens StellarHub elevated without the UAC prompt."""
-    if config.PORTABLE:
-        return False  # the portable version asks Windows each time instead of leaving a task on the PC
+    """Creates (or updates) the scheduled task that opens StellarHub elevated without the UAC prompt (all-users
+    installs only: uses_admin_task)."""
+    if not uses_admin_task():
+        return False  # per-user, portable or source: Windows asks each time instead of a task running this folder's exe
     import subprocess
     from . import schtask
     exe, args = config.launch_cmd("--from-task")
@@ -48,6 +116,46 @@ def delete_admin_task():
         subprocess.run(["schtasks", "/delete", "/tn", name, "/f"], capture_output=True, creationflags=0x08000000)
 
 
+def task_safe_target(command):
+    """A task may go on starting a program elevated without a prompt only if that program is the StellarHub.exe of an
+    all-users install (a folder only administrators can change). Anything else (a per-user install, a portable copy,
+    python with a run.py in the user's documents) is a program a user-level process could replace."""
+    if not command:
+        return False
+    return os.path.basename(command).lower() == "stellarhub.exe" and per_machine_folder(os.path.dirname(command))
+
+
+def remove_unsafe_admin_task():
+    """Run by an elevated StellarHub (only then can the task be deleted): the "open as administrator" tasks an earlier
+    version made for a per-user install, a portable or a source copy are removed, whichever copy they start. A task
+    that starts an all-users install stays. Returns the names removed."""
+    import subprocess
+    gone = []
+    for name in (ADMIN_TASK, *LEGACY_ADMIN_TASKS):
+        found = task_command(name)
+        if found is None or task_safe_target(found[0]):
+            continue
+        r = subprocess.run(["schtasks", "/delete", "/tn", name, "/f"], capture_output=True, creationflags=0x08000000)
+        if r.returncode == 0:
+            gone.append(name)
+            print(f"[admin] removed the task {name!r}: it opened {found[0]!r} as administrator without a prompt, "
+                  "from a folder the user's programs can change", flush=True)
+    return gone
+
+
+def sync_admin_task():
+    """An elevated copy at start: an all-users install with the setting on makes its task again; any other copy
+    removes an unsafe one an earlier version left (remove_unsafe_admin_task)."""
+    try:
+        if uses_admin_task():
+            if settings.read().get("alwaysAdmin"):
+                ensure_admin_task()
+        else:
+            remove_unsafe_admin_task()
+    except Exception as e:
+        print("admin task:", e, flush=True)
+
+
 def wants_elevation():
     """Permanent administrator mode is on and this copy is not elevated (nor a test copy, nor already the elevated one)."""
     if config.is_admin() or config.ISOLATED or "--no-elevate" in sys.argv or "--from-task" in sys.argv:
@@ -75,7 +183,9 @@ def elevate_on_start():
             pass
     splash = _hand_over_splash()
     ran_at = time.time()
-    if not config.PORTABLE and task_opens_this_copy(ADMIN_TASK) and subprocess.run(
+    # only an all-users install runs its task: a per-user copy never starts one (the elevated copy Windows' prompt
+    # opens below removes a task an earlier version made for it)
+    if uses_admin_task() and task_opens_this_copy(ADMIN_TASK) and subprocess.run(
             ["schtasks", "/run", "/tn", ADMIN_TASK], capture_output=True, creationflags=0x08000000, timeout=15).returncode == 0:
         # a copy the task did start but that is slow to reach the lock (a cold logon, an antivirus scan) gets up to a
         # minute: ending it after 8 s brought the Windows prompt at every such logon
@@ -151,39 +261,52 @@ def elevated_copy_started(seconds=8):
     return False
 
 
-def task_opens_this_copy(name):
-    """True if the scheduled task exists and launches this same program (the exe, or run.py from source)."""
+def task_command(name):
+    """(command, arguments) of the scheduled task's action, with the XML's escapes undone ("&amp;" in a path with "&"
+    never matched: the Windows prompt at every start), or None if there is no such task."""
+    import html
     import re
     import subprocess
     try:
         r = subprocess.run(["schtasks", "/query", "/tn", name, "/xml"], capture_output=True, timeout=10,
                            creationflags=0x08000000)
     except (OSError, subprocess.SubprocessError):
-        return False
+        return None
     if r.returncode != 0:
-        return False
+        return None
     raw = r.stdout
     xml = raw.decode("utf-16", "replace") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("oem", "replace")
-    exe, _args = config.launch_cmd()
     cmd = re.search(r"<Command>(.*?)</Command>", xml, re.S)
     arg = re.search(r"<Arguments>(.*?)</Arguments>", xml, re.S)
+    if not cmd:
+        return None
+    return html.unescape(cmd.group(1)).strip().strip('"'), (html.unescape(arg.group(1)).strip() if arg else "")
 
-    def norm(t):  # the XML's escapes undone ("&amp;" in a path with "&" never matched: the Windows prompt at every start)
-        import html
-        return os.path.normcase(html.unescape(t).strip().strip('"'))
-    if not cmd or norm(cmd.group(1)) != norm(exe):
+
+def task_opens_this_copy(name):
+    """True if the scheduled task exists and launches this same program (the exe, or run.py from source)."""
+    found = task_command(name)
+    if found is None:
         return False
-    return config.FROZEN or (arg is not None and norm(str(Path(config.base_dir()) / "run.py")) in norm(arg.group(1)))
+    exe, _args = config.launch_cmd()
+
+    def norm(t):
+        return os.path.normcase(t.strip().strip('"'))
+    if norm(found[0]) != norm(exe):
+        return False
+    return config.FROZEN or norm(str(Path(config.base_dir()) / "run.py")) in norm(found[1])
 
 
-def relaunch_elevated():
+def relaunch_elevated(extra=()):
     """Asks Windows (UAC) for an elevated copy of this program that waits for this process to exit (it frees the
-    single-instance lock and the WebView2 data). True if Windows gave permission; the caller then quits."""
+    single-instance lock and the WebView2 data). True if Windows gave permission; the caller then quits.
+    extra: more arguments for the new copy (--resume <ticket hash>: stellarhub/resume.py)."""
     args = [a for a in sys.argv[1:] if a not in ("--tray",)]
-    if "--wait-pid" in args:
-        i = args.index("--wait-pid")
-        del args[i:i + 2]
-    args += ["--wait-pid", str(os.getpid())]
+    for opt in ("--wait-pid", "--resume"):
+        while opt in args:
+            i = args.index(opt)
+            del args[i:i + 2]
+    args += ["--wait-pid", str(os.getpid()), *extra]
     params = " ".join(f'"{a}"' for a in args)
     if not config.FROZEN:
         params = f'"{Path(config.base_dir()) / "run.py"}" {params}'

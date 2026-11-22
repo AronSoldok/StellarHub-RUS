@@ -437,5 +437,6 @@
   "Report a bug": "报告错误",
   "Found a bug?": "发现错误了吗？",
   "Report it on GitHub: say what you were doing and, if you can, add a screenshot.": "在 GitHub 上报告：说说你当时在做什么，如果可以，请附上截图。",
-  "Report on GitHub": "在 GitHub 上报告"
+  "Report on GitHub": "在 GitHub 上报告",
+  "Windows asks each time. To open without asking, install StellarHub for all users.": "Windows 每次都会询问。若要不经询问直接打开，请为所有用户安装 StellarHub。"
 }

@@ -101,6 +101,7 @@ class Relaunches(unittest.TestCase):
         with mock.patch.object(elevation, "wants_elevation", return_value=True), \
                 mock.patch.object(elevation, "_hand_over_splash", side_effect=lambda: (sp.hand_over(), sp)[1]), \
                 mock.patch.object(elevation, "task_opens_this_copy", return_value=True), \
+                mock.patch.object(elevation, "uses_admin_task", return_value=True), \
                 mock.patch.object(elevation.config, "PORTABLE", False), \
                 mock.patch("subprocess.run", run), \
                 mock.patch.object(elevation, "elevated_copy_started", return_value=True):
@@ -115,6 +116,7 @@ class Relaunches(unittest.TestCase):
         with mock.patch.object(elevation, "wants_elevation", return_value=True), \
                 mock.patch.object(elevation, "_hand_over_splash", return_value=None), \
                 mock.patch.object(elevation, "task_opens_this_copy", return_value=True), \
+                mock.patch.object(elevation, "uses_admin_task", return_value=True), \
                 mock.patch.object(elevation.config, "PORTABLE", False), \
                 mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)), \
                 mock.patch.object(elevation, "_copy_started_since", return_value=True), \
@@ -150,7 +152,7 @@ class Relaunches(unittest.TestCase):
         with mock.patch.object(splash, "show"), mock.patch.object(splash, "status"), \
                 mock.patch.object(splash, "hand_over", side_effect=lambda on=True: order.append(("hand_over", on))), \
                 mock.patch.object(splash, "close", side_effect=lambda: order.append(("close",))), \
-                mock.patch.object(elevation, "relaunch_elevated", side_effect=lambda: (order.append(("uac",)), False)[1]), \
+                mock.patch.object(elevation, "relaunch_elevated", side_effect=lambda *a: (order.append(("uac",)), False)[1]), \
                 mock.patch("stellarhub.api.main_window.config.is_admin", return_value=False):
             self.assertFalse(api.relaunch_admin())
         self.assertEqual(order, [("hand_over", True), ("uac",), ("hand_over", False), ("close",)])

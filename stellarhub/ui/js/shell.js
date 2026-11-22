@@ -551,7 +551,10 @@ function sectionHTML(id) {
       <div class="keys">${[['Ctrl K', t('Search for a tool or action')], ['Ctrl ,', t('Open settings')], [t('Ctrl 1 to 9'), t('Go to a module')], ['Alt ← / Alt →', t('Back and forward')], [t('Mouse side buttons'), t('Back and forward')], ['Esc', t('Close or go back Home')], [t('Double-click the top bar'), t('Maximize or restore')]].map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>`;
     case 'admin': return `<h3>${t('Administrator')}</h3><p>${t('Installing drivers, cleaning system files and repairing Windows need administrator rights. Without them, StellarHub runs in limited mode.')}</p>
       <div class="set inline"><div class="lbl"><div>${t('Status')}<span>${state.admin ? t('StellarHub is running as administrator.') : t('You are in normal mode right now.')}</span></div></div>${state.admin ? `<span class="chip ok">${t('Administrator')}</span>` : `<button class="btn pri" data-act="admin">${t('Turn on')}</button>`}</div>
-      ${tog('alwaysAdmin', t('Always open as administrator'), state.portable ? t('The portable version asks Windows each time it opens, because it leaves no scheduled task on the PC.') : t('Windows asks once when you turn it on; after that StellarHub opens as administrator without asking (like other tools, it uses a scheduled task).'))}
+      ${tog('alwaysAdmin', t('Always open as administrator'), state.portable ? t('The portable version asks Windows each time it opens, because it leaves no scheduled task on the PC.')
+        /* a per-user install: its folder is the user's, so no task may open it elevated (elevation.uses_admin_task) */
+        : state.adminTask === false ? t('Windows asks each time. To open without asking, install StellarHub for all users.')
+        : t('Windows asks once when you turn it on; after that StellarHub opens as administrator without asking (like other tools, it uses a scheduled task).'))}
       ${tog('adminHints', t('Suggest administrator mode'), t('A subtle hint when a feature needs it.'))}`;
     case 'updates': return `<h3>${t('Updates')}</h3><p>${t('StellarHub updates itself from its GitHub repository.')}</p>
       <div class="set inline"><div class="lbl"><div>${t('Installed version')}<span>StellarHub ${state.version}${state.portable ? ' · ' + t('portable') : ''}</span></div></div><button class="btn sec" data-act="checkupd">${ic('updater')}${t('Check now')}</button></div>
@@ -998,7 +1001,7 @@ SH.boot = async () => {
   const [info, pc] = await Promise.all([infoP, pcP]);
   SH.call('phase', 'info + pc_info loaded');
   if (pc && pc.components) { Object.assign(SH.PC, pc); SH.PC.real = true; }
-  if (info) { state.version = info.version; state.codename = info.codename || ''; state.portable = !!info.portable; const ver = $('#sheet nav .ver'); if (ver) ver.textContent = `StellarHub ${info.version}${state.codename ? ' · ' + state.codename : ''}`;
+  if (info) { state.version = info.version; state.codename = info.codename || ''; state.portable = !!info.portable; state.adminTask = info.adminTask !== false; const ver = $('#sheet nav .ver'); if (ver) ver.textContent = `StellarHub ${info.version}${state.codename ? ' · ' + state.codename : ''}`;
     /* the version in a corner of every view, small: support screenshots always say which one it is */
     const vt = $('#verTag'); if (vt) vt.textContent = `v${info.version}${state.codename ? ' · ' + state.codename : ''}${state.portable ? ' · ' + SH.t('portable') : ''}`; if (info.admin) { state.admin = true; paintMode(); $('#modePill').classList.add('admin'); $('#modeTxt').textContent = SH.t('Administrator mode'); } }
   applyLook(); applyZoom();

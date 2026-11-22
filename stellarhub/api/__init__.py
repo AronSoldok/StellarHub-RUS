@@ -41,7 +41,11 @@ class Api(SettingsApi, MainWindowApi, WidgetApi, TrayPanelApi, EngineApi):
 
     # ---------- information ----------
     def info(self):
-        return {"version": VERSION, "codename": CODENAME, "admin": config.is_admin(), "portable": config.PORTABLE}
+        # adminTask: "Always open as administrator" opens without the Windows prompt (an all-users install's task);
+        # False: Windows asks at each start (per-user, portable or source copies: elevation.uses_admin_task)
+        from .. import elevation
+        return {"version": VERSION, "codename": CODENAME, "admin": config.is_admin(), "portable": config.PORTABLE,
+                "adminTask": elevation.uses_admin_task()}
 
     _reveal_pending = False
 

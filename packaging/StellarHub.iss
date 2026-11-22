@@ -335,7 +335,9 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: 
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: "StellarHub.App"; Comment: "{cm:AppTagline}"; Check: WantDesktopIcon
 
 [Run]
-Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "{cm:RunWebView}"; Check: NeedsWebView2 and WebView2SetupTrusted; Flags: waituntilterminated
+; (an all-users install runs elevated: the bootstrapper is checked and run from a copy in the install folder, where
+; only administrators can write, never from the user's %TEMP%; see WebView2SetupTrusted)
+Filename: "{code:WebView2Setup}"; Parameters: "/silent /install"; StatusMsg: "{cm:RunWebView}"; Check: NeedsWebView2 and WebView2SetupTrusted; Flags: waituntilterminated
 ; an update reopens StellarHub right here: the first start of the new files must not pay Windows' first-run scan of
 ; every library (15-20 s with only the start screen, seen in 2.0.0), so they are loaded once first, as the
 ; post-install step does for a normal install (whichever runs first, the second pass takes a fraction of a second)
@@ -407,15 +409,40 @@ begin
                  HasWebView2In(HKCU, WebView2Key));
 end;
 
-{ the downloaded bootstrapper only runs if Windows says it is signed by Microsoft }
+{ Where the WebView2 bootstrapper runs from. {tmp} is inside the user's %TEMP%, which any program running as the user
+  can change: fine for a per-user install (Setup is not elevated), but an all-users install runs elevated, so there it
+  is copied into {app}\update (Program Files: administrators only) and checked and run from that copy. }
+function WebView2Setup(Param: String): String;
+begin
+  if IsAdminInstallMode then
+    Result := ExpandConstant('{app}\update\MicrosoftEdgeWebview2Setup.exe')
+  else
+    Result := ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe');
+end;
+
+{ the downloaded bootstrapper only runs if Windows says it is signed by Microsoft. PowerShell gets only its own
+  modules (an elevated PowerShell would otherwise look in the user's Documents\WindowsPowerShell\Modules first). }
 function WebView2SetupTrusted: Boolean;
 var
   F: String;
   Code: Integer;
 begin
-  F := ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe');
+  F := WebView2Setup('');
+  if IsAdminInstallMode then
+  begin
+    ForceDirectories(ExtractFileDir(F));
+    DeleteFile(F);
+    if not FileCopy(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), F, False) then
+    begin
+      Log('Could not copy the WebView2 bootstrapper into the install folder: not running it.');
+      Result := False;
+      exit;
+    end;
+  end;
   Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-    '-NoProfile -NonInteractive -Command "$s = Get-AuthenticodeSignature -LiteralPath ''' + F + '''; ' +
+    '-NoProfile -NonInteractive -Command "$env:PSModulePath = $PSHOME + ''\Modules''; ' +
+    'Import-Module ($PSHOME + ''\Modules\Microsoft.PowerShell.Security''); ' +
+    '$s = Microsoft.PowerShell.Security\Get-AuthenticodeSignature -LiteralPath ''' + F + '''; ' +
     'if ($s.Status -eq ''Valid'' -and $s.SignerCertificate.Subject -match ''O=Microsoft Corporation'') { exit 0 } else { exit 1 }"',
     '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
   if not Result then

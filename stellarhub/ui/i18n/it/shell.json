@@ -437,5 +437,6 @@
   "Report a bug": "Segnala un errore",
   "Found a bug?": "Hai trovato un errore?",
   "Report it on GitHub: say what you were doing and, if you can, add a screenshot.": "Segnalalo su GitHub: racconta cosa stavi facendo e, se puoi, aggiungi uno screenshot.",
-  "Report on GitHub": "Segnala su GitHub"
+  "Report on GitHub": "Segnala su GitHub",
+  "Windows asks each time. To open without asking, install StellarHub for all users.": "Windows lo chiede ogni volta. Per aprirlo senza chiedere, installa StellarHub per tutti gli utenti."
 }

@@ -435,5 +435,6 @@
   "Report a bug": "不具合を報告",
   "Found a bug?": "不具合を見つけましたか？",
   "Report it on GitHub: say what you were doing and, if you can, add a screenshot.": "GitHub で報告してください。何をしていたかを書き、できればスクリーンショットを添付してください。",
-  "Report on GitHub": "GitHub で報告"
+  "Report on GitHub": "GitHub で報告",
+  "Windows asks each time. To open without asking, install StellarHub for all users.": "毎回 Windows が確認します。確認なしで開くには、StellarHub をすべてのユーザー向けにインストールしてください。"
 }
