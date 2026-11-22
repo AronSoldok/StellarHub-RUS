@@ -29,6 +29,13 @@ class StuckTaskScheduler(unittest.TestCase):
         self.assertFalse(os.path.exists(seen["xml"]))  # the temp XML is still removed
 
 
+    def test_the_task_is_for_the_tokens_account_not_the_environments(self):
+        with mock.patch.dict(os.environ, {"USERDOMAIN": "EVIL", "USERNAME": "someone"}):
+            user = schtask._user()
+        self.assertNotEqual(user, "EVIL" + chr(92) + "someone")
+        self.assertIn(chr(92), user)
+
+
 class RollbackError(unittest.TestCase):
     def test_the_error_is_the_one_windows_gave_for_the_call(self):
         fn = mock.Mock(return_value=0)

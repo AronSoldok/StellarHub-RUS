@@ -58,6 +58,16 @@ _XML = """<?xml version="1.0" encoding="UTF-16"?>
 
 
 def _user():
+    """The account of this process's own token (DOMAIN, user). %USERDOMAIN% and %USERNAME% are only the fallback:
+    they are the user's to change (HKCU Environment), and the tasks run with highest privileges as the account
+    named here."""
+    try:
+        import ctypes
+        buf, n = ctypes.create_unicode_buffer(512), ctypes.c_ulong(512)
+        if ctypes.windll.secur32.GetUserNameExW(2, buf, ctypes.byref(n)) and buf.value:  # NameSamCompatible
+            return buf.value
+    except Exception:
+        pass
     dom, name = os.environ.get("USERDOMAIN", ""), os.environ.get("USERNAME", "")
     return f"{dom}\\{name}" if dom and name else name
 
