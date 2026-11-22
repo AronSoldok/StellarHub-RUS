@@ -164,6 +164,9 @@ function setData(area, data, stale) {
 async function eng(fn, ...a) {
   const r = await SH.engine('privacy', fn, ...a);
   if (r && r.needAdmin) { SH.requireAdmin(t('to change this Windows setting.')); const e = new Error(t('Needs administrator mode')); e.needAdmin = true; throw e; }
+  /* (every caller changes something) an answer that says it failed, or no answer at all, is an error: never "done",
+     never an Undo for a change that did not happen */
+  if (!r || typeof r !== 'object' || r.ok === false || r.error) throw new Error((r && (r.error || r.msg)) || t('Something went wrong.'));
   return r;
 }
 const LOADERS = {
@@ -302,7 +305,8 @@ async function undo(r, area) {
   try { const u = await eng('undo', r.backup); if (u.tracking) setData('tracking', u.tracking); else if (area || u.area) load(area || u.area); SH.toast(t('Undone: {what}', { what: u.label || '' })); }
   catch (e) { SH.toast(e.message, { kind: 'error' }); }
 }
-const undoToast = (label, r, area) => SH.toast(label, { kind: 'success', action: { label: t('Undo'), sound: 'undo', run: () => undo(r, area) } });
+/* Undo only for a change that has a backup to go back to */
+const undoToast = (label, r, area) => SH.toast(label, r && r.backup ? { kind: 'success', action: { label: t('Undo'), sound: 'undo', run: () => undo(r, area) } } : { kind: 'success' });
 
 /* ================= Overview ================= */
 /* The overview's centerpiece is a small radar (Super Optimizer has a score ring; this one must not look like it). What it
@@ -759,7 +763,7 @@ async function toggleTrack(tg) {
     else { await wait(220); it.on = want; const h = { id: 's' + Date.now(), t: NOW(), label: want ? t('{name}: turned on', { name: it.name }) : t('{name}: turned off', { name: it.name }), kind: 'reg', area: 'tracking', undone: false };
       D.tracking.history.unshift(h); recalcTracking(D.tracking); setData('tracking', D.tracking); r = { label: h.label, backup: h.id, sample: null };
       r.sampleUndo = () => { it.on = !want; h.undone = true; recalcTracking(D.tracking); setData('tracking', D.tracking); }; SAMPLE_UNDO[h.id] = () => { it.on = !want; }; }
-    SH.toast(r.label, { action: { label: t('Undo'), sound: 'undo', run: async () => { if (!REAL) { r.sampleUndo(); SH.toast(t('Undone.')); return; } await undo(r, 'tracking'); } } });
+    SH.toast(r.label, !r.backup ? {} : { action: { label: t('Undo'), sound: 'undo', run: async () => { if (!REAL) { r.sampleUndo(); SH.toast(t('Undone.')); return; } await undo(r, 'tracking'); } } });
   } catch (e) { tg.classList.toggle('on', !want); if (!e.needAdmin) SH.toast(e.message, { kind: 'error' }); }
   finally { tg.disabled = false; }
 }
@@ -829,7 +833,7 @@ async function psAct(id, btn) {
     if (REAL) r = await eng('persist_set', e.sid || e.id, want, e.name);
     else { await wait(300); r = { label: want ? t('{name}: enabled', { name: e.name }) : t('{name}: disabled', { name: e.name }), backup: 'sample' }; }
     e.on = want; psConfirm = null; paintPs();
-    SH.toast(r.label, { action: { label: t('Undo'), sound: 'undo', run: async () => { if (REAL) { try { await eng('undo', r.backup); } catch (err) { if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); return; } } e.on = !want; paintPs(); SH.toast(t('Undone.')); } } });
+    SH.toast(r.label, !r.backup ? {} : { action: { label: t('Undo'), sound: 'undo', run: async () => { if (REAL) { try { await eng('undo', r.backup); } catch (err) { if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); return; } } e.on = !want; paintPs(); SH.toast(t('Undone.')); } } });
     logAct(r.label, { ic: 'privacy', go: 'privacy', tab: 'persistence' });
   } catch (err) { btn.disabled = false; if (!err.needAdmin) SH.toast(err.message, { kind: 'error' }); }
 }
