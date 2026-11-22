@@ -799,7 +799,17 @@ def _abs_missing(cmd, view=0):
         return None
     if exe.lower().endswith(("msiexec.exe", "rundll32.exe")):
         return None
-    return exe if _definitely_missing(exe, view) else None
+    if not _definitely_missing(exe, view):
+        return None
+    # an unquoted command with no .exe/.dll/.sys is cut at its first space ("C:\Program Files\Foo\run.bat" gives
+    # "C:\Program"): it is only broken when no longer reading of it exists either
+    c = os.path.expandvars((cmd or "").strip())
+    if not c.startswith('"') and not re.match(r"(.+?\.(exe|sys|dll))\b", c, re.I):
+        words = c.split(" ")
+        for i in range(2, len(words) + 1):
+            if not _definitely_missing(" ".join(words[:i]), view):
+                return None
+    return exe
 
 
 def registry_scan(job):

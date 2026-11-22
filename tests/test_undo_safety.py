@@ -79,6 +79,22 @@ class FalsePositives(unittest.TestCase):
         with mock.patch.object(O, "_drive_ready", return_value=False):
             self.assertIsNone(O._abs_missing(r'"E:\Apps\app.exe" /s'))
 
+    def test_unquoted_script_in_a_folder_with_spaces_is_not_broken(self):
+        # "C:\...\Foo App\run.bat" (no .exe to anchor on) used to be read as "C:\...\Foo" and offered as broken
+        tmp = tempfile.mkdtemp(prefix="sh_abs_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        os.makedirs(os.path.join(tmp, "Foo App"))
+        script = os.path.join(tmp, "Foo App", "run.bat")
+        with open(script, "w") as fh:
+            fh.write("@echo off\n")
+        with mock.patch.object(O, "_drive_ready", return_value=True):
+            self.assertIsNone(O._abs_missing(script))
+            self.assertIsNone(O._abs_missing(script + " --tray"))
+            gone = os.path.join(tmp, "Gone App", "run.bat")
+            self.assertIsNotNone(O._abs_missing(gone))   # still found when really gone
+            self.assertEqual(O._abs_missing(os.path.join(tmp, "Gone App", "x.exe") + " /s"),
+                             os.path.join(tmp, "Gone App", "x.exe"))
+
     def test_hkcu_policies_need_admin(self):
         self.assertTrue(O.user_needs_admin("HKCU", r"Software\Policies\Microsoft\Windows\WindowsAI"))
         self.assertTrue(O.user_needs_admin("HKLM", r"SOFTWARE\x"))
