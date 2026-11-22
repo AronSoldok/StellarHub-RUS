@@ -1030,6 +1030,14 @@ def _drive_type(root):
     return ctypes.windll.kernel32.GetDriveTypeW(root)
 
 
+def _default_bin_cap(total):
+    """Windows' default Recycle Bin size (Vista and later): 10% of the first 40 GB of the volume plus 5% of the rest.
+    It used to be taken as 10% of the whole volume: on a 1 TB drive anything between ~53 GB and 100 GB was "sent to the
+    Recycle Bin" and Windows, finding it too big, deleted it for good without asking."""
+    first = 40 * 1024 ** 3
+    return int(min(total, first) * .10 + max(0, total - first) * .05)
+
+
 def can_recycle(path):
     """Would Windows really keep this in the Recycle Bin? (ok, reason). SHFileOperation deletes for good, without a
     word, on removable and network drives, when the bin is set to "don't move files to the Recycle Bin", and for
@@ -1044,8 +1052,8 @@ def can_recycle(path):
         off, cap = False, None
     if off:
         return False, "off"
-    if cap is None:                         # default limit: 10% of the volume
-        cap = int(_disk_of(path)["total"] * .10)
+    if cap is None:
+        cap = _default_bin_cap(_disk_of(path)["total"])
     if cap <= 0 or _size_up_to(path, cap) > cap:
         return False, "size"
     return True, ""

@@ -132,6 +132,22 @@ class Recycle(unittest.TestCase):
                 mock.patch.object(storage, "_bin_settings", return_value=(False, 10 * 1024 * 1024)):
             self.assertEqual(storage.can_recycle(self.f), (True, ""))
 
+    def test_default_bin_size_is_windows_own(self):
+        # 10% of the first 40 GB + 5% of the rest: on 1 TB that is ~53 GB, not 100 GB (Windows deletes bigger items
+        # for good, silently)
+        gib = 1024 ** 3
+        tb = 1000 * gib
+        with mock.patch.object(storage, "_drive_type", return_value=3), \
+                mock.patch.object(storage, "_bin_settings", return_value=(False, None)), \
+                mock.patch.object(storage, "_disk_of", return_value={"total": tb}), \
+                mock.patch.object(storage, "_size_up_to", side_effect=lambda p, cap: min(70 * gib, cap + 1)):
+            self.assertEqual(storage.can_recycle(self.f), (False, "size"))
+        with mock.patch.object(storage, "_drive_type", return_value=3), \
+                mock.patch.object(storage, "_bin_settings", return_value=(False, None)), \
+                mock.patch.object(storage, "_disk_of", return_value={"total": 20 * gib}), \
+                mock.patch.object(storage, "_size_up_to", return_value=int(1.9 * gib)):
+            self.assertEqual(storage.can_recycle(self.f), (True, ""))
+
     def test_size_up_to_stops_early_and_counts_folders(self):
         write(os.path.join(self.d, "sub", "b.bin"), 300)
         self.assertEqual(storage._size_up_to(self.d, 10 ** 9), 400)
