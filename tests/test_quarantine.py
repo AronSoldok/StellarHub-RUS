@@ -1,9 +1,12 @@
 """Quarantine: move, restore and delete, on temporary folders and HKCU\\Software\\MiniRevoTest."""
+import json
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 import winreg
+from unittest import mock
 
 from stellarhub.engine.removal import paths, quarantine, registry
 from stellarhub.engine.removal.registry import RegRef
@@ -141,6 +144,64 @@ class Quarantine(unittest.TestCase):
         finally:
             for s in (a["session"], b["session"]):
                 quarantine.delete_session(s)
+
+
+class NoUndoNoDelete(unittest.TestCase):
+    """Tasks and services are deleted only with the backup that brings them back, and a restore with nothing to
+    restore from is a failure, not a success. Everything system-facing is mocked."""
+    prog = {"id": "t", "name": "MiniRevo Test App", "location": ""}
+
+    def _run_forbidden(self, *a, **k):
+        raise AssertionError("must not run anything on the system")
+
+    def test_task_without_its_xml_is_not_deleted(self):
+        with mock.patch.object(quarantine.system, "export_task", return_value=None), \
+                mock.patch.object(quarantine.system, "delete_task", side_effect=self._run_forbidden) as dele:
+            r = quarantine.remove(self.prog, [{"kind": "task", "target": r"\MiniRevoTestTask"}], [])
+        quarantine.delete_session(r["session"])
+        self.assertEqual((r["ok"], r["failed"]), (0, 1))
+        dele.assert_not_called()
+
+    def test_restoring_a_task_with_no_backup_is_a_failure(self):
+        with mock.patch.object(quarantine.system, "export_task", return_value="<Task/>"), \
+                mock.patch.object(quarantine.system, "delete_task", return_value=(0, "")):
+            r = quarantine.remove(self.prog, [{"kind": "task", "target": r"\MiniRevoTestTask"}], [])
+        self.addCleanup(quarantine.delete_session, r["session"])
+        self.assertEqual(r["ok"], 1)
+        mf = os.path.join(quarantine._session_dir(r["session"]), "manifest.json")
+        with open(mf, encoding="utf-8") as f:
+            m = json.load(f)
+        m["items"][0].pop("task_file")            # a session where the task's XML could not be saved
+        quarantine._save(m)
+        with mock.patch.object(quarantine.system, "run", side_effect=self._run_forbidden):
+            rr = quarantine.restore(r["session"])
+        self.assertEqual((rr["ok"], rr["failed"]), (0, 1))
+
+    def test_service_is_not_deleted_when_its_backup_fails(self):
+        with mock.patch.object(quarantine.safety, "service_rule", return_value=None), \
+                mock.patch.object(quarantine.registry, "export_key", return_value=False), \
+                mock.patch.object(quarantine.registry, "key_exists", return_value=True), \
+                mock.patch.object(quarantine.system, "delete_service", side_effect=self._run_forbidden) as dele:
+            r = quarantine.remove(self.prog, [{"kind": "service", "target": "MiniRevoTestSvc"}], [])
+        quarantine.delete_session(r["session"])
+        self.assertEqual((r["ok"], r["failed"]), (0, 1))
+        dele.assert_not_called()
+
+    def test_a_removed_link_is_not_offered_for_restore(self):
+        tmp = tempfile.mkdtemp(prefix="mrq_link_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        target, link = os.path.join(tmp, "target"), os.path.join(tmp, "MiniRevoTestLink")
+        os.makedirs(target)
+        subprocess.run(["cmd", "/c", "mklink", "/J", link, target], capture_output=True)
+        if not paths.is_reparse_point(link):
+            self.skipTest("could not make a junction")
+        r = quarantine.remove(self.prog, [{"kind": "folder", "target": link}], [])
+        self.addCleanup(quarantine.delete_session, r["session"])
+        self.assertEqual(r["ok"], 1)
+        self.assertTrue(os.path.isdir(target))
+        s = next(x for x in quarantine.sessions() if x["id"] == r["session"])
+        self.assertFalse(s["items"][0]["restorable"])
+        self.assertFalse(s["restorable"])
 
 
 if __name__ == "__main__":

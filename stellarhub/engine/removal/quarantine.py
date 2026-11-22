@@ -291,19 +291,26 @@ def remove(program, items, programs=(), mode="quarantine", progress=None):
                 registry.delete_value(ref)
             elif k == "service":
                 regf = os.path.join(sdir, "reg", f"{n}.reg")
-                registry.export_key(RegRef("HKLM", rf"SYSTEM\CurrentControlSet\Services\{it['target']}"), regf)
+                svc = RegRef("HKLM", rf"SYSTEM\CurrentControlSet\Services\{it['target']}")
+                if not registry.export_key(svc, regf) and registry.key_exists(svc):
+                    # like a registry key: a service is never deleted without the backup that can bring it back
+                    raise OSError(tr("Could not make the .reg backup; not deleting for safety"))
                 rec["reg_file"] = regf
                 code, out = system.delete_service(it["target"])
                 if code not in (0, 1060):  # 1060 = no longer exists
                     raise OSError(out.strip()[:200])
             elif k == "task":
                 xml = system.export_task(it["target"])
-                if xml:
-                    tf = os.path.join(sdir, "tasks", f"{n}.xml")
-                    os.makedirs(os.path.dirname(tf), exist_ok=True)
-                    with open(tf, "w", encoding="utf-16") as f:
-                        f.write(xml)
-                    rec["task_file"] = tf
+                if not xml:
+                    # no copy of the task means no undo: it is not deleted (a task that is already gone fails here too,
+                    # as the delete below would)
+                    raise OSError(tr("Nothing was changed: the backup couldn't be saved ({error}).",
+                                     error="schtasks /Query /XML"))
+                tf = os.path.join(sdir, "tasks", f"{n}.xml")
+                os.makedirs(os.path.dirname(tf), exist_ok=True)
+                with open(tf, "w", encoding="utf-16") as f:
+                    f.write(xml)
+                rec["task_file"] = tf
                 code, out = system.delete_task(it["target"])
                 if code != 0:
                     raise OSError(out.strip()[:200])
@@ -372,6 +379,7 @@ def _do_path(it, rec, sdir, n, mode, result):
         rec["link_target"] = os.readlink(src) if hasattr(os, "readlink") else ""
         (os.rmdir if os.path.isdir(src) else os.remove)(src)  # removes the link, never its contents
         rec["status"] = "done"
+        rec["restorable"] = False   # nothing was stored: restore() refuses it, so the list must not offer it
         return
     size = paths.path_size(src)
     before, lost0, pend0 = result["reboot"], result["reboot_unrestorable"], len(result["_pending"])
@@ -476,7 +484,10 @@ def restore(sid, progress=None, only=None):
             elif k == "regvalue":
                 data, typ = _unpack_value(it["value"])
                 registry.set_value(RegRef.from_str(it["target"]), data, typ)
-            elif k == "task" and it.get("task_file"):
+            elif k == "task":
+                if not it.get("task_file") or not os.path.isfile(it["task_file"]):
+                    # nothing to recreate it from: not a success (it used to be counted as restored)
+                    raise OSError(tr("That change can no longer be undone: its backup is gone."))
                 code, out = system.run(["schtasks", "/Create", "/TN", it["target"], "/XML", it["task_file"], "/F"])
                 if code != 0:
                     raise OSError(out)
