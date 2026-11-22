@@ -274,8 +274,11 @@ const API = {
     if (await realP) {
       const areas = { clean: ['clean'], startup: ['startup', 'boot'], services: ['services'], performance: ['performance'] };
       if (regOn()) areas.registry = ['registry'];
-      await Promise.all(Object.entries(areas).map(([a, ls]) => Promise.all(ls.map(l => load(l, true).catch(() => {}))).then(() => onArea && onArea(a))));
-      return;
+      /* an area that could not be read is reported (onArea(id, error)), never drawn from whatever DB still holds */
+      const errs = {};
+      await Promise.all(Object.entries(areas).map(([a, ls]) => Promise.all(ls.map(l => load(l, true).catch(e => { errs[a] = errs[a] || (e && e.message) || String(e); })))
+        .then(() => onArea && onArea(a, errs[a]))));
+      return errs;
     }
     for (const a of ['clean', 'startup', 'services', ...(regOn() ? ['registry'] : []), 'performance']) { await wait(520 + Math.random() * 380); (a === 'startup' ? ['startup', 'boot'] : [a]).forEach(x => { ready[x] = true; }); onArea && onArea(a); }
   },
@@ -508,8 +511,14 @@ async function analyze(el, again) {
   else if (again) { ovMode = 'findings'; const r = $('#optRight', el); r.innerHTML = findingsHTML(); $$('.ov-row', r).forEach(x => { x.classList.add('pending'); $('button', x).disabled = true; });
     $$('.fg', el).forEach(p => { anim(p, [{ strokeDashoffset: getComputedStyle(p).strokeDashoffset }, { strokeDashoffset: p.dataset.l }], { d: 300 }); p.style.strokeDashoffset = p.dataset.l; }); }
   let done = 0;
-  await API.analyze(id => {
+  const errs = await API.analyze((id, err) => {
     done++; const a = AREAS.find(x => x.id === id); const row = $(`.ov-row[data-area="${id}"]`, el); const p = $(`.fg[data-seg="${id}"]`, el);
+    if (err) {  /* this area could not be measured: say so, with its button to try it on its own tab */
+      if (row) { row.classList.remove('pending'); $('.rt', row).innerHTML = `<b>${a.n}</b><span>${esc(t("Couldn't measure: {error}", { error: err }))}</span>`;
+        const v = $('.ov-v', row); v.textContent = '—'; v.className = 'ov-v warn'; $('button', row).disabled = false; }
+      SH.rollNumber(sc, Math.round(score * done / AREAS.length)); if (act) act.progress(done / AREAS.length);
+      return;
+    }
     const to = p.dataset.l * (1 - areaFill(a)); p.classList.toggle('bad', a.bad());
     anim(p, [{ strokeDashoffset: p.dataset.l }, { strokeDashoffset: to }], { d: 900 }); p.style.strokeDashoffset = to;
     if (row) { row.classList.remove('pending'); $('.rt', row).innerHTML = `<b>${a.n}</b><span>${esc(a.txt())}</span>`;
@@ -521,7 +530,9 @@ async function analyze(el, again) {
   });
   analyzing = false; ovFresh = true;
   if (REAL) { score = calcScore(); const r = $('#optRight', el); if (r && ovMode === 'findings') r.innerHTML = findingsHTML(); paintRing(el); }
-  ovCachePut();
+  const failed = Object.keys(errs || {});
+  if (REAL && failed.length) { const r = $('#optRight', el); failed.forEach(id => { const row = r && $(`.ov-row[data-area="${id}"]`, r); if (row) { $('.rt span', row).textContent = t("Couldn't measure: {error}", { error: errs[id] }); const v = $('.ov-v', row); v.textContent = '—'; v.className = 'ov-v warn'; } }); }
+  if (!failed.length) ovCachePut();  /* an analysis with an area missing is never kept as the "Last analysis" */
   ring.classList.remove('scanning'); SH.rollNumber(sc, score); lbl.textContent = t('out of 100');
   const em = $('#optRight .pan-h em', el); if (em) em.textContent = t('just now');
   $('#optState', el).textContent = score >= 85 ? t('Your PC is in good shape') : t('There is room to improve');
@@ -531,7 +542,8 @@ async function analyze(el, again) {
   $('#optAll', el).disabled = false; $('#optRescan', el).hidden = false;
   if (again) SH.sound('scan_complete');
   if (act) { const junk = DB.clean.filter(c => c.def).reduce((a, c) => a + c.size, 0);
-    act.end({ ok: true, summary: junk >= 5e7 ? t('{size} can be freed', { size: gb(junk) }) : t('Score: {n} out of 100', { n: score }) }); }
+    act.end(failed.length ? { ok: false, error: t("Couldn't measure: {error}", { error: errs[failed[0]] }) }
+      : { ok: true, summary: junk >= 5e7 ? t('{size} can be freed', { size: gb(junk) }) : t('Score: {n} out of 100', { n: score }) }); }
   anim($('#optAll', el), [{ transform: 'scale(.94)' }, { transform: 'scale(1.04)', offset: .5 }, { transform: 'scale(1)' }], { d: 520 });
 }
 function planSteps() {

@@ -207,7 +207,10 @@ function checkNow(toast) {
   if (AREAS.some(loading)) return;
   SH.sound('scan_start');
   const act = SH.activity.start('privacy', { key: 'check', label: t('Checking again…'), go: { tab: 'overview' } }); let n = 0;
-  Promise.all(AREAS.map(a => load(a).finally(() => act.progress(++n / AREAS.length)))).then(() => { if (!AREAS.some(a => ERR[a])) SH.sound('scan_complete'); act.end({ ok: true }); }, err => act.end({ ok: false, error: err && err.message }));
+  Promise.all(AREAS.map(a => load(a).finally(() => act.progress(++n / AREAS.length)))).then(() => {
+    /* load() keeps each area's error in ERR: a check where an area failed did not finish well, even elsewhere */
+    const bad = AREAS.find(a => ERR[a]); if (!bad) SH.sound('scan_complete'); act.end(bad ? { ok: false, error: ERR[bad] } : { ok: true });
+  }, err => act.end({ ok: false, error: err && err.message }));
   if (toast) SH.toast(t('Checking again…'));
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('#v-privacy [data-pv-check]'); if (b && !b.disabled) checkNow(); });
