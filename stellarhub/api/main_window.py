@@ -46,6 +46,17 @@ class MainWindowApi:
         except Exception:
             return False
 
+    _tip_at = -1e9
+
+    def touch_keyboard(self):
+        """A text field opened with the controller: Windows' touch keyboard comes up (winmgr.show_touch_keyboard). The
+        request toggles it, so a second one within a few seconds (the keyboard is most likely still up) is skipped."""
+        now = time.monotonic()
+        if now - self._tip_at < 4:
+            return False
+        self._tip_at = now
+        return winmgr.show_touch_keyboard()
+
     def relaunch_admin(self):
         """Opens an elevated copy and closes this one. If the user says no in UAC, nothing changes."""
         if config.is_admin():

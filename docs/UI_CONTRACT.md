@@ -30,6 +30,13 @@ SH.module({
 
 - A tab can be hidden by a condition: a third item in its `SH.MODS` entry, `['registry', 'Registry', () => !!SH.state.settings.registryCleaner]`, or `when` on a tab object a module declares itself. While it returns false there is no tab button (`hidden`), no palette entry and `#mod/tab`, `setTab` and `go(id, { tab })` ignore it; its panel is still built but never shown, and `*` walks only the visible tabs. The shell re-checks every condition when any setting changes (`SH.on('setting')`) and after import or reset, and moves off a tab that just went away. Palette actions (`SH.actions.add`) take the same `when`. Modules must not show or run anything for a hidden tab (no badges, no scans, no palette actions).
 - `.tab` is `position:absolute; inset:0; overflow:auto`. For a full-screen layout with its own internal scrolling, add the `fill` class to the tab's `el`.
+- Compact layout: below 1100 x 700 CSS px (`SH.zoomRule.compact`, js/zoom.js) shell.js sets `html[data-layout=scroll]`
+  (`"fit"` otherwise, `SH.layout`, event `layout`). The `.view` then scrolls as one page and `.mod` (Home: `.home-grid`)
+  is at least as tall as in a 760 px window (`--fit-h`), so a tab's fit-to-height layout keeps its room and nothing is
+  clipped; the page ends with `--dockspace` free so the last row scrolls clear of the dock. A module needs no code for
+  it; for a narrow window (`@media (max-width:1099px)`) its multi-column grids must reflow so nothing is cut at the
+  right edge. Lists that scroll inside a panel must not use `overscroll-behavior:contain` there (the wheel goes on to the
+  page at their end). Do not measure `innerHeight` to size a layout: measure the element.
 - Anything marked `data-asm` inside a tab staggers in the first time (the shell does it).
 - Per-frame loops: `SH.tickers.add((dt, t) => { if (SH.state.view !== 'drivers') return; ... })`.
 - Live data: `SH.tele.v` (values), `SH.tele.hist[key]` (120 values), `SH.tele.on(fn)`.
@@ -197,10 +204,26 @@ The interface does less work when "Lighter effects" (setting `lightMode`) says s
 | Y | Search (palette) |
 | Menu | Settings |
 | View | Home |
-| Right stick | Scrolls the area under the focus |
+| X | The newest toast's action (View, Undo) |
+| Right stick | Scrolls what the user is in (the panel entered, else the page), analog speed; the focus stays |
 
+- Panels that scroll ("windows"): any area with its own vertical scroll (a list, a text panel) that is not the page
+  itself (`PAGE` in gamepad.js: a view, a tab, the settings body and section list, the palette, a dropdown, a dialog's
+  whole body) is ONE focus stop from the page (the ring wraps it; the hint says A Enter). A goes inside: a calm frame
+  (`#padPanel`) marks it, the D-pad moves among its items (or scrolls it when it has none: text), LB / RB page
+  through it, B leaves it (focus back on the panel). A panel that goes away or stops scrolling is left by itself.
+- After any scroll the focus did not follow (right stick, wheel, touch), the next D-pad move starts from what is on
+  screen (the nearest visible item that way), never scrolling back to the old focus. Going down, the page's own
+  content (scrolled into view, clear of the dock and the hint bar) comes before the dock.
+- What can take the focus: visible, enabled, not `inert` / `aria-hidden`, not see-through unless it is a real control
+  shown on hover (gamepad.css shows it while focused), not clipped away, not empty (no text, picture, label, fill or
+  edge) and not a layout box (more than 45 % of the window). Give icon-only buttons an `aria-label` or `title`: the
+  controller shows it under the ring (`#padTip`). Returning to a module restores its last focus.
+- A text field opened with A asks Windows for its touch keyboard (`touch_keyboard`, `winmgr.show_touch_keyboard`).
+- Keyboard parity: Page Up / Down and Home / End scroll the innermost area around the focus that can still move that
+  way (a list, then the page).
 - `html.pad-mode` is on while a controller is in use; a mouse move, a touch or a key press turns it off. The ring (`#padRing`) and the hint bar (`#padHints`) exist only then. While the hint bar is up, `html.pad-hints` raises `--dockspace` so it never covers content; the page gets a `resize` event when it comes and goes, so views that measure themselves must re-fit on `resize`.
-- `SH.gamepad`: `enabled()`, `active` (controller mode is on), `connected` (list of pads), `focus(el)`, `move(dir)`, `onButton(fn)` (every press: `{ index, name, pad }`; returns the unsubscribe), `capture({ onExit, onProgress })` / `release()` / `captured` (a test that needs the raw buttons, such as Device Tester > Controller; the user gets the navigation back by holding View + Menu for a second), `addOverlay(selector)` (a custom dialog the focus must stay inside), `glyph(name)` and `BUTTONS`.
+- `SH.gamepad`: `enabled()`, `active` (controller mode is on), `inside` (the panel entered, or null), `debug` (targets and moves, for tests), `connected` (list of pads), `focus(el)`, `move(dir)`, `onButton(fn)` (every press: `{ index, name, pad }`; returns the unsubscribe), `capture({ onExit, onProgress })` / `release()` / `captured` (a test that needs the raw buttons, such as Device Tester > Controller; the user gets the navigation back by holding View + Menu for a second), `addOverlay(selector)` (a custom dialog the focus must stay inside), `glyph(name)` and `BUTTONS`.
 - `SH.modal`: whichever dialog is on top (palette, settings, component sheet, update dialog, confirmations and `.mdlg` / `.hg-dlg` / `.bk-dq-o` / `.dq-o` dialogs inside a module) gets a focus trap: the rest of the app becomes `inert`, Tab and the D-pad stay inside, and the focus goes back to what opened it when it closes. This works for keyboard users too. A new dialog class must be added to `MODALS` in gamepad.js (or registered with `SH.gamepad.addOverlay`), and should carry `role="dialog"` and `aria-modal="true"`. `SH.modal.open` is the current dialog, `SH.modal.sync()` re-checks after you open or close one without a class change.
 - Animations of the ring use `transform` only and run only while it is visible; at intensity `min` nothing loops.
 

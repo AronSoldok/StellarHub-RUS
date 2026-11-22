@@ -332,7 +332,7 @@ function renderUpdates(el, ctx) {
   function syncBar() {
     const mb = st.updates.filter(u => st.sel.has(u.id)).reduce((a, u) => a + u.mb, 0);
     $('#duSel', el).innerHTML = st.sel.size ? t('<b>{n} selected</b>, {mb} MB. A restore point will be created before installing.', { n: st.sel.size, mb: fmt1(mb) }) : t('Choose the drivers you want to install.');
-    $('#duInstall', el).disabled = !st.sel.size || st.busy; $('#duNone', el).style.visibility = st.sel.size ? 'visible' : 'hidden';
+    $('#duInstall', el).disabled = !st.sel.size || st.busy; $('#duNone', el).style.visibility = st.sel.size ? '' : 'hidden';  /* '' (not 'visible'): it must stay hidden with its tab */
     const bar = $('#duBar', el); bar.style.display = st.updates.length && !st.busy ? '' : 'none';
     setTri($('#duAll', el), st.updates.filter(u => st.sel.has(u.id)).length, st.updates.length);
   }

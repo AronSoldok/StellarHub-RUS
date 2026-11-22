@@ -167,6 +167,53 @@ def wv_visible(window, on):
         pass
 
 
+TIP_CLSID = "{4CE576FA-83DC-4F88-951C-9D0782B4E376}"   # UIHostNoLaunch: the running TabTip, never a new one
+TIP_IID = "{37C994E7-432B-4834-A2F7-DCE1F13B834B}"     # ITipInvocation
+
+
+def show_touch_keyboard():
+    """Windows' touch keyboard, for a controller user who opens a text field (a handheld has no keys). Asks the
+    running TabTip through ITipInvocation::Toggle; when TabTip is not running it is started instead (it comes up with
+    its keyboard). Never raises; True when Windows took the request. Only the interface's controller mode calls it."""
+    import os
+    try:
+        ole32 = ctypes.windll.ole32
+
+        class GUID(ctypes.Structure):
+            _fields_ = [("d1", ctypes.c_ulong), ("d2", ctypes.c_ushort), ("d3", ctypes.c_ushort), ("d4", ctypes.c_ubyte * 8)]
+
+        def guid(text):
+            g = GUID()
+            if ole32.CLSIDFromString(ctypes.c_wchar_p(text), ctypes.byref(g)) != 0:
+                raise OSError("bad GUID")
+            return g
+        clsid, iid = guid(TIP_CLSID), guid(TIP_IID)
+        ole32.CoInitializeEx(None, 2)  # already initialised in another mode is fine: the call below works either way
+
+        def create():
+            obj = ctypes.c_void_p()
+            hr = ole32.CoCreateInstance(ctypes.byref(clsid), None, 0x4, ctypes.byref(iid), ctypes.byref(obj))  # local server
+            return obj if hr == 0 and obj.value else None
+        obj = create()
+        if obj is None:
+            base = os.environ.get("CommonProgramW6432") or os.environ.get("CommonProgramFiles") or r"C:\Program Files\Common Files"
+            exe = os.path.join(base, "microsoft shared", "ink", "TabTip.exe")
+            if not os.path.isfile(exe):
+                return False
+            os.startfile(exe)
+            return True
+        vtbl = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+        toggle = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_void_p)(vtbl[3])
+        release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)(vtbl[2])
+        try:
+            return toggle(obj, ctypes.c_void_p(ctypes.windll.user32.GetDesktopWindow())) == 0
+        finally:
+            release(obj)
+    except Exception as e:
+        print("touch keyboard:", e, flush=True)
+        return False
+
+
 def sys_scale():
     """The scale this process renders at. pywebview makes it system-DPI aware: every window, on any monitor, is laid
     out at the primary monitor's scale (Windows stretches it on the others), so that is the one to size with."""

@@ -2,9 +2,11 @@
    Standard Gamepad API, polled with requestAnimationFrame ONLY while a controller is connected, the window is visible
    and focused, and the setting is on. Without a controller nothing runs.
 
-   Buttons (standard mapping):  D-pad / left stick move · A select · B back or close · Y search · Menu (Start) settings
-   View (Back) Home · LB / RB previous / next tab (or settings section) · LT / RT previous / next module
-   Right stick scrolls the area under the focus.
+   Buttons (standard mapping):  D-pad / left stick move · A select (on a panel that scrolls: go inside it) · B back,
+   close, or leave the panel · X the newest toast's action (View, Undo) · Y search · Menu (Start) settings
+   View (Back) Home · LB / RB previous / next tab (settings section; inside a panel: a page up / down)
+   LT / RT previous / next module · Right stick scrolls what the user is in (the panel, else the page), the focus stays.
+   After a scroll (right stick, wheel, touch) the next move starts from what is on screen, never jumps back.
 
    Modules that need the raw buttons (the Device Tester) call SH.gamepad.capture(). See docs/UI_CONTRACT.md. */
 'use strict';
@@ -50,6 +52,7 @@ const pads = new Map();          /* index -> per-pad edge and repeat state */
 const listeners = new Set();
 let raf = 0, last = 0, mode = false, cur = null, capture = null, lastVal = 0, scopeRoot = null, hintKey = '', lx = NaN, ly = NaN;
 const memo = new Map();          /* scope root -> the element that was focused there */
+const viewMemo = new Map();      /* module -> the element last focused in it (coming back restores it) */
 let sessionToast = false;
 
 /* ---------- the focus ring (one element that glides between targets) and the hint bar ---------- */
@@ -68,7 +71,7 @@ const visible = el => el.checkVisibility ? el.checkVisibility({ checkVisibilityC
 const rectOf = el => el.getBoundingClientRect();
 const SEL = 'a[href],button,input:not([type=hidden]),select,textarea,summary,[tabindex]:not([tabindex="-1"]),[role=button],[role=tab],[role=option],[role=switch],[role=checkbox],[role=menuitem]';
 const GUESS = 'div,li,tr,td,label,article,section,canvas,img,span,p,h3,h4';
-const SKIP = '.winctl,.rz,#padRing,#padHints,.toasts,#boot,.tip,.csel-hidden';
+const SKIP = '.winctl,.rz,#padRing,#padHints,#padPanel,#padTip,#boot,.tip,.csel-hidden';
 const OVERLAYS = ['.csel-pop', '.su-ov', '.cs-o.on', '.sc-ov', '.hg-dlg', '.mdlg', '.bk-dq-o', '.dq-o'];
 const nativeEl = el => /^(A|BUTTON|INPUT|SELECT|TEXTAREA|SUMMARY|LABEL)$/.test(el.tagName);
 
@@ -99,27 +102,106 @@ function usable(el, sc) {
   const v = el.closest('.view'); if (v && v !== viewEl()) return false;
   const r = rectOf(el); return r.width > 2 && r.height > 2;
 }
-/* every focusable or clickable thing in the scope */
-function candidates(sc) {
-  const out = []; const seen = new Set(); const view = viewEl(); const vh = innerHeight, vw = innerWidth;
+
+/* ---------- panels that scroll ("windows" inside the page) ----------
+   The page itself scrolls in PAGE elements (a view in the compact layout, a tab, the settings body and its section
+   list, the palette's results, a dropdown's list, a dialog's main body): the focus moves through them freely. Any
+   other area that scrolls on its own (a long list, a text panel) is a panel: from the page it is ONE focus stop (so
+   a 300-row list never stands between the user and the next panel), A enters it, the D-pad then moves among its
+   items or scrolls it when it has none, LB / RB page through it and B leaves it. */
+const PAGE = '.view,.tab,.mod,.tabs,.sheet,.sheet .body,.sheet nav,.pal,.pal .res,.csel-pop,.overlay,body,html';
+const inside = [];               /* the panels entered, innermost last */
+const OVER = 8;                  /* px of overflow before an area counts as scrolling */
+const scrollsY = (el, cs) => el.scrollHeight - el.clientHeight > OVER && /(auto|scroll)/.test((cs || getComputedStyle(el)).overflowY);
+function isPanel(el, sc) {
+  if (!el || el.nodeType !== 1 || el.matches(PAGE) || !scrollsY(el)) return false;
+  const r = rectOf(el); if (r.height < 44 || r.width < 90) return false;
+  /* in a dialog (component sheet, confirmations, the update window...) its outermost scrolling area is its page */
+  sc = sc || scope();
+  if (sc !== document.body && sc.contains(el)) { for (let p = el.parentElement; p && p !== sc; p = p.parentElement) if (scrollsY(p)) return true; return false; }
+  if (!el.closest('.view') && r.height > innerHeight * .8) return false;
+  return true;
+}
+const insideRoot = () => inside[inside.length - 1] || null;
+
+/* The part of el that can be seen: clipped by every ancestor that hides overflow without scrolling. Ancestors that
+   scroll do not hide it (scrolling reveals it): their own box is what must be seen instead. */
+function shownRect(el, stop) {
+  const b = rectOf(el); let r = { l: b.left, t: b.top, r: b.right, b: b.bottom };
+  for (let p = el.parentElement; p && p !== stop && p !== document.body; p = p.parentElement) {
+    const cs = getComputedStyle(p);
+    if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+    const pr = rectOf(p), sy = /(auto|scroll)/.test(cs.overflowY), sx = /(auto|scroll)/.test(cs.overflowX);
+    if (sy || sx) { r = { l: sx ? pr.left : Math.max(r.l, pr.left), t: sy ? pr.top : Math.max(r.t, pr.top), r: sx ? pr.right : Math.min(r.r, pr.right), b: sy ? pr.bottom : Math.min(r.b, pr.bottom) }; continue; }
+    r = { l: Math.max(r.l, pr.left), t: Math.max(r.t, pr.top), r: Math.min(r.r, pr.right), b: Math.min(r.b, pr.bottom) };
+    if (r.r - r.l < 3 || r.b - r.t < 3) return null;
+  }
+  return r.r - r.l >= 3 && r.b - r.t >= 3 ? r : null;
+}
+/* a target with nothing to see or say: no text, no picture, no label, no fill or edge of its own */
+function empty(el) {
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) return false;
+  if (el.textContent.trim() || el.getAttribute('aria-label') || el.title || el.querySelector('svg,img,canvas,video,input,select,textarea')) return false;
+  const cs = getComputedStyle(el);
+  return cs.backgroundColor === 'rgba(0, 0, 0, 0)' && cs.backgroundImage === 'none' && !(parseFloat(cs.borderTopWidth) > 0 && cs.borderTopStyle !== 'none') && cs.boxShadow === 'none';
+}
+const seeable = el => el.checkVisibility ? el.checkVisibility({ checkVisibilityCSS: true }) : visible(el);
+/* see-through (opacity 0 on it or an ancestor): a closed popover (it also ignores the pointer) or a row button that
+   shows on hover and focus. Only the second is a target: gamepad.css shows it while it has the focus. */
+const faded = el => !!el.checkVisibility && !el.checkVisibility({ checkOpacity: true });
+
+/* every focusable or clickable thing in the root (a scope or an entered panel); the items of a panel that scrolls
+   are replaced by the panel itself, and a panel with no items (text) is a stop too */
+function candidates(sc, inner) {
+  const root = inner || sc;
+  const out = []; const seen = new Set(); const view = viewEl(); const vh = innerHeight, vw = innerWidth, area = vw * vh;
   const ok = el => {
-    if (seen.has(el) || el.disabled || el.getAttribute('aria-disabled') === 'true' || el.closest('[inert],' + SKIP)) return false;
+    if (seen.has(el) || el.disabled || el.getAttribute('aria-disabled') === 'true' || el.closest('[inert],[aria-hidden="true"],' + SKIP)) return false;
     const v = el.closest('.view'); if (v && v !== view) return false;
-    if (!visible(el)) return false;
+    const tb = el.closest('.tab'); if (tb && !tb.classList.contains('on')) return false;   /* a tab that is not shown */
+    if (!seeable(el)) return false;
     const r = rectOf(el); if (r.width < 3 || r.height < 3) return false;
-    if (r.bottom < -vh * 1.5 || r.top > vh * 2.5 || r.right < -vw || r.left > vw * 2) return false;
+    /* see-through: only a small control a row shows on hover (an icon button) is a target, never a hidden bar */
+    if (getComputedStyle(el).pointerEvents === 'none' || (faded(el) && !(el.matches(SEL) && r.width <= 48 && r.height <= 48))) return false;
+    if (!inner && (r.bottom < -vh * 1.5 || r.top > vh * 2.5 || r.right < -vw || r.left > vw * 2)) return false;
+    if (r.width * r.height > area * .45) return false;   /* a layout box, not a target */
+    if (!shownRect(el, root) || empty(el)) return false;
     return true;
   };
-  for (const el of $$(SEL, sc)) { if (ok(el) && getComputedStyle(el).pointerEvents !== 'none') { seen.add(el); out.push(el); } }
+  for (const el of $$(SEL, root)) { if (ok(el)) { seen.add(el); out.push(el); } }
   /* cards and rows with a click handler: found by their pointer cursor (the outermost one) */
   const cursor = new Map(); const cur_ = el => { let c = cursor.get(el); if (c === undefined) { c = getComputedStyle(el).cursor === 'pointer'; cursor.set(el, c); } return c; };
-  for (const el of $$(GUESS, sc)) {
+  for (const el of $$(GUESS, root)) {
     if (seen.has(el) || el.closest(SEL) && el.closest(SEL) !== el) continue;
-    if (!cur_(el)) continue; const p = el.parentElement; if (p && p !== sc && cur_(p)) continue;
+    if (!cur_(el)) continue; const p = el.parentElement; if (p && p !== root && cur_(p)) continue;
     if (ok(el)) { seen.add(el); out.push(el); }
   }
   /* an outer element holding several others is a layout box, not a target */
-  return out.filter(el => { let n = 0; for (const o of out) if (o !== el && el.contains(o) && ++n > 1) return false; return true; });
+  const items = out.filter(el => { let n = 0; for (const o of out) if (o !== el && el.contains(o) && ++n > 1) return false; return true; });
+  /* panels: the outermost one under the root stands for everything inside it */
+  const pc = new Map(); const panel = el => { let v = pc.get(el); if (v === undefined) { v = isPanel(el, sc); pc.set(el, v); } return v; };
+  const stops = new Set(), res = [];
+  for (const el of items) {
+    let top = null; for (let p = el.parentElement; p && p !== root && p !== document.body; p = p.parentElement) if (panel(p)) top = p;
+    if (!top) { res.push(el); continue; }
+    if (!stops.has(top)) { stops.add(top); res.push(top); }
+  }
+  /* panels with nothing to press (text that overflows) are stops too, so they can be read */
+  const zone = inner || (sc === document.body ? view : sc);
+  if (zone) {
+    const w = document.createTreeWalker(zone, NodeFilter.SHOW_ELEMENT);
+    for (let el = w.nextNode(); el; el = w.nextNode()) {
+      if (!el.clientHeight || el.scrollHeight - el.clientHeight <= OVER || stops.has(el)) continue;
+      if (!panel(el) || !seeable(el) || el.closest('[inert],[aria-hidden="true"]')) continue;
+      const v = el.closest('.view'); if (v && v !== view) continue;
+      let nested = false; for (const s of stops) if (s.contains(el)) { nested = true; break; }
+      if (nested || !shownRect(el, root)) continue;
+      for (const s of [...stops]) if (el.contains(s)) { stops.delete(s); res.splice(res.indexOf(s), 1); }
+      stops.add(el); res.push(el);
+    }
+  }
+  /* an item that holds a panel stop is a box, not a target */
+  return res.filter(el => stops.has(el) || ![...stops].some(s => el.contains(s)));
 }
 
 /* ---------- spatial navigation ---------- */
@@ -146,6 +228,7 @@ function nearestTo(x, y, list) {
 function initialFor(sc) {
   if (sc.id === 'setO') { const n = $('#sheet nav .on'); if (n) return n; }
   if (sc.id === 'palO') { const n = $('.pal .it.on') || $('.pal .it'); if (n) return n; }
+  if (sc === document.body) { const m = viewMemo.get(state.view); if (m && usable(m, sc) && candidates(sc).includes(m)) return m; }
   const list = candidates(sc);
   if (!list.length) return null;
   if (sc === document.body) {
@@ -166,16 +249,58 @@ const scrollerOf = el => {
   }
   return null;
 };
-function reveal(el) {
-  const M = 26; const smooth = isMin() ? 'instant' : 'smooth';
+/* the page's own scroller: the view in the compact layout, else the open tab when it scrolls */
+function pageScroller() {
+  const sc = scope();
+  if (sc !== document.body) { const b = $('.sheet .body', sc) || $('.pal .res', sc); return b && b.scrollHeight > b.clientHeight + 2 ? b : scrollerOf(cur && sc.contains(cur) ? cur : sc); }
+  const v = viewEl(); if (!v) return null;
+  if (v.scrollHeight > v.clientHeight + 2 && /(auto|scroll)/.test(getComputedStyle(v).overflowY)) return v;
+  const t = $('.tab.on', v); return t && t.scrollHeight > t.clientHeight + 2 && /(auto|scroll)/.test(getComputedStyle(t).overflowY) ? t : null;
+}
+/* the dock and the hint bar float over the bottom of the page: what is behind them is not "in view" */
+function floorY() {
+  if (scope() !== document.body) return innerHeight;
+  let y = innerHeight; const d = $('#dock'); if (d) { const r = rectOf(d); if (r.height) y = Math.min(y, r.top); }
+  if (hints.classList.contains('on')) { const r = rectOf(hints); if (r.height) y = Math.min(y, r.top); }
+  return y;
+}
+/* the bottom of the top bar: page content scrolled above it is not on screen */
+function ceilY() { if (scope() !== document.body) return 0; const t = $('.top'); return t ? rectOf(t).bottom : 0; }
+/* the part of el that is on screen now (every scroller and the floor included), or null */
+const FLOATING = '#dock,#toasts,.top,#padHints';
+function onScreen(el) {
+  const b = rectOf(el); let r = { l: b.left, t: b.top, r: b.right, b: b.bottom };
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    const cs = getComputedStyle(p); if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+    const pr = rectOf(p); r = { l: Math.max(r.l, pr.left), t: Math.max(r.t, pr.top), r: Math.min(r.r, pr.right), b: Math.min(r.b, pr.bottom) };
+  }
+  /* the dock and the hint bar float over the page: content behind them is not on screen (they themselves are) */
+  if (!el.closest(FLOATING)) { r.b = Math.min(r.b, floorY()); r.t = Math.max(r.t, ceilY()); }
+  r.t = Math.max(r.t, 0); r.r = Math.min(r.r, innerWidth); r.l = Math.max(r.l, 0);
+  return r.r - r.l >= 3 && r.b - r.t >= 3 ? r : null;
+}
+/* in view: enough of it shows to see what it is (half of it, or 24 px of a tall one) */
+function inView(el) {
+  const r = onScreen(el); if (!r) return false;
+  const h = rectOf(el).height; return r.b - r.t >= Math.min(24, h * .5) - .5;
+}
+function reveal(el, instant) {
+  const M = 26; const smooth = instant || isMin() ? 'instant' : 'smooth'; const floor = floorY();
   for (let p = el.parentElement; p && p !== document.documentElement; p = p.parentElement) {
     const cs = getComputedStyle(p); const sy = /(auto|scroll)/.test(cs.overflowY) && p.scrollHeight > p.clientHeight + 2, sx = /(auto|scroll)/.test(cs.overflowX) && p.scrollWidth > p.clientWidth + 2;
     if (!sy && !sx) continue;
-    const r = rectOf(el), c = rectOf(p); let dy = 0, dx = 0;
-    if (sy) { if (r.top < c.top + M) dy = r.top - c.top - M; else if (r.bottom > c.bottom - M) dy = r.bottom - c.bottom + M; if (r.height > c.height - 2 * M && r.top < c.top + M) dy = r.top - c.top - M; }
+    const r = rectOf(el), c0 = rectOf(p), c = { top: c0.top, bottom: Math.min(c0.bottom, floor), left: c0.left, right: c0.right };
+    c.height = c.bottom - c.top; let dy = 0, dx = 0;
+    if (sy) { if (r.top < c.top + M) dy = r.top - c.top - M; else if (r.bottom > c.bottom - M) dy = r.bottom - c.bottom + M; if (r.height > c.height - 2 * M && r.top < c.top + M) dy = r.top - c.top - M; if (r.height > c.height - 2 * M && dy > 0) dy = r.top - c.top - M; }
     if (sx) { if (r.left < c.left + M) dx = r.left - c.left - M; else if (r.right > c.right - M) dx = r.right - c.right + M; }
     if (dx || dy) p.scrollBy({ top: dy, left: dx, behavior: smooth });
   }
+}
+/* scroll an area by a part of its height; false when it is already at that end */
+function scrollStep(p, d, part = .4, instant) {
+  if (!p) return false;
+  const max = p.scrollHeight - p.clientHeight; if ((d > 0 && p.scrollTop >= max - 1) || (d < 0 && p.scrollTop <= 1)) return false;
+  p.scrollBy({ top: d * Math.max(40, p.clientHeight * part), behavior: instant || isMin() ? 'instant' : 'smooth' }); frameN = 0; return true;
 }
 
 /* ---------- focus ---------- */
@@ -183,9 +308,16 @@ function setCur(el, snap) {
   if (!el) return; cur = el;
   const a = document.activeElement;
   if (isTextField(el)) { if (isTextField(a) && a !== el) a.blur(); }
-  else { if (isTextField(a)) a.blur(); try { el.focus({ preventScroll: true }); } catch {} }
+  else {
+    if (isTextField(a)) a.blur();
+    /* a panel stop takes the focus too (keyboard parity: Page Up / Down then scroll it) */
+    if (isPanel(el) && !el.hasAttribute('tabindex')) { el.tabIndex = -1; el.dataset.padStop = '1'; }
+    try { el.focus({ preventScroll: true }); } catch {}
+  }
   reveal(el); aimRing(snap);
   scrollerCache = null;
+  if (scope() === document.body && !insideRoot()) viewMemo.set(state.view, el);
+  paintTip(); hintKey = ''; if (mode) paintHints();
 }
 function aimRing(snap) {
   if (!cur || !ring) return;
@@ -201,11 +333,65 @@ function bump(dir) {
 }
 function move(dir) {
   if (editing()) { if (dir !== 'up' && dir !== 'down') return; const a = document.activeElement; cur = a; a.blur(); }
-  const sc = scope(); const list = candidates(sc);
-  if (cur && cur.tagName === 'INPUT' && cur.type === 'range' && (dir === 'left' || dir === 'right') && usable(cur, sc)) { stepRange(cur, dir === 'right' ? 1 : -1); return; }
-  if (!usable(cur, sc)) { const n = initialFor(sc); n && setCur(n, true); return; }
-  const n = best(cur, list, dir);
-  if (n) { setCur(n); SH.sound('focus_move'); } else bump(dir);
+  const sc = scope(), inner = insideRoot(), root = inner || sc; const list = candidates(sc, inner);
+  if (cur && cur.tagName === 'INPUT' && cur.type === 'range' && (dir === 'left' || dir === 'right') && usable(cur, root)) { stepRange(cur, dir === 'right' ? 1 : -1); return; }
+  /* a panel entered that has nothing to press: the D-pad reads it (scrolls it) */
+  if (inner && cur === inner) {
+    const n = list.length && (dir === 'down' || dir === 'right') ? firstVisible(list, inner) : null;
+    if (n) { setCur(n); SH.sound('focus_move'); return; }
+    if (dir === 'up' || dir === 'down') { if (!scrollStep(inner, dir === 'down' ? 1 : -1)) bump(dir); } else bump(dir);
+    return;
+  }
+  if (!usable(cur, root) || !list.includes(cur)) {
+    const m = cur && cur.isConnected && list.find(el => el !== cur && el.contains(cur));   /* its panel became a stop */
+    const n = m || (lastRect ? nearestTo(lastRect.x, lastRect.y, list.filter(inView)) : null) || (inner ? firstVisible(list, inner) : initialFor(sc));
+    n && setCur(n, true); return;
+  }
+  /* the focus was scrolled out of sight (right stick, wheel, touch): carry on from what is on screen instead of
+     jumping back to it */
+  if (!inView(cur)) {
+    const vis = list.filter(el => el !== cur && inView(el));
+    const n = best(cur, vis, dir) || nearestTo(...viewCentre(root), vis);
+    if (n) { setCur(n); SH.sound('focus_move'); return; }
+  }
+  let n = best(cur, list, dir);
+  /* the dock floats over the page: going down, the page's own content comes first (scrolled into view), the dock
+     only once nothing is left below */
+  if (n && dir === 'down' && !inner && n.closest('#dock') && !cur.closest('#dock')) { const m = best(cur, list.filter(el => !el.closest(FLOATING)), dir); if (m && rectOf(m).bottom > floorY() - 2) n = m; }
+  /* the same going up past the top bar: the page's tabs and header (scrolled under it) come first */
+  if (n && dir === 'up' && !inner && n.closest('.top') && !cur.closest(FLOATING)) { const m = best(cur, list.filter(el => !el.closest(FLOATING)), dir); if (m && rectOf(m).top < ceilY() + 2) n = m; }
+  if (n) { setCur(n); SH.sound('focus_move'); return; }
+  /* nothing further that way: scroll what is left to read of the panel or the page, then bump */
+  if (dir === 'up' || dir === 'down') { const d = dir === 'down' ? 1 : -1; if (scrollStep(inner || pageScroller(), d)) return; }
+  bump(dir);
+}
+function viewCentre(root) {
+  const r = root && root !== document.body ? rectOf(root) : { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+  return [(r.left + r.right) / 2, (Math.max(0, r.top) + Math.min(floorY(), r.bottom)) / 2];
+}
+/* the first item on screen in a panel (top left), else its first item */
+function firstVisible(list, root) {
+  const vis = list.filter(inView); const pool = vis.length ? vis : list; const r = rectOf(root);
+  return nearestTo(r.left, r.top, pool);
+}
+/* ---------- entering and leaving a panel ---------- */
+function enter(p) {
+  inside.push(p); const list = candidates(scope(), p);
+  const n = list.length ? firstVisible(list, p) : null;
+  if (n) setCur(n); else { cur = p; aimRing(); }
+  paintPanel(); hintKey = ''; paintHints(); SH.sound('focus_move');
+}
+function leave() {
+  const p = inside.pop(); paintPanel();
+  if (p && p.isConnected) setCur(p); hintKey = ''; paintHints(); bump('up');
+}
+/* LB / RB inside a panel: a page up or down, the focus on the first item then on screen */
+function page(d) {
+  const p = insideRoot(); if (!p) return false;
+  if (!scrollStep(p, d, .85, true)) { bump(d < 0 ? 'up' : 'down'); return true; }
+  const list = candidates(scope(), p), top = rectOf(p).top - 1;
+  if (list.length) { const vis = list.filter(el => inView(el) && rectOf(el).top >= top); const n = vis.length ? nearestTo(rectOf(p).left, top, vis) : firstVisible(list, p); if (n) setCur(n); } else aimRing();
+  SH.sound('focus_move'); return true;
 }
 function stepRange(el, d) {
   const step = +el.step || 1, min = +el.min || 0, max = el.max === '' ? 100 : +el.max;
@@ -227,17 +413,20 @@ function click(el) {
 }
 function activate() {
   if (editing()) { const a = document.activeElement; if (a.tagName !== 'TEXTAREA') a.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true })); return; }
-  const sc = scope(); let el = cur;
-  if (!usable(el, sc)) { const n = initialFor(sc); if (n) setCur(n, true); else if (sc !== document.body) click(sc); return; }
+  const sc = scope(), inner = insideRoot(); let el = cur;
+  if (inner && el === inner) { bump('down'); return; }   /* inside a panel with nothing to press */
+  if (!usable(el, inner || sc)) { const n = initialFor(sc); if (n) setCur(n, true); else if (sc !== document.body) click(sc); return; }
   pulse();
-  if (isTextField(el)) { el.focus(); try { el.select(); } catch {} aimRing(); return; }
+  if (!nativeEl(el) && isPanel(el)) { enter(el); return; }   /* a panel that scrolls: go inside it */
+  if (isTextField(el)) { const was = document.activeElement === el; el.focus(); try { el.select(); } catch {} aimRing(); if (!was) touchKeyboard(); hintKey = ''; paintHints(); return; }
   if (el.tagName === 'SELECT') { el.focus(); try { el.showPicker && el.showPicker(); } catch {} return; }
   if (el.tagName === 'INPUT' && el.type === 'range') return;
   click(el); sync(90); sync(420);
 }
 const key = (k, o = {}) => window.dispatchEvent(new KeyboardEvent('keydown', { key: k, code: k === ',' ? 'Comma' : k === 'Escape' ? 'Escape' : 'Key' + k.toUpperCase(), bubbles: true, cancelable: true, ...o }));
 function back() {
-  if (editing()) { const a = document.activeElement; a.blur(); cur = a; aimRing(); return; }
+  if (editing()) { const a = document.activeElement; a.blur(); cur = a; aimRing(); hintKey = ''; paintHints(); return; }
+  if (insideRoot()) { leave(); return; }
   if (state.palOpen || state.setOpen) { const over = scope(); if (over.id !== 'palO' && over.id !== 'setO') closeOverlay(over); else key('Escape'); sync(120); return; }
   const over = topOverlay(); if (over) { closeOverlay(over); sync(120); return; }
   const note = $('#adminNote'); if (note && note.classList.contains('on')) { $('#adminNo').click(); return; }
@@ -254,6 +443,7 @@ function closeOverlay(o) {
   a.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true, cancelable: true }));
 }
 function tab(d) {
+  if (page(d)) return;
   if (state.palOpen) return;
   let list, sel;
   if (state.setOpen) { list = $$('#sheet nav [data-sec]'); sel = 'on'; }
@@ -278,6 +468,7 @@ function press(i) {
   switch (i) {
     case B.A: activate(); break;
     case B.B: back(); break;
+    case B.X: toastAction(); break;
     case B.Y: palette(); break;
     case B.LB: tab(-1); break;
     case B.RB: tab(1); break;
@@ -289,15 +480,67 @@ function press(i) {
 }
 
 /* ---------- the hint bar ---------- */
-function hintItems() {
-  const sc = scope();
-  if (editing()) return [['A', t('Type text')], ['B', t('Done')]];
-  if (state.setOpen && sc.id === 'setO') return [['A', t('Select')], ['B', t('Close')], ['LB RB', t('Sections')], ['MENU', t('Close')]];
-  if (state.palOpen) return [['A', t('Open')], ['B', t('Close')], ['Y', t('Close')]];
-  if (sc !== document.body) return [['A', t('Select')], ['B', t('Close')]];
-  const tabs = $('#v-' + state.view + ' .subnav');
-  return [['A', t('Select')], ['B', t('Back')], ...(tabs ? [['LB RB', t('Tabs')]] : []), ['LT RT', t('Modules')], ['Y', t('Search')], ['MENU', t('Settings')], ['VIEW', t('Home')]];
+/* what A does on the focused element */
+function aLabel(el) {
+  if (!el) return t('Select');
+  if (isPanel(el) && !nativeEl(el)) return t('Enter');
+  if (isTextField(el)) return t('Type text');
+  if (el.matches('.csel,select,[aria-haspopup]')) return t('Open');
+  return t('Select');
 }
+function hintItems() {
+  const sc = scope(), inner = insideRoot();
+  if (editing()) return [['A', t('Type text')], ['B', t('Done')]];
+  const range = cur && cur.tagName === 'INPUT' && cur.type === 'range' ? [['DPAD', t('Adjust')]] : [];
+  const tb = toastBtn(); const x = tb ? [['X', tb.textContent.trim()]] : [];
+  if (inner) {
+    const reading = cur === inner;
+    return [...(reading ? [['DPAD', t('Scroll')]] : [['A', aLabel(cur)], ...range]), ['B', t('Leave')], ['LB RB', t('Pages')], ['RS', t('Scroll')], ...x];
+  }
+  if (state.setOpen && sc.id === 'setO') return [['A', aLabel(cur)], ...range, ['B', t('Close')], ['LB RB', t('Sections')], ['MENU', t('Close')]];
+  if (state.palOpen) return [['A', t('Open')], ['B', t('Close')], ['Y', t('Close')]];
+  if (sc !== document.body) return [['A', aLabel(cur)], ...range, ['B', t('Close')]];
+  const tabs = $('#v-' + state.view + ' .subnav');
+  return [['A', aLabel(cur)], ...range, ['B', t('Back')], ...x, ...(tabs ? [['LB RB', t('Tabs')]] : []), ['LT RT', t('Modules')], ['Y', t('Search')], ['MENU', t('Settings')], ['VIEW', t('Home')]];
+}
+
+/* ---------- the panel the user is inside: a calm frame around it (the ring stays on the item) ---------- */
+const panelFrame = document.createElement('div'); panelFrame.id = 'padPanel'; panelFrame.setAttribute('aria-hidden', 'true'); document.body.append(panelFrame);
+function paintPanel() {
+  const p = insideRoot(); panelFrame.classList.toggle('on', !!p && mode && !capture);
+  ROOT.classList.toggle('pad-inside', !!p && mode);
+  if (p) placeFrame();
+}
+function placeFrame() {
+  const p = insideRoot(); if (!p || !p.isConnected) return;
+  const r = rectOf(p); const k = `${r.left.toFixed(0)},${r.top.toFixed(0)},${r.width.toFixed(0)},${r.height.toFixed(0)}`;
+  if (panelFrame.dataset.k === k) return; panelFrame.dataset.k = k;
+  panelFrame.style.transform = `translate3d(${r.left}px,${r.top}px,0)`; panelFrame.style.width = r.width + 'px'; panelFrame.style.height = r.height + 'px';
+  panelFrame.style.setProperty('--rr', getComputedStyle(p).borderTopLeftRadius || '14px');
+}
+
+/* ---------- the name of an icon-only target, under the ring (the tooltip a mouse would get) ---------- */
+const tip = document.createElement('div'); tip.id = 'padTip'; tip.setAttribute('aria-hidden', 'true'); document.body.append(tip);
+function paintTip() {
+  const el = cur; let txt = '';
+  if (mode && !capture && el && el.isConnected && !el.textContent.trim()) txt = el.getAttribute('aria-label') || el.title || '';
+  if (tip.textContent !== txt) tip.textContent = txt;
+  tip.classList.toggle('on', !!txt);
+}
+function placeTip() {
+  if (!tip.classList.contains('on') || !cur) return;
+  const r = rectOf(cur), w = tip.offsetWidth, h = tip.offsetHeight;
+  const x = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2)); let y = r.bottom + 12;
+  if (y + h > floorY() - 6) y = r.top - h - 12;
+  tip.style.transform = `translate3d(${Math.round(x)}px,${Math.round(y)}px,0)`;
+}
+
+/* ---------- X: the action of the newest toast (View, Undo...) ---------- */
+function toastBtn() { const l = $$('#toasts .toast:not([data-dead]) .btn'); return l.length ? l[l.length - 1] : null; }
+function toastAction() { const b = toastBtn(); if (b) { pulse(); click(b); sync(120); } else bump('down'); }
+
+/* ---------- the touch keyboard: a controller has no keys, so a text field asks Windows for its own ---------- */
+function touchKeyboard() { if (mode && SH.call) Promise.resolve(SH.call('touch_keyboard')).catch(() => {}); }
 function paintHints() {
   hints.classList.toggle('in-sheet', state.setOpen && scope().id === 'setO');
   const items = hintItems(), k = layout + items.map(x => x.join(':')).join('|'); if (k === hintKey) return; hintKey = k;
@@ -324,19 +567,27 @@ function setMode(on) {
     ringShown = true; ringSnap = true;
     if (!isMin() && cur) anim($('.pr-in', ring), [{ transform: 'scale(1.18)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], { d: 460, e: EASE.spring });
   } else ringShown = false;
+  paintPanel(); paintTip();
   SH.emit && SH.emit('gamepad:mode', on);
 }
 function sync(ms) { setTimeout(() => { if (mode && !capture) validate(true); }, ms || 0); }
+let lastView = '';
 function validate(force) {
   const now = performance.now(); if (!force && now - lastVal < 140) return; lastVal = now;
   const sc = scope();
-  if (sc !== scopeRoot) {
+  /* a panel that went away (closed, re-rendered, no longer scrolls) or another overlay on top: back to the page */
+  while (inside.length && (!usable(insideRoot(), sc) || !scrollsY(insideRoot()))) { const p = inside.pop(); if (cur && p.contains(cur)) cur = p.isConnected ? p : null; }
+  if (sc !== scopeRoot || state.view !== lastView) {
+    if (sc !== scopeRoot) inside.length = 0;
     if (scopeRoot && cur && cur.isConnected) memo.set(scopeRoot, cur);
-    scopeRoot = sc;
-    const m = memo.get(sc); const n = sc === document.body && usable(m, sc) ? m : initialFor(sc); if (n) setCur(n, true); else cur = null;
-  } else if (!editing() && !usable(cur, sc)) {
-    const r = lastRect, n = candidates(sc); const p = r ? nearestTo(r.x, r.y, n) : initialFor(sc); if (p) setCur(p, true); else cur = null;
+    /* another module: its own last focus (initialFor), not the one this scope had */
+    const viewChanged = state.view !== lastView && sc === document.body && scopeRoot === sc; scopeRoot = sc; lastView = state.view;
+    if (viewChanged) { inside.length = 0; const n = initialFor(sc); if (n) setCur(n, true); else cur = null; }
+    else { const m = memo.get(sc); const n = sc === document.body && usable(m, sc) ? m : initialFor(sc); if (n) setCur(n, true); else cur = null; }
+  } else if (!editing() && !usable(cur, insideRoot() || sc)) {
+    const r = lastRect, n = candidates(sc, insideRoot()); const p = r ? nearestTo(r.x, r.y, n) : initialFor(sc); if (p) setCur(p, true); else cur = null;
   }
+  paintPanel(); paintTip();
   paintHints();
 }
 let lastRect = null;
@@ -389,8 +640,11 @@ let consumed = false, scrollerCache = null;
 function stickScroll(rx, ry, dt) {
   if (editing()) return;
   const k = v => { const a = Math.abs(v); return Math.sign(v) * ((a - RDZ) / (1 - RDZ)) ** 2; };
+  /* whatever the user is in: the panel entered, else the page, else the panel the focus is on, else what is under
+     the middle of the window. The focus stays where it is (the next D-pad move carries on from what is on screen). */
   if (!scrollerCache || !scrollerCache.isConnected) {
-    scrollerCache = (cur && usable(cur) && scrollerOf(cur)) || scrollerOf(document.elementFromPoint(innerWidth / 2, innerHeight / 2) || document.body) || false;
+    const p = cur && cur.isConnected && isPanel(cur) ? cur : null;
+    scrollerCache = insideRoot() || pageScroller() || p || (cur && usable(cur) && scrollerOf(cur)) || scrollerOf(document.elementFromPoint(innerWidth / 2, innerHeight / 2) || document.body) || false;
   }
   const s = scrollerCache; if (!s) return;
   s.scrollBy({ top: k(ry) * 1100 * dt, left: k(rx) * 1100 * dt, behavior: 'instant' }); frameN = 0;
@@ -402,7 +656,13 @@ function tickRing(dt) {
   /* the target is re-measured every frame for a moment after a move or a scroll, then every few frames */
   if (frameN < 40 || frameN % 8 === 0) {
     if (!cur.isConnected) return;
-    const r = rectOf(cur); lastRect = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    const r = rectOf(cur);
+    /* scrolled out of sight (right stick, wheel): the ring waits off, the next move starts from what is on screen */
+    if (frameN % 6 === 1) {   /* the heavier visibility check: a few times a second, not every frame */
+      const seen = cur === insideRoot() || inView(cur); ring.classList.toggle('gone', !seen); tip.classList.toggle('gone', !seen);
+      placeFrame(); placeTip();
+    }
+    if (!ring.classList.contains('gone')) lastRect = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     rs.x.t = r.left; rs.y.t = r.top; rs.w.t = r.width; rs.h.t = r.height;
   }
   if (ringSnap) { ringSnap = false; rs.x.set(rs.x.t); rs.y.set(rs.y.t); rs.w.set(rs.w.t); rs.h.set(rs.h.t); }
@@ -417,6 +677,23 @@ addEventListener('pointermove', e => { if (!e.isTrusted) return; const moved = M
 addEventListener('pointerdown', e => { if (e.isTrusted) off(); }, { capture: true, passive: true });
 addEventListener('wheel', e => { if (e.isTrusted) off(); }, { capture: true, passive: true });
 addEventListener('keydown', e => { if (e.isTrusted) off(); }, { capture: true });
+
+/* ---------- keyboard: Page Up / Down and Home / End scroll the innermost area around the focus that can still move
+   that way (a list, then the page), not only the one the browser picks ---------- */
+addEventListener('keydown', e => {
+  if (!/^(PageUp|PageDown|Home|End)$/.test(e.key) || e.ctrlKey || e.altKey || e.metaKey || e.defaultPrevented) return;
+  const a = document.activeElement;
+  if (isTextField(a) || (a && (a.tagName === 'SELECT' || (a.tagName === 'INPUT' && a.type === 'range') || a.closest('.csel-pop,.pal')))) return;
+  const d = e.key === 'PageDown' || e.key === 'End' ? 1 : -1, all = e.key === 'Home' || e.key === 'End';
+  const start = a && a !== document.body ? a : document.elementFromPoint(innerWidth / 2, innerHeight / 2);
+  for (let p = start; p && p !== document.documentElement; p = p.parentElement) {
+    if (p.scrollHeight - p.clientHeight <= 2 || !/(auto|scroll)/.test(getComputedStyle(p).overflowY)) continue;
+    const max = p.scrollHeight - p.clientHeight; if ((d > 0 && p.scrollTop >= max - 1) || (d < 0 && p.scrollTop <= 1)) continue;
+    e.preventDefault();
+    p.scrollTo({ top: all ? (d > 0 ? max : 0) : p.scrollTop + d * p.clientHeight * .85, behavior: isMin() ? 'instant' : 'smooth' });
+    return;
+  }
+});
 
 /* ---------- connection ---------- */
 function scan() {
@@ -443,14 +720,14 @@ SH.on('boot', () => { scan(); kick(); });
 /* the ring follows the interface when it changes language, zoom, size */
 addEventListener('resize', () => { frameN = 0; });
 
-function releaseCapture() { capture = null; if (mode) { ring.classList.add('on'); showHints(true); hintKey = ''; paintHints(); aimRing(true); } }
+function releaseCapture() { capture = null; if (mode) { ring.classList.add('on'); showHints(true); hintKey = ''; paintHints(); aimRing(true); paintPanel(); paintTip(); } }
 
 /* ---------- modal dialogs: focus trap, inert background, focus back to the trigger ----------
    Generic: whichever dialog is open on top (palette, settings, component sheet, update, confirmations, dialogs inside
    a module) gets the rest of the app made inert, Tab stays inside it, and when it closes the focus goes back to
    what opened it. Works for keyboard users too, with or without a controller. */
 const MODALS = ['.su-ov', '.cs-o.on', '.hg-dlg', '.mdlg', '.bk-dq-o', '.dq-o'];
-const KEEP = '#toasts,#padRing,#padHints,script,style,link';
+const KEEP = '#toasts,#padRing,#padHints,#padPanel,#padTip,script,style,link';
 let modal = null, opener = null, inerted = [], lastFocus = null, modalTimer = 0;
 function modalTop() {
   if (state.palOpen) return $('#palO');
@@ -507,7 +784,7 @@ SH.gamepad = {
   get connected() { return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(g => g && g.connected); },
   /* take the buttons away from the navigation (a test that needs to see every press): capture({ onExit, onProgress }).
      The user gets them back by holding View + Menu for a second (onExit runs), or you call release(). */
-  capture(o = {}) { capture = o; ring.classList.remove('on'); showHints(false); kick(); },
+  capture(o = {}) { capture = o; ring.classList.remove('on'); showHints(false); paintPanel(); paintTip(); kick(); },
   release() { if (capture) releaseCapture(); },
   get captured() { return !!capture; },
   /* every button press while a controller is connected: fn({ index, name, pad }) */
@@ -516,5 +793,9 @@ SH.gamepad = {
   move, glyph, BUTTONS: B,
   /* extra selectors that count as an overlay (a custom dialog), so the focus stays inside it */
   addOverlay(sel) { custom.push(sel); },
+  /* the panel the focus is inside (A entered it), or null */
+  get inside() { return insideRoot(); },
+  /* for tests and audits: the targets the D-pad can reach from here and where a move would go */
+  debug: { candidates: () => candidates(scope(), insideRoot()), candidatesIn: el => candidates(scope(), el), best: (el, dir, list) => best(el, list || candidates(scope(), insideRoot()), dir), isPanel: el => isPanel(el), scope, get cur() { return cur; }, inView },
 };
 })();
