@@ -222,7 +222,7 @@ async function createPoint() {
 }
 async function protect(resizeOnly, btn) {
   const d = sysDrive() || { drive: 'C:' };
-  if (REAL && !SH.requireAdmin(t('to change System Protection.'))) return;
+  if ((REAL || SH.sampleNormal) && !SH.requireAdmin(t('to change System Protection.'), { resume: { action: 'backups.protection', args: { resize: !!resizeOnly, pct } } })) return;
   const r = await runOp('protect', [d.drive, pct], { ok: true, msg: t('System Protection is on for {drive}.', { drive: d.drive }) }, { btn });
   if (!r) return;
   if (r.ok) {
@@ -251,7 +251,7 @@ function paintPoints() {
 }
 async function deletePoint(seq, btn) {
   const p = ((cache.status || {}).points || []).find(x => String(x.seq) === String(seq)); if (!p) return;
-  if (REAL && !SH.requireAdmin(t('to delete restore points.'))) return;
+  if ((REAL || SH.sampleNormal) && !SH.requireAdmin(t('to delete restore points.'), { resume: { action: 'backups.deletePoint', args: { seq: String(p.seq) } } })) return;
   const ok = await ask(t('Delete this restore point?'), t('<b>{name}</b>, from {date}. Only this restore point is deleted; the others stay as they are. This cannot be undone.', { name: esc(p.desc || typeOf(p.type)[0]), date: esc(fmtDate(p.t)) }), t('Delete restore point'));
   if (!ok) return;
   SH.sound('delete');
@@ -326,7 +326,8 @@ async function deleteOwn(list, title, btn) {
 async function undoOptimizer(b, btn) {
   if (busy) return;
   const svc = b.kind === 'opt-services';
-  if (REAL && svc && !SH.requireAdmin(t('to change services.'))) return;
+  const again = svc ? { action: 'backups.undo', args: { id: b.id } } : undefined;
+  if ((REAL || SH.sampleNormal) && svc && !SH.requireAdmin(t('to change services.'), { resume: again })) return;
   const ok = await ask(svc ? t('Put these services back?') : t('Put these registry entries back?'),
     svc ? t('The services saved on {date} go back to how they were before Super Optimizer changed them.', { date: esc(fmtDate(b.ts)) })
       : t('The registry entries Super Optimizer removed on {date} are imported again from their copy.', { date: esc(fmtDate(b.ts)) }), t('Put them back'), false);
@@ -337,9 +338,37 @@ async function undoOptimizer(b, btn) {
   const r = await runOp(onP => SH.job('optimizer', svc ? 'services_undo_job' : 'registry_undo_job', [bid], { onProgress: m => { if (m.kind === 'progress') onP(m); } }), [], { ok: true },
     { btn, start: svc ? t('Putting the services back…') : t('Putting the registry entries back…') });
   if (!r) return;
-  if (r.needAdmin) { SH.requireAdmin(svc ? t('to change services.') : t('to make this change in Windows.')); return; }
+  if (r.needAdmin) { SH.requireAdmin(svc ? t('to change services.') : t('to make this change in Windows.'), { resume: again }); return; }
   SH.toast(r && r.ok ? t('Changes undone.') : t('It did not work: {msg}', { msg: (r && r.msg) || t('Windows did not accept some of them.') }), r && r.ok ? {} : { kind: 'error' });
 }
+
+/* ---------- after the administrator relaunch (js/admin-resume.js) ----------
+   Settings > Backups and restore opens again (the ticket's place); each action waits for the section to read the PC,
+   finds what it acts on as it is now and clicks the same button, so its confirmation comes up again. */
+const settled = () => live() && cache.status && !busy;
+SH.resume.register('backups.protection', async (a, r) => {
+  const n = r.num(a.pct, 2, 30); if (n == null || typeof a.resize !== 'boolean') return false;
+  if (!await r.until(settled, 20000)) return false;
+  const d = sysDrive(); if (!d || !cache.status.admin || !!d.enabled !== a.resize) return false;
+  pct = Math.round(n);
+  if (a.resize) { protectOpen = true; createOpen = false; }
+  paintHero(true);
+  const b = await r.until(() => $(`[data-bk="${a.resize ? 'resize' : 'protect'}"]`, root), 3000); if (!b) return false;
+  b.click(); return true;
+});
+SH.resume.register('backups.deletePoint', async (a, r) => {
+  const seq = r.str(a.seq, 12); if (!/^\d{1,12}$/.test(seq)) return false;
+  if (!await r.until(() => settled() && cache.status.admin && $('#bkPoints .bk-list', root), 20000)) return false;
+  const b = $$('#bkPoints [data-del]', root).find(x => x.dataset.del === seq); if (!b) return false;
+  b.scrollIntoView({ block: 'center' }); b.click(); return true;
+});
+SH.resume.register('backups.undo', async (a, r) => {
+  const id = r.str(a.id, 300); if (!id) return false;
+  if (!await r.until(() => settled() && cache.own, 20000)) return false;
+  const bk = findOwn(id); if (!bk || bk.kind !== 'opt-services') return false;
+  const row = $$('[data-id]', root).find(x => x.dataset.id === id), b = row && $('[data-own="undo"]', row); if (!b) return false;
+  b.scrollIntoView({ block: 'center' }); b.click(); return true;
+});
 
 /* ---------- the section ---------- */
 SH.settingsSections.backups = {

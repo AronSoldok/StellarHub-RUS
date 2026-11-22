@@ -502,6 +502,7 @@ R.network = (el, t) => {
   load('net', 'network').then(d => {
     d = d === undefined ? MOCK_NET : d; if (!d) return;
     adapter = (d.adapters || []).find(a => !a.virtual) || (d.adapters || [])[0] || null; const w = d.wifi || {};
+    seg.dataset.adapter = adapter ? adapter.alias : '';  /* read by the administrator relaunch ('monitor.dns') */
     S(el, 'nAd').textContent = adapter ? short(adapter.desc) : _t('offline');
     const sig = w.signal != null ? w.signal : V().wifiSignal;
     const mask = ip => ip ? ip.replace(/^(\d+)\.\d+\.\d+\.(\d+)$/, '$1.•••.•••.$2') : '—';
@@ -532,7 +533,8 @@ R.network = (el, t) => {
   });
   seg.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b || b.classList.contains('on')) return;
-    if (!SH.requireAdmin(_t('to change the DNS server.'))) return;
+    const again = { action: 'monitor.dns', args: { v: b.dataset.v, adapter: adapter ? adapter.alias : '' } };
+    if (!SH.requireAdmin(_t('to change the DNS server.'), { resume: again })) return;
     if (!adapter) { SH.toast(_t('There is no active network adapter.'), { kind: 'warning' }); return; }
     const name = DNSN[b.dataset.v];
     if (seg.classList.contains('pending')) return;
@@ -560,11 +562,22 @@ R.network = (el, t) => {
           else { if (tx) tx.textContent = curTxt; if (u && u.needAdmin) SH.requireAdmin(_t('to change the DNS server.')); else SH.toast(u && u.error ? _t('Could not restore the DNS: {msg}', { msg: u.error }) : _t('Could not restore the DNS.'), { group: 'dnsUndo', kind: 'error' }); }
         } } } : {});
         SH.logActivity && SH.logActivity(_t('DNS changed to {name}', { name }), { sub: adapter.alias, ic: 'globe', go: 'monitor', tab: 'network' }); delete cache.net; }
-      else if (r && r.needAdmin) SH.requireAdmin(_t('to change the DNS server.'));
+      else if (r && r.needAdmin) SH.requireAdmin(_t('to change the DNS server.'), { resume: again });
       else SH.toast(r && r.error ? _t('Could not change the DNS: {msg}', { msg: r.error }) : _t('Could not change the DNS.'), { kind: 'error' });
     });
   });
 };
+
+/* after the administrator relaunch (js/admin-resume.js): the same DNS on the same adapter, through the same
+   confirmation; another adapter now, or that DNS already set: not run */
+SH.resume.register('monitor.dns', async (a, r) => {
+  const v = r.str(a.v, 20); if (!['auto', 'cloudflare', 'google'].includes(v)) return false;
+  const p = await r.open('monitor', 'network'); if (!p) return false;
+  const seg = await r.until(() => { const x = $('#nDns', p); return x && x.dataset.adapter !== undefined ? x : null; }, 20000);
+  if (!seg || !seg.dataset.adapter || seg.dataset.adapter !== r.str(a.adapter)) return false;
+  const b = $$('button', seg).find(x => x.dataset.v === v); if (!b || b.classList.contains('on')) return false;
+  seg.scrollIntoView({ block: 'center' }); b.click(); return true;
+});
 
 /* ---------- battery ---------- */
 let batChart = null;

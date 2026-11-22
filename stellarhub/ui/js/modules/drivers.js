@@ -60,7 +60,9 @@ const RP_WHY = {
   policy: t('Restore points are turned off by a policy on this PC.'),
   failed: t('Windows did not create a new restore point and gave no reason.'),
 };
-const needAdmin = (r, why) => { if (r && r.needAdmin) { SH.requireAdmin(why); return true; } return false; };
+const needAdmin = (r, why, resume) => { if (r && r.needAdmin) { SH.requireAdmin(why, { resume }); return true; } return false; };
+/* inside the app in normal mode (and in sample mode with ?normal=1, to try the administrator prompt) */
+const needsAdm = () => (REAL || SH.sampleNormal) && !SH.state.admin;
 
 /* ---------- sample data ---------- */
 let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
@@ -390,7 +392,8 @@ function renderUpdates(el, ctx) {
   /* installation */
   $('#duInstall', el).addEventListener('click', async () => {
     if (!st.sel.size || st.busy) return;
-    if (REAL && !SH.state.admin) { SH.requireAdmin(t('to install drivers. Windows only allows it with administrator rights.')); return; }
+    const again = { action: 'drivers.install', args: { ids: [...st.sel] } };
+    if (needsAdm()) { SH.requireAdmin(t('to install drivers. Windows only allows it with administrator rights.'), { resume: again }); return; }
     const todo = st.updates.filter(u => st.sel.has(u.id));
     const n = todo.length;
     const okGo = await ask(n === 1 ? t('Install {n} driver', { n }) : t('Install {n} drivers', { n }),
@@ -471,7 +474,7 @@ function renderUpdates(el, ctx) {
     finally { stopTime(); rpEnd(); $('#duIndet', el).classList.remove('on'); }
     await wait(400); tickers.delete(tk); $('#duTime', el).textContent = '';
     $('#duRadar', el).classList.remove('on'); st.busy = false; sbtn.disabled = false;
-    if (out && out.needAdmin) { SH.requireAdmin(t('to install drivers.')); }
+    if (out && out.needAdmin) { SH.requireAdmin(t('to install drivers.'), { resume: again }); }
     const results = (out && out.results) || [];
     const okIds = new Set(results.filter(r => r.ok).map(r => r.id)); const failed = results.filter(r => !r.ok).length;
     const reboot = !!(out && out.reboot);
@@ -498,7 +501,10 @@ function renderUpdates(el, ctx) {
     });
     drawList(true);
   });
-  DATA.lastSearch().then(r => { st.updates = r.updates; st.sel = new Set(r.updates.map(u => u.id)); head(r.updates.length, r.when); drawList(true, REAL && !r.at); })
+  /* for the administrator relaunch (SH.resume 'drivers.install'): the list as it is now, and the same selection */
+  let listed = false;
+  el._du = { ready: () => listed && !st.busy, has: id => st.updates.some(u => u.id === id), select(ids) { st.sel = new Set(ids); drawList(false); } };
+  DATA.lastSearch().then(r => { st.updates = r.updates; st.sel = new Set(r.updates.map(u => u.id)); head(r.updates.length, r.when); drawList(true, REAL && !r.at); listed = true; })
     .catch(e => { $('#duTitle', el).textContent = t('Look for new drivers'); list.innerHTML = errBox(e.message); });
 }
 
@@ -509,7 +515,10 @@ async function renderAll(el) {
       ${segHTML([['all', t('All')], ['2', t('Over 2 years')], ['5', t('Over 5 years')], ['inbox', t('From Windows')], ['bad', t('With problems')]], 'all')}<span class="cnt" id="daCnt">${t('Reading…')}</span></div>
       <div class="da-scroll" id="daScroll">${skRows(9)}</div></div>
     <div class="pan da-detail" id="daDetail" data-asm><div class="dd-empty">${SH.emptyState({ art: 'first', small: true, text: t('Choose a driver to see its details,<br>go back to a previous version or disable it.') })}</div></div>`;
-  const scroll = $('#daScroll', el); let q = '', age = 'all', selected = null, ALL = [], busyOp = false;
+  const scroll = $('#daScroll', el); let q = '', age = 'all', selected = null, ALL = [], busyOp = false, listed = false;
+  /* for the administrator relaunch (SH.resume 'drivers.rollback' / 'drivers.toggle'): the driver as it is now */
+  el._da = { ready: () => listed && !busyOp, find: id => ALL.find(x => x.id === id) || null,
+    select(id) { const row = $$('.da-row', scroll).find(r => r.dataset.d === id); if (!row) return false; const g = row.closest('.da-grp'); if (g) { g.hidden = false; g.classList.add('open'); } row.hidden = false; select(id, row); row.scrollIntoView({ block: 'center' }); return true; } };
   wireSeg($('.seg', el), v => { age = v; filter(); });
   async function load(fresh) {
     /* reading every driver can take a while: followed from anywhere once it runs for a moment */
@@ -519,7 +528,7 @@ async function renderAll(el) {
     scroll.innerHTML = groups.map((g, gi) => `<div class="da-grp${gi < 2 ? ' open' : ''}" data-g="${g.key}"><button class="da-gh">${ic('chev', 'i cv')}<span class="ri">${ic(g.icon)}</span><b>${esc(g.label)}</b><span class="n">${g.items.length}</span></button>
         <div class="da-body"><div><div class="da-in">${g.items.map(d => { const a = ageOf(d); return `<button class="da-row${d.status !== 'ok' ? ' bad' : ''}" data-d="${d.id}"><span class="n1">${esc(d.name)}<small>${d.status === 'off' ? t('{provider}, disabled', { provider: esc(d.provider) }) : d.status === 'err' ? t('{provider}, with an error', { provider: esc(d.provider) }) : esc(d.provider)}</small></span><span class="v">${esc(d.version)}</span><span class="v">${d.inbox ? '–' : fmtDateCol(d.date)}</span><span class="age" style="--c:${ageColor(a)}"><i></i>${ageText(a)}</span></button>`; }).join('')}</div></div></div></div>`).join('');
     $('#daCnt', el).textContent = ALL.length === 1 ? t('{n} driver', { n: ALL.length }) : t('{n} drivers', { n: ALL.length });
-    stagger($$('.da-grp', scroll).slice(0, 10), 0, 30); filter(true);
+    stagger($$('.da-grp', scroll).slice(0, 10), 0, 30); filter(true); listed = true;
   }
   scroll.addEventListener('click', e => {
     if (e.target.closest('[data-retry]')) { scroll.innerHTML = skRows(9); load(true); return; }
@@ -566,7 +575,8 @@ async function renderAll(el) {
     const b = e.target.closest('[data-a],[data-rb]'); if (!b || !selected) return; const d = selected;
     if (b.dataset.a === 'devmgmt') { if (await SH.call('run_tool', 'devmgmt') === undefined) SH.toast(t('This only works inside the app.'), { kind: 'unavailable' }); return; }
     if (b.dataset.rb) {
-      if (REAL && !SH.state.admin) { SH.requireAdmin(t('to go back to a previous driver version.')); return; }
+      const again = { action: 'drivers.rollback', args: { id: d.id, inst: d.instance || '', inf: b.dataset.rb } };
+      if (needsAdm()) { SH.requireAdmin(t('to go back to a previous driver version.'), { resume: again }); return; }
       if (!await ask(t('Go back to the previous version'), t('{name} will switch to the <b>{pkg}</b> package. A restore point is created first. It may ask for a restart.', { name: esc(d.name), pkg: esc(b.dataset.rb) }), t('Go back to this one'))) return;
       if (busyOp) { SH.toast(t('Another change is still running. Wait for it to finish.'), { kind: 'unavailable' }); return; } busyOp = true;
       /* a restore point (1 to 3 min), the install and reading the drivers again: a status line with the step and the time */
@@ -583,7 +593,7 @@ async function renderAll(el) {
         let r;
         if (REAL) r = await SH.job('drivers', 'rollback', [d.instance, b.dataset.rb, d.hw], { sound: 'task', onProgress });
         else { await fakeJob([[t('Creating a restore point'), 2200], [t('Installing the previous version'), 1400]], onProgress); r = { ok: true }; }
-        if (needAdmin(r, t('to roll back a driver.'))) return;
+        if (needAdmin(r, t('to roll back a driver.'), again)) return;
         SH.toast(r.ok ? (r.reboot ? t('{name}: previous version installed. Restart to finish.', { name: d.name }) : t('{name}: previous version installed.', { name: d.name })) : t('It did not work: {msg}', { msg: r.msg }), { kind: r.ok ? 'success' : 'error' });
         if (r.ok) {
           ok = true; SH.logActivity(t('Driver rolled back'), { sub: d.name, ic: 'restore', go: 'drivers', tab: 'all' });
@@ -601,14 +611,15 @@ async function renderAll(el) {
     }
     if (b.dataset.a === 'toggle') {
       const enable = d.status === 'off';
-      if (REAL && !SH.state.admin) { SH.requireAdmin(t('to disable or enable devices.')); return; }
+      const again = { action: 'drivers.toggle', args: { id: d.id, inst: d.instance || '', enable } };
+      if (needsAdm()) { SH.requireAdmin(t('to disable or enable devices.'), { resume: again }); return; }
       if (!enable && !await ask(t('Disable the device'), t('{name} will stop working until you enable it again here or from Device Manager.', { name: esc(d.name) }), t('Disable'), true)) return;
       const apply = async en => {
         if (busyOp) { SH.toast(t('Another change is still running. Wait for it to finish.'), { kind: 'unavailable' }); return false; } busyOp = true;
         const tb = selected === d ? $('#daDetail [data-a="toggle"]', el) : null; busyBtn(tb, en ? t('Enabling…') : t('Disabling…'));
         try {
           const r = REAL ? await SH.job('drivers', 'set_enabled', [d.instance, en]) : (await wait(700), { ok: true });
-          if (needAdmin(r, t('to disable devices.'))) return false;
+          if (needAdmin(r, t('to disable devices.'), en === enable ? again : undefined)) return false;
           if (!r.ok) { SH.toast(t('Windows did not allow it: {msg}', { msg: r.msg || '' }), { kind: 'error' }); return false; }
           d.status = en ? 'ok' : 'off'; const row = $(`.da-row[data-d="${d.id}"]`, scroll); if (row && selected === d) swap($('#daDetail', el), detailHTML(d)); return true;
         } catch (er) { SH.toast(t('Windows did not allow it: {msg}', { msg: er.message }), { kind: 'error' }); return false; }
@@ -644,6 +655,7 @@ async function renderProblems(el) {
   setTimeout(() => playRing($('.dp-hero svg', el)), 300 * SH.motion());
   /* one listener per render, on the wrapper this render created: "Check again" replaces it, so actions never run twice */
   const wrap = $('.du-wrap', el); let running = 0;
+  el._dp = { ready: () => !running && wrap.isConnected };  /* for the administrator relaunch: this check is on screen */
   $('#dpRe', el).addEventListener('click', () => { SH.sound('refresh'); if (running) { SH.toast(t('Another change is still running. Wait for it to finish.'), { kind: 'unavailable' }); return; } renderProblems(el); });
   const box = $('#dpG', el); let ghostsLeft = P.ghosts.length;
   /* -> true (removed), false (Windows refused or it failed) or 'admin' (needs administrator rights) */
@@ -651,7 +663,7 @@ async function renderProblems(el) {
     const b = $('[data-act="rm"]', row); busyBtn(b, t('Removing…')); let ok = false;
     try {
       const r = REAL ? await SH.job('drivers', 'remove_device', [row.dataset.id]) : (await wait(500), { ok: true });
-      if (needAdmin(r, t('to remove devices from Windows.'))) return 'admin';
+      if (needAdmin(r, t('to remove devices from Windows.'), { action: 'drivers.removeDevice', args: { id: row.dataset.id } })) return 'admin';
       if (!r.ok) { SH.toast(t('Windows did not remove it: {msg}', { msg: r.msg || '' }), { kind: 'error' }); return false; }
       ok = true; removeRow(row, box); ghostsLeft = Math.max(0, ghostsLeft - 1); $('#dpGn', el).textContent = ghostsLeft; return true;
     } catch (er) { SH.toast(t('Windows did not remove it: {msg}', { msg: er.message }), { kind: 'error' }); return false; }
@@ -662,15 +674,16 @@ async function renderProblems(el) {
     if (b.dataset.act === 'devmgmt') { if (await SH.call('run_tool', 'devmgmt') === undefined) SH.toast(t('This only works inside the app.'), { kind: 'unavailable' }); }
     else if (b.dataset.act === 'search') { SH.sound('scan_start'); SH.go('drivers', { tab: 'updates' }); setTimeout(() => { const v = $('#v-drivers'); v && v._searchDrivers && v._searchDrivers(); }, 400); }
     else if (b.dataset.act === 'enable') {
-      if (REAL && !SH.state.admin) { SH.requireAdmin(t('to enable devices.')); return; }
+      const again = { action: 'drivers.enable', args: { id: row.dataset.id } };
+      if (needsAdm()) { SH.requireAdmin(t('to enable devices.'), { resume: again }); return; }
       busyBtn(b, t('Enabling…')); running++; let ok = false;
       try {
-        const r = REAL ? await SH.job('drivers', 'set_enabled', [row.dataset.id, true]) : (await wait(600), { ok: true }); if (needAdmin(r, t('to enable devices.'))) return;
+        const r = REAL ? await SH.job('drivers', 'set_enabled', [row.dataset.id, true]) : (await wait(600), { ok: true }); if (needAdmin(r, t('to enable devices.'), again)) return;
         if (r.ok) { ok = true; SH.toast(t('Device enabled.')); removeRow(row, row.parentElement); } else SH.toast(t('Windows did not allow it: {msg}', { msg: r.msg || '' }), { kind: 'error' });
       } catch (er) { SH.toast(t('Windows did not allow it: {msg}', { msg: er.message }), { kind: 'error' }); }
       finally { running--; if (!ok) freeBtn(b); }
     } else if (b.dataset.act === 'rm') {
-      if (REAL && !SH.state.admin) { SH.requireAdmin(t('to remove devices from Windows.')); return; }
+      if (needsAdm()) { SH.requireAdmin(t('to remove devices from Windows.'), { resume: { action: 'drivers.removeDevice', args: { id: row.dataset.id } } }); return; }
       if (!await ask(t('Remove the device'), t('Windows will forget <b>{name}</b>. If you connect it again, it installs again by itself.', { name: esc($('b', row).textContent) }), t('Remove'))) return;
       SH.sound('delete');
       running++; try { if (await rmOne(row) === true) SH.toast(t('Device removed.')); } finally { running--; }
@@ -679,8 +692,8 @@ async function renderProblems(el) {
   const all = $('#dpAll', el);
   if (all) all.addEventListener('click', async () => {
     if (all.disabled) return;
-    if (REAL && !SH.state.admin) { SH.requireAdmin(t('to remove devices from Windows.')); return; }
     const rows = $$('.row', box).filter(r => !$('[data-act="rm"].busy', r)); if (!rows.length) return;
+    if (needsAdm()) { SH.requireAdmin(t('to remove devices from Windows.'), { resume: { action: 'drivers.removeAll', args: { ids: rows.map(r => r.dataset.id) } } }); return; }
     if (!await ask(rows.length === 1 ? t('Remove {n} disconnected device', { n: rows.length }) : t('Remove {n} disconnected devices', { n: rows.length }), t('Windows will forget them. Any you connect again reinstall by themselves.'), t('Remove all'))) return;
     SH.sound('delete');
     const total = rows.length; let n = 0, k = 0; running++;
@@ -719,12 +732,15 @@ async function renderBackup(el) {
       <p class="ds-note">${t('Previous versions Windows kept after a driver update. Only copies that a newer version replaced and no device uses (not even a disconnected one) are listed, and Windows refuses to remove anything in use.')}</p>
       <div class="rows" id="dsRows">${skRows(2)}</div>
       <div class="ds-foot" id="dsFoot" hidden><span class="muted" id="dsSum"></span><button class="btn sec" id="dsGo">${ic('trash')}${t('Remove selected')}</button></div></div></div></div>`;
-  const rows = $('#dbRows', el); let LIST = [];
+  const rows = $('#dbRows', el); let LIST = [], listed = false, storeListed = false;
+  /* for the administrator relaunch (SH.resume 'drivers.backup' / 'drivers.restoreBackup' / 'drivers.storeRemove') */
+  el._db = { ready: () => listed && storeListed && !op, backup: path => LIST.findIndex(b => b && b.path === path),
+    hasCopy: inf => OLD.some(o => o.inf === inf), selectCopies(infs) { dsSel.clear(); infs.forEach(i => dsSel.add(i)); $$('.ds-row', ds).forEach(r => { const v = dsSel.has(r.dataset.inf); r.classList.toggle('sel', v); $('.check', r).classList.toggle('on', v); }); dsSync(); } };
   const rowHTML = (b, i) => `<div class="db-row db-cols" data-i="${i}"><b style="font-weight:500">${fmtDateCol(b.date)}</b><span class="muted">${b.count}</span><span class="muted">${fmt1(b.gb)} GB</span><span class="p" title="${esc(b.path)}">${esc(b.path)}</span><span class="a"><button class="btn sm sec" data-a="restore">${ic('restore')}${t('Restore')}</button><button class="btn sm ghost" data-a="open" title="${t('Open folder')}">${ic('folder')}</button><button class="btn sm ghost" data-a="del" title="${t('Send to the Recycle Bin')}">${ic('trash')}</button></span></div>`;
   async function loadList(anim_) {
     try { LIST = [...((await DATA.backups()) || [])]; } catch { LIST = []; }  // a copy: deleting marks entries without shifting the rows' indexes
     rows.innerHTML = LIST.length ? LIST.map(rowHTML).join('') : emptyBox(t('No backups yet'), t('Create the first one with the button above. It takes a minute or two.'), 'download');
-    $('#dbCount', el).textContent = LIST.length; if (anim_) stagger($$('.db-row', rows), 0, 40);
+    $('#dbCount', el).textContent = LIST.length; if (anim_) stagger($$('.db-row', rows), 0, 40); listed = true;
   }
   /* one long operation at a time (create a backup, reinstall one): the others wait, visibly disabled */
   let op = null;
@@ -753,7 +769,8 @@ async function renderBackup(el) {
   $('#dbPick', el).addEventListener('click', async () => { if (!REAL) { SH.toast(t('The folder picker only works inside the app.'), { kind: 'unavailable' }); return; } const p = await SH.engine('drivers', 'pick_folder', $('#dbPath', el).value); if (p) $('#dbPath', el).value = p; });
   $('#dbGo', el).addEventListener('click', async e => {
     const btn = e.currentTarget; if (btn.disabled || op) return;
-    if (REAL && !SH.state.admin) { SH.requireAdmin(t('to copy the system drivers (Windows requires it).')); return; }
+    const again = { action: 'drivers.backup', args: { path: $('#dbPath', el).value.trim() } };
+    if (needsAdm()) { SH.requireAdmin(t('to copy the system drivers (Windows requires it).'), { resume: again }); return; }
     lock('create'); const pg = progress(third);
     let r = null;
     try {
@@ -761,7 +778,7 @@ async function renderBackup(el) {
       else { const x = await API.exportDrivers(true, (i, tot, f) => pg.set(i, tot, f)); r = { ok: true, count: x.count, gb: x.gb }; API.backups.unshift({ id: 'b' + Date.now(), date: new Date().toISOString().slice(0, 10), count: x.count, gb: x.gb, path: $('#dbPath', el).value + '\\' + new Date().toISOString().slice(0, 10) }); }
     } catch (er) { r = { ok: false, msg: er.message }; }
     finally { lock(null); await pg.end(); }
-    if (needAdmin(r, t('to copy the drivers.'))) return;
+    if (needAdmin(r, t('to copy the drivers.'), again)) return;
     if (!r || !r.ok) { SH.toast(t('The backup could not be created: {msg}', { msg: (r && r.msg) || t('unknown error') }), { kind: 'error' }); return; }
     await loadList(false); const nr = rows.firstElementChild; if (nr) { nr.classList.add('fresh'); anim(nr, [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring }); setTimeout(() => nr.classList.remove('fresh'), 2400); }
     SH.logActivity(t('Driver backup'), { sub: t('{n} drivers saved', { n: r.count }), ic: 'download', go: 'drivers', tab: 'backup' });
@@ -787,7 +804,7 @@ async function renderBackup(el) {
       : !OLD.length ? emptyBox(t('Nothing to clean'), r.packages ? t('The {n} manufacturer driver packages in the store are all current or in use.', { n: r.packages }) : esc(r.msg || ''))
       : OLD.map(dsRow).join('');
     if (OLD.length) stagger($$('.ds-row', ds), 0, 40);
-    dsSync();
+    dsSync(); storeListed = true;
   }
   loadStore(false);
   const dsAll = $('#dsAll', el);
@@ -804,7 +821,8 @@ async function renderBackup(el) {
   });
   $('#dsGo', el).addEventListener('click', async e => {
     const btn = e.currentTarget; if (btn.disabled || !dsSel.size) return;
-    if (REAL && !SH.state.admin) { SH.requireAdmin(t('to remove packages from the Windows driver store.')); return; }
+    const again = { action: 'drivers.storeRemove', args: { infs: [...dsSel] } };
+    if (needsAdm()) { SH.requireAdmin(t('to remove packages from the Windows driver store.'), { resume: again }); return; }
     const pick = OLD.filter(o => dsSel.has(o.inf)), mb = pick.reduce((s, o) => s + o.mb, 0);
     const askTxt = pick.length === 1
       ? t('{n} old copy ({mb} MB) will be removed from the driver store. The current versions stay installed. Removed copies cannot be used to roll a driver back, so create a backup above first if you might want them.', { n: pick.length, mb: fmt1(mb) })
@@ -815,7 +833,7 @@ async function renderBackup(el) {
     let r;
     try { r = REAL ? await SH.job('drivers', 'delete_packages', [pick.map(o => o.inf)], { bg: true, label: t('Removing…'), onProgress: m => { if (m.text) $('#dsSum', el).textContent = m.text; } }) : { ok: true, results: pick.map(o => ({ inf: o.inf, ok: true })), freedMb: mb }; }
     catch (er) { r = { ok: false, msg: er.message }; }
-    if (needAdmin(r, t('to remove packages from the driver store.'))) { freeBtn(btn); dsSync(); return; }
+    if (needAdmin(r, t('to remove packages from the driver store.'), again)) { freeBtn(btn); dsSync(); return; }
     const okN = ((r && r.results) || []).filter(x => x.ok).length, bad = ((r && r.results) || []).filter(x => !x.ok);
     if (!REAL) { API.store.old = API.store.old.filter(o => !dsSel.has(o.inf)); API.store.mb = 0; }
     /* the store is read again before the button comes back, so the same copies cannot be sent twice */
@@ -833,7 +851,8 @@ async function renderBackup(el) {
     if (b.dataset.a === 'open') { if (!REAL || !await SH.engine('drivers', 'open_folder', bk.path)) SH.toast(REAL ? t('That folder no longer exists.') : t('Only inside the app.'), { kind: REAL ? 'error' : 'unavailable' }); }
     if (b.dataset.a === 'restore') {
       if (op) return;
-      if (REAL && !SH.state.admin) { SH.requireAdmin(t('to reinstall drivers from a backup.')); return; }
+      const again = { action: 'drivers.restoreBackup', args: { path: bk.path } };
+      if (needsAdm()) { SH.requireAdmin(t('to reinstall drivers from a backup.'), { resume: again }); return; }
       if (!await ask(t('Reinstall from the backup'), t('The {n} drivers from the {date} backup will be installed. Any that are already the same or newer stay as they are. It may ask for a restart.', { n: bk.count, date: fmtDateS(bk.date) }), t('Reinstall'))) return;
       if (op) return;
       /* pnputil goes through every INF in the backup (2 to 10 min): the same panel as "Create backup" shows how far it is */
@@ -842,7 +861,7 @@ async function renderBackup(el) {
         let r;
         if (REAL) r = await SH.job('drivers', 'restore_backup', [bk.path], { sound: 'task', onProgress: m => { if (m.kind !== 'progress') return; const d = m.data || {}; pg.set(d.n, d.total, m.text, m.pct); } });
         else { const list = DRIVERS.filter(d => !d.inbox), tot = bk.count || 120; for (let k = 1; k <= tot; k++) { const d = list[k % list.length]; pg.set(k, tot, `${d.inf}  ${d.name}`); await wait(12 + rnd() * 14); } r = { ok: true }; }
-        if (needAdmin(r, t('to reinstall drivers.'))) return;
+        if (needAdmin(r, t('to reinstall drivers.'), again)) return;
         SH.toast(r.ok ? (r.reboot ? t('Backup reinstalled. Restart to finish.') : t('Backup reinstalled.')) : t('It did not work: {msg}', { msg: r.msg }), { kind: r.ok ? 'success' : 'error' });
         if (r.ok) { drvCache = null; SH.logActivity(t('Drivers reinstalled from a backup'), { sub: fmtDateS(bk.date), ic: 'restore', go: 'drivers', tab: 'backup' }); }
       } catch (er) { SH.toast(t('It did not work: {msg}', { msg: er.message }), { kind: 'error' }); }
@@ -916,6 +935,77 @@ SH.on('boot', async () => {
     const p = (SH.state.settings.pending || {}).drivers; if (r.at && (!p || p.at < r.at * 1000)) SH.setPending('drivers', n);
   } else n = UPDATES.filter(u => !u.installed).length;
   v.hidden = !n; v.textContent = n;
+});
+/* ---------- after the administrator relaunch (js/admin-resume.js) ----------
+   Each action finds what it acts on in the list as it is NOW (ids from the ticket are only looked up, never trusted),
+   then clicks the same button, so the usual confirmation comes up again. Anything missing or changed: not run. */
+const tabPanel = async (r, tab, key) => { const p = await r.open('drivers', tab); return p && await r.until(() => p[key] && p[key].ready() && p, 20000); };
+const rowById = (root, sel, attr, id) => $$(sel, root).find(x => x.dataset[attr] === id) || null;
+SH.resume.register('drivers.install', async (a, r) => {
+  const ids = r.strs(a.ids); if (!ids.length) return false;
+  const p = await tabPanel(r, 'updates', '_du'); if (!p || !ids.every(p._du.has)) return false;
+  p._du.select(ids); await r.wait(200);
+  const b = $('#duInstall', p); if (!b || b.disabled) return false;
+  b.click(); return true;
+});
+/* the driver in All drivers, still the same device (its instance), selected and shown */
+async function resumeDriver(a, r) {
+  const id = r.str(a.id), inst = r.str(a.inst); if (!id) return null;
+  const p = await tabPanel(r, 'all', '_da'); if (!p) return null;
+  const d = p._da.find(id); if (!d || (inst && d.instance !== inst) || !p._da.select(id)) return null;
+  return { p, d };
+}
+SH.resume.register('drivers.rollback', async (a, r) => {
+  const inf = r.str(a.inf, 80); if (!/^oem\d+\.inf$/i.test(inf)) return false;
+  const x = await resumeDriver(a, r); if (!x) return false;
+  const b = await r.until(() => $$('#daDetail [data-rb]', x.p).find(e => e.dataset.rb === inf), 8000); if (!b || b.disabled) return false;
+  b.click(); return true;
+});
+SH.resume.register('drivers.toggle', async (a, r) => {
+  if (typeof a.enable !== 'boolean') return false;
+  const x = await resumeDriver(a, r); if (!x) return false;
+  if ((x.d.status === 'off') !== a.enable) return false;  /* already the way it was asked for: nothing to do */
+  const b = await r.until(() => $('#daDetail [data-a="toggle"]', x.p), 3000); if (!b || b.disabled) return false;
+  b.click(); return true;
+});
+/* a row of the Problems tab, with its button */
+async function problemButton(a, r, act) {
+  const id = r.str(a.id); if (!id) return null;
+  const p = await tabPanel(r, 'problems', '_dp'); if (!p) return null;
+  const row = rowById(p, '.dp-list .row', 'id', id), b = row && $(`[data-act="${act}"]`, row);
+  if (!b || b.disabled) return null; row.scrollIntoView({ block: 'center' }); return b;
+}
+SH.resume.register('drivers.enable', async (a, r) => { const b = await problemButton(a, r, 'enable'); if (!b) return false; b.click(); return true; });
+SH.resume.register('drivers.removeDevice', async (a, r) => { const b = await problemButton(a, r, 'rm'); if (!b) return false; b.click(); return true; });
+SH.resume.register('drivers.removeAll', async (a, r) => {
+  const ids = r.strs(a.ids); if (!ids.length) return false;
+  const p = await tabPanel(r, 'problems', '_dp'); if (!p) return false;
+  const now = $$('#dpG .row', p).map(x => x.dataset.id);
+  /* the very same devices, no more and no fewer */
+  if (now.length !== ids.length || !ids.every(id => now.includes(id))) return false;
+  const b = $('#dpAll', p); if (!b || b.disabled) return false;
+  b.click(); return true;
+});
+SH.resume.register('drivers.backup', async (a, r) => {
+  const path = r.str(a.path, 260);
+  const p = await tabPanel(r, 'backup', '_db'); if (!p) return false;
+  const inp = $('#dbPath', p); if (inp && path) inp.value = path;
+  const b = $('#dbGo', p); if (!b || b.disabled) return false;
+  b.click(); return true;
+});
+SH.resume.register('drivers.restoreBackup', async (a, r) => {
+  const path = r.str(a.path, 400); if (!path) return false;
+  const p = await tabPanel(r, 'backup', '_db'); if (!p) return false;
+  const i = p._db.backup(path); const row = i >= 0 && rowById(p, '#dbRows .db-row', 'i', String(i)), b = row && $('[data-a="restore"]', row);
+  if (!b || b.disabled) return false;
+  row.scrollIntoView({ block: 'center' }); b.click(); return true;
+});
+SH.resume.register('drivers.storeRemove', async (a, r) => {
+  const infs = r.strs(a.infs); if (!infs.length || !infs.every(i => /^oem\d+\.inf$/i.test(i))) return false;
+  const p = await tabPanel(r, 'backup', '_db'); if (!p || !infs.every(p._db.hasCopy)) return false;
+  p._db.selectCopies(infs); await r.wait(150);
+  const b = $('#dsGo', p); if (!b || b.disabled) return false;
+  b.click(); return true;
 });
 SH.actions.add([
   { t: t('Look for new drivers on Windows Update'), go: 'drivers', tab: 'updates', ic: 'drivers' },

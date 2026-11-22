@@ -324,3 +324,4 @@ html[data-int=min] #v-storage .st-scan.busy .st-co{animation:none;opacity:.6}
 #v-storage .st-new .st-bt.img img{width:22px;height:22px}
 #v-storage .st-ic.img{background:none}
 #v-storage .st-ic.img img{width:20px;height:20px;object-fit:contain;display:block}
+#v-storage .st-admb{margin-top:var(--sp-sm)}

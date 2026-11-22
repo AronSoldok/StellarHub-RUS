@@ -629,8 +629,10 @@ function startInstall(list) {
     <p class="muted">${t('They install silently, one after another, with winget. Some installers close the app they replace, and Windows may ask for permission on some of them.')} ${esc(scopeTxt)}${skipped ? ' ' + (skipped === 1 ? t('1 is already installed and will be skipped.') : t('{n} are already installed and will be skipped.', { n: skipped })) : ''}${S.dry ? ' ' + t('Dry run: nothing will really be installed.') : ''}</p>
     <div class="hg-clist">${go.slice(0, 12).map(a => `<div>${icon(a, 'xs')}<span>${esc(a.name)}</span></div>`).join('')}${go.length > 12 ? `<div class="faint hg-cmore">${t('and {n} more', { n: go.length - 12 })}</div>` : ''}</div>
     <div class="hg-dbtns"><button class="btn ghost" data-no>${t('Not now')}</button><button class="btn pri" data-yes>${ic('hg-rocket')}${go.length === 1 ? t('Install 1 app') : t('Install {n} apps', { n: go.length })}</button></div>`,
-  (e, close) => { if (!e.target.closest('[data-yes]')) return; close();
-    if (o.scope === 'machine' && !state.admin) SH.requireAdmin(t('to install for everyone without a Windows prompt for each app.'));
+  async (e, close) => { if (!e.target.closest('[data-yes]')) return; close();
+    /* asked before the queue starts (reopening as administrator would cut it off): Not now installs them anyway, with
+       Windows asking for each one */
+    if (o.scope === 'machine' && !state.admin && !await SH.adminFirst(t('to install for everyone without a Windows prompt for each app.'))) return;
     const added = enqueue(sel, o);
     if (!list) setMany(sel, false);
     if (ctxRef) ctxRef.setTab('queue');

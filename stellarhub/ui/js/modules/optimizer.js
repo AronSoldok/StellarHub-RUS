@@ -566,9 +566,10 @@ function showPlan(el) {
     $$('.pstep', right).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(16px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: 60 + i * 50, e: EASE.spring }));
     $('.plan', right).addEventListener('click', e => { const c = e.target.closest('.check'); if (c && !c.disabled) c.classList.toggle('on'); });
     $('#optCancel', right).addEventListener('click', () => { ovMode = 'findings'; swap(right, findingsHTML()); });
-    $('#optGo', right).addEventListener('click', () => {
+    $('#optGo', right).addEventListener('click', async () => {
       const chosen = $$('.pstep', right).filter(r => $('.check', r).classList.contains('on')).map(r => r.dataset.step);
-      if (!state.admin && steps.some(s => s.admin && chosen.includes(s.id))) SH.requireAdmin(t('to create the restore point and change services. Without it, those steps are skipped.'));
+      /* asked before it starts (reopening as administrator halfway would cut it off): Not now runs it without those steps */
+      if (!state.admin && steps.some(s => s.admin && chosen.includes(s.id)) && !await SH.adminFirst(t('to create the restore point and change services. Without it, those steps are skipped.'))) return;
       runPlan(el, steps.filter(s => chosen.includes(s.id)));
     });
   });
@@ -814,7 +815,7 @@ function renderClean(el) {
     if (busy) return;
     let ids = DB.clean.filter(c => c.sel && c.size > 0).map(c => c.id);
     const needAdmin = ids.filter(id => DB.clean.find(c => c.id === id).admin);
-    if (needAdmin.length && !state.admin) { SH.requireAdmin(t('to clean Windows temporary files and Windows Update downloads. Everything else is cleaned anyway.')); ids = ids.filter(id => !needAdmin.includes(id)); }
+    if (needAdmin.length && !state.admin) { if (!await SH.adminFirst(t('to clean Windows temporary files and Windows Update downloads. Everything else is cleaned anyway.'))) return; ids = ids.filter(id => !needAdmin.includes(id)); }
     if (!ids.length) return;
     const go = $('#clGo', el);
     /* what can't be undone (emptying the Recycle Bin) needs a second click */
@@ -911,6 +912,16 @@ async function startupIcons(list) {
   DB.startup.forEach(s => { if (!s.icon && got[s.isrc]) { s.icon = got[s.isrc]; n++; const av = list && $(`.st-it[data-id="${CSS.escape(s.id)}"] .st-av`, list); if (av) av.outerHTML = avatar(s); } });
   if (n && raw.startup) { raw.startup.items.forEach(it => { if (!it.icon && got[it.isrc]) it.icon = got[it.isrc]; }); sig.startup = JSON.stringify(raw.startup); cachePut('startup', raw.startup); }
 }
+/* after the administrator relaunch (js/admin-resume.js): the same startup entry, switched the way it was asked, if it is
+   still listed and still the other way */
+SH.resume.register('optimizer.startup', async (a, r) => {
+  const id = r.str(a.id, 400); if (!id || typeof a.on !== 'boolean') return false;
+  const p = await r.open('optimizer', 'startup'); if (!p) return false;
+  const row = await r.until(() => $$('#stList .st-it', p).find(x => x.dataset.id === id), 20000); if (!row) return false;
+  const s = (DB.startup || []).find(x => x.id === id); if (!s || s.on === a.on || s.locked) return false;
+  const tg = $('.toggle', row); if (!tg) return false;
+  row.scrollIntoView({ block: 'center' }); tg.click(); return true;
+});
 function renderStartup(el) {
   el.classList.add('fill');
   const DAYS = [t('Mon'), t('Tue'), t('Wed'), t('Thu'), t('Fri'), t('Sat'), t('Today')];
@@ -972,7 +983,7 @@ function renderStartup(el) {
     if (e.target.closest('.st-loc')) { if (REAL) eng('open_location', s.target).then(ok => { if (!ok) SH.toast(t('That location no longer exists.')); }).catch(() => {}); else SH.toast(t('Opening the location works inside the app.')); return; }
     const tg = e.target.closest('.toggle');
     if (!tg) { if (e.target.closest('.st-r')) { row.classList.toggle('open'); open.has(s.id) ? open.delete(s.id) : open.add(s.id); } return; }
-    if ((s.origin === 'service' || s.hklm || s.path.startsWith('HKLM')) && !state.admin && !SH.requireAdmin(t('to change what starts for all users.'))) return;
+    if ((s.origin === 'service' || s.hklm || s.path.startsWith('HKLM')) && !state.admin && !SH.requireAdmin(t('to change what starts for all users.'), { resume: { action: 'optimizer.startup', args: { id: s.id, on: !s.on } } })) return;
     if (s.locked) { SH.toast(t("A Windows policy controls this app; it can't be changed from here."), { kind: 'unavailable' }); return; }
     const flip = async want => {
       if (REAL) { try { await eng('startup_set', s.ids || [s.id], want); } catch (err) { SH.toast(`${s.name}: ${err.message}`, { kind: 'error' }); return false; } }
@@ -1516,8 +1527,8 @@ function renderDebloat(el, ctx) {
       setTimeout(() => { if (btn.dataset.sure) { delete btn.dataset.sure; btn.innerHTML = `${ic('undo')}${t('Undo all debloat')}`; } }, 4000); return;
     }
     delete btn.dataset.sure;
+    if (DBX.tweaks.some(x => x.ours && x.admin) && !state.admin && !await SH.adminFirst(t('to undo the settings that apply to all users. The rest is undone anyway.'))) return;
     SH.sound('undo');
-    if (DBX.tweaks.some(x => x.ours && x.admin) && !state.admin) SH.requireAdmin(t('to undo the settings that apply to all users. The rest is undone anyway.'));
     btn.disabled = true; btn.innerHTML = `<span class="opt-spin sm"></span>${t('Undoing…')}`;
     let r;
     if (REAL) {
@@ -1563,9 +1574,9 @@ function renderDebloat(el, ctx) {
     anim($('.db-pv', ov), [{ opacity: 0, transform: 'translate3d(0,14px,0)' }, { opacity: 1, transform: 'none' }], { d: 420, e: EASE.spring });
     $$('.db-step', ov).forEach((r, i) => anim(r, [{ opacity: 0, transform: 'translate3d(14px,0,0)' }, { opacity: 1, transform: 'none' }], { d: 420, delay: 80 + i * 60, e: EASE.spring }));
     $('#dbBack', ov).addEventListener('click', closeOv);
-    $('#dbGo', ov).addEventListener('click', () => {
+    $('#dbGo', ov).addEventListener('click', async () => {
+      if (!state.admin && (adminTw.length || deprov || REAL) && !await SH.adminFirst(t('to create the restore point and change settings for all users. Without it, those steps are skipped.'))) return;
       if (apps.length) SH.sound('delete');  /* apps are about to be removed */
-      if (!state.admin && (adminTw.length || deprov || REAL)) SH.requireAdmin(t('to create the restore point and change settings for all users. Without it, those steps are skipped.'));
       run(apps, tws, expl);
     });
   }

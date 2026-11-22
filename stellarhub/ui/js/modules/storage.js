@@ -669,7 +669,8 @@ function renderInfo() {
       + `<dl class="st-dl"><dt>${T('Files')}</dt><dd>${fmtInt(n.fc)}</dd><dt>${T('Folders')}</dt><dd>${fmtInt(n.dirs)}</dd><dt>${T('Scanned')}</dt><dd>${I ? (I.secs < .1 ? T('{when}, in under 0.1 s', { when: whenText(I.when) }) : T('{when}, in {secs} s', { when: whenText(I.when), secs: fmt1(I.secs) })) : whenText()}</dd>
       ${I && I.method ? `<dt>${T('Read from')}</dt><dd title="${I.method === 'mft' ? T('The NTFS master file table was read directly (admin mode): every file in seconds. Hard links count once.') : T('Every folder was listed one by one. Admin mode on an NTFS drive reads the file table instead, which is much faster.')}">${I.method === 'mft' ? T('NTFS file table') : T('Folder scan')}</dd>` : ''}
       <dt>${T('Sizes')}</dt><dd title="${T("The map uses each file's real size, as Explorer shows it under Size. Space on disk can differ: small files fill whole clusters, compressed and sparse files take less.")}">${T('File size')}${I && I.alloc ? ` · ${T('{n} GB on disk', { n: fmt1(I.alloc / GB) })}` : ''}</dd>
-      ${I && I.errors ? `<dt>${T('No access')}</dt><dd title="${I.admin ? T("Folders Windows won't let even an administrator read.") : T('Admin mode can read more system folders.')}">${T('{n} folders', { n: fmtInt(I.errors) })}</dd>` : ''}</dl>`;
+      ${I && I.errors ? `<dt>${T('No access')}</dt><dd title="${I.admin ? T("Folders Windows won't let even an administrator read.") : T('Admin mode can read more system folders.')}">${T('{n} folders', { n: fmtInt(I.errors) })}</dd>` : ''}</dl>
+      ${I && I.errors && !I.admin && !SH.state.admin ? `<button class="btn sm sec st-admb" data-stadm>${ic('shield')}${T('Read them as administrator')}</button>` : ''}`;
   } else {
     const t = typeOf(n); const base = n === TM.cur ? (n.parent || n) : TM.cur;
     box.innerHTML = `<h4>${n === TM.cur ? T('Current folder') : n.dir ? T('Folder') : n.group ? T('Several files') : T('File')}</h4>
@@ -1282,4 +1283,15 @@ SH.actions.add([
   { t: T('View the drive by file type'), go: ID, tab: 'types', ic: 'grid' },
   { t: T("Explore the drive's folders"), go: ID, tab: 'tree', ic: 'folder' },
 ]);
+/* the folders normal mode can't read: the administrator prompt; the elevated copy comes back to the map and scans
+   again (read-only, so it simply runs) */
+document.addEventListener('click', e => {
+  if (!e.target.closest('#v-storage [data-stadm]')) return;
+  SH.requireAdmin(T('to read the system folders Windows keeps from normal mode.'), { resume: { action: 'storage.scan', args: {} } });
+});
+SH.resume.register('storage.scan', async (a, r) => {
+  const p = await r.open('storage', 'map'); if (!p) return false;
+  const b = await r.until(() => { const x = $('#v-storage [data-scan]'); return x && !x.disabled ? x : null; }, 8000); if (!b) return false;
+  b.click(); return true;
+});
 })();
