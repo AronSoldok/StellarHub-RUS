@@ -108,6 +108,25 @@ class Relaunches(unittest.TestCase):
         self.assertEqual(order[0], ("hand_over", True))
         self.assertEqual(order[1], ("schtasks",))
 
+    def test_a_slow_elevated_copy_is_waited_for_not_ended(self):
+        """At a cold logon the copy the task started can take more than 8 s to reach the lock: it was ended and the
+        Windows prompt came up. If it did start, it gets up to a minute."""
+        waits = []
+        with mock.patch.object(elevation, "wants_elevation", return_value=True), \
+                mock.patch.object(elevation, "_hand_over_splash", return_value=None), \
+                mock.patch.object(elevation, "task_opens_this_copy", return_value=True), \
+                mock.patch.object(elevation.config, "PORTABLE", False), \
+                mock.patch("subprocess.run", return_value=mock.Mock(returncode=0)), \
+                mock.patch.object(elevation, "_copy_started_since", return_value=True), \
+                mock.patch.object(elevation, "elevated_copy_started",
+                                  side_effect=lambda seconds=8: (waits.append(seconds), seconds > 8)[1]), \
+                mock.patch("stellarhub.schtask.end") as end, \
+                mock.patch.object(elevation.ctypes.windll.shell32, "ShellExecuteW") as uac:
+            self.assertTrue(elevation.elevate_on_start())
+        self.assertEqual(waits, [8, 52])
+        end.assert_not_called()
+        uac.assert_not_called()
+
     def test_declined_administrator_takes_the_card_back(self):
         sp = mock.Mock(showing=lambda: True, handed=lambda: False)
         with mock.patch.object(elevation, "wants_elevation", return_value=True), \

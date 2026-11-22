@@ -74,9 +74,12 @@ def elevate_on_start():
         except OSError:
             pass
     splash = _hand_over_splash()
+    ran_at = time.time()
     if not config.PORTABLE and task_opens_this_copy(ADMIN_TASK) and subprocess.run(
             ["schtasks", "/run", "/tn", ADMIN_TASK], capture_output=True, creationflags=0x08000000, timeout=15).returncode == 0:
-        if elevated_copy_started():
+        # a copy the task did start but that is slow to reach the lock (a cold logon, an antivirus scan) gets up to a
+        # minute: ending it after 8 s brought the Windows prompt at every such logon
+        if elevated_copy_started() or (_copy_started_since(ran_at) and elevated_copy_started(52)):
             phase("elevated copy started (task)")
             _until_taken_over(splash)
             return True
@@ -118,6 +121,15 @@ def _until_taken_over(splash, seconds=4):
     end = time.monotonic() + seconds
     while time.monotonic() < end and not splash.handed() and splash.showing():
         time.sleep(0.02)
+
+
+def _copy_started_since(t):
+    """True if another copy of this program has started since `t` (the one the task launched, still starting)."""
+    try:
+        from .instance import other_copies
+        return any(p.create_time() >= t - 1 for p in other_copies())
+    except Exception:
+        return False
 
 
 def elevated_copy_started(seconds=8):
