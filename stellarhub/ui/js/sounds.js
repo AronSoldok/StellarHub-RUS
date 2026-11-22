@@ -2,7 +2,8 @@
    rules that keep it to one sound per gesture); this file connects the interface to it with a few delegated listeners,
    so modules only call SH.sound where a sound means something specific (a scan, a delete, an undo...).
 
-   - click: a pointer (or controller) activation of a button, link, dock item, tab or row, unless something more specific
+   - click: a pointer (or controller) activation of a button, link, dock item, tab or row (a plain row only where its
+     click does something: ROW_ACTS), unless something more specific
      already sounded for that same click (a toggle, a tab, the dock, a dropdown, a dialog, a delete...).
    - toggle_on / toggle_off: any .toggle or [role=switch]; tab_switch: a segmented control (.seg) changing its choice.
    - panel_open / panel_close: a dialog (the ones gamepad.js traps the focus in) opening or closing, after a click or a key:
@@ -13,8 +14,9 @@
    - hover: entering a dock item, a button, a Home tile or a row that is a button, with a real mouse movement (never
      when the page scrolls under a still pointer), at most every 70 ms.
    - hover_soft: the same for everything else that can be clicked (tabs, segmented choices, switches, checkboxes, rows
-     and cards that act, selects, links), much quieter and at most every 90 ms; never for an element inside one that
-     plays hover, nor right after a hover.
+     and cards that act, selects, links, sliders) and for the rows, list items and cards that light up under the
+     pointer (ROWS), much quieter and at most every 90 ms; never for an element inside one that plays hover, nor right
+     after a hover.
    - unavailable: pressing a disabled button.
    - app_start / admin_granted: once when the window first appears (not after a reload, not when it starts hidden).
    Preloading: the sounds a first click needs are fetched and decoded in idle time after the first paint. */
@@ -79,8 +81,42 @@ addEventListener('pointerdown', afterGesture, { capture: true, passive: true });
 addEventListener('keydown', e => { if (e.isTrusted && (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ')) afterGesture(); }, { capture: true, passive: true });
 SH.on('boot', () => { if (SH.gamepad) SH.gamepad.onButton(afterGesture); });
 
+/* ---------- rows that are not buttons ----------
+   ROWS: the rows, list items and cards drawn as plain elements (a div, an svg group) that light up under the pointer
+   (their :hover in the modules' CSS). They play hover_soft like any other secondary element. Loading placeholders and
+   rows marked unavailable (.dis) stay quiet. tests/test_sounds.py checks that every :hover in the CSS is here, is a
+   real control already covered by HOVER/SOFT, or is listed there as decorative.
+   ROW_ACTS: the ones (or the part of one) whose click does something by itself (select, expand, open, mark): a click.
+   A row that only shows things says nothing when clicked. */
+const ROWS = [
+  '.row', '.bk-row',
+  '#v-monitor .pr', '#v-monitor .dv', '#v-monitor .evt',
+  '#v-drivers .du-row', '#v-drivers .db-row', '#v-drivers .dh-row', '#v-drivers .ds-row',
+  '#v-remover .qit', '#v-remover .he',
+  '#v-updater .u-row', '#v-updater .u-card:not(:has(> .sk))', '#v-updater .u-pkr',
+  '#v-hangar .hg-srow', '#v-hangar .hg-kit', '#v-hangar .hg-qrow',
+  '#v-storage div.st-tr', '#v-storage .st-br', '#v-storage .st-dr',
+  '#v-optimizer .pstep:not(.dis)', '#v-optimizer .cl-it', '#v-optimizer .cl-tr', '#v-optimizer .st-it', '#v-optimizer .sv-it',
+  '#v-optimizer .db-it', '#v-optimizer .db-step', '#v-optimizer .sb',
+  '#v-privacy .pv-f:not(.pv-pend)', '#v-privacy .pv-ps:not(.dis)', '#v-privacy .pv-ar', '#v-privacy .pv-port',
+  '#v-privacy .pv-napp', '#v-privacy .pv-tg', '#v-privacy .pv-hi', '#v-privacy .pv-pit', '#v-privacy .pv-radar .blip',
+  '#v-benchmark .bm-hr',
+  '#v-tester .kb-stage.marking .k:not(.nd)',
+  '#v-autopilot .ap-card', '#v-autopilot .si', '#v-autopilot .lg-it',
+  'input[type=range]', 'input[type=color]',
+].join(', ');
+const ROW_ACTS = [
+  '#v-drivers .du-row', '#v-drivers .ds-row',
+  '#v-optimizer .cl-it:not(.clean, .busyrun) .cl-row', '#v-optimizer .cl-tr:not(.kept)', '#v-optimizer .st-it .st-r',
+  '#v-optimizer .db-it:not(.keep, .rmv, .d, .done)',
+  '#v-privacy .pv-napp', '#v-privacy .pv-pit .pv-pr0', '#v-privacy .pv-radar .blip',
+  '#v-storage .st-tr[data-id]:not(.file)',
+  '#v-tester .kb-stage.marking .k:not(.nd)',
+  '#v-autopilot .ap-card',
+].join(', ');
+
 /* ---------- clicks ---------- */
-const CLICKABLE = 'button, a[href], [role=button], [role=tab], [role=option], [role=menuitem], [role=checkbox], .btn, .dk, .check, summary, label[for]';
+const CLICKABLE = `button, a[href], [role=button], [role=tab], [role=option], [role=menuitem], [role=checkbox], .btn, .dk, .check, summary, label[for], ${ROW_ACTS}`;
 const TOGGLE = '.toggle, [role=switch]';
 /* what a click looked like before the page handled it (a click made by code inside another one has its own entry) */
 const pre = new WeakMap();
@@ -132,7 +168,7 @@ addEventListener('keydown', e => {
    PRIMARY plays hover. SOFT is every other thing that can be clicked: it plays hover_soft, unless it sits inside a
    primary element (that one already spoke when the pointer came in) or a hover has just played. */
 const HOVER = '.dk, .btn, .bt, button.row, .row[role=button], .row[tabindex="0"], .vcard, .tool, .lang';
-const SOFT = 'button, a[href], [role=button], [role=tab], [role=option], [role=menuitem], [role=switch], [role=checkbox], .toggle, .check, summary, label[for], select, .csel, [data-go], [tabindex="0"]';
+const SOFT = `button, a[href], [role=button], [role=tab], [role=option], [role=menuitem], [role=switch], [role=checkbox], .toggle, .check, summary, label[for], select, .csel, [data-go], [tabindex="0"], #brand, ${ROWS}`;
 const SOFT_GAP = 90;
 let movedAt = -1e9, scrolledAt = -1e9, hoverAt = -1e9;
 addEventListener('pointermove', e => { if (e.isTrusted && (e.movementX || e.movementY)) movedAt = performance.now(); }, { capture: true, passive: true });

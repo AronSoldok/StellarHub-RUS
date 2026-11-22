@@ -107,9 +107,14 @@ the files an event plays. `js/sounds.js` already gives every
 module, with no code: a click on buttons, links, dock items and rows (pointer or controller A), `toggle_on/off` on
 `.toggle`, `tab_switch` on `.seg` and `.subnav`, `panel_open/close` for the dialogs in gamepad.js's `MODALS`,
 `dropdown`, `hover` (dock items, buttons, Home tiles, rows that are buttons), `hover_soft` (every other clickable
-thing: tabs, segmented choices, switches, checkboxes, rows and cards that act, selects, links; never one inside a
-`hover` element, never right after a hover), `unavailable` on a disabled button, `navigate`, `palette_open`, `key_type` while typing in the
-palette, `toast` and the start/exit sounds. A module adds only what means something specific:
+thing: tabs, segmented choices, switches, checkboxes, rows and cards that act, selects, links, sliders; never one
+inside a `hover` element, never right after a hover), `unavailable` on a disabled button, `navigate`, `palette_open`,
+`key_type` while typing in the palette, `toast` and the start/exit sounds. A row, list item or card that is a plain
+element (a div) and lights up under the pointer (a `:hover` in its CSS) goes in `ROWS` in sounds.js (hover_soft); if
+its own click does something (select, expand, mark) also in `ROW_ACTS` (click). A new `:hover` must be one of those, a
+real control, or listed as decorative in tests/test_sounds.py (`HoverSounds.DECOR`), or the test fails. The tray
+panel has the same hover/hover_soft/click in tray-panel.js (it doesn't load sounds.js); the widget stays silent (it
+floats over games and other apps). A module adds only what means something specific:
 
 - `SH.toast(text, { kind: 'success' | 'warning' | 'error' | 'unavailable' })` (no kind: a plain toast, which keeps
   quiet right after another sound); an Undo action carries `sound: 'undo'`.

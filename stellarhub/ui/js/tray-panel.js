@@ -65,6 +65,23 @@ document.addEventListener('mouseover', e => {
   const b = e.target.closest('.mods button'); const cap = $('#capM');
   cap.textContent = b ? b.getAttribute('aria-label') : '';
 });
+/* sounds (js/sounds.js is not loaded here): the main window's rules in small. hover on the module buttons, the quick
+   actions and Open; hover_soft on the small icons (Settings, Quit); only when the pointer comes in from outside with a
+   real mouse movement. A click on a module, a quick action, Open or Settings plays click before the panel hides (the
+   main window can't: the press was not in it); the widget switch has its own widget_on/off and Quit the exit sound. */
+let movedAt = -1e9;
+addEventListener('pointermove', e => { if (e.isTrusted && (e.movementX || e.movementY)) movedAt = performance.now(); }, { capture: true, passive: true });
+document.addEventListener('pointerover', e => {
+  if (e.pointerType !== 'mouse' || e.buttons || !e.isTrusted) return;
+  const b = e.target.closest && e.target.closest('button'); if (!b || b.disabled) return;
+  if (e.relatedTarget && b.contains(e.relatedTarget)) return;
+  if (performance.now() - movedAt > 60) return;
+  SH.sound(b.matches('.ft .ico') ? 'hover_soft' : 'hover', { visible: true });
+}, { passive: true });
+document.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b && !b.disabled && e.isTrusted && e.detail > 0 && b.id !== 'quit' && b.dataset.a !== 'widget') SH.sound('click', { visible: true });
+}, true);
 document.addEventListener('click', e => {
   const m = e.target.closest('.mods button'); if (m) { go(m.dataset.m); return; }
   const a = e.target.closest('.qa button');
@@ -103,5 +120,6 @@ SH.lookChanged = async () => { await SH.loadSettings(); applyLook(); };
   await SH.loadSettings();
   applyLook();
   build(); paint(SH.tele.v); refreshState();
+  const st = state.settings; if (st.sounds !== false && +st.soundVolume > 0) SH.sound.preload(['hover', 'hover_soft', 'click']);
 })();
 })();

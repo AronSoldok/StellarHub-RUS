@@ -322,6 +322,134 @@ class Translations(unittest.TestCase):
             self.assertEqual(missing, [], lang)
 
 
+def sounds_list(name):
+    """ROWS / ROW_ACTS (sounds.js): the selectors of that list."""
+    m = re.search(r"const " + name + r" = \[(.*?)\]\.join", read("js", "sounds.js"), re.S)
+    return re.findall(r"'([^']*)'", m.group(1))
+
+
+def sounds_const(name):
+    """HOVER / SOFT / CLICKABLE (sounds.js) as written (a ${ROWS} in it stays as it is)."""
+    return re.search(r"const " + name + r" = ['`]([^'`]*)['`];", read("js", "sounds.js")).group(1)
+
+
+def no_parens(sel, keep_attrs=False):
+    """the selector without what is inside :not(), :has(), [..]: what the element itself must carry
+    (keep_attrs: [data-x=".."] stays as [data-x])"""
+    while re.search(r"\([^()]*\)", sel):
+        sel = re.sub(r"\([^()]*\)", "", sel)
+    return re.sub(r"\[([\w-]+)[^\]]*\]", r"[\1]" if keep_attrs else "", sel)
+
+
+def css_hovers():
+    """Every :hover of the main window's CSS: (file, the hovered element's compound selector)."""
+    out = []
+    for dp, _, fs in os.walk(os.path.join(UI, "css")):
+        for f in fs:
+            if not f.endswith(".css"):
+                continue
+            with open(os.path.join(dp, f), encoding="utf-8") as fh:
+                css = re.sub(r"/\*.*?\*/", "", fh.read(), flags=re.S)
+            for m in re.finditer(r"([^{}]+)\{[^{}]*\}", css):
+                for part in re.split(r",(?![^(]*\))", m.group(1)):
+                    if ":hover" not in part:
+                        continue
+                    i = part.index(":hover")
+                    base = part[:i] + re.match(r"[^\s>+~]*", part[i + 6:]).group(0)
+                    flat = no_parens(base, keep_attrs=True).strip()
+                    out.append((f, re.split(r"[\s>+~]+", flat)[-1], base.strip()))
+    return out
+
+
+def markup():
+    """The elements written in the interface's markup (index.html and every js file): (tag, classes, id, attributes)."""
+    els = []
+    files = [os.path.join(UI, "index.html")]
+    for dp, _, fs in os.walk(os.path.join(UI, "js")):
+        files += [os.path.join(dp, f) for f in fs if f.endswith(".js")]
+    for p in files:
+        with open(p, encoding="utf-8") as fh:
+            src = fh.read()
+        for m in re.finditer(r"<([a-z][a-z0-9]*)\b([^<>]*)>", src):
+            attrs = re.sub(r"\$\{[^{}]*\}", " ", m.group(2))
+            c = re.search(r'class="([^"]*)"', attrs)
+            i = re.search(r'id="([^"]*)"', attrs)
+            els.append((m.group(1), set(c.group(1).split()) if c else set(), i.group(1) if i else "", attrs))
+    return els
+
+
+class HoverSounds(unittest.TestCase):
+    """Whatever lights up under the pointer sounds (hover or hover_soft), unless it is listed here as decorative."""
+    # the :hover rules that are not a control (the compound selector of the hovered element -> why it stays quiet)
+    DECOR = {
+        "::-webkit-scrollbar-thumb": "a scroll bar",
+        ".field:has": "the frame of a select: the select inside it sounds",
+        "#v-autopilot .ap-name": "a text field (a routine's name): typed into, not clicked",
+        "#v-autopilot .si-grip": "the grip of a step row (.si), which sounds itself",
+        "#v-privacy .pv-cap": "the capabilities are buttons (they sound); the caption under the radar shares the class",
+    }
+    CONTROL = {"button", "a", "select", "summary"}
+    ACTS = re.compile(r'role="(button|tab|option|menuitem|switch|checkbox)"|tabindex="0"|data-go\b')
+
+    def test_every_hover_style_has_its_sound(self):
+        rows = sounds_list("ROWS")
+        covered, covered_ids = set(), set()
+        for s in (sounds_const("HOVER"), sounds_const("SOFT"), ", ".join(rows)):
+            covered |= set(re.findall(r"\.([\w-]+)", no_parens(s)))
+            covered_ids |= set(re.findall(r"#([\w-]+)", no_parens(s)))
+        els = markup()
+
+        def sounds(tag, cls, el_id, attrs):
+            return (tag in self.CONTROL or bool(cls & covered) or el_id in covered_ids or bool(self.ACTS.search(attrs))
+                    or any(c.startswith("sk") for c in cls))
+
+        missing = []
+        for f, last, base in css_hovers():
+            if any(base.endswith(k) or last == k for k in self.DECOR):
+                continue
+            if "::-webkit-slider-thumb" in last:
+                self.assertIn("input[type=range]", rows)                 # sliders
+                continue
+            if last.startswith("input"):
+                self.assertIn("input[type=color]", rows, base)          # the colour pickers
+                continue
+            tag = re.match(r"[a-z]*", last).group(0)
+            cls = set(re.findall(r"\.([\w-]+)", last))
+            ids = set(re.findall(r"#([\w-]+)", last))
+            attr = re.findall(r"\[([\w-]+)", last)
+            if tag in self.CONTROL or cls & covered:
+                continue
+            # the elements that carry it (a class added by an expression, `lo${blocked ? ' blk' : ''}`: its first class)
+            found = [e for e in els if (cls and cls <= e[1]) or (ids and e[2] in ids) or (not cls and not ids and attr and f" {attr[0]}=" in " " + e[3])]
+            if not found and cls:
+                first = re.findall(r"\.([\w-]+)", last)[0]
+                found = [e for e in els if first in e[1]]
+            if found and all(sounds(*e) for e in found):
+                continue
+            missing.append(f"{f}: {base}")
+        self.assertEqual(missing, [])
+
+    def test_the_rows_named_in_the_reports(self):
+        rows, acts = sounds_list("ROWS"), sounds_list("ROW_ACTS")
+        # Privacy > Overview's findings ("Secure Boot is off") and Live Monitor > Health's devices (USB, Bluetooth...)
+        self.assertIn("#v-privacy .pv-f:not(.pv-pend)", rows)
+        self.assertIn("#v-monitor .dv", rows)
+        self.assertNotIn("#v-privacy .pv-f:not(.pv-pend)", acts)              # they only show: no click
+        self.assertNotIn("#v-monitor .dv", acts)
+        self.assertTrue(set(acts) <= set(rows) | {"#v-optimizer .cl-it:not(.clean, .busyrun) .cl-row",
+                                                   "#v-optimizer .st-it .st-r", "#v-privacy .pv-pit .pv-pr0",
+                                                   "#v-storage .st-tr[data-id]:not(.file)",
+                                                   "#v-optimizer .cl-tr:not(.kept)",
+                                                   "#v-optimizer .db-it:not(.keep, .rmv, .d, .done)"})
+        self.assertIn("${ROWS}", sounds_const("SOFT"))
+        self.assertIn("${ROW_ACTS}", sounds_const("CLICKABLE"))
+
+    def test_the_tray_panel_has_its_hover_and_click(self):
+        src = read("js", "tray-panel.js")
+        self.assertIn("SH.sound(b.matches('.ft .ico') ? 'hover_soft' : 'hover', { visible: true })", src)
+        self.assertIn("b.id !== 'quit' && b.dataset.a !== 'widget') SH.sound('click', { visible: true })", src)
+
+
 # core.js + sounds.js in Node: a tiny event bus for window/document, a Web Audio stand-in that "plays" every buffer,
 # and a recorder around SH.sound that lists what really played.
 WIRING = r"""
@@ -503,6 +631,50 @@ class Wiring(unittest.TestCase):
         self.assertEqual(out["still"], [])
         self.assertEqual(out["touch"], [])
         self.assertEqual(out["files"], ["hover_soft"])
+
+    def test_rows_that_light_up_tick_softly_and_click_only_when_they_act(self):
+        out = self.run_js(r"""
+          /* the same tiny DOM: an element matches the one selector it is named after */
+          const elt = (token, parent = null, x = {}) => ({ token, parent, disabled: false, dataset: {}, getAttribute: () => null,
+            classList: { contains: () => false },
+            matches: s => s.split(',').map(x => x.trim()).includes(token),
+            closest(s) { return this.matches(s) ? this : parent ? parent.closest(s) : null; },
+            contains(x) { for (let n = x; n; n = n.parent) if (n === this) return true; return false; }, ...x });
+          const view = elt('#v-privacy'),
+            finding = elt('#v-privacy .pv-f:not(.pv-pend)', view), text = elt('b', finding), fix = elt('.btn', finding),
+            device = elt('#v-monitor .dv', view), driver = elt('#v-drivers .du-row', view),
+            pending = elt('div', view), planOff = elt('div', view),            /* a row still loading, a plan step marked .dis */
+            slider = elt('input[type=range]', view), dead = elt('input[type=range]', view, { disabled: true });
+          SH.sound.preload(['hover', 'hover_soft', 'click']); await tick(30);
+          const move = () => fire('pointermove', { movementX: 2, movementY: 1, target: view });
+          const enter = (el, from = view) => { move(); fire('pointerover', { target: el, relatedTarget: from }); };
+          const take = async (fn, ms = 120) => { played.length = 0; await fn(); await tick(ms); return played.slice(); };
+          const press = el => { fire('pointerdown', { target: el }); fire('click', { target: el }); };
+          const r = {};
+          r.finding = await take(() => enter(finding));
+          r.insideFinding = await take(() => enter(text, finding));      /* moving over its text: still the same row */
+          r.fixButton = await take(() => enter(fix, finding));            /* its Fix button is a primary one */
+          r.device = await take(() => enter(device));
+          r.pending = await take(() => enter(pending));
+          r.planOff = await take(() => enter(planOff));
+          r.slider = await take(() => enter(slider));
+          r.deadSlider = await take(() => enter(dead));
+          r.clickFinding = await take(() => press(text));                /* it only shows: no click */
+          r.clickDevice = await take(() => press(device));
+          r.clickDriver = await take(() => press(driver));               /* selecting an update: a click */
+          out(r);
+        """)
+        self.assertEqual(out["finding"], ["hover_soft"])
+        self.assertEqual(out["insideFinding"], [])
+        self.assertEqual(out["fixButton"], ["hover"])
+        self.assertEqual(out["device"], ["hover_soft"])
+        self.assertEqual(out["pending"], [])
+        self.assertEqual(out["planOff"], [])
+        self.assertEqual(out["slider"], ["hover_soft"])
+        self.assertEqual(out["deadSlider"], [])
+        self.assertEqual(out["clickFinding"], [])
+        self.assertEqual(out["clickDevice"], [])
+        self.assertEqual(out["clickDriver"], ["click"])
 
 
 if __name__ == "__main__":
