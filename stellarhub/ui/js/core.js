@@ -275,12 +275,21 @@ function assemble(root, base = 0, step = 40, sel = '[data-asm]') {
 const tickers = new Set(); let last = performance.now();
 /* The tickers (springs, charts, the 3D scene) do not need the display's refresh rate: on a 144 or 165 Hz laptop screen
    every extra frame is a full-window composite for the GPU. They run at most ~70 times a second, ~30 on battery. */
+/* Home left alone (nothing touched for 8 s, no sheet or palette open): only ambient motion is left there (the stars, the
+   fans, the floating 3D model, the live bars), and ~30 a second is plenty for it. Modules keep their rate: a benchmark or a
+   test runs without input. */
+const calm = () => state.view === 'home' && !state.palOpen && !state.setOpen && !SH.homeAnimating && !!SH.isIdle && SH.isIdle();
+/* At ~30 a second the loop sleeps on a timer between two ticks instead of asking for every frame (on a 134 Hz screen an empty
+   frame every 7 ms still woke the page and the compositor for nothing). At full rate it asks for every frame as before: a
+   timer that short may wait 15 ms on Windows. */
+const later = (ms, gap) => { if (gap > 12 && ms > 8) setTimeout(() => requestAnimationFrame(loop), ms - 6); else requestAnimationFrame(loop); };
 function loop(t) {
-  if (t - last < (state.lite ? 28 : 12)) { requestAnimationFrame(loop); return; }
+  const gap = state.lite || calm() ? 28 : 12;
+  if (t - last < gap) { later(gap - (t - last), gap); return; }
   const dt = Math.min(.05, (t - last) / 1000); last = t; for (const fn of tickers) { try { fn(dt, t); } catch (e) { console.error(e); tickers.delete(fn); } }
   /* window in the tray or minimized (WebView2 may still deliver frames then): nobody sees the springs, charts or 3D scene, so
      the loop only checks back a few times a second instead of every frame, and goes back to full speed when it is shown again */
-  if (pageHidden()) setTimeout(() => requestAnimationFrame(loop), 250); else requestAnimationFrame(loop); }
+  if (pageHidden()) setTimeout(() => requestAnimationFrame(loop), 250); else later(gap, gap); }
 requestAnimationFrame(loop);
 
 /* ---------- formatting ---------- */

@@ -725,7 +725,7 @@ function frame(dt, t) {
   if (moving) adapt(dt);
   /* the slow floating (and the fans) need 30 fps, not 60; the frame time they skip is added to the next one */
   R.acc += dt; const still = !dragging && !springs && !dirty;
-  if (R.acc < (still || lite ? .031 : 0)) return;
+  if (R.acc < (still || lite ? .026 : 0)) return;  /* (.026: the loop ticks every ~28-30 ms at its calm pace; .031 skipped every other tick there, 15 fps) */
   const dtr = R.acc; R.acc = 0;
   if (R.lowFps && !dragging && !springs && !dirty && (R.skip = !R.skip)) return;
   dirty = false;

@@ -168,20 +168,20 @@ function liveHTML(area) {
 const uptime = s => SH.fmtUptime(s);  /* the same "8 days 11 h" as Home and Live Monitor, in the interface language */
 
 let root = null, tick = null, offs = [], tiles = [], barEl = {};
-const gfan = { sp: new Spring(0, 30, 10), boost: new Spring(0, 60, 14), anims: [], rate: -1, ro: null };
+const gfan = { sp: new Spring(0, 30, 10), boost: new Spring(0, 60, 14), els: [], on: false, rate: 0, ang: 0, ro: null };
 /* Fits the wrapper around the GPU drawing to the exact box the SVG's viewBox takes inside the tile (the art is "contain"-fitted
    and centred), so the fan overlays, positioned in percent of it, stay on the fan positions at any window size. */
 function fitGpuArt() {
   const box = root && $('.artbox', root); if (!box) return; const a = box.parentElement; const w = a.clientWidth, h = a.clientHeight; if (!w || !h) return;
   const k = Math.min(w / GPU_VB[0], h / GPU_VB[1]); box.style.width = (GPU_VB[0] * k).toFixed(2) + 'px'; box.style.height = (GPU_VB[1] * k).toFixed(2) + 'px';
 }
-/* one infinite 1-second turn per fan; speed = playbackRate in turns per second (updatePlaybackRate keeps the angle continuous) */
-function fansRun(on, rate) {
-  if (!gfan.anims.length) return;
-  if (!on) { if (gfan.running !== false) { gfan.anims.forEach(a => a.pause()); gfan.running = false; } return; }
-  rate = Math.max(.0001, rate);
-  if (gfan.running !== true) { gfan.anims.forEach(a => { a.updatePlaybackRate(rate); a.play(); }); gfan.running = true; gfan.rate = rate; return; }
-  if (Math.abs(rate - gfan.rate) > Math.max(.004, gfan.rate * .01)) { gfan.rate = rate; gfan.anims.forEach(a => a.updatePlaybackRate(rate)); }
+/* the fans turn at `rate` turns per second. The loop turns them (each on its own layer: will-change), at the loop's pace: an
+   infinite animation ran at the screen's refresh rate (134 Hz) and repainted the drawing every frame, Home idle or not */
+function fansRun(on, rate) { gfan.on = on && gfan.els.length > 0; gfan.rate = on ? rate : 0; }
+function fansTurn(dt) {
+  if (!gfan.on) return;
+  gfan.ang = (gfan.ang + gfan.rate * 360 * dt) % 360; const tr = `rotate(${gfan.ang.toFixed(2)}deg)`;
+  for (const f of gfan.els) f.style.transform = tr;
 }
 const fansOn = () => !!root && !document.hidden && (SH.state.view === 'home' || SH.homeAnimating);
 const bars = { vram: new Spring(0, 60, 14), ram: new Spring(0, 60, 14), disk: new Spring(0, 60, 14) };
@@ -219,8 +219,7 @@ function mount(el, ctx) {
   });
   offs.push(SH.tele.on(read)); read();
   barEl = {};
-  gfan.anims = $$('.gfan', root).map(f => f.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 1000, iterations: Infinity, easing: 'linear' }));
-  gfan.anims.forEach(a => a.pause()); gfan.running = false; gfan.rate = -1;
+  gfan.els = $$('.gfan', root); gfan.on = false; gfan.rate = 0;
   /* the observer reports the first size after the first layout and every change after it, so the fit never forces a layout of its own
      (the window resize listener did: 45 ms inside the resize event at start); without ResizeObserver the old way */
   const art = $('.a-gpu .art', root);
@@ -235,7 +234,7 @@ function mount(el, ctx) {
       const still = SH.effInt() === 'min', lite = SH.state.lite;
       const fv = SH.tele.v.fanGpu, gu = SH.tele.v.gpu; gfan.sp.t = still ? 0 : !nil(fv) ? fv / 100 * 1.1 : .15 + (gu || 0) / 100 * .9; gfan.sp.step(dt); gfan.boost.step(dt);
       const rps = (gfan.sp.v + gfan.boost.v * 1.6) * (lite ? .5 : 1);
-      fansRun(!still && rps > .01 && !(lite && SH.idleFor() >= 45000), rps);
+      fansRun(!still && rps > .01 && !(lite && SH.idleFor() >= 45000), rps); fansTurn(dt);
     }
     for (const k in bars) { const b = bars[k]; if (b.idle && b.drawn) continue; b.step(dt); if (Math.abs(b.v - b.t) < .002 && Math.abs(b.vel) < .06) b.set(b.t); const e = barEl[k] || (barEl[k] = $(`[data-b="${k}"]`, root)); if (e) e.style.transform = `scaleX(${Math.max(0, b.v).toFixed(4)})`; b.drawn = true; }
     for (const t of tiles) {
@@ -284,7 +283,7 @@ function intro(quick) {
 function onVis() { if (document.hidden) fansRun(false); }
 function unmount() {
   if (tick) tickers.delete(tick); tick = null; offs.forEach(f => f()); offs = []; tiles = [];
-  gfan.anims.forEach(a => a.cancel()); gfan.anims = []; gfan.running = false; if (gfan.ro) gfan.ro.disconnect(); gfan.ro = null;
+  gfan.els = []; gfan.on = false; if (gfan.ro) gfan.ro.disconnect(); gfan.ro = null;
   removeEventListener('resize', fitGpuArt); document.removeEventListener('visibilitychange', onVis); root = null; barEl = {};
 }
 
