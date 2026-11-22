@@ -537,6 +537,78 @@ Get-NetIPConfiguration | Where-Object { $_.NetAdapter.Status -eq 'Up' } | ForEac
     mac=$_.NetAdapter.MacAddress; speed=$_.NetAdapter.LinkSpeed; media="$($_.NetAdapter.PhysicalMediaType)" } }"""
 
 
+def _dns_from_dhcp(guid):
+    """Whether the adapter's IPv4 DNS comes from DHCP: its NameServer value exists and is empty (as _NET_PS reads it;
+    a missing key or value is False there too)."""
+    if not guid:
+        return False
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,
+                            r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces" + "\\" + str(guid)) as k:
+            return winreg.QueryValueEx(k, "NameServer")[0] == ""
+    except OSError:
+        return False
+
+
+def _mac(raw):
+    """"EC3A567C5378" as Get-NetAdapter's MacAddress shows it: "EC-3A-56-7C-53-78"."""
+    s = re.sub(r"[^0-9A-Fa-f]", "", str(raw or "")).upper()
+    return "-".join(s[i:i + 2] for i in range(0, len(s), 2)) if len(s) == 12 else (str(raw) if raw else "")
+
+
+def _net_wmi():
+    """The rows _NET_PS returns, from WMI inside this process: Get-NetIPConfiguration alone took ~3 s (it loads the
+    NetTCPIP module); these four queries take ~0.1 s. The adapters are the visible ones that are up (Get-NetAdapter
+    leaves the hidden ones out, and so does this class)."""
+    from . import wmi
+    from .system import _PHYS, _link_speed
+    ns = r"root\StandardCimv2"
+    ads = wmi.query(ns, "MSFT_NetAdapter", ["Name", "InterfaceDescription", "InterfaceIndex", "InterfaceOperationalStatus",
+                                            "Hidden", "DeviceID", "NetworkAddresses", "PermanentAddress", "Speed",
+                                            "ReceiveLinkSpeed", "TransmitLinkSpeed", "NdisPhysicalMedium"])
+    ads = [a for a in ads if a.get("InterfaceOperationalStatus") == 1 and not a.get("Hidden")]
+    if not ads:
+        return []
+
+    def active(r):  # the ActiveStore (what Get-NetIPConfiguration shows), not the persistent one
+        return r.get("Store") in (None, 1)
+
+    def add(d, k, v):
+        lst = d.setdefault(k, [])
+        if v and v not in lst:
+            lst.append(v)
+    ips, gws, dns = {}, {}, {}
+    for r in wmi.query(ns, "MSFT_NetIPAddress", ["InterfaceIndex", "IPAddress", "Store"], "AddressFamily=2"):
+        if active(r):
+            add(ips, r.get("InterfaceIndex"), r.get("IPAddress"))
+    for r in wmi.query(ns, "MSFT_NetRoute", ["InterfaceIndex", "NextHop", "Store"], "DestinationPrefix='0.0.0.0/0'"):
+        if active(r):
+            add(gws, r.get("InterfaceIndex"), r.get("NextHop"))
+    for r in wmi.query(ns, "MSFT_DNSClientServerAddress", ["InterfaceIndex", "ServerAddresses"], "AddressFamily=2"):
+        for x in (r.get("ServerAddresses") or []):
+            add(dns, r.get("InterfaceIndex"), str(x) if x else None)
+    out = []
+    for a in ads:
+        i = a.get("InterfaceIndex")
+        net = a.get("NetworkAddresses")
+        speed = a.get("Speed") or max(a.get("ReceiveLinkSpeed") or 0, a.get("TransmitLinkSpeed") or 0)
+        out.append({"alias": a.get("Name"), "index": i, "desc": a.get("InterfaceDescription"), "ipv4": ips.get(i, []),
+                    "gw": gws.get(i, []), "dns": dns.get(i, []), "dhcpDns": _dns_from_dhcp(a.get("DeviceID")),
+                    "mac": _mac((net[0] if isinstance(net, list) and net else net) or a.get("PermanentAddress")),
+                    "speed": _link_speed(speed),
+                    "media": _PHYS.get(a.get("NdisPhysicalMedium"), str(a.get("NdisPhysicalMedium") or ""))})
+    return out
+
+
+def _net_adapters():
+    try:
+        return _net_wmi()
+    except Exception as e:  # no pythonnet, a broken WMI repository...: the PowerShell script gives the same rows
+        print("[monitor] WMI failed, using PowerShell:", e, flush=True)
+    return ps_json(_NET_PS, timeout=30, as_list=True)
+
+
 def _established_by_pid():
     apps = {}
     try:
@@ -549,8 +621,8 @@ def _established_by_pid():
 
 
 def network():
-    # PowerShell (adapters), netsh (Wi-Fi) and the connection table do not depend on each other: all at once
-    cfg, wifi, apps = gather(lambda: ps_json(_NET_PS, timeout=30, as_list=True), _wifi, _established_by_pid)
+    # the adapters, the Wi-Fi API and the connection table do not depend on each other: all at once
+    cfg, wifi, apps = gather(_net_adapters, _wifi, _established_by_pid)
     byname = {}
     for pid, n in apps.items():
         try:
@@ -649,6 +721,26 @@ def _save_dns(alias, dhcp, servers):
     return bid
 
 
+def _run_netsh(cmds):
+    """Runs the netsh commands in order and flushes the DNS cache. Returns None, or the error of the first one that
+    failed (netsh's own text, in this Windows' console code page) and does not run the rest."""
+    from .ps import _decode
+    for c in cmds:
+        try:
+            r = subprocess.run(c, capture_output=True, timeout=15, creationflags=NO_WINDOW)
+        except subprocess.TimeoutExpired:
+            return tr("Windows took too long to answer. Try again.")
+        except (OSError, subprocess.SubprocessError):
+            return tr("netsh failed.")
+        if r.returncode != 0:
+            return _decode(r.stdout or b"", "utf-8").strip() or tr("netsh failed.")
+    try:
+        subprocess.run(["ipconfig", "/flushdns"], capture_output=True, timeout=10, creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        pass   # the change is made; the old answers expire from the cache on their own
+    return None
+
+
 def dns_undo(bid):
     """Puts back the DNS an earlier set_dns replaced. Needs administrator."""
     if not _admin():
@@ -656,12 +748,8 @@ def dns_undo(bid):
     import json
     with open(os.path.join(DNS_BACKUPS, os.path.basename(str(bid)) + ".json"), encoding="utf-8") as fh:
         d = json.load(fh)
-    for c in _dns_cmds(d["alias"], d["dhcp"], d["servers"]):
-        r = subprocess.run(c, capture_output=True, timeout=15, creationflags=NO_WINDOW)
-        if r.returncode != 0:
-            return {"ok": False, "error": r.stdout.decode("cp850", "replace").strip() or tr("netsh failed.")}
-    subprocess.run(["ipconfig", "/flushdns"], capture_output=True, timeout=10, creationflags=NO_WINDOW)
-    return {"ok": True}
+    err = _run_netsh(_dns_cmds(d["alias"], d["dhcp"], d["servers"]))
+    return {"ok": False, "error": err} if err else {"ok": True}
 
 
 def set_dns(alias, mode):
@@ -690,12 +778,10 @@ def set_dns(alias, mode):
                 ["netsh", "interface", "ipv4", "add", "dnsservers", f"name={alias}", f"address={b}", "index=2", "validate=no"]]
     else:
         return {"ok": False, "error": tr("Unknown DNS mode.")}
-    for c in cmds:
-        r = subprocess.run(c, capture_output=True, timeout=15, creationflags=NO_WINDOW)
-        if r.returncode != 0:
-            return {"ok": False, "error": r.stdout.decode("cp850", "replace").strip() or tr("netsh failed.")}
-    subprocess.run(["ipconfig", "/flushdns"], capture_output=True, timeout=10, creationflags=NO_WINDOW)
-    return {"ok": True, "backup": backup}
+    err = _run_netsh(cmds)
+    # the backup also goes with an error: a first command that went through (the first server set) already changed
+    # the adapter, and undo is how the user gets their own DNS back
+    return {"ok": False, "error": err, "backup": backup} if err else {"ok": True, "backup": backup}
 
 
 # ======================================================================================= battery
