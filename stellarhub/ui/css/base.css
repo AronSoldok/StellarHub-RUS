@@ -294,6 +294,10 @@ html[data-int=min] .sk::after{animation:none}
 #views{position:fixed;inset:var(--top) 0 0 0}
 .view{position:absolute;inset:0;visibility:hidden;pointer-events:none}
 .view.is-on{visibility:visible;pointer-events:auto}
+/* a module that is not on screen keeps its DOM and its layout but is not rendered: visibility alone still had every
+   visited module's subtree styled, painted and animated each frame (Home idle went from 46 % to 86 % of a core in the
+   WebView2 processes after visiting the modules; 37 % with this). The leaving view keeps .is-on until its fade ends. */
+.view:not(.is-on){content-visibility:hidden}
 .mod{position:absolute;inset:6px 30px var(--dockspace);display:flex;flex-direction:column}
 .mhead{display:flex;align-items:flex-end;gap:var(--sp-lg);margin-bottom:16px}
 .mhead .ttl{flex:1;min-width:0}
