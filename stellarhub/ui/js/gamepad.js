@@ -315,7 +315,7 @@ function setCur(el, snap) {
     try { el.focus({ preventScroll: true }); } catch {}
   }
   reveal(el); aimRing(snap);
-  scrollerCache = null;
+  scrollerCache = null; hkAt = 0;
   if (scope() === document.body && !insideRoot()) viewMemo.set(state.view, el);
   paintTip(); hintKey = ''; if (mode) paintHints();
 }
@@ -500,7 +500,8 @@ function hintItems() {
   if (state.setOpen && sc.id === 'setO') return [['A', aLabel(cur)], ...range, ['B', t('Close')], ['LB RB', t('Sections')], ['MENU', t('Close')]];
   if (state.palOpen) return [['A', t('Open')], ['B', t('Close')], ['Y', t('Close')]];
   if (sc !== document.body) return [['A', aLabel(cur)], ...range, ['B', t('Close')]];
-  const tabs = $('#v-' + state.view + ' .subnav');
+  const tabs = $('#v-' + state.view + ' .subnav'), hk = hooked();
+  if (hk) return [['A', aLabel(cur)], ...range, ...hk.hints(), ['B', t('Back')], ...x, ['LT RT', t('Modules')], ['Y', t('Search')], ['MENU', t('Settings')]];
   return [['A', aLabel(cur)], ...range, ['B', t('Back')], ...x, ...(tabs ? [['LB RB', t('Tabs')]] : []), ['LT RT', t('Modules')], ['Y', t('Search')], ['MENU', t('Settings')], ['VIEW', t('Home')]];
 }
 
@@ -629,14 +630,24 @@ function poll(gp, ts, dt) {
   }
   const active = edges.length || dir || Math.hypot(rx, ry) > .35;
   if (!mode) { if (active) { setMode(true); st.dir = dir; st.next = ts + DELAY; st.since = ts; } return; }
-  for (const i of edges) if (i < 12 || i > 15) { if (listeners.size && consumed) { consumed = false; continue; } press(i); }
+  const hk = hooked();
+  for (const i of edges) if (i < 12 || i > 15) { if (listeners.size && consumed) { consumed = false; continue; } if (hk && hk.press(NAMES[i])) { SH.sound.gesture(); continue; } press(i); }
   if (dir) {
     if (dir !== st.dir) { st.dir = dir; st.next = ts + DELAY; st.since = ts; move(dir); }
     else if (ts >= st.next) { st.next = ts + (ts - st.since > 1400 ? FAST : REPEAT); move(dir); }
   } else st.dir = null;
-  if (Math.hypot(rx, ry) > RDZ) stickScroll(rx, ry, dt);
+  if (hk) hk.stick(rx, ry, dt, n => !!bs[B[n]]);
+  else if (Math.hypot(rx, ry) > RDZ) stickScroll(rx, ry, dt);
 }
 let consumed = false, scrollerCache = null;
+/* ---------- a view that takes the right stick and a few buttons while the focus is in it (the Home 3D model orbits) ----------
+   SH.gamepad.setHook({ owns(el) -> true while it wants them (el = the focus), stick(x, y, dt, held) every frame (raw axes,
+   held(name) -> that button is down), press(name) -> true when it used the press, hints() -> [[glyphs, label], ...] }) */
+let hook = null, hkAt = 0, hkVal = null;
+function hooked() {
+  const now = performance.now(); if (now - hkAt < 150) return hkVal; hkAt = now;
+  return (hkVal = hook && !capture && !editing() && !insideRoot() && !state.palOpen && !state.setOpen && scope() === document.body && hook.owns(cur) ? hook : null);
+}
 function stickScroll(rx, ry, dt) {
   if (editing()) return;
   const k = v => { const a = Math.abs(v); return Math.sign(v) * ((a - RDZ) / (1 - RDZ)) ** 2; };
@@ -790,6 +801,9 @@ SH.gamepad = {
   /* every button press while a controller is connected: fn({ index, name, pad }) */
   onButton(fn) { listeners.add(fn); return () => listeners.delete(fn); },
   focus(el) { if (el) { cur = null; setCur(el, true); } },
+  /* a view that takes the right stick and some buttons while the focus is in it: see hooked() above; null removes it */
+  setHook(h) { hook = h || null; hkAt = 0; hintKey = ''; if (mode) paintHints(); },
+  get hook() { return hook; },
   move, glyph, BUTTONS: B,
   /* extra selectors that count as an overlay (a custom dialog), so the focus stays inside it */
   addOverlay(sel) { custom.push(sel); },

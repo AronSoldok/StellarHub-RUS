@@ -15,5 +15,8 @@
   "Laptop": "笔记本",
   "3D model": "3D 模型",
   "Your PC in 3D: drag to rotate it and hover a component to see where it is.": "3D 展示你的电脑：拖动可旋转，悬停在组件上可查看其位置。",
-  "Drag to rotate it. Scroll to zoom in.": "拖动可旋转，滚动滚轮可缩放。"
+  "Drag to rotate it. Scroll to zoom in.": "拖动可旋转，滚动滚轮可缩放。",
+  "Rotate, press to reset": "旋转，按下复位",
+  "Zoom": "缩放",
+  "Right stick to rotate it, LB and RB to zoom, press the stick to reset.": "用右摇杆旋转，LB 和 RB 缩放，按下右摇杆复位视图。"
 }
