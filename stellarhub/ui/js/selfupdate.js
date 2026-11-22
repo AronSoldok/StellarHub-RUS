@@ -116,7 +116,7 @@ async function start() {
   try { r = await SH.engine('selfupdate', 'start'); } catch (e) { failView(e.message); return; }
   if (!r || !r.ok) { failView((r && r.error) || t('The updater did not start.')); return; }
   if (r.mode === 'uac') $('#suHint', box).textContent = t('Windows may ask for permission once.');
-  const at = r.at || Date.now() / 1000; let last = Date.now(), lastSt = '';
+  let at = r.at || Date.now() / 1000, last = Date.now(), lastSt = '', again = 0;
   const poll = async () => {
     if (!running || !box) return;
     let s = null; try { s = await SH.engine('selfupdate', 'state'); } catch {}
@@ -128,6 +128,18 @@ async function start() {
         $('#suNow', box).textContent = s.total ? t('Downloading, {got} of {total}', { got: mb(s.got) || '0 MB', total: mb(s.total) }) : t('Downloading…'); }
       else if (s.st === 'verify') { stepTo('verify'); bar(1); $('#suNow', box).textContent = t('Checking the download…'); }
       else if (s.st === 'ready') { finish(s.ver); return; }
+      else if (s.st === 'staged') {
+        /* the click joined a background download already running (an all-users install's update task ignores a second
+           run while one is going): that run stops at "staged". Start the updater again once it has ended: it reuses
+           the checked file and goes on to "ready". If it stops there again, the update installs at the next start. */
+        if (again++) { running = false; close(); stagedVer = s.ver || stagedVer; paintSettings(); SH.toast(`${t('StellarHub {v} is ready', { v: s.ver || '' })} ${t('It installs by itself the next time you open StellarHub.')}`); return; }
+        stepTo('verify'); bar(1); $('#suNow', box).textContent = t('Checking the download…');
+        await new Promise(res => setTimeout(res, 1500)); if (!running || !box) return;
+        let r2; try { r2 = await SH.engine('selfupdate', 'start'); } catch (e) { failView(e.message); return; }
+        if (!r2 || !r2.ok) { failView((r2 && r2.error) || t('The updater did not start.')); return; }
+        if (r2.mode === 'uac') $('#suHint', box).textContent = t('Windows may ask for permission once.');
+        at = r2.at || Date.now() / 1000; last = Date.now(); lastSt = '';
+      }
       else if (s.st === 'uptodate') { running = false; close(); SH.toast(t('You are on the latest version.')); return; }
       else if (s.st === 'cancelled') { running = false; close(); SH.toast(t('Update cancelled.')); return; }
       else if (s.st === 'failed') { failView((WHY[s.why] || (() => s.error || t('Something went wrong.')))()); return; }

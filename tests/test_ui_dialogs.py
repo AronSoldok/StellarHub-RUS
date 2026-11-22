@@ -257,6 +257,36 @@ class Dialogs(unittest.TestCase):
         self.assertIn("if (e.target.closest('#pvPlanGo')) { if (!planRun) runPlan(); return; }", src)
         self.assertRegex(js_function(src, "runPlan"), r"for \(const f of fs\) \{ if \(run\.stop\) break;[\s\S]*finally \{ planRun = null; \}")
 
+    def test_self_update_click_that_joins_a_background_download_still_installs(self):
+        start = js_function(read("js", "selfupdate.js"), "start")
+        out = self.run_js(r"""
+          let running = false, stagedVer = null; const WHY = {}, mb = n => n + ' B';
+          let box = document.body.appendChild(new El('div')); box.innerHTML = '<span id="suNow"></span><span id="suHint"></span>';
+          const log = [], progressView = noop, stepTo = noop, bar = noop, paintSettings = noop;
+          const failView = x => { log.push('fail:' + x); running = false; }, finish = v => log.push('finish:' + v), close = () => { log.push('close'); box = null; };
+          SH.toast = x => log.push('toast:' + x);
+          /* the engine: Update joins the update task's background run (state from its own start), which ends "staged" */
+          let script = [], starts = 0;
+          SH.engine = async (m, fn) => { if (fn === 'start') { starts++; return { ok: true, mode: 'task', at: starts * 100 }; }
+            return script.length > 1 ? script.shift() : script[0]; };
+          """ + start + r"""
+          const run = async states => { script = states; await start(); for (let i = 0; i < 40 && running && !log.length; i++) await tick(200); return log.slice(); };
+          script = [{ st: 'download', ts: 101, got: 1, total: 2 }, { st: 'staged', ts: 102, ver: '2.2.0' }];
+          /* after the second start the updater reuses the file and says ready */
+          const orig = SH.engine; SH.engine = async (m, fn) => { const r = await orig(m, fn); if (fn === 'start' && starts === 2) script = [{ st: 'checking', ts: 201 }, { st: 'ready', ts: 202, ver: '2.2.0' }]; return r; };
+          const first = await run(script);
+          /* staged twice: no endless loop and no "stopped answering": it says it installs at the next start */
+          log.length = 0; running = false; starts = 0; box = document.body.appendChild(new El('div')); box.innerHTML = '<span id="suNow"></span><span id="suHint"></span>';
+          SH.engine = async (m, fn) => { if (fn === 'start') { starts++; return { ok: true, mode: 'task', at: starts * 100 }; } return { st: 'staged', ts: starts * 100 + 1, ver: '2.2.0' }; };
+          await start(); for (let i = 0; i < 40 && running; i++) await tick(200);
+          out({ first, second: log, starts, stagedVer });
+        """)
+        self.assertEqual(out["first"], ["finish:2.2.0"])
+        self.assertEqual(out["starts"], 2)
+        self.assertEqual(out["second"][0], "close")
+        self.assertTrue(out["second"][1].startswith("toast:StellarHub 2.2.0 is ready"))
+        self.assertEqual(out["stagedVer"], "2.2.0")
+
     def test_update_confirmation_is_a_known_dialog(self):
         for f, pat in (("gamepad.js", r"const OVERLAYS = \[(.*?)\];"), ("gamepad.js", r"const MODALS = \[(.*?)\];"),
                        ("sounds.js", r"const MODALS = '(.*?)';")):
