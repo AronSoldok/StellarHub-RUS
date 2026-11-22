@@ -252,11 +252,27 @@ def is_within_real(child, parent):
 
 
 def is_reparse_point(path):
+    """True for a junction, symlink or other reparse point. When Windows can't say (the call fails: no restype made
+    INVALID_FILE_ATTRIBUTES -1, which read as "a link", and the quarantine then removed a real file as one) the
+    answer comes from lstat; a path that can't be read at all is not a link."""
     try:
-        attrs = ctypes.windll.kernel32.GetFileAttributesW(str(path))
-        return attrs != 0xFFFFFFFF and bool(attrs & 0x400)
+        attrs = _GetFileAttributesW(str(path)) & 0xFFFFFFFF
     except Exception:
+        attrs = 0xFFFFFFFF
+    if attrs != 0xFFFFFFFF:
+        return bool(attrs & 0x400)
+    try:
+        return bool(os.lstat(path).st_file_attributes & 0x400)
+    except (OSError, ValueError, AttributeError):
         return False
+
+
+try:
+    _GetFileAttributesW = ctypes.windll.kernel32.GetFileAttributesW
+    _GetFileAttributesW.argtypes, _GetFileAttributesW.restype = [wintypes.LPCWSTR], wintypes.DWORD
+except (AttributeError, OSError):
+    def _GetFileAttributesW(_p):
+        return 0xFFFFFFFF
 
 
 _NOT_ALNUM = re.compile(r"[^a-z0-9]")

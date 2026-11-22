@@ -310,6 +310,37 @@ class WaitingForRestart(unittest.TestCase):
         self.assertNotIn(self.sids[1], ids)
 
 
+class ReparseUnknown(unittest.TestCase):
+    """GetFileAttributesW failing (INVALID_FILE_ATTRIBUTES, -1 without a restype) must not make a real file a "link":
+    the quarantine deletes links outright instead of keeping them."""
+
+    def test_a_real_file_stays_a_file_and_is_quarantined(self):
+        import ctypes
+        tmp = tempfile.mkdtemp(prefix="mrq_rp_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        f = os.path.join(tmp, "MiniRevoTestReal.dat")
+        with open(f, "w") as fh:
+            fh.write("keep me")
+        target, link = os.path.join(tmp, "t"), os.path.join(tmp, "MiniRevoTestJ")
+        os.makedirs(target)
+        subprocess.run(["cmd", "/c", "mklink", "/J", link, target], capture_output=True)
+        fail = mock.Mock(return_value=-1)
+        with mock.patch.object(ctypes.windll.kernel32, "GetFileAttributesW", fail), \
+                mock.patch.object(paths, "_GetFileAttributesW", fail, create=True):
+            self.assertFalse(paths.is_reparse_point(f))
+            self.assertFalse(paths.is_reparse_point(os.path.join(tmp, "missing")))
+            if os.path.lexists(link):
+                self.assertTrue(paths.is_reparse_point(link))       # the answer then comes from lstat
+            r = quarantine.remove({"id": "t", "name": "MiniRevo Test App", "location": ""},
+                                  [{"kind": "file", "target": f}], [])
+        self.addCleanup(quarantine.delete_session, r["session"])
+        s = next(x for x in quarantine.sessions() if x["id"] == r["session"])
+        self.assertTrue(s["items"][0]["restorable"])
+        quarantine.restore(r["session"])
+        with open(f) as fh:
+            self.assertEqual(fh.read(), "keep me")
+
+
 class BatchUninstall(unittest.TestCase):
     def test_one_unknown_program_does_not_stop_the_batch(self):
         from stellarhub.engine import remover
