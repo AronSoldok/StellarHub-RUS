@@ -729,6 +729,8 @@ function confirmDlg(o, onYes) {
   dlg.innerHTML = `<div class="scrim"></div><div class="box" role="dialog" aria-label="${esc(o.title)}"><span class="bi">${ic(o.danger === false ? 'info' : 'alert')}</span>
     <h3>${esc(o.title)}</h3><p>${esc(o.text)}</p>
     <div class="row-btns"><button class="btn ghost" data-d="no">${_t('Cancel')}</button><button class="btn ${o.danger === false ? 'pri' : 'danger'}" data-d="yes">${esc(o.yes)}</button></div></div>`;
+  /* the element is reused: the fade of the one closed just before must not hide this one when it ends */
+  const my = dlg._tok = (dlg._tok || 0) + 1;
   dlg.classList.add('on');
   anim($('.scrim', dlg), [{ opacity: 0 }, { opacity: 1 }], { d: 200 });
   anim($('.box', dlg), [{ opacity: 0, transform: 'translate3d(0,12px,0) scale(.94)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }], { d: 380, e: EASE.spring });
@@ -740,7 +742,7 @@ function confirmDlg(o, onYes) {
     if (shut) return; shut = true;
     document.removeEventListener('keydown', onKey, true);
     anim($('.scrim', dlg), [{ opacity: 1 }, { opacity: 0 }], { d: 160 });
-    anim($('.box', dlg), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(0,6px,0) scale(.97)' }], { d: 160 }).finished.then(() => dlg.classList.remove('on')).catch(() => {});
+    anim($('.box', dlg), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translate3d(0,6px,0) scale(.97)' }], { d: 160 }).finished.then(() => { if (dlg._tok === my) dlg.classList.remove('on'); }).catch(() => {});
     if (yes) onYes();
   }
   document.addEventListener('keydown', onKey, true);
