@@ -213,15 +213,15 @@ _NO_BATTERY = {"battery": None, "charging": None, "batterySecs": None, "batteryP
                "batteryCycles": None, "batteryDesignWh": None, "batteryFullWh": None}
 # the battery and hardware-size fields of a telemetry sample for each fake PC (the live loads stay this PC's own)
 _TELE = {
-    "desktop": {**_NO_BATTERY, "ramTotal": 32.0, "diskTotal": 1863, "igpu": None, "vramTotal": 12},
+    "desktop": {**_NO_BATTERY, "ramTotal": 32.0, "diskUsed": 812, "diskTotal": 1863, "igpu": None, "vramTotal": 12},
     "handheld": {"battery": 76, "charging": False, "batterySecs": 5280, "batteryPower": -14.6, "batteryHealth": 94,
-                 "batteryCycles": 61, "batteryDesignWh": 40.0, "batteryFullWh": 37.6, "ramTotal": 15.3, "diskTotal": 476,
+                 "batteryCycles": 61, "batteryDesignWh": 40.0, "batteryFullWh": 37.6, "ramTotal": 15.3, "diskUsed": 182, "diskTotal": 476,
                  "igpu": None, "vramTotal": 4, "fanGpu": None},
     "tablet": {"battery": 64, "charging": True, "batterySecs": None, "batteryPower": 21.3, "batteryHealth": 91,
-               "batteryCycles": 143, "batteryDesignWh": 47.7, "batteryFullWh": 43.4, "ramTotal": 15.7, "diskTotal": 476,
+               "batteryCycles": 143, "batteryDesignWh": 47.7, "batteryFullWh": 43.4, "ramTotal": 15.7, "diskUsed": 211, "diskTotal": 476,
                "igpu": None, "vramTotal": None, "fanGpu": None},
-    "aio": {**_NO_BATTERY, "ramTotal": 15.8, "diskTotal": 476, "igpu": None, "vramTotal": None, "fanGpu": None},
-    "mini": {**_NO_BATTERY, "ramTotal": 31.6, "diskTotal": 931, "igpu": None, "vramTotal": None, "fanGpu": None},
+    "aio": {**_NO_BATTERY, "ramTotal": 15.8, "diskUsed": 236, "diskTotal": 476, "igpu": None, "vramTotal": None, "fanGpu": None},
+    "mini": {**_NO_BATTERY, "ramTotal": 31.6, "diskUsed": 305, "diskTotal": 931, "igpu": None, "vramTotal": None, "fanGpu": None},
 }
 
 
