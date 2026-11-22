@@ -8,6 +8,7 @@ up by them and translates them where it shows them (they are marked with N_ so t
 import ctypes
 import json
 import os
+import re
 import threading
 import time
 import winreg
@@ -79,7 +80,7 @@ $av = @(Get-CimInstance -Namespace root\SecurityCenter2 AntiVirusProduct -ErrorA
 }""", timeout=40) or {}
     return r
 
-CACHE_VERSION = 5  # bump when labels or fields change, so an old cache is not shown
+CACHE_VERSION = 6  # bump when labels or fields change, so an old cache is not shown
 _CACHE = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "StellarHub", "pcinfo.json")
 _lock = threading.Lock()
 _mem = None
@@ -87,10 +88,92 @@ _mem = None
 CHASSIS = {  # Win32_SystemEnclosure.ChassisTypes
     3: ("desktop", "Desktop"), 4: ("desktop", "Desktop"), 5: ("desktop", "Desktop"),
     6: ("desktop", "Mini tower"), 7: ("desktop", "Tower"), 8: ("laptop", "Laptop"), 9: ("laptop", "Laptop"),
-    10: ("laptop", "Laptop"), 11: ("laptop", "Handheld"), 13: ("aio", "All-in-one"), 14: ("laptop", "Laptop"),
-    15: ("desktop", "Compact PC"), 16: ("desktop", "Compact PC"), 30: ("tablet", "Tablet"), 31: ("laptop", "Convertible"),
-    32: ("laptop", "Detachable"), 34: ("desktop", "Embedded PC"), 35: ("desktop", "Mini PC"), 36: ("desktop", "Stick PC"),
+    10: ("laptop", "Laptop"), 11: ("handheld", "Handheld"), 13: ("aio", "All-in-one"), 14: ("laptop", "Laptop"),
+    15: ("desktop", "Compact PC"), 16: ("mini", "Mini PC"), 30: ("tablet", "Tablet"), 31: ("laptop", "Convertible"),
+    32: ("tablet", "Detachable"), 34: ("desktop", "Embedded PC"), 35: ("mini", "Mini PC"), 36: ("mini", "Stick PC"),
 }
+_CLAMSHELL = {8, 9, 10, 14, 31}  # portable, laptop, notebook, sub-notebook, convertible: a keyboard under the screen
+
+# What a PC is, beyond the chassis code. Windows' chassis code alone is not enough: an ROG Ally reports "Tablet", other
+# handhelds "Desktop", "Notebook" or "Detachable". So the names the makers write in the firmware come first
+# (Win32_ComputerSystem Manufacturer / Model / SystemFamily / SystemSKUNumber and Win32_BaseBoard Product, the same
+# strings Linux shows as sys_vendor / product_name / product_family / product_sku / board_name). Sources: the Linux
+# kernel's DMI tables (drm_panel_orientation_quirks.c), Handheld Companion's device list and dmidecode dumps.
+# Each rule: (manufacturer pattern or None, pattern over "model | family | sku | board", all lower case).
+_HANDHELD = [
+    (r"asus", r"\brog (xbox )?ally\b|(^|\| )rc7[1-4][a-z]*\b"),          # ROG Ally RC71L, Ally X RC72LA, Xbox Ally RC73YA/XA
+    (r"lenovo", r"\blegion go\b|^(83e1|83n0|83n1|83l3|83n6|83q2|83q3)\b"),  # Legion Go 8APU1 (83E1), Go S (83L3...), Go 2 (83N0/1)
+    (r"micro-star|\bmsi\b", r"\bclaw\b|\bms-1t(41|42|52|8k|91)\b"),     # Claw A1M, Claw 7/8 AI+ A2VM, Claw A8 BZ2EM
+    (r"valve", r"^(jupiter|galileo)\b"),                                   # Steam Deck LCD / OLED
+    (r"zotac|pc partner", r"\bgaming zone\b|\bg0a1w\b"),                    # ZOTAC GAMING ZONE
+    (r"one-netbook|onexplayer", r"x ?player|onexfly"),                     # ONEXPLAYER 2 / mini / X1 / F1 (OneXFly)
+    (r"^gpd\b", r"^(g16(17|18|19)-|win ?\d|win ?(max|mini))"),            # Win Mini G1617, Win 3/4/5 G1618, Win Max G1619 (not Pocket)
+    (r"^aokzoe\b", r""),                                                   # AOKZOE A1 / A1 Pro / A2
+    (r"^ayn\b", r"\bloki\b"),                                              # Ayn Loki Max / Zero / MiniPro
+    (r"anbernic", r"\bwin ?600\b"),
+    (r"orangepi", r"^neo-01\b"),
+    (r"mysten", r"\bsuiplay"),
+    (None, r"\bsteam deck\b|\bnitro blaze\b"),
+]
+_AYANEO = r"^aya ?neo\b|^ayadevice\b|^aya\b"   # every AYANEO is a handheld except the mini PCs (AM01, AM02, Retro Mini PC)
+_AYANEO_MINI = r"\bam\d\d\b|mini ?pc|\bag01\b"
+_HANDHELD_CPU = r"\bryzen(\(tm\))? z\d\b|\bcustom apu 0(405|932)\b"   # Ryzen Z1 / Z2 only ship in handhelds; Steam Deck APUs
+_TABLET = r"\bsurface (pro|go)\b|\bflow z13\b|\bgz30\d|\btablet\b|\bmiix\b|\bduet\b|\bdetachable\b|\bgalaxy book ?10\.6|(^|\| )hppac\b"
+_AIO = r"\baio\b|all[- ]in[- ]one|\bimac\d|\bimac\b|\beliteone\b|\bproone\b|\bsurface studio\b|\bthinkcentre (m\d+a|neo \d+a)\b|\baspire c\d\d\b"
+_MINI = (r"\bnuc(\d|\b)|\bmac ?mini|\bmacmini\d|\bthinkcentre (m\d+q|neo \d+q)\b|\btiny\b|\boptiplex\b.*\bmicro\b|\b(elitedesk|prodesk)\b.*\bmini\b"
+         r"|\bmini ?pc\b|\bzbox\b|\bbrix\b|\bexpertcenter pn\d|\bdeskmini\b|\blarkbox\b")
+_MINI_MAKERS = r"^(beelink|azw|gmktec|geekom|trigkey|acemagic|ace magician|peladn|firebat|bmax|t-bao|meegopad|micro computer \(hk\))"
+_TABLET_CPU = r"\batom\b|\bceleron\b.* n\d{4}|\bpentium\b.* n\d{4}"   # old 8" Atom tablets are tablets, not handhelds
+SMALL_SCREEN = 9   # inches (rounded): a built-in screen this small with a battery is a handheld's (7" to 8.8")
+
+
+def classify(r, battery=False, inches=None):
+    """(type, typeName) of the PC from the raw query `r`: 'handheld', 'tablet', 'aio', 'mini', 'laptop', 'desktop' or
+    'virtual'. `battery`: the PC has one; `inches`: its built-in screen's size (None when it has none or it is unknown).
+    Order: the makers' own names (exact models) first, then the processor, then the chassis code and the screen."""
+    def low(k):
+        return _text(r.get(k)).strip().lower()
+    makers = [m for m in (low("maker"), low("boardMaker")) if m and not _placeholder(m)]
+    hay = " | ".join(x for x in (low("model"), low("family"), low("sku"), low("board")) if x and not _placeholder(x))
+
+    def has(p):
+        return bool(re.search(p, hay))
+
+    def made_by(p):
+        return any(re.search(p, m) for m in makers)
+    if _virtual(r.get("maker") or "", r.get("model") or ""):
+        return "virtual", "Virtual machine"
+    if made_by(_AYANEO):
+        return ("mini", "Mini PC") if has(_AYANEO_MINI) else ("handheld", "Handheld")
+    if made_by(r"valve") and has(r"^fremont\b"):
+        return "mini", "Mini PC"   # Valve's Steam Machine: a small cube
+    for mk, pat in _HANDHELD:
+        if (mk is None or made_by(mk)) and (not pat or has(pat)):
+            return "handheld", "Handheld"
+    chassis = [c for c in (r.get("chassis") or []) if isinstance(c, int)]
+    ch = chassis[0] if chassis else 0
+    cpu = _text((r.get("cpu") or {}).get("name")).lower()
+    if battery and re.search(_HANDHELD_CPU, cpu):
+        return "handheld", "Handheld"
+    if battery and has(_TABLET):
+        return "tablet", "Detachable" if ch == 32 else "Tablet"
+    if not battery and has(_AIO):
+        return "aio", "All-in-one"
+    if not battery and (has(_MINI) or made_by(_MINI_MAKERS)):
+        return "mini", "Stick PC" if ch == 36 else "Mini PC"
+    if ch == 11:
+        return "handheld", "Handheld"
+    # a handheld nobody listed yet: a battery and a small built-in screen, without a laptop's chassis code
+    if battery and inches and inches <= SMALL_SCREEN and ch not in _CLAMSHELL and not re.search(_TABLET_CPU, cpu):
+        return "handheld", "Handheld"
+    if ch in CHASSIS:
+        t = CHASSIS[ch]
+        if t[0] == "mini" and battery:
+            return "laptop", "Laptop"   # a "Mini PC" code on a PC with a battery: some small laptops report it
+        return t
+    if r.get("pcTypeEx") == 8 and battery:  # Win32_ComputerSystem.PCSystemTypeEx 8: Slate
+        return "tablet", "Tablet"
+    return ("laptop", "Laptop") if r.get("pcType") == 2 else ("desktop", "Desktop")
 PNP_VENDORS = {
     "AUO": "AU Optronics", "BOE": "BOE", "CMN": "Chimei Innolux", "SDC": "Samsung Display", "LGD": "LG Display",
     "SHP": "Sharp", "IVO": "InfoVision", "CSO": "CSOT", "MNG": "CSOT", "NCP": "Nanjing CEC", "AOC": "AOC", "DEL": "Dell",
@@ -177,7 +260,7 @@ $mons = @(Get-CimInstance -Namespace root\wmi WmiMonitorID -ErrorAction Silently
 $sizes = @(Get-CimInstance -Namespace root\wmi WmiMonitorBasicDisplayParams -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ inst=$_.InstanceName; w=$_.MaxHorizontalImageSize; h=$_.MaxVerticalImageSize } })
 $conn = @(Get-CimInstance -Namespace root\wmi WmiMonitorConnectionParams -ErrorAction SilentlyContinue | ForEach-Object { [pscustomobject]@{ inst=$_.InstanceName; tech=$_.VideoOutputTechnology } })
 [pscustomobject]@{
-  maker=$cs.Manufacturer; model=$cs.Model; family=$cs.SystemFamily; chassis=@($en.ChassisTypes); pcType=$cs.PCSystemType
+  maker=$cs.Manufacturer; model=$cs.Model; family=$cs.SystemFamily; sku=$cs.SystemSKUNumber; chassis=@($en.ChassisTypes); pcType=$cs.PCSystemType; pcTypeEx=$cs.PCSystemTypeEx
   os=$os.Caption; osVer=$disp.DisplayVersion; build=$os.BuildNumber; ubr=$disp.UBR; installDate=$os.InstallDate
   bios=$bios.SMBIOSBIOSVersion; biosDate=$bios.ReleaseDate; board=$bb.Product; boardMaker=$bb.Manufacturer
   cpu=[pscustomobject]@{ name="$($cpu.Name)".Trim(); cores=$cpu.NumberOfCores; threads=$cpu.NumberOfLogicalProcessors; maxMhz=$cpu.MaxClockSpeed; l2=$cpu.L2CacheSize; l3=$cpu.L3CacheSize; socket=$cpu.SocketDesignation }
@@ -232,6 +315,7 @@ def _query_wmi():
         except wmi.WmiError:
             return []
     cs = q("Win32_ComputerSystem", ["Manufacturer", "Model", "SystemFamily", "PCSystemType"])[0]
+    cs_ex = (soft("Win32_ComputerSystem", ["SystemSKUNumber", "PCSystemTypeEx"], r"root\cimv2") or [{}])[0]  # Windows 8+
     en = (q("Win32_SystemEnclosure", ["ChassisTypes"]) or [{}])[0]
     os_ = q("Win32_OperatingSystem", ["Caption", "BuildNumber", "InstallDate"])[0]
     bb = (q("Win32_BaseBoard", ["Product", "Manufacturer"]) or [{}])[0]
@@ -271,7 +355,8 @@ def _query_wmi():
               "health": _HEALTH.get(d["HealthStatus"], _text(d["HealthStatus"]))}
              for d in sorted(pd, key=lambda d: int(d["DeviceId"]) if str(d["DeviceId"]).isdigit() else 0)]
     return {"maker": cs["Manufacturer"], "model": cs["Model"], "family": cs["SystemFamily"],
-            "chassis": list(en.get("ChassisTypes") or []), "pcType": cs["PCSystemType"], "os": os_["Caption"], "osVer": disp,
+            "chassis": list(en.get("ChassisTypes") or []), "pcType": cs["PCSystemType"], "sku": cs_ex.get("SystemSKUNumber"),
+            "pcTypeEx": cs_ex.get("PCSystemTypeEx"), "os": os_["Caption"], "osVer": disp,
             "build": os_["BuildNumber"], "ubr": ubr, "installDate": os_["InstallDate"], "bios": bios.get("SMBIOSBIOSVersion"),
             "biosDate": bios.get("ReleaseDate"), "board": bb.get("Product"), "boardMaker": bb.get("Manufacturer"),
             "cpu": {"name": _text(cpu.get("Name")).strip(), "cores": cpu.get("NumberOfCores"),
@@ -443,11 +528,6 @@ def _build():
     r = _query()
     maker, model = (r.get("maker") or "").strip(), (r.get("model") or "").strip()
     family = (r.get("family") or "").strip()
-    ch = (r.get("chassis") or [0])[0] if r.get("chassis") else 0
-    ptype, pname = CHASSIS.get(ch, ("laptop" if r.get("pcType") == 2 else "desktop",
-                                    "Laptop" if r.get("pcType") == 2 else "Desktop"))
-    if _virtual(maker, model):
-        ptype, pname = "virtual", "Virtual machine"  # typeName: translated in _localize
     # many desktop boards leave the BIOS defaults in the system name ("System Product Name", "To be filled by
     # O.E.M."): then the motherboard says what the PC is, e.g. "ASUS ROG STRIX Z790-E GAMING WIFI"
     board, board_maker = (r.get("board") or "").strip(), (r.get("boardMaker") or "").strip()
@@ -501,6 +581,8 @@ def _build():
         label = (m.get("name") or "").strip()
         mons.append({"vendor": vendor, "name": label, "code": m.get("code"), "inches": diag, "internal": internal})
     batt = psutil.sensors_battery()
+    inside = [m["inches"] for m in mons if m["internal"] and m["inches"]]
+    ptype, pname = classify(r, batt is not None, min(inside) if inside else None)  # typeName: translated in _localize
     comps = []
     comps.append({"id": "cpu", "name": "Processor", "title": _clean(cpu.get("name", "")),
                   "rows": [[N_("Cores"), str(cpu.get("cores", "–"))], [N_("Threads"), str(cpu.get("threads", "–"))],
