@@ -203,6 +203,16 @@ class Services(Tmp):
         self.assertIsNone(r["backup"])
         self.assertIn("error", r)
 
+    def test_unread_service_list_is_not_a_success(self):
+        # Get-CimInstance answered nothing: nothing can be changed, so it must not say "changed" (it said ok: True)
+        with mock.patch.object(O, "ps_json", return_value=[]), mock.patch.object(O, "ps") as ps:
+            r = O.services_apply({"WSearch": "disabled"})
+        ps.assert_not_called()
+        self.assertFalse(r["ok"])
+        self.assertIsNone(r["backup"])
+        self.assertTrue(r.get("error"))
+        self.assertFalse(os.path.isdir(os.path.join(self.machine, "services")))
+
     def test_two_backups_in_the_same_second_do_not_overwrite(self):
         with mock.patch.object(O, "ps_json", return_value=self.ROWS), mock.patch.object(O, "ps", return_value="ok"), \
                 mock.patch.object(O, "_delayed", return_value=False), mock.patch("time.strftime", return_value="20261119-120000"):
@@ -425,6 +435,20 @@ class PrivacySafety(unittest.TestCase):
         with mock.patch.object(P, "_admin", lambda: True), mock.patch.object(P, "ps_json", return_value=[
                 {"n": n, "on": False} for n in P._FW_PROFILES]), mock.patch.object(P, "ps", return_value="ok\r\n"):
             self.assertTrue(P.fix("firewall")["ok"])
+
+    def test_firewall_undo_that_windows_refuses_can_be_tried_again(self):
+        rows = [{"n": n, "on": False} for n in P._FW_PROFILES]
+        with mock.patch.object(P, "_admin", lambda: True), mock.patch.object(P, "ps_json", return_value=rows), \
+                mock.patch.object(P, "ps", return_value="ok\r\n"):
+            bid = P.fix("firewall")["backup"]
+        with mock.patch.object(P, "_admin", lambda: True), \
+                mock.patch.object(P, "ps", return_value="Set-NetFirewallProfile : Access is denied.\r\n"):
+            with self.assertRaises(OSError):
+                P.undo(bid)
+        self.assertFalse(next(h for h in P.history() if h["id"] == bid)["undone"])
+        with mock.patch.object(P, "_admin", lambda: True), mock.patch.object(P, "ps", return_value="ok\r\n"):
+            self.assertTrue(P.undo(bid)["ok"])
+        self.assertTrue(next(h for h in P.history() if h["id"] == bid)["undone"])
 
     def test_old_programdata_records_are_copied_to_the_user_folder(self):
         legacy = os.path.join(self.tmp, "old")

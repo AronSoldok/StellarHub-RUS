@@ -314,9 +314,16 @@ def undo(bid):
     elif kind == "firewall":
         if not _admin():
             return _need_admin()
+        bad = []
         for prof, on in (rec.get("prev") or {}).items():
             if prof in _FW_PROFILES:
-                ps(f"Set-NetFirewallProfile -Profile {prof} -Enabled {'True' if on else 'False'}", timeout=40)
+                out = ps(f"Set-NetFirewallProfile -Profile {prof} -Enabled {'True' if on else 'False'} -ErrorAction Stop; 'ok'",
+                         timeout=40)
+                lines = [ln.strip() for ln in (out or "").splitlines() if ln.strip()]
+                if "ok" not in lines:
+                    bad.append(f"{prof}: {lines[-1] if lines else tr('no reason given')}")
+        if bad:   # not marked undone: it can be tried again
+            raise OSError(tr("Windows didn't accept the change") + " (" + "; ".join(bad)[:300] + ")")
     elif kind == "autostart":
         for it in rec.get("prev") or []:
             _set_autostart(it["id"], it["enabled"])

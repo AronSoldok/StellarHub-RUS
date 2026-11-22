@@ -679,6 +679,8 @@ def services_apply(changes):
             if row.get("State") == "Running":
                 backup["running"].append(svc)
             todo.append((svc, mode))
+    if changes and not todo:   # nothing could be changed (Windows' list of services was not read): not a success
+        return {"ok": False, "results": [], "backup": None, "error": tr("Couldn't read from Windows")}
     try:
         bid = unique_bid(os.path.join(DATA, "services"))
         write_json_atomic(os.path.join(DATA, "services", bid + ".json"), backup)
