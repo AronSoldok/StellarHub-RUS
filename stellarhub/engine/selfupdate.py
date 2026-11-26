@@ -60,8 +60,10 @@ from ..i18n import tr
 
 EXPORTS = {"check", "mode", "start", "state", "cancel", "after_update", "finish", "prefetch", "staged"}
 
-REPO = "estebanarosemena/StellarHub"
-API = f"https://api.github.com/repos/{REPO}/releases/latest"
+# This fork has no release repository or signing key configured yet. Never replace it with upstream binaries.
+UPDATES_ENABLED = False
+REPO = ""
+API = ""
 TASK = r"StellarHub\Update"
 # Public keys (hex, 32 bytes) whose signature makes a release acceptable. The owner's key comes from
 # `python tools/release_sign.py keygen`. To rotate: add the new key HERE, release it signed with the old one, and
@@ -275,6 +277,8 @@ def _get(url, limit, timeout=15):
 
 def _latest():
     """The latest release as GitHub describes it (STELLARHUB_UPDATE_URL points elsewhere in tests)."""
+    if not UPDATES_ENABLED:
+        raise RuntimeError(tr("Automatic updates are not configured for this fork."))
     from .. import paths
     url = paths.env("STELLARHUB_UPDATE_URL") or API
     return json.loads(_get(url, 2 * 1024 * 1024).decode("utf-8"))
@@ -356,6 +360,8 @@ def mode():
 
 def check(force=False):
     """Read-only: is there a newer StellarHub on GitHub?"""
+    if not UPDATES_ENABLED:
+        return {"ok": True, "current": VERSION, "mode": "disabled", "newer": False, "disabled": True}
     out = {"current": VERSION, "mode": mode()}
     try:
         info = _pick(_latest())
@@ -427,6 +433,8 @@ def _updater_answered(at, seconds=8):
 def start(allow_uac=True):
     """Starts the updater. Returns {ok, mode, at} or {ok: False, error}. allow_uac=False (background download, or
     at start): never shows the Windows prompt; reports {ok: False} instead."""
+    if not UPDATES_ENABLED:
+        return {"ok": False, "mode": "disabled", "error": tr("Automatic updates are not configured for this fork.")}
     m = mode()
     if m == "source":
         return {"ok": False, "mode": m, "error": tr("This copy runs from the source code: download the new version from GitHub.")}
@@ -643,6 +651,8 @@ def _download(url, dest, size, on_progress):
 
 def run_updater():
     """--self-update. Exit code 0 when it handed over to the installer (or there was nothing to do)."""
+    if not UPDATES_ENABLED:
+        return 3
     d = update_dir()
     prefetch = os.path.exists(_prefetch_flag())
     _rm(_prefetch_flag())
@@ -862,6 +872,8 @@ def _sha256(path):
 def prefetch():
     """Downloads a new version in the background, to be installed the next time StellarHub opens (new features:
     x.Y.0). Only where no Windows prompt is needed: a copy that can update itself, or through the update task."""
+    if not UPDATES_ENABLED:
+        return {"ok": False, "mode": "disabled"}
     m = mode()
     if m not in ("direct", "portable", "task"):
         return {"ok": False, "mode": m}
@@ -880,6 +892,8 @@ def prefetch():
 
 def staged():
     """The version downloaded and waiting for the next start, or None."""
+    if not UPDATES_ENABLED:
+        return None
     st = state()
     if st.get("st") != "staged" or not newer(st.get("ver"), VERSION):
         return None

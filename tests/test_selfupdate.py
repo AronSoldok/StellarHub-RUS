@@ -145,6 +145,9 @@ class ServedUpdates(unittest.TestCase):
 
     def setUp(self):
         self.payload = b"fake-setup!"
+        enabled = mock.patch.object(su, "UPDATES_ENABLED", True)
+        enabled.start()
+        self.addCleanup(enabled.stop)
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
@@ -374,6 +377,9 @@ class PortableUpdater(unittest.TestCase):
         return buf.getvalue()
 
     def run_with(self, payload, sig):
+        enabled = mock.patch.object(su, "UPDATES_ENABLED", True)
+        enabled.start()
+        self.addCleanup(enabled.stop)
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, True)
         files = {self.NAME: payload, self.NAME + ".sig": sig}

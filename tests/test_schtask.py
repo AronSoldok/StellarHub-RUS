@@ -40,6 +40,12 @@ class Xml(unittest.TestCase):
 
 
 class UpdaterFallsBack(unittest.TestCase):
+    def setUp(self):
+        # Exercise the retained updater implementation; production updates are disabled for this fork.
+        enabled = mock.patch.object(su, "UPDATES_ENABLED", True)
+        enabled.start()
+        self.addCleanup(enabled.stop)
+
     def test_a_task_that_never_starts_is_ended_and_no_prompt_in_the_background(self):
         ran = []
 

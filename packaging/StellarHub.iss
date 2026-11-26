@@ -17,11 +17,11 @@
 ; file when it ends, and opens StellarHub itself the moment the files are in place (or, if the installation failed,
 ; the previous version again), so nothing is left waiting on a helper.
 ;
-; The wizard follows the Windows display language (English, Spanish, Portuguese, Italian, French, Chinese or Japanese);
+; The wizard follows the Windows display language (English, Spanish, Portuguese, Italian, French, Chinese, Japanese or Russian);
 ; /LANG=spanish (english, portuguese, italian, french, chinesesimplified, japanese) forces one.
 ; Silent installs keep the current settings, or use the defaults on a first install. They can also set the options:
 ;   /OPTIONS=desktop,startup,admin,widget,updates   (the ones listed are turned on, the rest off)
-;   /APPLANG=es                             (en, es, pt, it, fr, zh, ja)
+;   /APPLANG=ru                             (en, es, pt, it, fr, zh, ja, ru)
 
 #ifndef AppVersion
   #error Pass the version: ISCC /DAppVersion=x.y.z StellarHub.iss
@@ -38,12 +38,12 @@ AppId={{0F1795D8-7D52-45CC-8518-7A1E4E76E43E}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
-AppPublisher=Esteban Arosemena
+AppPublisher=StellarHub (Russian-language fork)
 AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}/issues
 AppUpdatesURL={#AppUrl}/releases
 AppCopyright=Copyright (C) Esteban Arosemena. GNU GPL v3.
-AppComments=The control center for your Windows PC.
+AppComments=Russian-language fork of StellarHub by Esteban Arosemena.
 
 DefaultDirName={autopf}\{#AppName}
 DisableProgramGroupPage=yes
@@ -107,8 +107,14 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 ; unofficial translation from the Inno Setup project (jrsoftware/issrc, tag is-6_7_3), unchanged
 Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
+Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Messages]
+russian.WelcomeLabel1=Добро пожаловать в StellarHub
+russian.WelcomeLabel2=На ваш ПК будет установлен [name/ver].%n%nМониторинг оборудования, драйверы, программы, анализ дисков, очистка и проверка устройств в одном приложении.%n%nРусифицированный форк оригинального проекта Esteban Arosemena.
+russian.FinishedHeadingLabel=StellarHub готов к работе
+russian.FinishedLabelNoIcons=StellarHub установлен.
+russian.FinishedLabel=StellarHub установлен. Открыть его можно из меню «Пуск».
 ; no boilerplate about the buttons on the welcome and finish pages
 ClickNext=
 ClickFinish=
@@ -149,6 +155,30 @@ japanese.FinishedLabelNoIcons=StellarHub がインストールされました。
 japanese.FinishedLabel=StellarHub がインストールされました。スタート メニューからいつでも開けます。
 
 [CustomMessages]
+russian.AppTagline=Центр управления вашим ПК с Windows
+russian.InfoInstalls=Установка StellarHub. Если среда Microsoft Edge WebView2 Runtime отсутствует, она будет загружена с сайта Microsoft и установлена.
+russian.InfoRequires=Нужна 64-разрядная Windows 10 (версия 1809) или новее.
+russian.InfoFree=Свободное ПО под лицензией GNU GPL v3. Без рекламы и учётной записи.
+russian.LinkGitHub=Оригинальный проект на GitHub
+russian.OptionsTitle=Выберите настройки
+russian.OptionsDesc=Как должен запускаться StellarHub? Всё это можно изменить позже в настройках.
+russian.OptDesktop=Создать ярлык на рабочем столе
+russian.OptStartup=Запускать вместе с Windows
+russian.OptStartupHint=Приложение запустится в области уведомлений рядом с часами, без открытия окна.
+russian.OptAdmin=Всегда запускать от имени администратора
+russian.OptAdminHint=Все инструменты доступны сразу, без запроса разрешения Windows при каждом запуске.
+russian.OptAdminHintUser=Все инструменты доступны сразу. Windows запрашивает разрешение при каждом запуске StellarHub.
+russian.OptWidget=Показывать виджет поверх окон при запуске
+russian.OptWidgetHint=Небольшая панель текущих показателей ПК поверх остальных окон.
+russian.OptUpdate=Обновления StellarHub
+russian.OptUpdateHint=Автообновление этого форка не настроено. Сборки оригинала не устанавливаются.
+russian.OptLanguage=Язык приложения
+russian.StatusApplying=Применение настроек…
+russian.StatusWarm=Подготовка StellarHub к первому запуску…
+russian.RunWebView=Установка Microsoft Edge WebView2 Runtime…
+russian.RunApp=Открыть StellarHub
+russian.RunNotes=Что нового в версии %1
+russian.UninstRemoveData=Также удалить настройки StellarHub и историю запланированных задач?%n%nВыберите «Нет», чтобы сохранить их для будущей установки.
 english.AppTagline=The control center for your Windows PC
 english.InfoInstalls=Installs StellarHub. If Windows does not have the Microsoft Edge WebView2 Runtime yet, it is downloaded from Microsoft and installed too.
 english.InfoRequires=Requires Windows 10 (version 1809) or later, 64-bit.
@@ -476,6 +506,7 @@ begin
     4: Result := 'fr';
     5: Result := 'zh';
     6: Result := 'ja';
+    7: Result := 'ru';
   else
     Result := 'en';
   end;
@@ -487,7 +518,7 @@ var
 begin
   Result := -1;
   Code := Lowercase(Copy(Trim(Code), 1, 2));
-  for I := 0 to 6 do
+  for I := 0 to 7 do
     if AppLangAt(I) = Code then
       Result := I;
 end;
@@ -500,6 +531,7 @@ begin
   else if WizardLanguage = 'french' then Result := 'fr'
   else if WizardLanguage = 'chinesesimplified' then Result := 'zh'
   else if WizardLanguage = 'japanese' then Result := 'ja'
+  else if WizardLanguage = 'russian' then Result := 'ru'
   else Result := 'en';
 end;
 
@@ -635,7 +667,11 @@ begin
   else
     AdminBox := AddOption(CustomMessage('OptAdmin'), CustomMessage('OptAdminHintUser'), WasAdmin, Top, AdminHint);
   WidgetBox := AddOption(CustomMessage('OptWidget'), CustomMessage('OptWidgetHint'), WasWidget, Top, WidgetHint);
-  UpdateBox := AddOption(CustomMessage('OptUpdate'), CustomMessage('OptUpdateHint'), WasUpdate, Top, UpdateHint);
+  { This fork has no release channel yet; upstream binaries would remove the translation. }
+  UpdateBox := TNewCheckBox.Create(OptionsPage);
+  UpdateBox.Parent := OptionsPage.Surface;
+  UpdateBox.Visible := False;
+  UpdateBox.Checked := False;
 
   LangLabel := TNewStaticText.Create(OptionsPage);
   LangLabel.Parent := OptionsPage.Surface;
@@ -657,6 +693,7 @@ begin
   LangCombo.Items.Add('Français');
   LangCombo.Items.Add('简体中文');
   LangCombo.Items.Add('日本語');
+  LangCombo.Items.Add('Русский');
   LangCombo.ItemIndex := AppLangIndex(WasLang);
   LangLabel.FocusControl := LangCombo;
 end;
@@ -674,7 +711,7 @@ begin
     StartupBox.Checked := Pos(',startup,', Opts) > 0;
     AdminBox.Checked := Pos(',admin,', Opts) > 0;
     WidgetBox.Checked := Pos(',widget,', Opts) > 0;
-    UpdateBox.Checked := Pos(',updates,', Opts) > 0;
+    UpdateBox.Checked := False;
   end;
   L := ExpandConstant('{param:APPLANG|}');
   if AppLangIndex(L) >= 0 then

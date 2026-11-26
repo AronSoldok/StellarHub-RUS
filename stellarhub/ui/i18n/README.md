@@ -1,7 +1,20 @@
 # Translations
 
 StellarHub is written in English and translated into Spanish (`es`), Portuguese – Brazil (`pt`), Italian (`it`),
-French (`fr`), Simplified Chinese (`zh`) and Japanese (`ja`).
+French (`fr`), Simplified Chinese (`zh`), Japanese (`ja`) and Russian (`ru`).
+
+## Russian translation
+
+Russian uses `ru-RU` for dates and numbers. Use concise, natural wording and standard Windows terminology.
+Translate whole messages in context, especially deletion, quarantine, backups, restore points and administrator rights.
+Preserve product names, commands, paths, placeholders, markup and technical units. Use `ё` where appropriate.
+For counters, prefer a neutral construction such as `Файлов: {n}` or `Осталось: {n} дн.` rather than an incorrect
+two-form Russian plural. Never pass an already formatted number to a plural selector.
+For standalone count labels, `SH.counted(n, oneKey, manyKey)` uses `Intl.PluralRules` and the Russian
+`count_one|…`, `count_few|…`, `count_many|…` dictionary entries; other languages use their existing keys.
+If a word has different meanings in different modules, use context keys (`tc`) instead of forcing one translation on both meanings.
+For example, `Protected` describes System Protection in backups, but `remover|Protected` is a protected component.
+The Russian dictionaries cover every key in the reference dictionaries, including dynamic labels and catalog descriptions.
 
 ## How it works
 

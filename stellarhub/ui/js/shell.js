@@ -452,6 +452,7 @@ const ZOOMS = [['0.8', '80 %'], ['0.9', '90 %'], ['1', '100 %'], ['1.1', '110 %'
 /* language picker: flags drawn as small SVGs (no emoji, which Windows shows as letters) */
 const STAR = (cx, cy, r, rot = 0) => { let d = ''; for (let i = 0; i < 10; i++) { const a = rot - Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .4 : r; d += (i ? 'L' : 'M') + (cx + rr * Math.cos(a)).toFixed(2) + ' ' + (cy + rr * Math.sin(a)).toFixed(2); } return d + 'Z'; };
 const FLAGS = {
+  ru: () => '<rect width="30" height="20" fill="#fff"/><rect y="6.67" width="30" height="6.67" fill="#0039A6"/><rect y="13.33" width="30" height="6.67" fill="#D52B1E"/>',
   en: () => { let s = ''; for (let i = 0; i < 7; i++) s += `<rect y="${(i * 20 / 7).toFixed(2)}" width="30" height="${(20 / 7).toFixed(2)}" fill="${i % 2 ? '#fff' : '#B22234'}"/>`;
     s += '<rect width="13" height="11.43" fill="#3C3B6E"/>'; for (let r = 0; r < 4; r++) for (let c = 0; c < 5; c++) s += `<circle cx="${1.6 + c * 2.45}" cy="${1.6 + r * 2.7}" r=".55" fill="#fff"/>`; return s; },
   es: () => '<rect width="30" height="20" fill="#AA151B"/><rect y="5" width="30" height="10" fill="#F1BF00"/>',
@@ -468,7 +469,7 @@ function langPicker() {
   const tiles = [['auto', SH.t('Automatic'), SH.t('Same as Windows: {lang}', { lang: sys[1] })], ...L.LANGS.map(([c, own, eng]) => [c, own, SH.t(eng)])];
   return `<div class="langs">${tiles.map(([c, a, b]) => `<button class="lang${c === cur ? ' on' : ''}" data-lang="${c}">${flag(c)}<span><b>${a}</b><small>${b}</small></span>${ic('check')}</button>`).join('')}</div>`;
 }
-const SECTIONS = [['look', SH.t('Appearance'), 'palette'], ['language', SH.t('Language'), 'globe'], ['background', SH.t('Background'), 'sparkle'], ['motion', SH.t('Animation'), 'play'], ['sound', SH.t('Sound'), 'speaker'], ['home', SH.t('Home'), 'home'], ['widget', SH.t('Widget'), 'monitor'], ['general', SH.t('General'), 'sliders'], ['tools', SH.t('Tools'), 'wrench'], ['data', SH.t('Data'), 'folder'], ['backups', SH.t('Backups and restore'), 'restore'], ['keys', SH.t('Shortcuts'), 'keyboard'], ['admin', SH.t('Administrator'), 'shield'], ['updates', SH.t('Updates'), 'download'], ['about', SH.t('About'), 'info']];
+const SECTIONS = [['look', SH.t('Appearance'), 'palette'], ['language', SH.t('Language'), 'globe'], ['background', SH.t('Background'), 'sparkle'], ['motion', SH.t('Animation'), 'play'], ['sound', SH.t('Sound'), 'speaker'], ['home', SH.t('Home'), 'home'], ['widget', SH.t('Widget'), 'monitor'], ['general', SH.t('General'), 'sliders'], ['tools', SH.t('Tools'), 'wrench'], ['data', SH.t('Data'), 'folder'], ['backups', SH.tc('settings', 'Backups and restore'), 'restore'], ['keys', SH.t('Shortcuts'), 'keyboard'], ['admin', SH.t('Administrator'), 'shield'], ['updates', SH.t('Updates'), 'download'], ['about', SH.t('About'), 'info']];
 const seg = (key, opts) => `<div class="seg" data-key="${key}"><span class="ind"></span>${opts.map(([v, l]) => `<button data-v="${v}"${String(S()[key]) === v ? ' class="on"' : ''}>${l}</button>`).join('')}</div>`;
 const tog = (key, label, sub) => `<div class="set inline"><div class="lbl"><div>${label}${sub ? `<span>${sub}</span>` : ''}</div></div><button class="toggle${S()[key] ? ' on' : ''}" data-key="${key}" aria-label="${label}"><i></i></button></div>`;
 /* slider: live value, saved on release */
@@ -561,15 +562,14 @@ function sectionHTML(id) {
         : state.adminTask === false ? t('Windows asks each time. To open without asking, install StellarHub for all users.')
         : t('Windows asks once when you turn it on; after that StellarHub opens as administrator without asking (like other tools, it uses a scheduled task).'))}
       ${tog('adminHints', t('Suggest administrator mode'), t('A subtle hint when a feature needs it.'))}`;
-    case 'updates': return `<h3>${t('Updates')}</h3><p>${t('StellarHub updates itself from its GitHub repository.')}</p>
-      <div class="set inline"><div class="lbl"><div>${t('Installed version')}<span>StellarHub ${state.version}${state.portable ? ' · ' + t('portable') : ''}</span></div></div><button class="btn sec" data-act="checkupd">${ic('updater')}${t('Check now')}</button></div>
-      <div class="upd-state" id="updState"></div>
-      ${tog('autoUpdate', t('Check for updates automatically'), t('When the app opens and every few hours. Big versions (like 2.0.0) are announced with a window, and small fixes (like 1.2.3) wait here.'))}
-      ${tog('autoUpdateFeatures', t('Install new features automatically'), t('Versions with new features (like 1.2.0) download in the background and install the next time you open StellarHub. Turn it off to choose each time.'))}`;
+    case 'updates': return `<h3>${t('Updates')}</h3><p>${t('Automatic updates are not configured for this fork.')}</p>
+      <div class="set"><div class="lbl"><div>${t('Installed version')}<span>StellarHub ${state.version}${state.portable ? ' · ' + t('portable') : ''}</span></div></div></div>
+      <p>${t('Updates from the original project are not installed, so your Russian translation is preserved.')}</p>`;
     case 'about': return `<div class="about-h"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" style="fill:var(--accent)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-24 12 12)" style="stroke:var(--accent2)" stroke-width="1.4"/><circle cx="20.2" cy="8.3" r="1.5" style="fill:var(--accent2)"/></svg>
         <div><h3>StellarHub</h3><p>${t('Version {v}. The control center for your PC.', { v: state.version + (state.portable ? ' ' + t('(portable)') : '') })}</p></div></div>
       <div class="set inline"><div class="lbl"><div>${t('Created by')}<span>${t('Esteban Arosemena and Claude')}</span></div></div></div>
-      <div class="set inline"><div class="lbl"><div>${t('Source code')}<span>${t('Free software under the GNU GPLv3 license.')} github.com/estebanarosemena/StellarHub</span></div></div><button class="btn sec" data-act="github">${ic('external')}${t('Open in GitHub')}</button></div>
+      <div class="set"><div class="lbl"><div>${t('Russian-language fork')}<span>${t('Based on the original StellarHub project by Esteban Arosemena.')}</span></div></div></div>
+      <div class="set inline"><div class="lbl"><div>${t('Original project')}<span>${t('Free software under the GNU GPLv3 license.')} github.com/estebanarosemena/StellarHub</span></div></div><button class="btn sec" data-act="github">${ic('external')}${t('Open in GitHub')}</button></div>
       <div class="set"><div class="lbl"><div>${t('Languages')}<span>${t('How much code there is in each.')}</span></div></div><div id="langs" class="langs"><div class="sk" style="height:10px"></div></div></div>
       <div class="set inline"><div class="lbl"><div>${t('Built with')}<span>${t('Python, pywebview and WebView2; three.js for the 3D model; Unbounded and Onest fonts.')}</span></div></div></div>
       <div class="set inline"><div class="lbl"><div>${t('Sounds')}<span>${t('Orbital, an original set made for StellarHub (CC0). The soft hover sound is based on “UI hover” by unfa on Freesound (CC0).')}</span></div></div><button class="btn sec" data-act="freesound">${ic('external')}Freesound</button></div>
@@ -675,7 +675,8 @@ async function setLanguage(code, btn) {
   const L = SH.i18n; if ((S().language || 'auto') === code) return;
   $$('.lang', sheet).forEach(x => x.classList.toggle('on', x === btn));
   state.settings.language = code; L.remember(code);
-  await SH.call('settings_set', { language: code });
+  const saved = await SH.call('settings_set', { language: code });
+  if (saved === undefined) { try { localStorage.setItem('sh.settings', JSON.stringify(state.settings)); } catch {} }
   if (L.resolve(code) === L.lang) return;
   try { sessionStorage.setItem('sh.reopenSettings', 'language'); } catch {}
   anim(document.body, [{ opacity: 1 }, { opacity: 0 }], { d: 220 }).finished.then(() => location.reload(), () => location.reload());

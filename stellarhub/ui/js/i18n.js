@@ -18,6 +18,7 @@ const LANGS = [
   ['fr', 'Français', 'French', 'fr-FR'],
   ['zh', '简体中文', 'Chinese (Simplified)', 'zh-CN'],
   ['ja', '日本語', 'Japanese', 'ja-JP'],
+  ['ru', 'Русский', 'Russian', 'ru-RU'],
 ];
 /* the dictionary files every language may have (missing ones are simply skipped) */
 const AREAS = ['common', 'shell', 'home', 'sheet', 'widget', 'monitor', 'drivers', 'remover', 'updater', 'storage',
@@ -37,6 +38,8 @@ function resolve(pref) { return pref && pref !== 'auto' && CODES.includes(pref) 
 
 const pref = stored() || 'auto';
 const lang = resolve(pref);
+const locale = (LANGS.find(l => l[0] === lang) || LANGS[0])[3];
+const pluralRules = new Intl.PluralRules(locale);
 const dict = Object.create(null);
 /* one synchronous GET: the whole language in one file (ui/i18n/_bundle/<lang>.json, made by stellarhub/i18n.py
    build_bundles), or null when there is none */
@@ -90,12 +93,20 @@ function tc(ctx, s, vars) {
   return dict[k] !== undefined && dict[k] !== '' ? fill(dict[k], vars) : t(s, vars);
 }
 
+/* A standalone noun shown next to a separate number (Home counters, remover summary).
+   Pass the raw count, never a formatted string. Existing languages retain their translations. */
+function counted(n, one, many) {
+  const key = 'count_' + pluralRules.select(n) + '|' + one;
+  return dict[key] || t(n === 1 ? one : many);
+}
+
 document.documentElement.lang = lang;
 SH.t = t;
 SH.tc = tc;
+SH.counted = counted;
 SH.i18n = {
   lang, pref, LANGS, CODES, systemLang, resolve,
-  locale: (LANGS.find(l => l[0] === lang) || LANGS[0])[3],
+  locale,
   has: s => dict[s] !== undefined,
   translateStatic,
   /* remember the choice for the next start (synchronously readable) */

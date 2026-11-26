@@ -206,6 +206,7 @@ async function check(manual) {
   try { r = await ask(); } catch (e) { if (manual) SH.toast(e.message); return null; }
   if (r === undefined) { if (manual) SH.toast(t('This only works inside the app.')); return null; }  /* sample mode */
   last = r; paintSettings();
+  if (r.disabled) { if (manual) SH.toast(t('Automatic updates are not configured for this fork.')); return r; }
   if (!r.ok) { if (manual) SH.toast(t("Couldn't reach GitHub. Check your connection and try again."), { kind: 'error' }); return r; }
   if (!r.newer) { if (manual) SH.toast(t('You are on the latest version.')); return r; }
   /* on its own, StellarHub only interrupts for a big version (X.0.0); new features install at the next start, and a
@@ -237,6 +238,7 @@ function paintSettings(el) {
   if (el && !last && !asking) { check(false); }
   if (el && staging) SH.engine('selfupdate', 'state').then(s => { if (s && s.st === 'staged' && s.ver === staging) { stagedVer = s.ver; paintSettings(); } }).catch(() => {});
   const r = last;
+  if (r && r.disabled) { box2.innerHTML = `<div class="upd-ok">${ic('info')}<span>${t('Automatic updates are not configured for this fork.')}</span></div>`; return; }
   if (asking && (!r || !r.ok || !r.newer)) { box2.innerHTML = `<div class="upd-ok upd-ask" role="status"><span class="su-spin"></span><span>${t('Checking GitHub…')}</span></div>`; return; }
   if (r && !r.ok) { box2.innerHTML = `<div class="upd-ok upd-bad">${ic('alert')}<span>${t("Couldn't reach GitHub. Check your connection and try again.")}</span></div>`; return; }
   if (!r || !r.ok || !r.newer) { box2.innerHTML = r && r.ok ? `<div class="upd-ok">${ic('check')}<span>${t('You are on the latest version.')}</span></div>` : ''; return; }

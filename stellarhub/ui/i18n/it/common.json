@@ -8,5 +8,11 @@
   "French": "Francese",
   "Chinese (Simplified)": "Cinese (semplificato)",
   "Japanese": "Giapponese",
-  "Last analysis: {when}": "Ultima analisi: {when}"
+  "Last analysis: {when}": "Ultima analisi: {when}",
+  "Russian": "Russo",
+  "Russian-language fork": "Fork tradotto in russo",
+  "Based on the original StellarHub project by Esteban Arosemena.": "Basato sul progetto originale StellarHub di Esteban Arosemena.",
+  "Original project": "Progetto originale",
+  "Automatic updates are not configured for this fork.": "Gli aggiornamenti automatici di questo fork non sono ancora configurati.",
+  "Updates from the original project are not installed, so your Russian translation is preserved.": "Gli aggiornamenti del progetto originale non vengono installati per conservare la traduzione in russo."
 }

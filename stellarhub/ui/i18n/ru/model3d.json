@@ -1,0 +1,22 @@
+{
+  "Processor": "Процессор",
+  "Graphics": "Видеокарта",
+  "Memory": "Память",
+  "Video memory": "Видеопамять",
+  "Drive C:": "Диск C:",
+  "CPU fan": "Вентилятор CPU",
+  "GPU fan": "Вентилятор GPU",
+  "GPU power": "Потребление GPU",
+  "Download": "Загрузка",
+  "Upload": "Отправка",
+  "Battery": "Батарея",
+  "Last 2 minutes": "Последние 2 минуты",
+  "Components": "Компоненты",
+  "Laptop": "Ноутбук",
+  "3D model": "3D-модель",
+  "Your PC in 3D: drag to rotate it and hover a component to see where it is.": "Ваш ПК в 3D: перетаскивайте модель для вращения и наводите указатель на компоненты, чтобы увидеть их расположение.",
+  "Drag to rotate it. Scroll to zoom in.": "Перетаскивайте для вращения. Прокручивайте для изменения масштаба.",
+  "Rotate, press to reset": "Вращение; нажмите для сброса",
+  "Zoom": "Масштаб",
+  "Right stick to rotate it, LB and RB to zoom, press the stick to reset.": "Правый стик — вращение, LB и RB — масштаб. Нажмите на стик для сброса вида."
+}

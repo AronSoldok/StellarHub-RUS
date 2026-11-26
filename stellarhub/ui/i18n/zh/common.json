@@ -8,5 +8,11 @@
   "French": "法语",
   "Chinese (Simplified)": "简体中文",
   "Japanese": "日语",
-  "Last analysis: {when}": "上次分析：{when}"
+  "Last analysis: {when}": "上次分析：{when}",
+  "Russian": "俄语",
+  "Russian-language fork": "俄语本地化分支",
+  "Based on the original StellarHub project by Esteban Arosemena.": "基于 Esteban Arosemena 的原版 StellarHub 项目。",
+  "Original project": "原始项目",
+  "Automatic updates are not configured for this fork.": "此分支尚未配置自动更新。",
+  "Updates from the original project are not installed, so your Russian translation is preserved.": "为保留俄语翻译，不安装原始项目的更新。"
 }

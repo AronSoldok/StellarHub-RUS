@@ -1,5 +1,9 @@
 # Privacy
 
+> **Примечание для этого форка:** автоматические обновления самого StellarHub отключены.
+> Обращения к GitHub за версиями и установщиками, описанные в первых двух строках таблицы ниже,
+> относятся к оригинальному проекту. Этот форк их не выполняет. Переводы и шрифты загружаются локально.
+
 StellarHub runs on your PC and works with your PC's own data. It has **no account, no telemetry, no analytics and no
 ads**, and it never sends anything about you, your PC or what you do in it to its author or to anyone else.
 

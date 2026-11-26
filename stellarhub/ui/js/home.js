@@ -30,8 +30,8 @@ function render() {
   <header class="h-head" data-intro>
     <div class="h-id"><div class="model" id="hModel">${esc(PC.model)}</div><div class="sub">${subLine()}</div></div>
     <div class="facts">
-      <div><b data-count="${PC.facts.drivers ?? ''}">${PC.facts.drivers == null ? dash : 0}</b><span>${t('drivers')}</span></div>
-      <div><b data-count="${PC.facts.programs ?? ''}">${PC.facts.programs == null ? dash : 0}</b><span>${t('programs')}</span></div>
+      <div><b data-count="${PC.facts.drivers ?? ''}">${PC.facts.drivers == null ? dash : 0}</b><span>${PC.facts.drivers == null ? t('drivers') : SH.counted(PC.facts.drivers, 'Driver', 'drivers')}</span></div>
+      <div><b data-count="${PC.facts.programs ?? ''}">${PC.facts.programs == null ? dash : 0}</b><span>${PC.facts.programs == null ? t('programs') : SH.counted(PC.facts.programs, 'program', 'programs')}</span></div>
       <div><b data-count="${PC.facts.freeC ?? ''}">0</b><span>${t('GB free on C:')}</span></div>
     </div>
     <div class="h-quick"><button class="btn sec wbtn" data-widget-btn title="${t('Always-on-top widget')}"><span class="wdot"></span><span class="lbl">${t('Widget')}</span></button></div>
@@ -116,9 +116,9 @@ home.addEventListener('click', e => {
 
 /* ---------- to review: modules publish these when they check (SH.setPending) ---------- */
 const PEND = [
-  { k: 'drivers', go: 'drivers', tab: 'updates', one: t('driver update available'), many: t('driver updates available'), none: t('Drivers up to date'), unk: t('Check for new drivers') },
-  { k: 'apps', go: 'updater', tab: 'overview', one: t('program to update'), many: t('programs to update'), none: t('Programs up to date'), unk: t('Check for updates'), alt: true },
-  { k: 'junk', go: 'optimizer', tab: 'clean', unit: 'GB', one: t('that can be freed'), many: t('that can be freed'), none: t('Nothing important to clean'), unk: t('Scan what can be cleaned') },
+  { k: 'drivers', go: 'drivers', tab: 'updates', one: 'driver update available', many: 'driver updates available', none: t('Drivers up to date'), unk: t('Check for new drivers') },
+  { k: 'apps', go: 'updater', tab: 'overview', one: 'program to update', many: 'programs to update', none: t('Programs up to date'), unk: t('Check for updates'), alt: true },
+  { k: 'junk', go: 'optimizer', tab: 'clean', unit: 'GB', one: 'that can be freed', many: 'that can be freed', none: t('Nothing important to clean'), unk: t('Scan what can be cleaned') },
 ];
 function renderPending() {
   const box = $('#pendList'); if (!box) return; const p = state.settings.pending || {};
@@ -127,7 +127,7 @@ function renderPending() {
     if (n == null) return `<button class="pend unk" data-go="${x.go}" data-tab="${x.tab}"><b>${ic('search')}</b><span>${x.unk}<small>${t('not checked yet')}</small></span>${chev}</button>`;
     if (!n) return `<button class="pend ok" data-go="${x.go}" data-tab="${x.tab}"><b>${ic('check')}</b><span>${x.none}<small>${ago(e.at)}</small></span>${chev}</button>`;
     const num = x.unit ? `${Math.round(n * 10) % 10 ? SH.fmt1(n) : SH.fmtInt(n)}<small> ${x.unit}</small>` : n;
-    return `<button class="pend${x.alt ? ' alt' : ''}" data-go="${x.go}" data-tab="${x.tab}"><b>${num}</b><span>${n === 1 ? x.one : x.many}<small>${t('checked {ago}', { ago: ago(e.at) })}</small></span>${chev}</button>`;
+    return `<button class="pend${x.alt ? ' alt' : ''}" data-go="${x.go}" data-tab="${x.tab}"><b>${num}</b><span>${SH.counted(n, x.one, x.many)}<small>${t('checked {ago}', { ago: ago(e.at) })}</small></span>${chev}</button>`;
   }).join('');
 }
 SH.on('pending', () => { renderPending(); if (state.view === 'home') $$('#pendList .pend').forEach((el, i) => anim(el, [{ opacity: .4 }, { opacity: 1 }], { d: 400, delay: i * 40, keep: true })); });
@@ -272,6 +272,7 @@ async function refreshPC(force) {
     $$('.facts b', home).forEach((b, i) => {
       const v = [PC.facts.drivers, PC.facts.programs, PC.facts.freeC][i];
       if (v == null) { b.dataset.count = ''; b.textContent = dash; } else { b.dataset.count = v; SH.countUp(b, +v); }
+      if (i < 2) b.nextElementSibling.textContent = v == null ? t(i ? 'programs' : 'drivers') : SH.counted(v, i ? 'program' : 'Driver', i ? 'programs' : 'drivers');
     });
     if (comps) {
       const chip = $('.stage-head .chip', home); if (chip) chip.textContent = PC.components.length;
