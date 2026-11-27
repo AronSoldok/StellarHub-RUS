@@ -96,6 +96,9 @@ class Keys(unittest.TestCase):
     def setUpClass(cls):
         cls.uses = uses()
         cls.dicts = {lang: dictionary(lang) for lang in LANGS}
+        # New fork feature: English/Russian; other languages use English fallback.
+        with open(os.path.join(UI, 'i18n', 'ru', 'cooling.json'), encoding='utf-8') as fh:
+            cls.cooling_keys = set(json.load(fh))
 
     def test_the_scan_finds_the_keys(self):
         self.assertGreater(len(self.uses), 3000)
@@ -103,7 +106,8 @@ class Keys(unittest.TestCase):
     def test_every_literal_key_is_translated(self):
         for lang, d in self.dicts.items():
             missing = sorted({f"{os.path.relpath(f, UI)}:{ln} {k!r}" for f, ln, ctx, k in self.uses
-                              if re.search(r"[A-Za-z]", k) and not ((ctx and d.get(ctx + "|" + k)) or d.get(k))})
+                              if re.search(r"[A-Za-z]", k) and not (lang != 'ru' and k in self.cooling_keys)
+                              and not ((ctx and d.get(ctx + "|" + k)) or d.get(k))})
             self.assertEqual(missing, [], lang)
 
     def test_every_engine_message_is_translated(self):
@@ -111,7 +115,8 @@ class Keys(unittest.TestCase):
         self.assertGreater(len(found), 500)
         for lang, d in self.dicts.items():
             missing = sorted({f"{os.path.relpath(f, ROOT)}:{ln} {k!r}" for f, ln, ctx, k in found   # ('{error}' alone has no words)
-                              if re.search(r"[A-Za-z]", re.sub(r"\{\w+\}", "", k)) and not ((ctx and d.get(ctx + "|" + k)) or d.get(k))})
+                              if re.search(r"[A-Za-z]", re.sub(r"\{\w+\}", "", k)) and not (lang != 'ru' and k in self.cooling_keys)
+                              and not ((ctx and d.get(ctx + "|" + k)) or d.get(k))})
             self.assertEqual(missing, [], lang)
 
     def test_translations_keep_placeholders_and_tags(self):

@@ -861,6 +861,7 @@ SH.module({
   },
   renderTab(id, el) {
     readColors();
+    if (id === 'cooling') { SH.cooling.render(el); return; }
     const f = R[id]; if (!f) return;
     f(el, id);
     /* each panel's content goes in a flexible body: charts stretch and whatever does not fit scrolls inside (with a fade) */
@@ -881,6 +882,8 @@ SH.module({
   },
   enterTab(id) {
     curTab = id; readColors(); refresh(id);
+    $('#monPause').hidden = id === 'cooling';
+    if (id === 'cooling') SH.cooling.enter(); else SH.cooling.leave();
     if (REAL()) { if (PROC_TABS.has(id)) startProcPoll(); else stopProcPoll(); if (T[id] && T[id].poll) T[id].poll(); }
     const tc = T[id]; if (tc) tc.charts.forEach(c => { c.size(); c.replay(); });
     if (id === 'battery' && batChart) batChart.replay();
@@ -888,7 +891,8 @@ SH.module({
     if (id === 'health') { const m = $('#v-monitor .okmark'); if (m) { m.classList.remove('go'); void m.getBoundingClientRect(); m.classList.add('go'); } }
   },
   enter() { readColors(); },
-  leave() { stopProcPoll(); },
+  leaveTab(id) { if (id === 'cooling') SH.cooling.leave(); },
+  leave() { stopProcPoll(); SH.cooling.leave(); },
 });
 
 SH.actions.add([

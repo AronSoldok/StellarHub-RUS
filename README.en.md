@@ -2,6 +2,11 @@
 
 # 🪐 StellarHub — Russian-localized fork
 
+**Live Monitor → Cooling** adds an initial NVIDIA NVML fan-control implementation with fixed
+speed and temperature curves. Availability depends on the device and driver; HP Victus laptop
+fans are not supported yet. Profiles never activate automatically. Real hardware control still
+requires validation. See [capabilities and limitations](docs/COOLING.md).
+
 A Windows PC control center for hardware monitoring, driver and app updates, disk analysis, cleanup, and diagnostics.
 
 This fork is based on [StellarHub by Esteban Arosemena](https://github.com/estebanarosemena/StellarHub).

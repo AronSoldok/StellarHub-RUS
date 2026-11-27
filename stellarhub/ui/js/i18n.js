@@ -22,7 +22,7 @@ const LANGS = [
 ];
 /* the dictionary files every language may have (missing ones are simply skipped) */
 const AREAS = ['common', 'shell', 'home', 'sheet', 'widget', 'monitor', 'drivers', 'remover', 'updater', 'storage',
-  'optimizer', 'tester', 'autopilot', 'model3d', 'engine', 'hangar', 'privacy', 'benchmark', 'backups', 'tray'];
+  'optimizer', 'tester', 'autopilot', 'model3d', 'engine', 'hangar', 'privacy', 'benchmark', 'backups', 'tray', 'cooling'];
 const CODES = LANGS.map(l => l[0]);
 
 function systemLang() {

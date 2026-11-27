@@ -161,6 +161,8 @@ class MainWindowApi:
         if not force and not self._quitting and not self._confirm_quit():
             return False
         self._quitting = True
+        from ..engine import cooling
+        cooling.stop()
         if self._sampler:
             self._sampler.stop()
         try:

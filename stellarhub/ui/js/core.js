@@ -542,7 +542,7 @@ const PC = {
 const MODS0 = [
   { id: 'home', name: 'Home', icon: 'home' },
   { id: 'monitor', name: 'Live Monitor', icon: 'monitor', desc: 'Your PC in real time: usage, temperatures, network, battery and health.',
-    tabs: [['overview', 'Overview'], ['cpu', 'Processor'], ['gpu', 'Graphics'], ['memory', 'Memory'], ['disks', 'Disks'], ['network', 'Network'], ['battery', 'Battery'], ['processes', 'Processes'], ['health', 'Health']] },
+    tabs: [['overview', 'Overview'], ['cpu', 'Processor'], ['gpu', 'Graphics'], ['cooling', 'Cooling'], ['memory', 'Memory'], ['disks', 'Disks'], ['network', 'Network'], ['battery', 'Battery'], ['processes', 'Processes'], ['health', 'Health']] },
   { id: 'drivers', name: 'Driver Updater', icon: 'drivers', desc: 'Your drivers, new versions from Windows Update and backups.',
     tabs: [['updates', 'Updates'], ['all', 'All drivers'], ['problems', 'Problems'], ['backup', 'Backup'], ['history', 'History']] },
   { id: 'remover', name: 'Program Remover', icon: 'remover', desc: 'Uninstall programs and clear everything they leave behind, with a quarantine to undo.',

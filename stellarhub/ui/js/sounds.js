@@ -93,6 +93,7 @@ SH.on('boot', () => { if (SH.gamepad) SH.gamepad.onButton(afterGesture); });
    ROW_ACTS: the ones (or the part of one) whose click does something by itself (select, expand, open, mark): a click.
    A row that only shows things says nothing when clicked. */
 const ROWS = [
+  '.cool-handle', '.cool-channel',
   '.row', '.bk-row',
   '#v-monitor .pr', '#v-monitor .dv', '#v-monitor .evt',
   '#v-drivers .du-row', '#v-drivers .db-row', '#v-drivers .dh-row', '#v-drivers .ds-row',
@@ -110,6 +111,7 @@ const ROWS = [
   'input[type=range]', 'input[type=color]',
 ].join(', ');
 const ROW_ACTS = [
+  '.cool-handle', '.cool-channel',
   '#v-drivers .du-row', '#v-drivers .ds-row',
   '#v-optimizer .cl-it:not(.clean, .busyrun) .cl-row', '#v-optimizer .cl-tr:not(.kept)', '#v-optimizer .st-it .st-r',
   '#v-optimizer .db-it:not(.keep, .rmv, .d, .done)',

@@ -36,7 +36,8 @@ class Russian(unittest.TestCase):
         reference = read_dictionary('es')
         extra = {'settings|Backups and restore'} | {f'count_{form}|{key}' for form in ('one', 'few', 'many')
                 for key in ('Driver', 'program', 'driver update available', 'program to update')}
-        self.assertEqual(set(russian), set(reference) | extra)
+        cooling = json.loads((UI / 'i18n/ru/cooling.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(russian), set(reference) | extra | set(cooling))
         self.assertTrue(all(isinstance(v, str) and v.strip() for v in russian.values()))
 
     def test_engine_context_and_named_placeholders(self):

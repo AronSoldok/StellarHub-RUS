@@ -1,0 +1,25 @@
+/* Shares the monitor's panel recipe and typography; never changes other modules. */
+#v-monitor .cool-layout{display:grid;grid-template-columns:minmax(220px,1fr) minmax(0,2.4fr);gap:var(--sp-lg);min-height:100%}
+#v-monitor .cool-list,#v-monitor .cool-editor{display:flex;flex-direction:column;gap:var(--sp-md);min-width:0}
+#v-monitor .cool-channel{width:100%;text-align:left;background:transparent;color:var(--ink);border:1px solid transparent;border-radius:var(--r-m);cursor:pointer}
+#v-monitor .cool-channel:hover,#v-monitor .cool-channel.selected{background:var(--raise2);border-color:var(--line2)}
+#v-monitor .cool-readings{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:var(--sp-md);margin:var(--sp-lg) 0;color:var(--mute);font-size:var(--fs-sm)}
+#v-monitor .cool-readings b{display:block;color:var(--ink);font-size:var(--fs-n1);font-variant-numeric:tabular-nums;margin-top:var(--sp-xs)}
+#v-monitor .cool-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-md)}
+#v-monitor .cool-options label,#v-monitor .cool-point label{display:flex;flex-direction:column;gap:var(--sp-xs);font-size:var(--fs-sm);color:var(--mute);min-width:0}
+#v-monitor .cool-options .field,#v-monitor .cool-point .field{width:100%;box-sizing:border-box}
+#v-monitor #coolPlot{width:100%;max-height:220px;touch-action:none;margin-top:var(--sp-lg);overflow:visible}
+#v-monitor #coolPlot text{fill:var(--mute);font:var(--fs-sm) var(--text)}
+#v-monitor .cool-grid{stroke:var(--line);fill:none}
+#v-monitor .cool-line{stroke:var(--accent2);stroke-width:2;fill:none}
+#v-monitor .cool-handle{fill:var(--accent2);stroke:var(--deep);stroke-width:2;cursor:grab}
+#v-monitor .cool-handle:hover{fill:var(--accent)}
+#v-monitor .cool-points{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:var(--sp-sm)}
+#v-monitor .cool-point{display:grid;grid-template-columns:1fr 1fr auto;gap:var(--sp-sm);align-items:end}
+#v-monitor .cool-buttons{display:flex;flex-wrap:wrap;gap:var(--sp-sm);margin:var(--sp-lg) 0}
+#v-monitor #coolMessage.bad{color:var(--bad)}
+#v-monitor #coolMessage:empty{display:none}
+#v-monitor #coolEmpty{flex:1;display:flex;align-items:center;justify-content:center;min-height:280px}
+#v-monitor .subnav{max-width:100%;overflow-x:auto;flex-shrink:0}
+#v-monitor .subnav button{flex-shrink:0}
+@media(max-width:1099px){#v-monitor .cool-layout{grid-template-columns:1fr}#v-monitor .cool-options{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}}

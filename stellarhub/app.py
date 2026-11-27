@@ -149,6 +149,8 @@ def main():
     _phase("window created, starting webview")
     webview.start(gui="edgechromium", debug=launch.debug, http_server=True, http_port=startup.ui_port(),
                   private_mode=False, storage_path=WEB_DIR)
+    from .engine import cooling
+    cooling.stop()
     if api._tray is not None:
         api._tray.stop()
     if getattr(api, "_handoff", False):  # no gap on screen: wait (bounded) until the new copy's start screen is up
