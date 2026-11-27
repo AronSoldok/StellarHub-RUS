@@ -22,7 +22,7 @@ function render(el) {
     <div class="pan cool-list"><h4>${t('Fans')}</h4><div id="coolChannels" class="rows"></div>
       <p class="mnote">${t('Availability depends on the hardware. No additional driver is installed.')}</p>
       <button class="btn sec" id="coolRefresh">${ic('refresh')}${t('Refresh')}</button></div>
-    <div class="pan cool-editor"><div id="coolEmpty"></div><div id="coolDetails" hidden>
+    <div class="pan cool-editor"><div id="coolEmpty"></div><div id="coolProbe" hidden></div><div id="coolDetails" hidden>
       <h3 id="coolName"></h3><p class="muted" id="coolSource"></p>
       <p class="mnote">${t('Experimental NVIDIA fan control. Hardware validation is still required.')}</p>
       <div class="cool-readings"><div>${t('Temperature')}<b id="coolTemp">—</b></div><div>${t('Reported fan speed')}<b id="coolSpeed">—</b></div>
@@ -114,7 +114,7 @@ function update() {
   $('#coolEmpty').hidden = !!row;
   if (!row) {
     $('#coolEmpty').innerHTML = SH.emptyState({ art: data.error ? 'error' : data.starting ? 'first' : 'none', title: data.error ? t('Cooling controller unavailable') : data.starting ? t('Detecting fan controllers…') : t('No supported fan controller found'),
-      text: data.error ? esc(data.error) : t('This version supports compatible NVIDIA fans through the installed driver. Laptop CPU fans and motherboard controllers require a separate hardware adapter. No fan settings have been changed.') });
+      text: data.error ? esc(data.error) : t('StellarHub checks the fans connected to supported NVIDIA graphics cards. Fans connected to the motherboard or a separate controller need their own software support.') });
   } else {
     root.querySelectorAll('input,select,#coolAdd,[data-remove]').forEach(el => { el.disabled = pending; });
     $('#coolFixed').disabled = pending || (draft && draft.mode !== 'fixed');
@@ -131,6 +131,17 @@ function update() {
     $('#coolApply').disabled = pending || !row.verified || !!stale;
     $('#coolAuto').disabled = pending;
     $('#coolCancel').disabled = pending;
+  }
+  const issues = data.discoveryDetails || [];
+  const probe = $('#coolProbe');
+  probe.hidden = !issues.length;
+  const report = JSON.stringify(issues);
+  if (probe.dataset.report !== report) {
+    probe.dataset.report = report;
+    probe.innerHTML = issues.length ? `<details class="mnote"><summary>${t('NVIDIA detection details')}</summary><ul>${issues.map(issue => {
+      const fan = issue.fan ? ` · ${t('Fan')} ${issue.fan}` : '';
+      return `<li>${esc(issue.device)}${esc(fan)} — ${esc(issue.reason)}${issue.detail ? ` <code>${esc(issue.detail)}</code>` : ''}</li>`;
+    }).join('')}</ul></details>` : '';
   }
   if (data.error) message(data.error, true);
 }

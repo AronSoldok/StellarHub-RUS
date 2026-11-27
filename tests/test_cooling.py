@@ -11,6 +11,7 @@ from unittest import mock
 
 from stellarhub.engine import cooling as C
 from stellarhub.engine.cooling_model import Policy, validate, interpolate
+from stellarhub.engine.cooling_nvml import Nvidia
 
 
 class Device:
@@ -41,6 +42,43 @@ class Device:
 
     def close(self):
         pass
+
+
+class NvidiaAdapter(unittest.TestCase):
+    def test_policy_values_match_the_driver_enum(self):
+        adapter = Nvidia()
+        adapter.devices['fan'] = (None, 0)
+
+        def read_policy(name, *args):
+            if name == 'nvmlDeviceGetFanControlPolicy_v2':
+                args[-1]._obj.value = policy
+
+        with mock.patch.object(adapter, 'call', side_effect=read_policy):
+            policy = 0
+            self.assertTrue(adapter.read('fan')['automatic'])
+            policy = 1
+            self.assertFalse(adapter.read('fan')['automatic'])
+            policy = 2
+            with self.assertRaisesRegex(RuntimeError, 'unknown policy 2'):
+                adapter.read('fan')
+
+    def test_failure_to_read_limits_explains_why_no_channel_was_offered(self):
+        adapter = Nvidia()
+
+        def driver(name, *args):
+            if name in ('nvmlDeviceGetCount_v2', 'nvmlDeviceGetNumFans'):
+                args[-1]._obj.value = 1
+            elif name == 'nvmlDeviceGetName':
+                args[1].value = b'NVIDIA test GPU'
+            elif name == 'nvmlDeviceGetMinMaxFanSpeed':
+                raise RuntimeError('NVML nvmlDeviceGetMinMaxFanSpeed: 3')
+
+        with mock.patch.object(adapter, 'open'), mock.patch.object(adapter, 'call', side_effect=driver):
+            self.assertEqual(adapter.discover(), [])
+            self.assertEqual(adapter.discovery_details, [{
+                'device': 'NVIDIA test GPU', 'reason': 'Unable to read NVIDIA fan capabilities.',
+                'detail': 'NVML nvmlDeviceGetMinMaxFanSpeed: 3',
+            }])
 
 
 class Curves(unittest.TestCase):

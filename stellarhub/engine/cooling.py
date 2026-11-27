@@ -165,7 +165,8 @@ def worker(pipe):
             now = time.monotonic()
             if now - last_tick >= 1:
                 controller.tick(now)
-                pipe.send({'channels': list(controller.channels.values()), 'touched': list(controller.touched), 'at': now})
+                pipe.send({'channels': list(controller.channels.values()), 'touched': list(controller.touched), 'at': now,
+                           'discoveryDetails': getattr(provider, 'discovery_details', [])})
                 last_tick = now
     except (EOFError, BrokenPipeError):
         pass
@@ -391,6 +392,8 @@ def status():
         data['stale'] = True
     if 'error' in data:
         data['error'] = tr(data['error'])
+    for issue in data.get('discoveryDetails', []):
+        issue['reason'] = tr(issue['reason'])
     for row in data.get('channels', []):
         if 'error' in row:
             row['error'] = tr(row['error'])

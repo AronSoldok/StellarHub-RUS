@@ -7,11 +7,15 @@ No kernel driver is bundled and no notebook EC registers are guessed.
 import ctypes as c
 import os
 
+NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW = 0  # Name as spelled in nvml.h.
+NVML_FAN_POLICY_MANUAL = 1
+
 
 class Nvidia:
     def __init__(self):
         self.lib = None
         self.devices = {}
+        self.discovery_details = []
 
     def call(self, name, *args):
         rc = getattr(self.lib, name)(*args)
@@ -39,6 +43,8 @@ class Nvidia:
         raise RuntimeError('The NVIDIA fan interface is not available.')
 
     def discover(self):
+        self.devices.clear()
+        self.discovery_details.clear()
         self.open()
         count = c.c_uint()
         self.call('nvmlDeviceGetCount_v2', c.byref(count))
@@ -49,14 +55,21 @@ class Nvidia:
             uuid, name = c.create_string_buffer(96), c.create_string_buffer(96)
             self.call('nvmlDeviceGetUUID', dev, uuid, len(uuid))
             self.call('nvmlDeviceGetName', dev, name, len(name))
+            device_name = name.value.decode('utf-8', 'replace')
             fans, low, high, critical = c.c_uint(), c.c_uint(), c.c_uint(), c.c_uint()
             try:
                 self.call('nvmlDeviceGetNumFans', dev, c.byref(fans))
+                if not fans.value:
+                    self.discovery_details.append({'device': device_name, 'reason': 'NVIDIA reports no fans for this GPU.'})
+                    continue
                 self.call('nvmlDeviceGetMinMaxFanSpeed', dev, c.byref(low), c.byref(high))
                 self.call('nvmlDeviceGetTemperatureThreshold', dev, 1, c.byref(critical))  # slowdown
                 if high.value != 100 or low.value > 100 or not 40 <= critical.value <= 110:
+                    self.discovery_details.append({'device': device_name, 'reason': 'Unsupported fan limits or GPU temperature threshold.',
+                                                   'detail': f'{low.value}–{high.value}%, {critical.value} °C'})
                     continue
-            except (AttributeError, RuntimeError):
+            except (AttributeError, RuntimeError) as exc:
+                self.discovery_details.append({'device': device_name, 'reason': 'Unable to read NVIDIA fan capabilities.', 'detail': str(exc)})
                 continue
             for fan in range(fans.value):
                 key = f'{uuid.value.decode()}/{fan}'
@@ -64,10 +77,12 @@ class Nvidia:
                 self.devices[key] = (dev, fan)
                 try:
                     reading = self.read(key)
-                except (AttributeError, RuntimeError):
+                except (AttributeError, RuntimeError) as exc:
                     self.devices.pop(key, None)
+                    self.discovery_details.append({'device': device_name, 'fan': fan + 1,
+                                                   'reason': 'Unable to read NVIDIA fan status.', 'detail': str(exc)})
                     continue
-                rows.append({'id': key, 'name': name.value.decode('utf-8', 'replace'), 'fan': fan + 1,
+                rows.append({'id': key, 'name': device_name, 'fan': fan + 1,
                              'source': 'NVIDIA NVML', 'minimum': max(50, low.value), 'critical': critical.value,
                              'sensor': 'gpu', 'rpm': None, 'verified': False, **reading})
         return rows
@@ -78,7 +93,9 @@ class Nvidia:
         self.call('nvmlDeviceGetTemperature', dev, 0, c.byref(temp))
         self.call('nvmlDeviceGetFanSpeed_v2', dev, fan, c.byref(speed))
         self.call('nvmlDeviceGetFanControlPolicy_v2', dev, fan, c.byref(policy))
-        return {'temperature': temp.value, 'speed': speed.value, 'automatic': policy.value == 1}
+        if policy.value not in (NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW, NVML_FAN_POLICY_MANUAL):
+            raise RuntimeError(f'NVML nvmlDeviceGetFanControlPolicy_v2: unknown policy {policy.value}')
+        return {'temperature': temp.value, 'speed': speed.value, 'automatic': policy.value == NVML_FAN_POLICY_TEMPERATURE_CONTINOUS_SW}
 
     def set(self, key, speed):
         dev, fan = self.devices[key]

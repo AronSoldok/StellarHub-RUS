@@ -1,4 +1,10 @@
 {
+  "StellarHub checks the fans connected to supported NVIDIA graphics cards. Fans connected to the motherboard or a separate controller need their own software support.": "StellarHub проверяет вентиляторы, подключённые к поддерживаемым видеокартам NVIDIA. Для вентиляторов на материнской плате или отдельном контроллере нужна поддержка этого оборудования.",
+  "NVIDIA detection details": "Подробности обнаружения NVIDIA",
+  "NVIDIA reports no fans for this GPU.": "Драйвер NVIDIA не сообщает о вентиляторах этой видеокарты.",
+  "Unsupported fan limits or GPU temperature threshold.": "Диапазон скорости вентилятора или температурный порог видеокарты пока не поддерживается.",
+  "Unable to read NVIDIA fan capabilities.": "Не удалось прочитать возможности управления вентиляторами NVIDIA.",
+  "Unable to read NVIDIA fan status.": "Не удалось прочитать состояние вентилятора NVIDIA.",
   "The GPU is too hot to verify fan control. Wait for it to cool down.": "Температура видеокарты слишком высока для проверки управления. Дождитесь её охлаждения.",
   "Experimental NVIDIA fan control. Hardware validation is still required.": "Экспериментальное управление вентиляторами NVIDIA. Работа на совместимом оборудовании ещё требует аппаратной проверки.",
   "Cooling controller unavailable": "Контроллер охлаждения недоступен",
